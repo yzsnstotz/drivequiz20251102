@@ -1,0 +1,332 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "truefalse",
+      "content": "1、 在图中表示的地方，不越过右侧道路部分的时候可以超车",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.14.25.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 2,
+      "type": "truefalse",
+      "content": "2、 在这个标志的场所,不能停泊车或临时停车。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.14.34.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 3,
+      "type": "truefalse",
+      "content": "3、 有图中的车辆通行带的地方,可以按箭头指向改变车道",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.14.42.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 4,
+      "type": "truefalse",
+      "content": "4、 图中的交叉路,属于 A 车一侧和 B 车一侧的视线都较差的交叉路,因此 A 和 B 车都必须缓行.",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.14.52.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 5,
+      "type": "truefalse",
+      "content": "5、 图示禁止车辆进入，车辆可以从标志的对面(背面)进入,但是不得从正面通行",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.14.59.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 6,
+      "type": "truefalse",
+      "content": "6、 落石危险",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.15.09.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 7,
+      "type": "truefalse",
+      "content": "7、 自动车的乘坐定员时，12 岁未满的孩子 2 人可以算作大人 1 人.",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 8,
+      "type": "truefalse",
+      "content": "8、 在视线较差的左弯道上,靠中央线行驶能够迅速确认弯道前方,因此很安全。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 9,
+      "type": "truefalse",
+      "content": "9、 持有普通驾驶执照的人,除可以驾驶普通机动车以外，还可以驾驶小型的特殊机动车和轻型摩托车.",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 10,
+      "type": "truefalse",
+      "content": "10、 再雪地或结冰的道路等行驶的时候,必须使用轮胎防滑链或者冬季轮胎，防备打滑或者横向打滑等。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 11,
+      "type": "truefalse",
+      "content": "11、 下雨的时候,空走距离变长,但是制动距离不变。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 12,
+      "type": "truefalse",
+      "content": "12、 以每小时 60 公里的速度猛烈撞击钢筋混凝土墙壁时,会受到和从 5 层程度建筑物落下(大约 14 米)时相同程度的冲击。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 13,
+      "type": "truefalse",
+      "content": "13、 停在道路左侧的车辆起步时的信号,可以按与向右改变车道时相同的要领发出.",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 14,
+      "type": "truefalse",
+      "content": "14、 中央线不一定设置在道路中央。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 15,
+      "type": "truefalse",
+      "content": "15、 自动变速车在启动发动机的时候,在启动发动机前要脚踏刹车踏板确定位置，用眼睛确认油门踏板位置等非常重要。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 16,
+      "type": "truefalse",
+      "content": "16、 进行摩托车的刹车操作时，不要打方向盘,使车体保持笔,同时使用前后轮制动器.",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 17,
+      "type": "truefalse",
+      "content": "17、 改变车道的时候,如果后面的车不能避免急刹车或者急打方向盘的情况下,就不能改变车道。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 18,
+      "type": "truefalse",
+      "content": "18、 在靠着道路左侧步行道与步行道平行停着的车辆右侧不可以停泊车，但是可以临时停车。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 19,
+      "type": "truefalse",
+      "content": "19、 在有信号灯的交叉路想往右转弯的时候,因对面是绿灯进入了交叉路，但右转弯方向的信号是红灯的，此时在交叉路中停下来了。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 20,
+      "type": "truefalse",
+      "content": "20、 乘坐副驾驶座位的人必须使用安全带,但坐在后部座位的人不必使用。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 21,
+      "type": "truefalse",
+      "content": "21、 右转弯时 要在交叉路跟前靠道路中央行驶",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 22,
+      "type": "truefalse",
+      "content": "22、 夜间与白天相比视野比较差,看不清行人和自行车等,会导致发现得太晚,所以行驶速度应该比白天慢。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 23,
+      "type": "truefalse",
+      "content": "23、 两人同乘大型摩托车或普通摩托车等的时候,应该尽可能选择后部位置较为宽敞的车型。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 24,
+      "type": "truefalse",
+      "content": "24、 即使获得了普通摩托车驾驶执照,获得期间未满 1 年的人,在一般道路上不能带人驾驶普通摩托车。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 25,
+      "type": "truefalse",
+      "content": "25、 准备在高速公路上通行时,为了避免由于燃料冷却水、发动机油不足而停止.必须特意检查，",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 26,
+      "type": "truefalse",
+      "content": "26、 由于车辆的重心会升高或失去平衡，容易侧翻,因此货物应当尽量装在低处，并保持左右平衡，",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 27,
+      "type": "truefalse",
+      "content": "27、 用吊车吊起故障车的前轮或后轮牵引时，不需要驾驶员坐在故障车里.",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 28,
+      "type": "truefalse",
+      "content": "28、 任何情况都不能在高速上停车",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 29,
+      "type": "truefalse",
+      "content": "29、 驾驶员应尊重行人与其他驾驶员的立场,本着相互礼让的原则通行.",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 30,
+      "type": "truefalse",
+      "content": "30、 在下坡路等场所刹车失效，并且使用了发动机制动器和手制动器等的时候,应该让车轮掉落到靠山的一侧的沟槽里，或者冲上路边的碎石地来停车，",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 31,
+      "type": "truefalse",
+      "content": "31、 踩刹车的时候，感觉到比较松弛的时候，说明刹车很起作用",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 32,
+      "type": "truefalse",
+      "content": "32、 绿灯因为不是前进的命令,所以在交叉路，人行横道，铁路道等地方,就出不来的交通状态的时候，即使是绿灯也不能进入。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 33,
+      "type": "truefalse",
+      "content": "33、 高速道路中微型汽车、轻型摩托车发动机的总排气量在 125cc 以下的车辆禁止通行",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 34,
+      "type": "truefalse",
+      "content": "34、 检查证是很重要的资料,所以应该准备一份复印件放在车里备用，将原件好好保存。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 35,
+      "type": "truefalse",
+      "content": "35、 车辆在有行人在旁边通过时，必须缓行保证行人安全",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 36,
+      "type": "truefalse",
+      "content": "36、 安全地带的左侧和它前后 10 米以内的场所虽然不能停,自车，但是可以临时停车",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 37,
+      "type": "truefalse",
+      "content": "37、 即使以同样的速度行走，也会感到夜间比白天慢。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 38,
+      "type": "truefalse",
+      "content": "38、 行入专用道路,准许小型特殊机动车,轻型摩托车及轻型车通行，",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 39,
+      "type": "truefalse",
+      "content": "39、 为紧急车辆让行时,即使在单行线上，也必须将车辆靠向道路左侧，",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 40,
+      "type": "truefalse",
+      "content": "40、 在左侧部分的路面宽度在 6 米以上的道路,视线良好并且不会影响对面驶来的车的通行时，可以从道路右侧越线超车。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 41,
+      "type": "truefalse",
+      "content": "41、 在交叉路左转弯时,左后方有自行车快速接近,因为有可能刮到,所按喇叭抢先左转。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 42,
+      "type": "truefalse",
+      "content": "42、 在禁止停泊车的道路上停车并在车中等待友人 5 分钟的行为是非法停车。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 43,
+      "type": "truefalse",
+      "content": "43、 在转弯时,与速度无关,一定会产生内轮差。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 44,
+      "type": "truefalse",
+      "content": "44、 在有步行道的道路上停车的时候,为了留出更宽的车道,最好将轮胎的一部分停在步行道上。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 45,
+      "type": "truefalse",
+      "content": "45、 在高速公路上准备从加速车道驶入干线车道时,必须注意后方驶来的车辆,而不是在干线车道上行驶的前方车辆",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 46,
+      "type": "truefalse",
+      "content": "46、 前面或出入前后 3 米以内的场所,如果是自己所拥有的车库或就可以停泊车。",
+      "correctAnswer": "false",
+      "explanation": ""
+    }
+  ]
+}

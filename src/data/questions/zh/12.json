@@ -1,0 +1,367 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "truefalse",
+      "content": "1. 开车的时候，不能只考虑自己方便，要照顾到其他车辆和行人，要相互礼让驾驶。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 2,
+      "type": "truefalse",
+      "content": "2. 在有信号灯的交叉路想在右转弯的时候，因对面是绿灯进入了交叉路，但右转弯方向的信号是红灯时，此时在交叉路中停下来了。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 3,
+      "type": "truefalse",
+      "content": "3. 在前方的信号灯变为黄灯的时候，已接近停止位置如果不紧急刹车不能停下来的时候，可以直接进入。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 4,
+      "type": "truefalse",
+      "content": "4. 在有信号灯的交叉路，没有停止线的停止位置，是停在信号灯的跟前。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 5,
+      "type": "truefalse",
+      "content": "5. 图中警察的手势信号表示：对于面对警察的车辆来说，遇到黄灯信号灯意义相同。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-15%20at%2018.29.24.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 6,
+      "type": "truefalse",
+      "content": "6. 这个标示表示禁止掉头路段“结束”。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-15%20at%2018.30.27.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 7,
+      "type": "truefalse",
+      "content": "7. 在有下图中标示的急转弯，可以超出右侧车线，但是必须注意对面驶来的车辆。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.08.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 8,
+      "type": "truefalse",
+      "content": "7. 图中标志是禁止泊车的标志。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.19.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 9,
+      "type": "truefalse",
+      "content": "8. 图中标志表示前方是道路的尽头。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.26.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 10,
+      "type": "truefalse",
+      "content": "9. 图中标志表示前方左转弯。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.31.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 11,
+      "type": "truefalse",
+      "content": "10. 图中标志表示“中央线”，但是中央线未必一定设在道路的中央。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.37.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 12,
+      "type": "truefalse",
+      "content": "11. 图中标志表示“机动车道路减少”。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.42.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 13,
+      "type": "truefalse",
+      "content": "12. 持有普通驾驶执照或轻型车托车驾驶执照不到1年的人，必须贴上新手标志。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 14,
+      "type": "truefalse",
+      "content": "13. 持有第一种驾驶执照的人，即使是为了把出租车运回修理，也不能驾驶。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 15,
+      "type": "truefalse",
+      "content": "14. 在道路上驾驶机动车或轻型摩托托车时，必须考取与该车类型相应的驾驶执照。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 16,
+      "type": "truefalse",
+      "content": "15. 即使是在有最高时速40公里标志的路段行驶，轻型摩托车的时速也不得超过30公里。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 17,
+      "type": "truefalse",
+      "content": "16. 安全速度是指始终按法定速度行驶。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 18,
+      "type": "truefalse",
+      "content": "17. 上坡属于缓行场所。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 19,
+      "type": "truefalse",
+      "content": "18. 开车时在行人旁边通过时，必须缓行保证行人安全。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 20,
+      "type": "truefalse",
+      "content": "19. 在安全地带的旁边通过时，只在有行人时缓行就可以了。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 21,
+      "type": "truefalse",
+      "content": "20. 从停车的机动车旁边通过时，有时车门会突然打开，或者突然从车后冲出行人，必须减速谨慎通行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 22,
+      "type": "truefalse",
+      "content": "21. 有行人在人行横道横穿道路时，但在车辆接近时行人停下来，所以车辆继续通行。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 23,
+      "type": "truefalse",
+      "content": "22. 从正在上下车的学校、幼儿园校车旁边通过时，必须暂时停车确认安全。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 24,
+      "type": "truefalse",
+      "content": "23. 对于贴有此图标的车，因为危险，禁止超车和追车。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.49.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 25,
+      "type": "truefalse",
+      "content": "24. 从后面看，图中的手势信号是右转弯、掉头或在同一方向行驶中向右改变车道的信号。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.22.55.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 26,
+      "type": "truefalse",
+      "content": "25. 准备在交叉路左转弯时，必须在转弯前约3秒钟发出左转弯的信号。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 27,
+      "type": "truefalse",
+      "content": "26. 改变车道、掉头、倒车等行为结束时，必须在经过约3秒钟之后取消该信号。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 28,
+      "type": "truefalse",
+      "content": "27. 即使是在用黄线划分车道通行带的地方，如果是为了左右转弯，就可以越过该线改变车道。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 29,
+      "type": "truefalse",
+      "content": "28. 在坊碍交通的时候，即使在未禁止的地方，也不能横穿道路或掉头。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 30,
+      "type": "truefalse",
+      "content": "29. 在坡度大的下坡禁止超车，但是在坡度大的上坡不禁止超车。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 31,
+      "type": "truefalse",
+      "content": "30. 交叉路及其跟前30米以内的场所，不能超车，但是在优先道路上行驶时可以超车。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 32,
+      "type": "truefalse",
+      "content": "31. 在有图中标志的地方不能超车。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.23.05.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 33,
+      "type": "truefalse",
+      "content": "32. 在前方道路有障碍物的时候，应当提前减速或停车，给对面来车让道。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 34,
+      "type": "truefalse",
+      "content": "33. 在视线较好的铁路道，如果可以确认安全，则可以缓行通过。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 35,
+      "type": "truefalse",
+      "content": "34. 为紧急车辆让行时，即使在单行线上，也必须将车辆靠向道路左侧。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 36,
+      "type": "truefalse",
+      "content": "25. 在交叉路附近以外的道路行驶的车辆，在有紧急车辆驶近时，如果靠左侧让行，一定要暂时停车",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 37,
+      "type": "truefalse",
+      "content": "26. 在设有公交车等专用车道的道路上，车辆（小型特殊机动车、轻型摩托车、轻型车辆），除在转弯等不得已的情况外，不可在该车道行驶",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 38,
+      "type": "truefalse",
+      "content": "27. 右转弯时，如果反方向有直行车辆驶来，即使自己的车已先进入交叉路，也不可妨碍直行车的通行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 39,
+      "type": "truefalse",
+      "content": "28. 在交叉路按指定机动汽车道路行驶，即使有紧急车辆接近也可以不必让行。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 40,
+      "type": "truefalse",
+      "content": "29. 在前车要转弯、发出改变车道的信号时，除非必须急刹车或急打方向盘的情况外，不得妨碍其改变车道",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 41,
+      "type": "truefalse",
+      "content": "30. 内轮差是指，汽车在右转弯时，后轮比前轮更靠外侧。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 42,
+      "type": "truefalse",
+      "content": "31. 在普通道路的法定最高速度，所有的机动车都是每小时60公里。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 43,
+      "type": "truefalse",
+      "content": "16. 申考大型驾驶证的原则需具备以下条件：年龄在21岁及以上，且取得普通驾驶证期间合计3年及以上。不过，若是修完政令指定教程的人员，19岁及以上且取得普通驾驶证期间合法1年及以上即可申考",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 44,
+      "type": "truefalse",
+      "content": "17. 腰部安全带如系在腹部而非腰部位置，一旦发生事故会受到强力压迫有危险，因此应该系在盆骨部位。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 45,
+      "type": "truefalse",
+      "content": "17. 乘坐副驾驶座位的人必须使用安全带，但坐在后部座位的人不必使用。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 46,
+      "type": "truefalse",
+      "content": "19. 在如图所示道路上，A车超B车时，不得超出中央线在右侧部分行驶。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.23.13.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 47,
+      "type": "truefalse",
+      "content": "20. 同一方向有三条车道行驶带时，最右侧为超车用通行带，应让开行驶，车速慢的在左侧通行带行驶，车速快的在右侧通行带行驶。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 48,
+      "type": "truefalse",
+      "content": "21. 在不得已的情况下，可以在安全地带行驶。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 49,
+      "type": "truefalse",
+      "content": "22. 为进出临近道路的场所内横穿人行道和路侧带时，如果没有行人通行，不必在人行道和路侧带前暂时停车。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 50,
+      "type": "truefalse",
+      "content": "23. 有图中标志的道路，原则禁止车辆通行，但在路旁有车库的车辆等，取得警察署的许可后，车辆可缓行通过。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-20%20at%2015.23.20.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    }
+  ]
+}

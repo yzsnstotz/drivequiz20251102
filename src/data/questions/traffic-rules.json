@@ -1,0 +1,59 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "truefalse",
+      "content": "在没有中心线的道路上行驶，应靠路右侧行驶。",
+      "correctAnswer": "true"
+    },
+    {
+      "id": 2,
+      "type": "single",
+      "content": "机动车在道路上行驶时，应当遵守的规定是什么？",
+      "options": [
+        "A. 在道路同方向划有2条以上机动车道的，左侧车道的最低车速为100公里/小时",
+        "B. 在没有限速标志、标线的道路上，应当保持安全车速",
+        "C. 在同向行驶的车道内，后车可以超越前车",
+        "D. 遇有前车正在超车时，可以超越前车"
+      ],
+      "correctAnswer": "B"
+    },
+    {
+      "id": 3,
+      "type": "multiple",
+      "content": "以下哪些情况下不得驾驶机动车？",
+      "options": [
+        "A. 饮酒后",
+        "B. 服用国家管制的精神药品后",
+        "C. 患有妨碍安全驾驶的疾病",
+        "D. 连续驾驶4小时"
+      ],
+      "correctAnswer": ["A", "B", "C"]
+    },
+    {
+      "id": 4,
+      "type": "single",
+      "content": "这个标志是何含义？",
+      "image": "/images/traffic-signs/no-parking.png",
+      "options": [
+        "A. 禁止停车",
+        "B. 禁止临时停车",
+        "C. 禁止长时停车",
+        "D. 禁止机动车停车"
+      ],
+      "correctAnswer": "A"
+    },
+    {
+      "id": 5,
+      "type": "single",
+      "content": "夜间通过有路灯的路段时，应当使用什么灯？",
+      "options": [
+        "A. 远光灯",
+        "B. 近光灯",
+        "C. 雾灯",
+        "D. 示廓灯"
+      ],
+      "correctAnswer": "B"
+    }
+  ]
+}
