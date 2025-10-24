@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { User, History, XSquare, Settings, Edit2 } from 'lucide-react';
 
@@ -49,7 +51,7 @@ function ProfilePage() {
   ];
 
   return (
-    <div className="container mx-auto px-4 py-6">
+    <div className="container mx-auto px-4 py-6 pb-20">
       {/* 用户信息区域 */}
       <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
         <div className="flex flex-col items-center">
