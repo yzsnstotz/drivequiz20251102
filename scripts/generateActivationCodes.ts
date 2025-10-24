@@ -40,27 +40,6 @@ function generateUniqueCodes(count: number, length: number = 6): string[] {
 }
 
 /**
- * 创建激活码表 (使用Kysely的原始SQL执行)
- */
-async function createActivationCodesTable() {
-  // Kysely的Schema API更适合迁移，但对于简单的"CREATE IF NOT EXISTS"，原始SQL更直接
-  const { sql } = db.raw(`
-    CREATE TABLE IF NOT EXISTS activation_codes (
-      id SERIAL PRIMARY KEY,
-      code VARCHAR(20) NOT NULL UNIQUE,
-      is_used BOOLEAN DEFAULT FALSE,
-      usage_limit INTEGER DEFAULT 1,
-      used_count INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await sql.execute(db);
-  console.log("Activation codes table created or already exists");
-}
-
-/**
  * 插入激活码到数据库 (使用Kysely)
  * @param codes 激活码数组
  */
@@ -92,8 +71,6 @@ async function insertActivationCodes(codes: string[]) {
  */
 async function main() {
   try {
-    // 创建表
-    await createActivationCodesTable();
 
     // 生成10000个唯一激活码
     console.log("Generating 10,000 activation codes...");
