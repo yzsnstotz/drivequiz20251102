@@ -14,10 +14,15 @@ interface Question {
 }
 
 interface RoyalBattlePageProps {
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
+  // 默认的onBack处理函数，如果未提供则返回首页
+  const handleBack = onBack || (() => {
+    window.history.back();
+  });
+
   const [lives, setLives] = useState(5);
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(20.0);
@@ -46,7 +51,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
         for (const category of categories) {
           for (let i = 1; i <= 6; i++) {
             try {
-              const response = await import(`../data/questions/zh/${category}-${i}.json`);
+              const response = await import(`../../data/questions/zh/${category}-${i}.json`);
               allQuestions = [...allQuestions, ...response.questions];
             } catch (error) {
               console.log(`No questions found for ${category}-${i}`);
@@ -99,10 +104,16 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
       const newLives = prev - 1;
       if (newLives <= 0) {
         setGameOver(true);
+        return 0;
       }
       return newLives;
     });
     setShowAnswer(true);
+    
+    // 倒计时结束后自动进入下一题
+    setTimeout(() => {
+      handleNext();
+    }, 100);
   };
 
   const handleAnswer = (answer: string) => {
@@ -182,7 +193,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
       <div className="container mx-auto px-4 py-6 pb-20">
         <div className="flex items-center space-x-4 mb-6">
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="text-gray-600 hover:text-gray-900"
           >
             <ChevronLeft className="h-6 w-6" />
@@ -201,7 +212,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
       <div className="container mx-auto px-4 py-6 pb-20">
         <div className="flex items-center space-x-4 mb-6">
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="text-gray-600 hover:text-gray-900"
           >
             <ChevronLeft className="h-6 w-6" />
@@ -214,7 +225,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">最终得分: {score}</h2>
             <p className="text-gray-600 mb-6">答对题目数: {Math.floor(score / 10)}</p>
             <button
-              onClick={onBack}
+              onClick={handleBack}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
             >
               返回首页
@@ -229,7 +240,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
     <div className="container mx-auto px-4 py-6 pb-24">
       <div className="flex items-center space-x-4 mb-6">
         <button
-          onClick={onBack}
+          onClick={handleBack}
           className="text-gray-600 hover:text-gray-900"
         >
           <ChevronLeft className="h-6 w-6" />

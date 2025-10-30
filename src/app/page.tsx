@@ -193,7 +193,7 @@ export default function HomePage() {
           </a>
 
           <a
-            href="/nearby"
+            href="/exam"
             className="bg-white rounded-2xl p-4 text-center shadow-sm cursor-pointer hover:shadow-md transition-shadow"
           >
             <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center mx-auto mb-2">
@@ -207,7 +207,7 @@ export default function HomePage() {
           </a>
 
           <a
-            href="/cars"
+            href="/mistakes"
             className="bg-white rounded-2xl p-4 text-center shadow-sm cursor-pointer hover:shadow-md transition-shadow"
           >
             <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center mx-auto mb-2">

@@ -132,9 +132,51 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
     }
   };
 
-  const checkAnswer = (answer: string | string[]) => {
+   const checkAnswer = (answer: string | string[]) => {
     setShowAnswer(true);
     saveProgress(isCorrect());
+    
+    // 检查答案是否正确，如果不正确则添加到错题本
+    const currentQuestion = questions[currentQuestionIndex];
+    const isCorrectResult = Array.isArray(currentQuestion.correctAnswer)
+      ? Array.isArray(answer) &&
+        answer.length === currentQuestion.correctAnswer.length &&
+        answer.every(a => currentQuestion.correctAnswer.includes(a))
+      : answer === currentQuestion.correctAnswer;
+
+    if (!isCorrectResult) {
+      // 添加到本地存储的错题本
+      const mistakeBook = JSON.parse(localStorage.getItem('mistakeBook') || '[]');
+      const questionToAdd = {
+        ...currentQuestion,
+        fromStudy: true,
+        studySetId: questionSet.id,
+        studySetTitle: questionSet.title
+      };
+      
+      // 检查题目是否已存在于错题本中
+      const exists = mistakeBook.some((q: any) => q.id === currentQuestion.id && q.fromStudy === true);
+      if (!exists) {
+        mistakeBook.push(questionToAdd);
+        localStorage.setItem('mistakeBook', JSON.stringify(mistakeBook));
+      }
+    }
+
+    // Add to practice history
+    const practiceHistory = JSON.parse(localStorage.getItem('practiceHistory') || '[]');
+    const practiceItem = {
+      id: `study-${questionSet.id}-${currentQuestionIndex}-${Date.now()}`,
+      questionId: currentQuestion.id,
+      content: currentQuestion.content,
+      type: currentQuestion.type,
+      correct: isCorrectResult,
+      date: new Date().toLocaleString('zh-CN'),
+      from: 'study'
+    };
+    practiceHistory.push(practiceItem);
+    // Keep only last 50 items
+    const recentPracticeHistory = practiceHistory.slice(-50);
+    localStorage.setItem('practiceHistory', JSON.stringify(recentPracticeHistory));
     
     // 使用setTimeout让答案展示有延迟，配合CSS动画
     // setTimeout(() => {
