@@ -46,6 +46,46 @@ export default function AdminsPage() {
   const router = useRouter();
   const search = useSearchParams();
 
+  const [checkingPermission, setCheckingPermission] = useState(true);
+  const [hasPermission, setHasPermission] = useState(false);
+
+  // 检查权限：只有默认管理员才能访问
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const currentAdmin = await apiGet<{
+          id: number;
+          username: string;
+          isActive: boolean;
+          isDefaultAdmin: boolean;
+        }>("/api/admin/me");
+
+        if (!mounted) return;
+
+        if (currentAdmin.isDefaultAdmin) {
+          setHasPermission(true);
+        } else {
+          // 非默认管理员，重定向到首页
+          router.replace("/admin");
+        }
+      } catch (e) {
+        if (!mounted) return;
+        console.error("Failed to check permission:", e);
+        // 权限检查失败，重定向到首页
+        router.replace("/admin");
+      } finally {
+        if (mounted) {
+          setCheckingPermission(false);
+        }
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
   const [filters, setFilters] = useState<Filters>(() => {
     const q = (k: string, d = "") => (search?.get(k) ?? d);
     const n = (k: string, d: number) => {
@@ -196,20 +236,40 @@ export default function AdminsPage() {
   const fmt = (v?: string | null) =>
     v ? new Date(v).toISOString().replace(".000Z", "Z").slice(0, 19).replace("T", " ") : "—";
 
+  // 权限检查中
+  if (checkingPermission) {
+    return (
+      <div className="space-y-3 sm:space-y-4">
+        <div className="text-center py-8 text-gray-500 text-sm">检查权限中...</div>
+      </div>
+    );
+  }
+
+  // 无权限
+  if (!hasPermission) {
+    return (
+      <div className="space-y-3 sm:space-y-4">
+        <div className="rounded-md bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">
+          无权限：只有默认管理员才能访问此页面
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {/* 顶部操作区 */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Admins</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+        <h2 className="text-base sm:text-lg font-semibold">Admins</h2>
         <div className="flex items-center gap-2">
           <button
-            className="inline-flex items-center rounded-md bg-gray-900 text-white text-sm px-3 py-1.5 hover:bg-black"
+            className="inline-flex items-center rounded-xl bg-blue-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
             onClick={() => setShowCreateForm(!showCreateForm)}
           >
             + 创建管理员
           </button>
           <button
-            className="rounded-md border border-gray-300 text-sm px-3 py-1.5 hover:bg-gray-100"
+            className="rounded-md border border-gray-300 text-sm px-3 py-2 sm:py-1.5 hover:bg-gray-100 active:bg-gray-200 touch-manipulation"
             onClick={() => setFilters((f) => ({ ...f }))}
           >
             刷新
@@ -333,14 +393,14 @@ export default function AdminsPage() {
         </div>
       )}
 
-      {/* 列表 */}
+      {/* 列表 - 桌面端 */}
       {loading ? (
-        <div className="text-center py-8 text-gray-500">加载中...</div>
+        <div className="text-center py-8 text-gray-500 text-sm">加载中...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">暂无数据</div>
+        <div className="text-center py-8 text-gray-500 text-sm">暂无数据</div>
       ) : (
         <>
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-gray-200">
@@ -390,24 +450,70 @@ export default function AdminsPage() {
             </table>
           </div>
 
+          {/* 移动端卡片 */}
+          <div className="md:hidden space-y-3">
+            {items.map((item) => (
+              <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">ID: {item.id}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      item.isActive
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-gray-200 text-gray-800"
+                    }`}
+                  >
+                    {item.isActive ? "启用" : "禁用"}
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">用户名</div>
+                  <div className="text-sm font-medium">{item.username}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Token</div>
+                  <div className="font-mono text-xs break-all text-gray-600">{item.token}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">创建时间</div>
+                  <div className="text-xs text-gray-600">{fmt(item.createdAt)}</div>
+                </div>
+                <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+                  <Link
+                    href={`/admin/admins/${item.id}`}
+                    className="flex-1 text-center rounded-xl bg-blue-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
+                  >
+                    编辑
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="flex-1 text-center rounded-xl bg-red-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-red-600 active:bg-red-700 touch-manipulation transition-colors shadow-sm"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
           {/* 分页 */}
           {pagination && pagination.pages > 1 && (
-            <div className="flex items-center justify-between text-xs text-gray-600">
-              <div>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-0 text-xs text-gray-600">
+              <div className="text-xs sm:text-sm">
                 共 {pagination.total} 条，第 {pagination.page} / {pagination.pages} 页
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => changePage(pagination.page - 1)}
                   disabled={pagination.page <= 1}
-                  className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                  className="flex-1 sm:flex-none px-3 py-2 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 active:bg-gray-200 touch-manipulation text-xs sm:text-sm"
                 >
                   上一页
                 </button>
                 <button
                   onClick={() => changePage(pagination.page + 1)}
                   disabled={pagination.page >= pagination.pages}
-                  className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                  className="flex-1 sm:flex-none px-3 py-2 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 active:bg-gray-200 touch-manipulation text-xs sm:text-sm"
                 >
                   下一页
                 </button>

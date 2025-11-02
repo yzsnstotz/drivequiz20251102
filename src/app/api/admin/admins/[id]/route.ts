@@ -15,7 +15,7 @@ export const fetchCache = "force-no-store";
 // ============================================================
 
 import { NextRequest } from "next/server";
-import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
+import { withAdminAuth, getAdminInfo, requireDefaultAdmin } from "@/app/api/_lib/withAdminAuth";
 import {
   success,
   badRequest,
@@ -26,7 +26,6 @@ import {
 import { logUpdate, logDelete } from "@/app/api/_lib/operationLog";
 import { db } from "@/lib/db";
 import { sql } from "kysely";
-import crypto from "crypto";
 
 // ------------------------------------------------------------
 // 工具：行数据 snake_case → camelCase，并统一时间为 ISO8601
@@ -57,6 +56,10 @@ function toISO(v: Date | string | null | undefined): string | null {
 // ============================================================
 export const GET = withAdminAuth(
   async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+    // 检查是否为默认管理员
+    const permissionError = await requireDefaultAdmin(req);
+    if (permissionError) return permissionError;
+
     try {
       const { id: idParam } = await params;
       const id = Number(idParam);
@@ -94,6 +97,10 @@ export const GET = withAdminAuth(
 // ============================================================
 export const PUT = withAdminAuth(
   async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+    // 检查是否为默认管理员
+    const permissionError = await requireDefaultAdmin(req);
+    if (permissionError) return permissionError;
+
     try {
       const { id: idParam } = await params;
       const id = Number(idParam);
@@ -233,6 +240,10 @@ export const PUT = withAdminAuth(
 // ============================================================
 export const DELETE = withAdminAuth(
   async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+    // 检查是否为默认管理员
+    const permissionError = await requireDefaultAdmin(req);
+    if (permissionError) return permissionError;
+
     try {
       const { id: idParam } = await params;
       const id = Number(idParam);
@@ -247,7 +258,7 @@ export const DELETE = withAdminAuth(
       if (!admin) return notFound("Admin not found");
 
       // 不能删除自己
-      const currentAdmin = getAdminInfo(req);
+      const currentAdmin = await getAdminInfo(req);
       if (currentAdmin && currentAdmin.id === id) {
         return conflict("Cannot delete yourself");
       }

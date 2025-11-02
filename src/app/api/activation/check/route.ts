@@ -165,8 +165,42 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error("[GET /api/activation/check] Error:", error);
-    const message = error instanceof Error ? error.message : "Internal Server Error";
-    return err("INTERNAL_ERROR", message, 500);
+    
+    // 提供更详细的错误信息
+    let errorMessage = "Internal Server Error";
+    let errorCode = "INTERNAL_ERROR";
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      // 检查是否是数据库连接错误
+      if (error.message.includes("connection") || error.message.includes("Connection") || error.message.includes("ECONNREFUSED")) {
+        errorCode = "DATABASE_CONNECTION_ERROR";
+        errorMessage = "数据库连接失败，请检查数据库配置和环境变量";
+      } else if (error.message.includes("relation") || error.message.includes("does not exist")) {
+        errorCode = "DATABASE_TABLE_NOT_FOUND";
+        errorMessage = "数据库表不存在，可能需要初始化数据库";
+      } else if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+        errorCode = "DATABASE_TIMEOUT";
+        errorMessage = "数据库连接超时";
+      } else if (error.message.includes("SSL") || error.message.includes("ssl")) {
+        errorCode = "DATABASE_SSL_ERROR";
+        errorMessage = "数据库 SSL 连接错误";
+      }
+      
+      // 记录完整的错误堆栈（仅开发环境）
+      if (process.env.NODE_ENV === 'development') {
+        console.error("[GET /api/activation/check] Error stack:", error.stack);
+        console.error("[GET /api/activation/check] DATABASE_URL exists:", !!process.env.DATABASE_URL);
+        if (process.env.DATABASE_URL) {
+          const dbUrl = process.env.DATABASE_URL;
+          console.error("[GET /api/activation/check] DATABASE_URL preview:", 
+            dbUrl.substring(0, 30) + "..." + dbUrl.substring(dbUrl.length - 10));
+        }
+      }
+    }
+    
+    return err(errorCode, errorMessage, 500);
   }
 }
 

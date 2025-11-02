@@ -294,11 +294,11 @@ export default function AdminUsersPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">用户管理</h1>
+    <div className="mx-auto w-full max-w-full p-0">
+      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+        <h1 className="text-lg sm:text-xl font-semibold">用户管理</h1>
         <button
-          className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50"
+          className="rounded-md border px-3 py-2 sm:py-1 text-sm hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
           onClick={() => {
             setEmail("");
             setCode("");
@@ -314,7 +314,7 @@ export default function AdminUsersPage() {
       {/* 搜索与排序栏 */}
       <form
         onSubmit={onSearch}
-        className="mb-4 grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-white p-4 md:grid-cols-4"
+        className="mb-4 grid grid-cols-1 gap-3 rounded-2xl shadow-sm bg-white p-4 md:shadow-md md:grid-cols-4"
       >
         <div className="md:col-span-1">
           <label className="mb-1 block text-sm text-gray-600">邮箱（模糊）</label>
@@ -381,7 +381,7 @@ export default function AdminUsersPage() {
         <div className="md:col-span-4">
           <button
             type="submit"
-            className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+            className="w-full rounded-xl bg-blue-500 text-white px-4 py-2.5 sm:py-2 text-sm font-medium disabled:opacity-50 hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
             disabled={loading}
           >
             {loading ? "查询中…" : "查询"}
@@ -417,8 +417,8 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* 数据表 */}
-      <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
+      {/* 数据表 - 桌面端 */}
+      <div className="hidden md:block overflow-x-auto rounded-md border border-gray-200 bg-white">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-gray-50 text-gray-700">
             <tr>
@@ -513,7 +513,7 @@ export default function AdminUsersPage() {
                     {r.activationCode ? (
                       <button
                         onClick={() => openEditStatus(r.activationCode!, r.codeStatus)}
-                        className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                        className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
                         title="编辑激活码状态"
                       >
                         编辑状态
@@ -529,19 +529,94 @@ export default function AdminUsersPage() {
         </table>
       </div>
 
+      {/* 移动端卡片 */}
+      <div className="md:hidden space-y-3">
+        {loading ? (
+          <div className="text-center py-8 text-gray-500 text-sm">加载中…</div>
+        ) : rows.length === 0 ? (
+          <div className="text-center py-8 text-gray-400 text-sm">暂无数据</div>
+        ) : (
+          rows.map((r) => (
+            <div key={r.id} className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">ID: {r.id}</span>
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                    r.codeStatus === "enabled"
+                      ? "bg-green-100 text-green-800"
+                      : r.codeStatus === "expired"
+                      ? "bg-red-100 text-red-800"
+                      : r.codeStatus === "suspended"
+                      ? "bg-amber-100 text-amber-800"
+                      : r.codeStatus === "disabled"
+                      ? "bg-gray-100 text-gray-800"
+                      : "bg-gray-50 text-gray-500"
+                  }`}
+                >
+                  {r.codeStatus ?? "-"}
+                </span>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 mb-1">邮箱</div>
+                <div className="text-sm font-medium break-all">{r.email}</div>
+              </div>
+              {r.activationCode && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">激活码</div>
+                  <div className="font-mono text-sm break-all">{r.activationCode}</div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-gray-500">激活:</span> {r.activatedAt ? new Date(r.activatedAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
+                </div>
+                <div>
+                  <span className="text-gray-500">到期:</span> {r.codeExpiresAt ? new Date(r.codeExpiresAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
+                </div>
+              </div>
+              {r.ipAddress && r.ipAddress !== "-" && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">IP地址</div>
+                  <div className="text-xs">
+                    {(() => {
+                      const geolocation = ipGeolocations.get(r.ipAddress!);
+                      if (geolocation) {
+                        return <span className="text-gray-700 font-medium">{geolocation.displayName}</span>;
+                      } else if (isPrivateIP(r.ipAddress)) {
+                        return <span className="text-gray-500">内网地址</span>;
+                      } else {
+                        return <span className="text-gray-400">查询中...</span>;
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
+              {r.activationCode && (
+                <button
+                  onClick={() => openEditStatus(r.activationCode!, r.codeStatus)}
+                  className="w-full rounded-xl bg-blue-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
+                >
+                  编辑状态
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
       {/* 底部分页 */}
-      <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
-        <div>{totalLabel}</div>
-        <div className="space-x-2">
+      <div className="mt-3 flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-0 text-sm text-gray-600">
+        <div className="text-xs sm:text-sm">{totalLabel}</div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
-            className="rounded-md border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+            className="flex-1 sm:flex-none rounded-md border px-3 py-2 sm:py-1 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 touch-manipulation text-xs sm:text-sm"
             onClick={goPrev}
             disabled={!meta?.hasPrev || loading}
           >
             上一页
           </button>
           <button
-            className="rounded-md border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+            className="flex-1 sm:flex-none rounded-md border px-3 py-2 sm:py-1 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 touch-manipulation text-xs sm:text-sm"
             onClick={goNext}
             disabled={!meta?.hasNext || loading}
           >

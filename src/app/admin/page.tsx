@@ -94,17 +94,17 @@ export default function AdminDashboardPage() {
       };
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">激活码管理概览</p>
+    <div className="mx-auto w-full max-w-full p-0">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold">Dashboard</h1>
+        <p className="mt-1 text-xs sm:text-sm text-gray-500">激活码管理概览</p>
       </div>
 
       {/* 快速统计卡片 */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-6">
         <Link
           href="/admin/activation-codes"
-          className="rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow"
+          className="rounded-2xl shadow-sm bg-white p-4 hover:shadow-md transition-shadow active:scale-[0.98] touch-manipulation"
         >
           <div className="text-sm text-gray-500">激活码总数</div>
           <div className="mt-1 text-2xl font-semibold">{statsData.total}</div>
@@ -112,7 +112,7 @@ export default function AdminDashboardPage() {
 
         <Link
           href="/admin/activation-codes?status=enabled"
-          className="rounded-lg border border-green-200 bg-green-50 p-4 hover:shadow-md transition-shadow"
+          className="rounded-2xl shadow-sm bg-white p-4 hover:shadow-md transition-shadow active:scale-[0.98] touch-manipulation"
         >
           <div className="text-sm text-gray-600">已启用</div>
           <div className="mt-1 text-2xl font-semibold text-green-700">
@@ -122,7 +122,7 @@ export default function AdminDashboardPage() {
 
         <Link
           href="/admin/activation-codes?status=expired"
-          className="rounded-lg border border-red-200 bg-red-50 p-4 hover:shadow-md transition-shadow"
+          className="rounded-2xl shadow-sm bg-white p-4 hover:shadow-md transition-shadow active:scale-[0.98] touch-manipulation"
         >
           <div className="text-sm text-gray-600">已过期</div>
           <div className="mt-1 text-2xl font-semibold text-red-700">
@@ -132,7 +132,7 @@ export default function AdminDashboardPage() {
 
         <Link
           href="/admin/stats"
-          className="rounded-lg border border-blue-200 bg-blue-50 p-4 hover:shadow-md transition-shadow"
+          className="rounded-2xl shadow-sm bg-white p-4 hover:shadow-md transition-shadow active:scale-[0.98] touch-manipulation"
         >
           <div className="text-sm text-gray-600">使用率</div>
           <div className="mt-1 text-2xl font-semibold text-blue-700">
@@ -142,7 +142,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* 状态分布 */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6">
+      <div className="rounded-2xl shadow-sm bg-white p-4 sm:p-6 mb-4 sm:mb-6">
         <h2 className="text-lg font-semibold mb-4">状态分布</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
@@ -165,7 +165,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* 使用情况 */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6">
+      <div className="rounded-2xl shadow-sm bg-white p-4 sm:p-6 mb-4 sm:mb-6">
         <h2 className="text-lg font-semibold mb-4">使用情况</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -190,36 +190,36 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* 快速操作 */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold mb-4">快速操作</h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div className="rounded-2xl shadow-sm bg-white p-4 sm:p-6">
+        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">快速操作</h2>
+        <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Link
             href="/admin/activation-codes/new"
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 text-center"
+            className="rounded-xl bg-blue-500 text-white px-4 py-3 text-sm font-medium hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] text-center touch-manipulation transition-all shadow-sm"
           >
             生成激活码
           </Link>
           <Link
             href="/admin/activation-codes"
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 text-center"
+            className="rounded-xl bg-gray-100 text-gray-700 px-4 py-3 text-sm font-medium hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] text-center touch-manipulation transition-all"
           >
             查看激活码列表
           </Link>
           <Link
             href="/admin/users"
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 text-center"
+            className="rounded-xl bg-gray-100 text-gray-700 px-4 py-3 text-sm font-medium hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] text-center touch-manipulation transition-all"
           >
             查看用户
           </Link>
           <Link
             href="/admin/stats"
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 text-center"
+            className="rounded-xl bg-gray-100 text-gray-700 px-4 py-3 text-sm font-medium hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] text-center touch-manipulation transition-all"
           >
             详细统计
           </Link>
           <Link
             href="/admin/tasks"
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 text-center"
+            className="rounded-xl bg-gray-100 text-gray-700 px-4 py-3 text-sm font-medium hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] text-center touch-manipulation transition-all"
           >
             任务管理
           </Link>

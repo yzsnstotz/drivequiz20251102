@@ -19,6 +19,46 @@ export default function AdminEditPage() {
   const params = useParams();
   const id = Number(params.id);
 
+  const [checkingPermission, setCheckingPermission] = useState(true);
+  const [hasPermission, setHasPermission] = useState(false);
+
+  // 检查权限：只有默认管理员才能访问
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const currentAdmin = await apiGet<{
+          id: number;
+          username: string;
+          isActive: boolean;
+          isDefaultAdmin: boolean;
+        }>("/api/admin/me");
+
+        if (!mounted) return;
+
+        if (currentAdmin.isDefaultAdmin) {
+          setHasPermission(true);
+        } else {
+          // 非默认管理员，重定向到首页
+          router.replace("/admin");
+        }
+      } catch (e) {
+        if (!mounted) return;
+        console.error("Failed to check permission:", e);
+        // 权限检查失败，重定向到首页
+        router.replace("/admin");
+      } finally {
+        if (mounted) {
+          setCheckingPermission(false);
+        }
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +145,32 @@ export default function AdminEditPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // 权限检查中
+  if (checkingPermission) {
+    return (
+      <div className="space-y-4">
+        <div className="text-center py-8 text-gray-500">检查权限中...</div>
+      </div>
+    );
+  }
+
+  // 无权限
+  if (!hasPermission) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-md bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">
+          无权限：只有默认管理员才能访问此页面
+        </div>
+        <Link
+          href="/admin"
+          className="inline-block text-blue-600 hover:underline text-sm"
+        >
+          ← 返回首页
+        </Link>
+      </div>
+    );
   }
 
   if (loading) {

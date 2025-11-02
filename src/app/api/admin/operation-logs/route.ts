@@ -21,6 +21,53 @@ import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
 import { db } from "@/lib/db";
 
 // ------------------------------------------------------------
+// 敏感字段脱敏（与 operationLog.ts 中的定义保持一致）
+// ------------------------------------------------------------
+const SENSITIVE_FIELDS = ["token", "password", "pwd", "secret", "key"];
+
+/**
+ * 脱敏敏感字段的值
+ * 完全隐藏内容和长度，统一使用固定格式
+ */
+function maskSensitiveValue(value: string): string {
+  if (!value || typeof value !== "string") return "***";
+  // 完全隐藏内容和长度，统一使用固定格式，不泄露任何信息
+  return "••••••••••";
+}
+
+/**
+ * 递归脱敏对象中的敏感字段（双重保护，确保API返回时再次脱敏）
+ */
+function sanitizeSensitiveData(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeSensitiveData(item));
+  }
+
+  if (typeof obj === "object") {
+    const sanitized: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const lowerKey = key.toLowerCase();
+      const isSensitive = SENSITIVE_FIELDS.some((field) => lowerKey.includes(field));
+
+      if (isSensitive && typeof value === "string" && value.length > 0) {
+        sanitized[key] = maskSensitiveValue(value);
+      } else if (typeof value === "object" && value !== null) {
+        sanitized[key] = sanitizeSensitiveData(value);
+      } else {
+        sanitized[key] = value;
+      }
+    }
+    return sanitized;
+  }
+
+  return obj;
+}
+
+// ------------------------------------------------------------
 // 工具：行数据 snake_case → camelCase，并统一时间为 ISO8601
 // ------------------------------------------------------------
 type RawRow = {
@@ -61,6 +108,7 @@ function toISO(v: Date | string | null | undefined): string | null {
 }
 
 function mapRow(r: RawRow): CamelRow {
+  // 双重保护：在API返回时再次进行脱敏处理
   return {
     id: r.id,
     adminId: r.admin_id,
@@ -68,8 +116,8 @@ function mapRow(r: RawRow): CamelRow {
     action: r.action,
     tableName: r.table_name,
     recordId: r.record_id,
-    oldValue: r.old_value,
-    newValue: r.new_value,
+    oldValue: sanitizeSensitiveData(r.old_value),
+    newValue: sanitizeSensitiveData(r.new_value),
     description: r.description,
     createdAt: toISO(r.created_at) ?? "",
   };

@@ -15,7 +15,7 @@ export const fetchCache = "force-no-store";
 // ============================================================
 
 import { NextRequest } from "next/server";
-import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
+import { withAdminAuth, requireDefaultAdmin } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError, conflict } from "@/app/api/_lib/errors";
 import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
 import { logCreate, logUpdate, logDelete } from "@/app/api/_lib/operationLog";
@@ -81,6 +81,10 @@ const SORT_MAP: Record<string, keyof RawRow> = {
 // 查询管理员列表（分页、筛选、排序）
 // ============================================================
 export const GET = withAdminAuth(async (req: NextRequest) => {
+  // 检查是否为默认管理员
+  const permissionError = await requireDefaultAdmin(req);
+  if (permissionError) return permissionError;
+
   try {
     const query = req.nextUrl.searchParams;
     const { page, limit, offset, sortBy, order } = parsePagination(query);
@@ -136,6 +140,10 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 // 创建新管理员
 // ============================================================
 export const POST = withAdminAuth(async (req: NextRequest) => {
+  // 检查是否为默认管理员
+  const permissionError = await requireDefaultAdmin(req);
+  if (permissionError) return permissionError;
+
   try {
     const body = await req.json();
     const { username, token, isActive } = body;

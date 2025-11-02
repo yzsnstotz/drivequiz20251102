@@ -60,28 +60,32 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto p-6">
-      <h1 className="text-xl font-semibold mb-4">Admin Login</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm mb-2">管理员口令（ADMIN_TOKEN）</label>
-          <input
-            type="password"
-            className="w-full border rounded px-3 py-2"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="输入后台口令"
-            autoFocus
-          />
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
+          <h1 className="text-xl sm:text-2xl font-semibold text-center mb-2">Admin Login</h1>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">管理员口令（ADMIN_TOKEN）</label>
+              <input
+                type="password"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:border-blue-500 focus:outline-none transition-colors touch-manipulation"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="输入后台口令"
+                autoFocus
+              />
+            </div>
+            {error && <p className="text-red-600 text-sm bg-red-50 p-3 rounded-xl">{error}</p>}
+            <button
+              type="submit"
+              className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] touch-manipulation transition-all shadow-sm font-medium text-base"
+            >
+              登录
+            </button>
+          </form>
         </div>
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        <button
-          type="submit"
-          className="px-4 py-2 bg-black text-white rounded"
-        >
-          登录
-        </button>
-      </form>
+      </div>
     </div>
   );
 }
