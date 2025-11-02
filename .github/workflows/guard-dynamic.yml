@@ -1,0 +1,31 @@
+name: guard-dynamic-route-options
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Ensure all route.ts inline export segment options
+        run: |
+          MISSING=$(find src/app -name "route.ts" -type f | \
+            xargs -I{} sh -c 'grep -q "export const dynamic" "{}" || echo {}')
+          if [ -n "$MISSING" ]; then
+            echo "❌ Missing inline dynamic/runtime in the following route.ts files:"
+            echo "$MISSING"
+            echo ""
+            echo "Please add the following exports at the top of each file:"
+            echo "  export const dynamic = 'force-dynamic';"
+            echo "  export const revalidate = 0;"
+            echo "  export const fetchCache = 'force-no-store';"
+            echo "  export const runtime = 'nodejs';"
+            exit 1
+          else
+            echo "✅ All route.ts files have inline dynamic/runtime exports"
+          fi
