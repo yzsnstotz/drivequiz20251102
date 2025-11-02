@@ -258,6 +258,57 @@ export function clearAdminToken(): void {
 }
 
 /* --------------------------
+ * 简化的 apiFetch 函数（用于登录等简单场景）
+ * -------------------------- */
+
+/**
+ * 简化的 API 调用函数
+ * - 自动附加 Authorization 头（从 localStorage.ADMIN_TOKEN 读取）
+ * - 返回 ApiSuccess<T> 或抛出 ApiError
+ * - 统一协议解析：{ ok: true, data, pagination? } / { ok: false, errorCode, message }
+ */
+export async function apiFetch<T = unknown>(
+  input: string,
+  options: RequestInit & { method?: HttpMethod } = {}
+): Promise<ApiSuccess<T>> {
+  const headers = new Headers(options.headers || {});
+  headers.set("Content-Type", "application/json");
+
+  const token = getAdminToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const res = await fetch(input, {
+    ...options,
+    headers,
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  let json: any;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new ApiError({
+      status: res.status,
+      errorCode: "INVALID_JSON",
+      message: `Invalid JSON response from ${input}`,
+      details: text,
+    });
+  }
+
+  if (!res.ok || json?.ok === false) {
+    throw new ApiError({
+      status: res.status,
+      errorCode: json?.errorCode || "HTTP_ERROR",
+      message: json?.message || `Request failed: ${res.status}`,
+      details: json,
+    });
+  }
+
+  return json as ApiSuccess<T>;
+}
+
+/* --------------------------
  * 默认导出（兼容旧代码）
  * -------------------------- */
 
