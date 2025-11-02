@@ -93,12 +93,14 @@ let dbInstance: Kysely<Database> | null = null;
 function isBuildTime(): boolean {
   // Next.js 在构建时可能会设置这些环境变量
   // 或者在构建时不会设置数据库连接字符串
-  return (
-    process.env.NEXT_PHASE === 'phase-production-build' ||
-    process.env.NEXT_PHASE === 'phase-development-build' ||
-    // 如果没有任何环境变量，可能是构建时的静态分析
-    (!process.env.DATABASE_URL && !process.env.POSTGRES_URL && !process.env.VERCEL)
-  );
+  // 在 Vercel 构建时，如果没有 DATABASE_URL/POSTGRES_URL，很可能是构建阶段
+  const hasDbUrl = !!(process.env.DATABASE_URL || process.env.POSTGRES_URL);
+  const isNextBuild = process.env.NEXT_PHASE === 'phase-production-build' || 
+                      process.env.NEXT_PHASE === 'phase-development-build';
+  
+  // 如果没有数据库连接字符串，很可能是在构建阶段（静态分析）
+  // 或者在 Vercel 构建时还没有设置环境变量
+  return isNextBuild || !hasDbUrl;
 }
 
 function getConnectionString(): string {
@@ -215,8 +217,12 @@ function createPlaceholderDb(): Kysely<Database> {
 // 延迟初始化：只在运行时访问时创建实例
 export const db = new Proxy({} as Kysely<Database>, {
   get(_target, prop) {
-    // 在构建时返回占位符对象，不检查环境变量
-    if (isBuildTime()) {
+    // 检查是否在构建阶段或没有数据库连接字符串
+    // 如果是，返回占位符对象，避免抛出错误
+    const hasDbUrl = !!(process.env.DATABASE_URL || process.env.POSTGRES_URL);
+    const shouldUsePlaceholder = isBuildTime() || !hasDbUrl;
+    
+    if (shouldUsePlaceholder) {
       const placeholder = createPlaceholderDb();
       const value = placeholder[prop as keyof Kysely<Database>];
       if (typeof value === 'function') {
@@ -225,9 +231,16 @@ export const db = new Proxy({} as Kysely<Database>, {
       return value;
     }
     
-    // 运行时才真正创建数据库连接
+    // 运行时且环境变量存在时，才真正创建数据库连接
     if (!dbInstance) {
-      dbInstance = createDbInstance();
+      try {
+        dbInstance = createDbInstance();
+      } catch (error) {
+        // 如果创建连接失败（例如环境变量格式错误），返回占位符
+        // 这样构建不会失败，但运行时会有错误日志
+        console.error('[DB] Failed to create database instance, using placeholder:', error);
+        return createPlaceholderDb()[prop as keyof Kysely<Database>];
+      }
     }
     const value = dbInstance[prop as keyof Kysely<Database>];
     if (typeof value === 'function') {
