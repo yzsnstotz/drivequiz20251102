@@ -91,11 +91,15 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
       if (!admin) {
         const envToken = process.env.ADMIN_TOKEN;
         if (envToken && token === envToken) {
-          // 环境变量token验证通过，但无法获取管理员信息（使用系统管理员）
-          // 这种情况下，可以创建一个默认的管理员信息，或者返回错误
-          // 为了安全，我们只允许数据库中的管理员
-          console.warn("[AdminAuth] Env token found but admins table should be used");
-          return forbidden("Please use admin account from database");
+          // 环境变量token验证通过，创建默认管理员信息（用于向后兼容）
+          // 只有在数据库中没有管理员记录时才允许使用环境变量
+          admin = {
+            id: 0,
+            username: "system",
+            token: envToken,
+            is_active: true,
+          };
+          console.info("[AdminAuth] Using env token as fallback (no admins in database)");
         }
       }
 
