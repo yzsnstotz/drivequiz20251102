@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { unauthorized, forbidden } from "./errors";
 
 /**
  * 管理后台鉴权中间件
@@ -27,7 +28,14 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
 ): T {
   return (async (req: NextRequest, ...rest: any[]) => {
     const authHeader = req.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "").trim();
+    
+    // 如果没有 Authorization header，返回 401 AUTH_REQUIRED
+    if (!authHeader) {
+      console.warn("[AdminAuth] Missing Authorization header");
+      return unauthorized("Missing Authorization header");
+    }
+
+    const token = authHeader.replace("Bearer ", "").trim();
 
     const envToken = process.env.ADMIN_TOKEN;
     if (!envToken) {
@@ -38,12 +46,10 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
       );
     }
 
+    // 如果 token 不匹配，返回 403 FORBIDDEN
     if (token !== envToken) {
       console.warn("[AdminAuth] Invalid admin token");
-      return NextResponse.json(
-        { ok: false, errorCode: "FORBIDDEN", message: "Invalid admin token" },
-        { status: 403 }
-      );
+      return forbidden("Invalid admin token");
     }
 
     return handler(req, ...rest);

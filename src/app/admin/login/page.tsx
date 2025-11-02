@@ -21,7 +21,7 @@ export default function AdminLoginPage() {
       .then(() => router.replace('/admin'))
       .catch((err: any) => {
         // token 失效则退出检查，停留在登录表单
-        if (err?.errorCode === 'UNAUTHORIZED' || err?.status === 401 || err?.status === 403) {
+        if (err?.errorCode === 'AUTH_REQUIRED' || err?.errorCode === 'UNAUTHORIZED' || err?.status === 401 || err?.status === 403) {
           setError('Token 无效或已过期，请重新输入');
         }
         setChecking(false);
@@ -40,9 +40,9 @@ export default function AdminLoginPage() {
       await apiFetch('/api/admin/ping');
       router.replace('/admin');
     } catch (err: any) {
-      if (err?.errorCode === 'UNAUTHORIZED' || err?.status === 401 || err?.status === 403) {
+      if (err?.errorCode === 'AUTH_REQUIRED' || err?.errorCode === 'UNAUTHORIZED' || err?.status === 401 || err?.status === 403) {
         setError('Token 无效或未配置，请检查口令');
-      } else if (err?.errorCode === 'MISSING_ADMIN_TOKEN') {
+      } else if (err?.errorCode === 'MISSING_ADMIN_TOKEN' || err?.errorCode === 'MISSING_TOKEN') {
         setError('未配置管理员口令');
       } else {
         setError(err?.message || '登录失败，请检查口令');
