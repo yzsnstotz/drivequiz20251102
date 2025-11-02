@@ -106,22 +106,26 @@ function isBuildTime(): boolean {
 function getConnectionString(): string {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   
+  // 如果没有连接字符串，返回占位符而不是抛出错误
+  // 这样可以避免构建时失败，运行时会在 Proxy 中检测到并返回占位符
   if (!connectionString) {
-    // 在构建时返回一个虚拟连接字符串，避免抛出错误
-    if (isBuildTime()) {
-      return 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
-    }
-    throw new Error(
-      "❌ 数据库连接字符串未配置！请在 .env.local 中设置 DATABASE_URL 或 POSTGRES_URL"
-    );
+    return 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
   }
   
   return connectionString;
 }
 
 function createDbInstance(): Kysely<Database> {
-  // 只在运行时检查连接字符串
+  // 获取连接字符串（如果不存在会返回占位符）
   const connectionString = getConnectionString();
+
+  // 检查是否是占位符连接字符串
+  const isPlaceholder = connectionString === 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
+  
+  // 如果是占位符，返回占位符数据库对象
+  if (isPlaceholder) {
+    return createPlaceholderDb();
+  }
 
   // 检测是否需要SSL连接（Supabase必须使用SSL）
   // 强制检测：如果包含 supabase.com，必须使用 SSL
