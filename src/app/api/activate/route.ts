@@ -4,10 +4,10 @@
  * 原因: 本文件使用了 request.headers / nextUrl.searchParams 等动态上下文
  * 修复策略: 强制动态渲染 + 禁用缓存 + Node.js 运行时
  */
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const runtime = 'nodejs';
-export const fetchCache = 'force-no-store';
+export const runtime = "nodejs";
+export const fetchCache = "force-no-store";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
