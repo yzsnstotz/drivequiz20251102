@@ -12,20 +12,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Ensure all route.ts inline export segment options
+      - name: Ensure all route.ts have segment options at top (within first 30 lines)
         run: |
-          MISSING=$(find src/app -name "route.ts" -type f | \
-            xargs -I{} sh -c 'grep -q "export const dynamic" "{}" || echo {}')
-          if [ -n "$MISSING" ]; then
-            echo "❌ Missing inline dynamic/runtime in the following route.ts files:"
-            echo "$MISSING"
-            echo ""
-            echo "Please add the following exports at the top of each file:"
-            echo "  export const dynamic = 'force-dynamic';"
-            echo "  export const revalidate = 0;"
-            echo "  export const fetchCache = 'force-no-store';"
-            echo "  export const runtime = 'nodejs';"
-            exit 1
-          else
-            echo "✅ All route.ts files have inline dynamic/runtime exports"
+          files=$(git ls-files "src/app/**/route.ts")
+          fail=0
+          for f in $files; do
+            if [ ! -f "$f" ]; then
+              continue
+            fi
+            # Check if all four constants exist within first 30 lines
+            head -n 30 "$f" | grep -q 'export const dynamic = "force-dynamic"'
+            a=$?
+            head -n 30 "$f" | grep -q 'export const revalidate = 0'
+            b=$?
+            head -n 30 "$f" | grep -q 'export const fetchCache = "force-no-store"'
+            c=$?
+            head -n 30 "$f" | grep -q 'export const runtime = "nodejs"'
+            d=$?
+            if [ $a -ne 0 ] || [ $b -ne 0 ] || [ $c -ne 0 ] || [ $d -ne 0 ]; then
+              echo "::error file=$f::Missing required route segment options at top of file"
+              echo "❌ $f: Missing required route segment options within first 30 lines"
+              fail=1
+            fi
+          done
+          if [ $fail -eq 0 ]; then
+            echo "✅ All route.ts files have required segment options at top"
           fi
+          exit $fail
