@@ -3,6 +3,9 @@ import { success } from "@/app/api/_lib/errors";
 
 // ✅ 强制动态渲染（防止被静态化）
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
+export const fetchCache = "force-no-store";
 
 /**
  * 管理后台健康检查端点
