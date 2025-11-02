@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { Star, MapPin, Clock } from 'lucide-react';
 
 interface Restaurant {
@@ -106,11 +107,12 @@ function NearbyPage() {
         {filteredRestaurants.map(restaurant => (
           <div key={restaurant.id} className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex space-x-4">
-              <div className="w-24 h-24 flex-shrink-0">
-                <img
+              <div className="w-24 h-24 flex-shrink-0 relative">
+                <Image
                   src={restaurant.imageUrl}
                   alt={restaurant.name}
-                  className="w-full h-full object-cover rounded-lg"
+                  fill
+                  className="object-cover rounded-lg"
                 />
               </div>
               <div className="flex-1">

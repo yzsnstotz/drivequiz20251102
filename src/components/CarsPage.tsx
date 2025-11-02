@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { Star, MapPin, Clock, Car } from 'lucide-react';
 
 interface CarItem {
@@ -110,11 +111,12 @@ function CarsPage() {
         {filteredCars.map(car => (
           <div key={car.id} className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex space-x-4">
-              <div className="w-24 h-24 flex-shrink-0">
-                <img
+              <div className="w-24 h-24 flex-shrink-0 relative">
+                <Image
                   src={car.imageUrl}
                   alt={car.name}
-                  className="w-full h-full object-cover rounded-lg"
+                  fill
+                  className="object-cover rounded-lg"
                 />
               </div>
               <div className="flex-1">

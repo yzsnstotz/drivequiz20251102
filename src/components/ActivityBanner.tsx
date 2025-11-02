@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface BannerItem {
@@ -112,10 +113,11 @@ function ActivityBanner() {
             className={`absolute w-full h-full transition-transform duration-500 cursor-pointer ${index === currentIndex ? 'translate-x-0' : index < currentIndex ? '-translate-x-full' : 'translate-x-full'}`}
             onClick={() => handleBannerClick(item.link)}
           >
-            <img
+            <Image
               src={item.imageUrl}
               alt={item.title}
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
             />
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4 text-white">
               <h3 className="text-lg font-bold mb-1">{item.title}</h3>

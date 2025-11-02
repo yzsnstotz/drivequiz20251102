@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     const ipAddress =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.ip ||
+      request.headers.get("x-real-ip")?.trim() ||
       "unknown";
 
     // 事务执行：读取 → 校验状态/过期 → 写回/递增 → 记录激活

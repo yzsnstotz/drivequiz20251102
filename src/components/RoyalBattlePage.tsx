@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, Heart, Timer, Trophy } from 'lucide-react';
 
 interface Question {
@@ -69,6 +70,17 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
     loadQuestions();
   }, []);
 
+  const handleTimeout = useCallback(() => {
+    setLives((prev) => {
+      const newLives = prev - 1;
+      if (newLives <= 0) {
+        setGameOver(true);
+      }
+      return newLives;
+    });
+    setShowAnswer(true);
+  }, []);
+
   // 倒计时逻辑
   useEffect(() => {
     if (gameOver || showAnswer || isLoading) return;
@@ -90,18 +102,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
     }, 50); // 更新频率提高到50ms以获得更平滑的效果
 
     return () => clearInterval(timer);
-  }, [currentQuestionIndex, gameOver, showAnswer, isLoading]);
-
-  const handleTimeout = () => {
-    setLives((prev) => {
-      const newLives = prev - 1;
-      if (newLives <= 0) {
-        setGameOver(true);
-      }
-      return newLives;
-    });
-    setShowAnswer(true);
-  };
+  }, [currentQuestionIndex, gameOver, showAnswer, isLoading, timeLeft, handleTimeout]);
 
   const handleAnswer = (answer: string) => {
     if (showAnswer || gameOver) return;
@@ -275,9 +276,11 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
           <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
           {currentQuestion.image && (
             <div className="mb-4">
-              <img
+              <Image
                 src={currentQuestion.image}
                 alt="题目图片"
+                width={800}
+                height={600}
                 className="max-w-full rounded-lg shadow-sm"
               />
             </div>

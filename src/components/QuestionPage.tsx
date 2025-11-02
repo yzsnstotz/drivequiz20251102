@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Question {
@@ -212,9 +213,11 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
           <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
           {currentQuestion.image && (
             <div className="mb-4">
-              <img
+              <Image
                 src={currentQuestion.image}
                 alt="题目图片"
+                width={800}
+                height={600}
                 className="max-w-full rounded-lg shadow-sm"
               />
             </div>
