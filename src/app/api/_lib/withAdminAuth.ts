@@ -63,10 +63,13 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
 
       const token = header.replace("Bearer ", "").trim();
 
-      // 优先从数据库验证（支持多管理员）
+      // 同时支持两种认证方式：
+      // 1. 数据库中的管理员记录（支持多管理员）
+      // 2. 环境变量 ADMIN_TOKEN（向后兼容，默认管理员）
       let admin: AdminInfo | null = null;
       let dbQuerySucceeded = false;
       
+      // 首先尝试从数据库验证
       try {
         const adminRow = await db
           .selectFrom("admins")
@@ -88,14 +91,11 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
         }
       } catch (dbErr) {
         // 数据库查询失败（连接错误、表不存在等），记录错误但继续尝试环境变量验证
-        console.warn("[AdminAuth] Database query failed, falling back to env token:", dbErr);
+        console.warn("[AdminAuth] Database query failed, will try env token:", dbErr);
         dbQuerySucceeded = false;
       }
 
-      // 如果没有找到数据库中的管理员，尝试环境变量（向后兼容）
-      // 两种情况会fallback：
-      // 1. 数据库查询失败（dbQuerySucceeded = false）
-      // 2. 数据库查询成功但没找到匹配的管理员（admin = null）
+      // 如果数据库中没有找到匹配的管理员，尝试环境变量（同时支持两种方式）
       if (!admin) {
         const envToken = process.env.ADMIN_TOKEN;
         if (envToken && token === envToken) {
@@ -107,11 +107,13 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
             is_active: true,
           };
           console.info(
-            `[AdminAuth] Using env token as fallback (dbQuerySucceeded=${dbQuerySucceeded}, no matching admin in database)`
+            `[AdminAuth] Admin authenticated from env token (ADMIN_TOKEN). dbQuerySucceeded=${dbQuerySucceeded}`
           );
         } else if (envToken) {
           // 环境变量存在但token不匹配
-          console.warn("[AdminAuth] Env token exists but doesn't match provided token");
+          console.warn(
+            `[AdminAuth] Env token exists but doesn't match. Provided token length: ${token.length}, env token length: ${envToken.length}`
+          );
         } else {
           // 环境变量不存在
           console.warn("[AdminAuth] No env token configured (ADMIN_TOKEN not set)");
@@ -119,7 +121,23 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
       }
 
       if (!admin) {
-        return forbidden("Invalid admin token");
+        const envToken = process.env.ADMIN_TOKEN;
+        const hasDbToken = dbQuerySucceeded;
+        const hasEnvToken = !!envToken;
+        
+        let errorMessage = "Invalid admin token";
+        if (!hasDbToken && !hasEnvToken) {
+          errorMessage = "No authentication configured: database query failed and ADMIN_TOKEN env variable not set";
+        } else if (!hasDbToken && hasEnvToken) {
+          errorMessage = "Token doesn't match ADMIN_TOKEN env variable";
+        } else if (hasDbToken && !hasEnvToken) {
+          errorMessage = "Token doesn't match any admin in database, and ADMIN_TOKEN env variable not set";
+        } else {
+          errorMessage = "Token doesn't match any admin in database or ADMIN_TOKEN env variable";
+        }
+        
+        console.warn(`[AdminAuth] Authentication failed. ${errorMessage}`);
+        return forbidden(errorMessage);
       }
 
       // 存储管理员信息到WeakMap，供后续操作日志使用
