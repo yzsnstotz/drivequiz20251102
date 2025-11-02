@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Clock, CheckSquare, XSquare } from 'lucide-react';
 
 interface Question {
@@ -70,7 +71,6 @@ function ExamPage() {
       const timer = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            clearInterval(timer);
             return 0;
           }
           return prev - 1;
@@ -355,11 +355,12 @@ function ExamPage() {
         <div className="mb-6">
           <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
           {currentQuestion.image && (
-            <div className="mb-4">
-              <img
+            <div className="mb-4 relative w-full aspect-video">
+              <Image
                 src={currentQuestion.image}
                 alt="题目图片"
-                className="max-w-full rounded-lg shadow-sm"
+                fill
+                className="object-contain rounded-lg shadow-sm"
               />
             </div>
           )}

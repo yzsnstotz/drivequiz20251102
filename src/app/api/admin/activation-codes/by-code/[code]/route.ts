@@ -4,10 +4,10 @@
  * 原因: 本文件使用了 request.headers / nextUrl.searchParams 等动态上下文
  * 修复策略: 强制动态渲染 + 禁用缓存 + Node.js 运行时
  */
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const runtime = 'nodejs';
-export const fetchCache = 'force-no-store';
+export const runtime = "nodejs";
+export const fetchCache = "force-no-store";
 
 // ============================================================
 // 文件路径: src/app/api/admin/activation-codes/by-code/[code]/route.ts
@@ -24,9 +24,10 @@ import { db } from "@/lib/db";
 // GET /api/admin/activation-codes/by-code/:code
 // 通过激活码代码查找激活码ID和基本信息
 // ============================================================
-export const GET = withAdminAuth(async (req: NextRequest, { params }: { params: { code: string } }) => {
+export const GET = withAdminAuth(async (req: NextRequest, { params }: { params: Promise<{ code: string }> }) => {
   try {
-    const code = params.code?.trim();
+    const { code: codeParam } = await params;
+    const code = codeParam?.trim();
     if (!code) {
       return badRequest("Activation code is required");
     }

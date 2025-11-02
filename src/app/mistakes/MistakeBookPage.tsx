@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, Trash2, BookOpen, Car, Shield, CheckSquare, XSquare } from 'lucide-react';
 
 interface Question {
@@ -102,11 +103,12 @@ function MistakeBookPage() {
             
             <p className="text-gray-900 text-lg mb-4">{selectedQuestion.content}</p>
             {selectedQuestion.image && (
-              <div className="mb-4">
-                <img
+              <div className="mb-4 relative w-full aspect-video">
+                <Image
                   src={selectedQuestion.image}
                   alt="题目图片"
-                  className="max-w-full rounded-lg shadow-sm"
+                  fill
+                  className="object-contain rounded-lg shadow-sm"
                 />
               </div>
             )}

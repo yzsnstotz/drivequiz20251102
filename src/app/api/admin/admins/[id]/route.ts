@@ -4,10 +4,10 @@
  * 原因: 本文件使用了 request.headers / nextUrl.searchParams 等动态上下文
  * 修复策略: 强制动态渲染 + 禁用缓存 + Node.js 运行时
  */
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const runtime = 'nodejs';
-export const fetchCache = 'force-no-store';
+export const runtime = "nodejs";
+export const fetchCache = "force-no-store";
 
 // ============================================================
 // 文件路径: src/app/api/admin/admins/[id]/route.ts
@@ -56,9 +56,10 @@ function toISO(v: Date | string | null | undefined): string | null {
 // 查询单个管理员详情
 // ============================================================
 export const GET = withAdminAuth(
-  async (req: NextRequest, { params }: { params: { id: string } }) => {
+  async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
     try {
-      const id = Number(params.id);
+      const { id: idParam } = await params;
+      const id = Number(idParam);
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
       const row = await db
@@ -92,9 +93,10 @@ export const GET = withAdminAuth(
 // 编辑管理员
 // ============================================================
 export const PUT = withAdminAuth(
-  async (req: NextRequest, { params }: { params: { id: string } }) => {
+  async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
     try {
-      const id = Number(params.id);
+      const { id: idParam } = await params;
+      const id = Number(idParam);
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
       const body = await req.json();
@@ -230,9 +232,10 @@ export const PUT = withAdminAuth(
 // 删除管理员（软删除：禁用而不是真正删除）
 // ============================================================
 export const DELETE = withAdminAuth(
-  async (req: NextRequest, { params }: { params: { id: string } }) => {
+  async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
     try {
-      const id = Number(params.id);
+      const { id: idParam } = await params;
+      const id = Number(idParam);
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
       const admin = await db

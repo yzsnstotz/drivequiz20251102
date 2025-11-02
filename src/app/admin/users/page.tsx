@@ -84,11 +84,6 @@ export default function AdminUsersPage() {
   const [ipGeolocations, setIPGeolocations] = useState<Map<string, IPGeolocationInfo>>(new Map());
 
   // 触发加载
-  const fetchKey = useMemo(
-    () => JSON.stringify({ email, code, page, limit, sortBy, order }),
-    [email, code, page, limit, sortBy, order]
-  );
-
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -131,7 +126,7 @@ export default function AdminUsersPage() {
     return () => {
       mounted = false;
     };
-  }, [fetchKey]);
+  }, [email, code, page, limit, sortBy, order]);
 
   // 加载IP地理位置信息
   useEffect(() => {

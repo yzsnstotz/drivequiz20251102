@@ -4,10 +4,10 @@
  * 原因: 本文件使用了 request.headers / nextUrl.searchParams 等动态上下文
  * 修复策略: 强制动态渲染 + 禁用缓存 + Node.js 运行时
  */
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const runtime = 'nodejs';
-export const fetchCache = 'force-no-store';
+export const runtime = "nodejs";
+export const fetchCache = "force-no-store";
 
 // ============================================================
 // 文件路径: src/app/api/admin/activation-codes/[id]/route.ts
@@ -148,9 +148,10 @@ function mapRow(r: RawRow): CamelRow {
 // GET /api/admin/activation-codes/:id
 // 查询单个激活码详情
 // ============================================================
-export const GET = withAdminAuth(async (req: NextRequest, { params }: { params: { id: string } }) => {
+export const GET = withAdminAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
-    const id = Number(params.id);
+    const { id: idParam } = await params;
+    const id = Number(idParam);
     if (isNaN(id)) return badRequest("Invalid ID parameter");
 
     const row = await db
@@ -175,9 +176,10 @@ export const GET = withAdminAuth(async (req: NextRequest, { params }: { params: 
 // 编辑激活码
 // ============================================================
 
-export const PUT = withAdminAuth(async (req: NextRequest, { params }: any) => {
+export const PUT = withAdminAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
-    const id = Number(params.id);
+    const { id: idParam } = await params;
+    const id = Number(idParam);
     if (isNaN(id)) return badRequest("Invalid ID parameter");
 
     const body = await req.json();
@@ -254,9 +256,10 @@ export const PUT = withAdminAuth(async (req: NextRequest, { params }: any) => {
 // 删除激活码
 // ============================================================
 
-export const DELETE = withAdminAuth(async (req: NextRequest, { params }: any) => {
+export const DELETE = withAdminAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
-    const id = Number(params.id);
+    const { id: idParam } = await params;
+    const id = Number(idParam);
     if (isNaN(id)) return badRequest("Invalid ID parameter");
 
     const code = await db
