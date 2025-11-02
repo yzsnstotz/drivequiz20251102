@@ -1,3 +1,14 @@
+/**
+ * ✅ Dynamic Route Declaration
+ * 防止 Next.js 静态预渲染报错 (DYNAMIC_SERVER_USAGE)
+ * 原因: 本文件使用了 request.headers / nextUrl.searchParams 等动态上下文
+ * 修复策略: 强制动态渲染 + 禁用缓存 + Node.js 运行时
+ */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const runtime = 'nodejs';
+export const fetchCache = 'force-no-store';
+
 // ============================================================
 // 文件路径: src/app/api/admin/activation-codes/stats/route.ts
 // 功能: 激活码统计（总数 / 各状态分布 / 使用率）
