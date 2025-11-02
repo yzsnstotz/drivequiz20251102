@@ -1,112 +1,211 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "../../../lib/db"; // 导入Kysely实例
+import { db } from "@/lib/db";
 
+/**
+ * 统一成功响应
+ */
+function ok<T>(data: T, status = 200) {
+  return NextResponse.json({ ok: true, data }, { status });
+}
+
+/**
+ * 统一错误响应
+ */
+function err(errorCode: string, message: string, status = 400) {
+  return NextResponse.json({ ok: false, errorCode, message }, { status });
+}
+
+/**
+ * POST /api/activate
+ * 请求体: { email: string, activationCode: string, userAgent?: string }
+ * 响应体:
+ *  - 成功: { ok: true, data: { activationId, activatedAt, email } }
+ *  - 失败: { ok: false, errorCode, message }
+ */
 export async function POST(request: NextRequest) {
   try {
-    const { email, activationCode, userAgent } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const email = (body?.email ?? "").trim();
+    const activationCode = (body?.activationCode ?? "").trim();
+    const userAgent = (body?.userAgent ?? "").toString();
 
-    // 验证必要字段
+    // 校验
     if (!email || !activationCode) {
-      return NextResponse.json(
-        { success: false, message: "邮箱和激活码不能为空" },
-        { status: 400 },
-      );
+      return err("VALIDATION_FAILED", "email 和 activationCode 不能为空", 400);
+    }
+
+    // 简单邮箱格式校验（避免过度严格）
+    const emailLike = email.includes("@") && email.includes(".");
+    if (!emailLike) {
+      return err("VALIDATION_FAILED", "email 格式不正确", 400);
     }
 
     const ipAddress =
-      request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.ip ||
+      "unknown";
 
-    // 使用Kysely事务来确保操作的原子性
+    // 事务执行：读取 → 校验状态/过期 → 写回/递增 → 记录激活
     const result = await db.transaction().execute(async (trx) => {
-      // 1. 查找激活码
-      const code = await trx
+      // 1) 读取激活码（包含有效期字段）
+      const codeRow = await trx
         .selectFrom("activation_codes")
-        .select(["id", "usage_limit", "used_count"])
+        .select([
+          "id",
+          "code",
+          "status", // 期望: 'enabled' | 'disabled' | 'suspended' | 'expired'
+          "expires_at",
+          "usage_limit",
+          "used_count",
+          "validity_period",
+          "validity_unit",
+          "activation_started_at",
+        ])
         .where("code", "=", activationCode)
-        .where("is_used", "=", false) // 仅查找未被完全使用的码
         .executeTakeFirst();
 
-      if (!code) {
-        return {
-          success: false,
-          message: "无效的激活码或激活码已被使用",
-          status: 401,
-        };
+      if (!codeRow) {
+        // 未找到
+        return err("INVALID_CODE", "无效的激活码", 401);
       }
 
-      // 2. 检查使用限制
-      if (code.used_count >= code.usage_limit) {
-        // 理论上这个分支不会被命中，因为上面的查询已经包含了 is_used = false
-        return {
-          success: false,
-          message: "激活码已达到使用次数限制",
-          status: 401,
-        };
+      // 2) 状态检查（suspended/expired/disabled 一律拒绝）
+      const status = String(codeRow.status || "").toLowerCase();
+      if (status === "suspended" || status === "expired" || status === "disabled") {
+        return err("CODE_STATUS_INVALID", `激活码状态不可用: ${status}`, 403);
       }
 
-      // 3. 更新激活码使用次数
-      const newUsedCount = code.used_count + 1;
-      const isNowUsed = newUsedCount >= code.usage_limit;
+      // 3) 使用次数限制检查（优先于过期检查，避免已使用的激活码因为过期时间而无法使用）
+      const usageLimit = Number(codeRow.usage_limit ?? 0);
+      const usedCount = Number(codeRow.used_count ?? 0);
+      if (usageLimit > 0 && usedCount >= usageLimit) {
+        // 保护：达到上限也视为不可用
+        return err("CODE_USAGE_EXCEEDED", "激活码已达到使用上限", 403);
+      }
+
+      // 4) 计算实际到期时间（基于激活开始时间和有效期）
+      const now = new Date();
+      let calculatedExpiresAt: Date | null = null;
+      let isFirstActivation = false;
+
+      // 如果是首次激活（activation_started_at 为 null），设置激活开始时间并计算到期时间
+      if (!codeRow.activation_started_at && codeRow.validity_period && codeRow.validity_unit) {
+        isFirstActivation = true;
+        const period = Number(codeRow.validity_period);
+        const unit = codeRow.validity_unit;
+
+        calculatedExpiresAt = new Date(now);
+        switch (unit) {
+          case "day":
+            calculatedExpiresAt.setDate(calculatedExpiresAt.getDate() + period);
+            break;
+          case "month":
+            calculatedExpiresAt.setMonth(calculatedExpiresAt.getMonth() + period);
+            break;
+          case "year":
+            calculatedExpiresAt.setFullYear(calculatedExpiresAt.getFullYear() + period);
+            break;
+        }
+      } else if (codeRow.activation_started_at && codeRow.validity_period && codeRow.validity_unit) {
+        // 已激活过，基于激活开始时间计算到期时间
+        const startDate = new Date(codeRow.activation_started_at as unknown as string);
+        if (!isNaN(startDate.getTime())) {
+          const period = Number(codeRow.validity_period);
+          const unit = codeRow.validity_unit;
+          calculatedExpiresAt = new Date(startDate);
+          switch (unit) {
+            case "day":
+              calculatedExpiresAt.setDate(calculatedExpiresAt.getDate() + period);
+              break;
+            case "month":
+              calculatedExpiresAt.setMonth(calculatedExpiresAt.getMonth() + period);
+              break;
+            case "year":
+              calculatedExpiresAt.setFullYear(calculatedExpiresAt.getFullYear() + period);
+              break;
+          }
+        }
+      } else if (codeRow.expires_at) {
+        // 兼容旧数据（固定到期时间）
+        calculatedExpiresAt = new Date(codeRow.expires_at as unknown as string);
+      }
+
+      // 检查是否已过期（基于计算后的到期时间）
+      if (calculatedExpiresAt && !isNaN(calculatedExpiresAt.getTime())) {
+        if (calculatedExpiresAt.getTime() < now.getTime()) {
+          // 已过期：写回 expired 状态并拒绝
+          await trx
+            .updateTable("activation_codes")
+            .set({
+              status: "expired",
+              updated_at: now,
+            })
+            .where("id", "=", codeRow.id)
+            .execute();
+          return err(
+            "CODE_EXPIRED",
+            "激活码已过期（已写回 expired）",
+            409,
+          );
+        }
+      }
+
+      // 5) 递增使用次数，如果是首次激活则记录激活开始时间和计算到期时间
+      const newUsedCount = usedCount + 1;
+      const updateData: Record<string, any> = {
+        used_count: newUsedCount,
+        updated_at: now,
+      };
+
+      if (isFirstActivation && calculatedExpiresAt) {
+        // 首次激活：设置激活开始时间和计算后的到期时间
+        updateData.activation_started_at = now;
+        updateData.expires_at = calculatedExpiresAt;
+      }
 
       await trx
         .updateTable("activation_codes")
-        .set({
-          used_count: newUsedCount,
-          is_used: isNowUsed,
-          updated_at: new Date(),
-        })
-        .where("id", "=", code.id)
+        .set(updateData)
+        .where("id", "=", codeRow.id)
         .execute();
 
-      // 4. 记录激活信息
-      const activationRecord = await trx
+      // 6) 记录激活
+      const inserted = await trx
         .insertInto("activations")
         .values({
           email,
           activation_code: activationCode,
           ip_address: ipAddress,
           user_agent: userAgent,
-          activated_at: new Date(),
         })
-        .returning("id")
+        .returning(["id", "activated_at"])
         .executeTakeFirst();
 
-      if (!activationRecord) {
-        // 如果插入失败，事务将回滚
-        throw new Error("Failed to record activation.");
+      if (!inserted?.id) {
+        // 理论上不应发生，抛出以触发回滚
+        throw new Error("INSERT_ACTIVATION_FAILED");
       }
 
-      return {
-        success: true,
-        message: "激活成功",
-        status: 200,
-        activationId: activationRecord.id,
-      };
+      return ok(
+        {
+          activationId: inserted.id,
+          activatedAt: inserted.activated_at.toISOString(),
+          email,
+        },
+        200,
+      );
     });
 
-    return NextResponse.json(
-      {
-        success: result.success,
-        message: result.message,
-        activationId: result.activationId,
-      },
-      { status: result.status },
-    );
-  } catch (error) {
-    console.error("Activation error:", error);
-    // 根据错误类型可以返回更具体的信息
-    if (
-      error instanceof Error &&
-      error.message.includes("Failed to record activation")
-    ) {
-      return NextResponse.json(
-        { success: false, message: "无法记录激活信息" },
-        { status: 500 },
-      );
+    // 事务返回的已经是 NextResponse（ok/err），直接 return
+    return result;
+  } catch (e: unknown) {
+    // 兜底错误
+    const message =
+      e instanceof Error ? e.message : typeof e === "string" ? e : "UNKNOWN";
+    // 特判插入失败
+    if (message === "INSERT_ACTIVATION_FAILED") {
+      return err("INTERNAL_ERROR", "无法记录激活信息", 500);
     }
-    return NextResponse.json(
-      { success: false, message: "服务器内部错误" },
-      { status: 500 },
-    );
+    return err("INTERNAL_ERROR", "服务器内部错误", 500);
   }
 }

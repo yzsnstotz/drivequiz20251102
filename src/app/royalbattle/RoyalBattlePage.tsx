@@ -13,15 +13,11 @@ interface Question {
   explanation?: string;
 }
 
-interface RoyalBattlePageProps {
-  onBack?: () => void;
-}
-
-function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
-  // 默认的onBack处理函数，如果未提供则返回首页
-  const handleBack = onBack || (() => {
+function RoyalBattlePage() {
+  // 处理返回逻辑
+  const handleBack = () => {
     window.history.back();
-  });
+  };
 
   const [lives, setLives] = useState(5);
   const [score, setScore] = useState(0);

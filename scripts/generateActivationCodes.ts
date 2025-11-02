@@ -54,6 +54,7 @@ async function insertActivationCodes(codes: string[]) {
           is_used: false,
           usage_limit: 1,
           used_count: 0,
+          status: "disabled" as const, // 默认状态为 disabled
         })),
       )
       .onConflict((oc) => oc.column("code").doNothing()) // 处理唯一键冲突
