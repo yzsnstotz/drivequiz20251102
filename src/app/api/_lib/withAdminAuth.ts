@@ -1,10 +1,12 @@
+// ✅ 强制所有使用此中间件的 API 路由保持动态渲染（防止被静态化）
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
-import { forbidden } from "@/app/api/_lib/errors";
 
 /**
  * 管理后台鉴权中间件
- * - 当前临时改为使用 .env 中的 ADMIN_TOKEN 进行校验
- * - 禁用 admins 表逻辑（DB 模式）
+ * - 仅检查 .env 中的 ADMIN_TOKEN
+ * - 禁止静态化，确保 headers 与 env 可在运行时读取
  */
 
 // 向后兼容：导出空的 AdminInfo 接口和 getAdminInfo 函数
@@ -25,32 +27,25 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
 ): T {
   return (async (req: NextRequest, ...rest: any[]) => {
     const authHeader = req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return forbidden("Missing Authorization header");
-    }
-    
-    const token = authHeader.replace("Bearer ", "").trim();
+    const token = authHeader?.replace("Bearer ", "").trim();
 
     const envToken = process.env.ADMIN_TOKEN;
     if (!envToken) {
       console.error("[AdminAuth] Missing ADMIN_TOKEN in env");
-      return forbidden("Missing admin token");
+      return NextResponse.json(
+        { ok: false, errorCode: "MISSING_TOKEN", message: "Missing admin token" },
+        { status: 403 }
+      );
     }
 
-    // 🚫 暂时禁用 DB 模式，强制使用 ENV token
     if (token !== envToken) {
-      console.warn("[AdminAuth] Invalid admin token (ENV mode)");
-      return forbidden("Invalid admin token");
+      console.warn("[AdminAuth] Invalid admin token");
+      return NextResponse.json(
+        { ok: false, errorCode: "FORBIDDEN", message: "Invalid admin token" },
+        { status: 403 }
+      );
     }
 
     return handler(req, ...rest);
   }) as T;
 }
-
-// ------------------------------------------------------------
-// 💡 使用示例
-// import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
-// export const GET = withAdminAuth(async (req) => {
-//   return NextResponse.json({ ok: true, message: "Admin access granted" });
-// });
-// ------------------------------------------------------------

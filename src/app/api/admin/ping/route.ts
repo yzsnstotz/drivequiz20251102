@@ -1,6 +1,9 @@
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success } from "@/app/api/_lib/errors";
 
+// ✅ 强制动态渲染（防止被静态化）
+export const dynamic = "force-dynamic";
+
 /**
  * 管理后台健康检查端点
  * - 需要 Bearer <ADMIN_TOKEN>
