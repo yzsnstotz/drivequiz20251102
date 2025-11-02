@@ -126,6 +126,7 @@ export default function AdminUsersPage() {
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email, code, page, limit, sortBy, order]);
 
   // 加载IP地理位置信息

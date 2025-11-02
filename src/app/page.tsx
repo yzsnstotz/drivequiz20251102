@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   Book,
   ChevronLeft,
@@ -144,10 +145,11 @@ export default function HomePage() {
                   onClick={() => window.open(item.link, "_blank")}
                 >
                   <div className="relative h-40 rounded-xl overflow-hidden">
-                    <img
+                    <Image
                       src={item.imageUrl}
                       alt={item.title}
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
                       <h3 className="text-white font-bold mb-1">
