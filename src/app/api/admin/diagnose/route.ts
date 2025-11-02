@@ -70,14 +70,22 @@ export async function GET() {
 
   // 测试数据库连接
   const isSupabase = connectionString.includes("supabase.com") || connectionString.includes("sslmode=require");
-  const pool = new Pool({
+  
+  // 确保 SSL 配置正确应用（Supabase 需要 SSL，但证书链可能有自签名证书）
+  const poolConfig: {
+    connectionString: string;
+    ssl?: { rejectUnauthorized: boolean };
+  } = {
     connectionString,
-    ssl: isSupabase
-      ? {
-          rejectUnauthorized: false,
-        }
-      : false,
-  });
+  };
+  
+  if (isSupabase) {
+    poolConfig.ssl = {
+      rejectUnauthorized: false, // 允许自签名证书（Supabase 需要）
+    };
+  }
+  
+  const pool = new Pool(poolConfig);
 
   try {
     const client = await pool.connect();
