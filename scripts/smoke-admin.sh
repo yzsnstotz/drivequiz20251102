@@ -1,64 +1,126 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <BASE_URL> <ADMIN_TOKEN> [--bypass <VERCEL_BYPASS_TOKEN>]"
+usage() {
+  cat <<EOF
+Usage: $0 BASE_URL ADMIN_TOKEN [--bypass BYPASS_TOKEN]
+Example:
+  $0 "https://drivequiz.example.vercel.app" "Aa123456"
+  $0 "https://drivequiz.example.vercel.app" "Aa123456" --bypass "dgo9MHSP..."
+EOF
   exit 1
+}
+
+if [ $# -lt 2 ]; then
+  usage
 fi
 
-BASE_URL="$1"
+BASE="$1"
 ADMIN_TOKEN="$2"
 BYPASS_TOKEN=""
-
 shift 2
-while [[ $# -gt 0 ]]; do
+
+while [ $# -gt 0 ]; do
   case "$1" in
     --bypass)
-      BYPASS_TOKEN="$2"
+      BYPASS_TOKEN="${2:-}"
       shift 2
       ;;
     *)
       echo "Unknown arg: $1"
-      exit 1
+      usage
       ;;
   esac
 done
 
-COOKIES_FILE="$(mktemp)"
-cleanup() { rm -f "$COOKIES_FILE"; }
-trap cleanup EXIT
+API_PING="${BASE%/}/api/admin/ping"
+TMP_DIR=$(mktemp -d)
+COOKIE_JAR="${TMP_DIR}/vercel_cookies.txt"
+LOGFILE="logs/smoke-admin-$(date +%Y%m%d-%H%M%S).log"
 
-# 如果提供了 bypass token，先种 cookie
-if [[ -n "${BYPASS_TOKEN}" ]]; then
-  echo "→ Set Vercel bypass cookie..."
-  curl -sS -c "$COOKIES_FILE" \
-    "${BASE_URL}/api/admin/ping?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=${BYPASS_TOKEN}" >/dev/null || true
+mkdir -p logs
+
+echo "→ Request URL: $API_PING"
+echo "→ Cookie jar: $COOKIE_JAR"
+echo "→ Log file: $LOGFILE"
+
+# Build curl args
+CURL_ARGS=(-sS -D - -o -) # -D - prints response headers to stdout with body separated; -o - body to stdout
+# Follow redirects and keep cookies
+CURL_ARGS+=(-L --max-redirs 10 --cookie-jar "$COOKIE_JAR" --cookie "$COOKIE_JAR")
+# Timeout
+CURL_ARGS+=(--connect-timeout 10 --max-time 30)
+
+# Authorization header if provided
+if [ -n "$ADMIN_TOKEN" ]; then
+  CURL_ARGS+=(-H "Authorization: Bearer ${ADMIN_TOKEN}")
 fi
 
-echo "→ GET ${BASE_URL}/api/admin/ping"
-RESP="$(curl -sS -i ${BYPASS_TOKEN:+-b "$COOKIES_FILE"} \
-  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-  "${BASE_URL}/api/admin/ping")"
+REQUEST_URL="$API_PING"
+if [ -n "$BYPASS_TOKEN" ]; then
+  # attach bypass both as query and as cookie header to increase chance
+  REQUEST_URL="${API_PING}?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=${BYPASS_TOKEN}"
+  CURL_ARGS+=(-H "Cookie: x-vercel-protection-bypass=${BYPASS_TOKEN}; x-vercel-set-bypass-cookie=true")
+  echo "→ Using bypass token (attached to query and cookie header)."
+fi
 
-STATUS="$(printf "%s" "$RESP" | head -n1 | awk '{print $2}')"
-BODY="$(printf "%s" "$RESP" | sed -n '/^\r\?$/{:a;n;p;ba};1,1d')"
+echo "→ Performing request to: $REQUEST_URL"
+# Perform request and capture output
+# We capture stdout (headers+body) to variable safely via temp file (avoids subshell issues)
+RESP_FILE="${TMP_DIR}/resp.txt"
+if ! curl "${CURL_ARGS[@]}" "$REQUEST_URL" > "$RESP_FILE" 2>&1; then
+  echo "!!! curl failed. Dumping raw output to $LOGFILE"
+  cp "$RESP_FILE" "$LOGFILE"
+  cat "$LOGFILE"
+  exit 10
+fi
 
-# 判定是否被 Vercel Auth 拦截（HTML）
-if printf "%s" "$BODY" | grep -qi "<title>Authentication Required</title>"; then
-  echo "✖ Still seeing Vercel Authentication HTML (status ${STATUS})."
-  echo "  → 说明该环境仍开启了 Vercel Authentication，或 bypass token 无效/未生效。"
+# Split headers and body: find first blank line
+HEADER_LINES=$(awk 'BEGIN{h=1} { if(h){print; if($0=="") h=0 } }' "$RESP_FILE" || true)
+BODY=$(awk 'BEGIN{h=1} { if(h && $0==""){h=0; next} if(!h) print }' "$RESP_FILE" || true)
+
+# normalize CR
+BODY=$(printf '%s' "$BODY" | tr -d '\r')
+
+# Save to log
+{
+  echo "===== REQUEST: $REQUEST_URL"
+  echo "===== HEADERS (first 80 lines):"
+  printf '%s\n' "$HEADER_LINES" | sed -n '1,80p'
+  echo "===== BODY (first 200 lines or first 20 lines):"
+  printf '%s\n' "$BODY" | sed -n '1,200p'
+  echo
+} >> "$LOGFILE"
+
+# Print short diagnostics to console
+echo "---- Headers (truncated) ----"
+printf '%s\n' "$HEADER_LINES" | sed -n '1,40p'
+echo "---- /HEADERS ----"
+
+if printf '%s' "$BODY" | grep -qi "<!doctype html\|Authentication Required\|Vercel Authentication"; then
+  echo "!!! Detected HTML response -> likely Vercel deployment protection or SSO active."
+  echo "See full log: $LOGFILE"
+  exit 2
+fi
+
+if [ -z "$BODY" ]; then
+  echo "Empty body returned. See $LOGFILE"
   exit 3
 fi
 
-# 尝试解析 JSON（若 jq 不在则跳过）
 if command -v jq >/dev/null 2>&1; then
-  OK="$(printf "%s" "$BODY" | jq -r '.ok' 2>/dev/null || true)"
-  if [[ "$OK" == "true" ]]; then
-    echo "✔ Admin ping passed."
-    exit 0
-  fi
+  echo "→ Parsing JSON with jq:"
+  printf '%s\n' "$BODY" | jq .
+else
+  echo "→ jq not installed; printing raw body (truncated):"
+  printf '%s\n' "$BODY" | sed -n '1,200p'
 fi
 
-# 兜底输出
-echo "$RESP"
+echo "→ Saved full exchange to $LOGFILE"
+echo "→ smoke-admin.sh finished successfully."
+
+# Clean up cookie jar (optional: keep for debugging)
+# rm -f "$COOKIE_JAR"
+# rmdir "$TMP_DIR"
+
 exit 0
