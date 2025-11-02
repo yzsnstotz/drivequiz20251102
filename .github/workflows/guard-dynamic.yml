@@ -15,9 +15,11 @@ jobs:
       - name: Ensure all route.ts have segment options at top (within first 30 lines)
         run: |
           files=$(git ls-files "src/app/**/route.ts")
+          echo "Found $(echo "$files" | wc -l) route.ts files"
           fail=0
           for f in $files; do
             if [ ! -f "$f" ]; then
+              echo "⚠️  File not found: $f"
               continue
             fi
             # Check if all four constants exist within first 30 lines
@@ -32,7 +34,10 @@ jobs:
             if [ $a -ne 0 ] || [ $b -ne 0 ] || [ $c -ne 0 ] || [ $d -ne 0 ]; then
               echo "::error file=$f::Missing required route segment options at top of file"
               echo "❌ $f: Missing required route segment options within first 30 lines"
+              echo "   dynamic=$a revalidate=$b fetchCache=$c runtime=$d"
               fail=1
+            else
+              echo "✅ $f"
             fi
           done
           if [ $fail -eq 0 ]; then
