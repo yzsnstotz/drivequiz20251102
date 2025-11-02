@@ -134,9 +134,25 @@ async function request<T>(
 
   clearTimeout(timeout);
 
+  // 检测是否被 Vercel Authentication 拦截（HTML）
+  const contentType = resp.headers.get("content-type") || "";
+  const text = await resp.text();
+  
+  if (contentType.includes("text/html") || text.includes("<title>Authentication Required</title>")) {
+    throw new ApiError({
+      status: resp.status,
+      errorCode: "VERCEL_AUTH_BLOCKED",
+      message:
+        "[VercelAuth] 当前环境启用了 Vercel Authentication，未携带 bypass cookie，已被拦截。" +
+        " 解决方案：1) 在 Vercel 控制台关闭 Preview/Production 的 Authentication；" +
+        " 2) 使用 bypass token 访问一次：?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=<TOKEN>；" +
+        " 详见 docs/runbooks/DEPLOYMENT_PROTECTION.md",
+      details: text,
+    });
+  }
+
   // 解析返回（期望为 JSON）
   let payload: ApiResponse<T> | unknown;
-  const text = await resp.text();
   try {
     payload = text ? (JSON.parse(text) as ApiResponse<T>) : undefined;
   } catch {
@@ -283,7 +299,23 @@ export async function apiFetch<T = unknown>(
     cache: "no-store",
   });
 
+  // 检测是否被 Vercel Authentication 拦截（HTML）
+  const contentType = res.headers.get("content-type") || "";
   const text = await res.text();
+  
+  if (contentType.includes("text/html") || text.includes("<title>Authentication Required</title>")) {
+    throw new ApiError({
+      status: res.status,
+      errorCode: "VERCEL_AUTH_BLOCKED",
+      message:
+        "[VercelAuth] 当前环境启用了 Vercel Authentication，未携带 bypass cookie，已被拦截。" +
+        " 解决方案：1) 在 Vercel 控制台关闭 Preview/Production 的 Authentication；" +
+        " 2) 使用 bypass token 访问一次：?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=<TOKEN>；" +
+        " 详见 docs/runbooks/DEPLOYMENT_PROTECTION.md",
+      details: text,
+    });
+  }
+
   let json: any;
   try {
     json = text ? JSON.parse(text) : {};

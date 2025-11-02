@@ -1,136 +1,79 @@
-# Vercel Deployment Protection 故障排查指南
+# Vercel Deployment Protection / Authentication 旁路与排查
 
-## 问题现象
+## 一、现象
+- 访问接口返回 `401` 且是 HTML，页面标题为 `Authentication Required`。
+- curl 显示 `set-cookie: _vercel_sso_nonce=...`。
+- 这是 Vercel Authentication（Deployment Protection）在当前环境生效导致的。
 
-访问生产环境时出现以下问题：
+## 二、解决方案（任选其一）
+### 方案 A：关闭 Authentication（开发期推荐）
+项目 Settings → Security → **Vercel Authentication**：
+- 将 **Preview**、**Production** 对应的 Environment 勾选去掉（Off）
+- 保存
 
-1. **浏览器返回 403 Forbidden**
-2. **显示 Vercel Authentication 页面**（要求输入密码或 SSO 登录）
-3. **管理员登录页面 `/admin/login` 无法加载或卡住**
-4. **API 路由无法访问**
+> 注意：不同环境可分别开关。你的预览 URL（随机后缀）通常属于 Preview 环境。
 
-## 根本原因
+### 方案 B：保留 Authentication，但使用 Bypass Token
+Settings → Security → **Protection Bypass for Automation** → Generate Token  
+拿到 `<TOKEN>` 后，先访问一次：
 
-Vercel **Deployment Protection**（部署保护）功能拦截了流量，导致请求在到达 Next.js 应用之前就被拦截。
+```
+GET https://<domain>/api/admin/ping?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=<TOKEN>
+```
 
-Deployment Protection 包括：
-- **Password Protection**：密码保护
-- **SSO Protection**：单点登录保护
-- **Preview Protection**：预览分支保护
-
-当启用这些保护时，Vercel 会在请求到达应用之前进行身份验证，导致：
-- 所有流量（包括 API 路由）都会被拦截
-- Next.js 应用无法处理请求
-- 浏览器收到 403 或认证页面
-
-## 解决方案
-
-### 方案 A：关闭生产环境 Deployment Protection（推荐）
-
-适用于正式生产环境，允许公开访问。
-
-**操作步骤：**
-
-1. 登录 [Vercel Dashboard](https://vercel.com/dashboard)
-2. 选择项目
-3. 进入 **Settings** → **Security** → **Deployment Protection**
-4. 找到 **Production** 环境的保护设置
-5. 关闭以下保护：
-   - **Password Protection**：Off
-   - **SSO Protection**：Off（或将你的账户加入 Allowlist）
-
-如果团队策略要求开启 SSO：
-- 将你的账户加入允许列表（Allowlist）
-- 或为生产域名单独关闭保护
-
-**验证步骤：**
+浏览器会种下 bypass cookie；随后同一浏览器会绕过拦截。  
+命令行可使用：
 
 ```bash
-# 测试 API 是否可访问
-./scripts/smoke-admin.sh https://<your-vercel-domain> <ADMIN_TOKEN>
+scripts/smoke-admin.sh https://<domain> <ADMIN_TOKEN> --bypass <TOKEN>
 ```
 
-预期输出：
-```json
-→ GET https://<domain>/api/admin/ping
-{
-  "ok": true,
-  "data": {
-    "service": "admin",
-    "ts": "2025-11-02T..."
-  }
-}
-→ GET https://<domain>/api/admin/users?limit=1
-{
-  "ok": true,
-  "data": [...]
-}
-OK
-```
+## 三、常见误区
+- 仅访问 `?x-vercel-set-bypass-cookie=true` **不携带** token 无效。
+- 关闭 Password Protection 但 **Vercel Authentication 仍开启**，依然会被拦截。
+- 组织/Team 层设置或 Project 层设置不同步，确认在 **项目层** Security 中检查 Environment 勾选状态。
 
-### 方案 B：使用 Bypass Token（临时调试）
+## 四、验证
+- 运行：
 
-适用于自动化测试、CI/CD 或临时访问。
-
-**获取 Bypass Token：**
-
-1. 在 Vercel Dashboard → Settings → Security → Deployment Protection
-2. 找到 **Bypass Token** 或 **Preview Bypass Token**
-3. 复制 token
-
-**使用方式：**
-
-**方法 1：URL 参数（一次性设置 Cookie）**
-
-访问以下 URL：
-```
-https://<domain>/<path>?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=<TOKEN>
-```
-
-浏览器会设置 Cookie，后续访问无需再带参数。
-
-**方法 2：手动设置 Cookie（自动化脚本）**
-
-在请求前先访问设置 Cookie 的 URL：
 ```bash
-curl "https://<domain>/?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=<TOKEN>"
-# 后续请求会使用该 Cookie
-curl "https://<domain>/api/admin/ping" -H "Authorization: Bearer $ADMIN_TOKEN"
+./scripts/smoke-admin.sh https://<domain> <ADMIN_TOKEN> --bypass <TOKEN>
 ```
 
-**方法 3：使用 Vercel MCP（如果可用）**
+- 返回 JSON：`{ "ok": true, "data": { "service": "admin", ... } }` 即成功。
 
-如果已配置 Vercel MCP，可以使用 `get_access_to_vercel_url` 获取 bypass token：
+## 五、前端自动检测
+前端 `apiClient.ts` 会自动检测 Vercel Authentication 拦截：
+- 如果返回 `text/html` 且包含 `<title>Authentication Required</title>`，会抛出明确的错误提示
+- 错误码：`VERCEL_AUTH_BLOCKED`
+- 错误消息包含解决方案链接
+
+## 六、脚本工具
+
+### `scripts/smoke-admin.sh`
+测试管理员 API 是否可访问，支持 bypass token：
+
 ```bash
-# 使用 MCP 工具获取 token
-vercel-bypass-token=$(vercel-mcp-get-bypass-token)
-curl "https://<domain>/?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=$vercel-bypass-token"
+./scripts/smoke-admin.sh <BASE_URL> <ADMIN_TOKEN> [--bypass <VERCEL_BYPASS_TOKEN>]
 ```
 
-**验证：**
-
-设置 Cookie 后，运行自测脚本：
+示例：
 ```bash
-./scripts/smoke-admin.sh https://<domain> <ADMIN_TOKEN>
+./scripts/smoke-admin.sh https://example.vercel.app admin-token-here --bypass vercel-bypass-token-here
 ```
 
-## 预防措施
+### `scripts/vercel-bypass.sh`
+单独封装“种 cookie + 校验”的两步：
 
-1. **部署前检查**：在部署到生产环境前，确认 Deployment Protection 已正确配置
-2. **文档记录**：在项目文档中记录保护设置状态
-3. **测试脚本**：使用 `scripts/smoke-admin.sh` 定期验证 API 可访问性
+```bash
+./scripts/vercel-bypass.sh <BASE_URL> <VERCEL_BYPASS_TOKEN>
+```
+
+示例：
+```bash
+./scripts/vercel-bypass.sh https://example.vercel.app vercel-bypass-token-here
+```
 
 ## 相关文档
-
 - [Vercel Deployment Protection 官方文档](https://vercel.com/docs/security/deployment-protection)
 - [Vercel Bypass Token 文档](https://vercel.com/docs/security/deployment-protection#bypassing-protection)
-
-## 故障排查检查清单
-
-- [ ] 检查 Vercel Dashboard → Settings → Security → Deployment Protection
-- [ ] 确认 Production 环境保护已关闭（或已配置允许列表）
-- [ ] 使用 `curl` 测试 API 是否可访问
-- [ ] 检查浏览器控制台是否有 403 错误
-- [ ] 验证 `scripts/smoke-admin.sh` 能否成功调用 API
-- [ ] 检查 Vercel 部署日志是否有认证相关的错误
-
