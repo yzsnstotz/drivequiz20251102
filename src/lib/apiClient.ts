@@ -16,7 +16,10 @@ export interface ApiSuccess<T = unknown> {
     page: number;
     limit: number;
     total: number;
-    pages: number;
+    pages?: number; // 兼容旧字段
+    totalPages?: number; // 实际API返回的字段
+    hasPrev?: boolean;
+    hasNext?: boolean;
   };
 }
 
