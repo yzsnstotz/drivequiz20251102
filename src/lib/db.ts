@@ -89,10 +89,26 @@ interface Database {
 
 let dbInstance: Kysely<Database> | null = null;
 
+// 检查是否在构建阶段（Next.js 在构建时会设置特定的环境变量）
+function isBuildTime(): boolean {
+  // Next.js 在构建时可能会设置这些环境变量
+  // 或者在构建时不会设置数据库连接字符串
+  return (
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.NEXT_PHASE === 'phase-development-build' ||
+    // 如果没有任何环境变量，可能是构建时的静态分析
+    (!process.env.DATABASE_URL && !process.env.POSTGRES_URL && !process.env.VERCEL)
+  );
+}
+
 function getConnectionString(): string {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   
   if (!connectionString) {
+    // 在构建时返回一个虚拟连接字符串，避免抛出错误
+    if (isBuildTime()) {
+      return 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
+    }
     throw new Error(
       "❌ 数据库连接字符串未配置！请在 .env.local 中设置 DATABASE_URL 或 POSTGRES_URL"
     );
@@ -169,9 +185,47 @@ function createDbInstance(): Kysely<Database> {
   });
 }
 
+// 创建一个占位符对象，用于构建时
+function createPlaceholderDb(): Kysely<Database> {
+  // 在构建时，返回一个不会实际工作的对象
+  // 这只是一个占位符，不会被实际调用
+  const placeholder = {
+    selectFrom: () => ({
+      select: () => ({ execute: async () => [] }),
+      selectAll: () => ({ execute: async () => [] }),
+      where: () => ({ execute: async () => [] }),
+    }),
+    insertInto: () => ({
+      values: () => ({ returning: () => ({ execute: async () => [] }) }),
+    }),
+    updateTable: () => ({
+      set: () => ({ where: () => ({ execute: async () => [] }) }),
+    }),
+    deleteFrom: () => ({
+      where: () => ({ execute: async () => [] }),
+    }),
+    transaction: () => ({
+      execute: async (callback: any) => callback(placeholder),
+    }),
+  } as any;
+  
+  return placeholder;
+}
+
 // 延迟初始化：只在运行时访问时创建实例
 export const db = new Proxy({} as Kysely<Database>, {
   get(_target, prop) {
+    // 在构建时返回占位符对象，不检查环境变量
+    if (isBuildTime()) {
+      const placeholder = createPlaceholderDb();
+      const value = placeholder[prop as keyof Kysely<Database>];
+      if (typeof value === 'function') {
+        return value.bind(placeholder);
+      }
+      return value;
+    }
+    
+    // 运行时才真正创建数据库连接
     if (!dbInstance) {
       dbInstance = createDbInstance();
     }
