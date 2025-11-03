@@ -186,38 +186,43 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     });
   });
 
-  // --- 注册主路由 ---
+  return app;
+}
+
+/** 注册所有路由（必须在 listen 之前调用） */
+export async function registerRoutes(app: FastifyInstance): Promise<void> {
   try {
     // 路由注册：/v1/**（问答主路由）
-    import("./routes/ask.js")
-      .then((m) => m.default)
-      .then((askRoute) => {
-        app.register(askRoute, { prefix: "/v1" });
-      })
-      .catch((err) => app.log.error({ err }, "Failed to load ask route"));
+    try {
+      const askModule = await import("./routes/ask.js");
+      await app.register(askModule.default, { prefix: "/v1" });
+      app.log.debug("Registered /v1/ask route");
+    } catch (err) {
+      app.log.error({ err }, "Failed to load ask route");
+    }
 
     // 路由注册：/v1/admin/daily-summary（管理摘要）
-    import("./routes/admin/daily-summary.js")
-      .then((m) => m.default)
-      .then((dailySummaryRoute) => {
-        // 模块内已声明完整路径 /v1/admin/daily-summary，这里不再叠加 prefix
-        app.register(dailySummaryRoute);
-      })
-      .catch((err) => app.log.error({ err }, "Failed to load admin/dailySummary route"));
+    try {
+      const dailySummaryModule = await import("./routes/admin/daily-summary.js");
+      // 模块内已声明完整路径 /v1/admin/daily-summary，这里不再叠加 prefix
+      await app.register(dailySummaryModule.default);
+      app.log.debug("Registered /v1/admin/daily-summary route");
+    } catch (err) {
+      app.log.error({ err }, "Failed to load admin/dailySummary route");
+    }
 
     // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
-    import("./routes/admin/ragIngest.js")
-      .then((m) => m.default)
-      .then((ragIngestRoute) => {
-        // 模块内已声明完整路径 /v1/admin/rag/ingest，这里不再叠加 prefix
-        app.register(ragIngestRoute);
-      })
-      .catch((err) => app.log.error({ err }, "Failed to load admin/ragIngest route"));
+    try {
+      const ragIngestModule = await import("./routes/admin/ragIngest.js");
+      // 模块内已声明完整路径 /v1/admin/rag/ingest，这里不再叠加 prefix
+      await app.register(ragIngestModule.default);
+      app.log.debug("Registered /v1/admin/rag/ingest route");
+    } catch (err) {
+      app.log.error({ err }, "Failed to load admin/ragIngest route");
+    }
   } catch (e) {
     app.log.warn({ err: e }, "No route registry found or error during registration");
   }
-
-  return app;
 }
 
 /** 主启动函数 */
@@ -242,6 +247,14 @@ async function start() {
   };
   process.on("SIGINT", close);
   process.on("SIGTERM", close);
+
+  // --- 注册主路由（必须在 listen 之前） ---
+  try {
+    await registerRoutes(app);
+    app.log.info("✅ All routes registered");
+  } catch (e) {
+    app.log.warn({ err: e }, "Warning: Some routes may not have registered");
+  }
 
   // --- 启动 ---
   // 确保使用 process.env.PORT 和 0.0.0.0 host（Render 要求）
