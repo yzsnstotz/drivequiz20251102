@@ -38,7 +38,7 @@ export default function VideosPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Video[]>([]);
-  const [pagination, setPagination] = useState<ListResponse["pagination"]>(null);
+  const [pagination, setPagination] = useState<ListResponse["pagination"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
