@@ -256,8 +256,3 @@ export async function POST(req: NextRequest) {
   const statusPassthrough = aiResp.status || 400;
   return json<Err>(statusPassthrough, aiJson);
 }
-
-export async function GET() {
-  // 可用于健康检查
-  return json<Ok<{ status: string }>>(200, { ok: true, data: { status: "ok" } });
-}

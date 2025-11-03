@@ -144,7 +144,23 @@ interface TermsOfServiceTable {
 }
 
 // ------------------------------------------------------------
-// 🔟 数据库总接口定义
+// 🔟 ai_logs 表结构定义
+// ------------------------------------------------------------
+interface AiLogsTable {
+  id: Generated<number>;
+  user_id: string | null;
+  question: string;
+  answer: string | null;
+  language: string | null; // 注意：迁移脚本中为 locale，但代码中使用 language
+  model: string | null;
+  rag_hits: number | null;
+  cost_est: number | null; // NUMERIC(10,4)
+  safety_flag: string; // "ok" | "needs_human" | "blocked"
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣1️⃣ 数据库总接口定义
 // ------------------------------------------------------------
 interface Database {
   activations: ActivationTable;
@@ -156,6 +172,7 @@ interface Database {
   videos: VideoTable;
   contact_info: ContactInfoTable;
   terms_of_service: TermsOfServiceTable;
+  ai_logs: AiLogsTable;
 }
 
 // ------------------------------------------------------------
