@@ -14,9 +14,9 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import type { ServiceConfig } from "../../index";
-import { ensureServiceAuth } from "../../middlewares/auth";
-import { cacheGet } from "../../lib/cache";
+import type { ServiceConfig } from "../../index.js";
+import { ensureServiceAuth } from "../../middlewares/auth.js";
+import { cacheGet } from "../../lib/cache.js";
 
 // 统一响应类型
 type Ok<T> = { ok: true; data: T };

@@ -16,10 +16,10 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import type { ServiceConfig } from "../../index";
-import { ensureServiceAuth } from "../../middlewares/auth";
-import { getOpenAIClient } from "../../lib/openaiClient";
-import { defaultLogger } from "../../lib/logger";
+import type { ServiceConfig } from "../../index.js";
+import { ensureServiceAuth } from "../../middlewares/auth.js";
+import { getOpenAIClient } from "../../lib/openaiClient.js";
+import { defaultLogger } from "../../lib/logger.js";
 
 // 统一响应类型
 type Ok<T> = { ok: true; data: T };

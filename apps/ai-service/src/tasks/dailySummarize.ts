@@ -4,11 +4,11 @@
  * 功能：汇总昨日问答日志 → 聚合指标/来源/缺口/安全观察 → 生成Markdown摘要 → 写入缓存（幂等按 dateUtc 覆盖）。
  */
 
-import { getOpenAIClient } from "../lib/openaiClient";
-import { getRagContext } from "../lib/rag";
-import { cacheSet } from "../lib/cache";
-import { checkSafety } from "../lib/safety";
-import type { ServiceConfig } from "../index";
+import { getOpenAIClient } from "../lib/openaiClient.js";
+import { getRagContext } from "../lib/rag.js";
+import { cacheSet } from "../lib/cache.js";
+import { checkSafety } from "../lib/safety.js";
+import type { ServiceConfig } from "../index.js";
 
 /** 任务入参（由上层 Scheduler/Runner 注入） */
 export interface DailySummarizeInput {

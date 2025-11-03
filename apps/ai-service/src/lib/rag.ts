@@ -6,8 +6,8 @@
  * - 返回拼接后的参考上下文字符串（失败/未配置时降级为空）
  */
 
-import type { ServiceConfig } from "../index";
-import { getOpenAIClient } from "./openaiClient";
+import type { ServiceConfig } from "../index.js";
+import { getOpenAIClient } from "./openaiClient.js";
 
 type RagHit = {
   content: string;

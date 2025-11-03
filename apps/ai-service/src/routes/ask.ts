@@ -1,12 +1,12 @@
 // apps/ai-service/src/routes/ask.ts
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { checkSafety } from "../lib/safety";
-import { getRagContext } from "../lib/rag";
-import { getOpenAIClient } from "../lib/openaiClient";
-import { cacheGet, cacheSet } from "../lib/cache";
-import type { ServiceConfig } from "../index";
-import { ensureServiceAuth } from "../middlewares/auth";
-import { logAiInteraction } from "../lib/dbLogger";
+import { checkSafety } from "../lib/safety.js";
+import { getRagContext } from "../lib/rag.js";
+import { getOpenAIClient } from "../lib/openaiClient.js";
+import { cacheGet, cacheSet } from "../lib/cache.js";
+import type { ServiceConfig } from "../index.js";
+import { ensureServiceAuth } from "../middlewares/auth.js";
+import { logAiInteraction } from "../lib/dbLogger.js";
 
 /** 请求体类型 */
 type AskBody = {

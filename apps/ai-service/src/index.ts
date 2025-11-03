@@ -4,7 +4,7 @@ import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from "fastify"
 import cors from "@fastify/cors";
 import dotenv from "dotenv";
 import { AddressInfo } from "net";
-import { registerCronDailySummarize } from "./jobs/cron.dailySummarize";
+import { registerCronDailySummarize } from "./jobs/cron.dailySummarize.js";
 
 // 环境变量加载（优先 .env）
 dotenv.config();
@@ -260,7 +260,7 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
   });
 
   // 路由注册：/v1/**（问答主路由）
-  import("./routes/ask")
+  import("./routes/ask.js")
     .then((m) => m.default)
     .then((askRoute) => {
       app.register(askRoute, { prefix: "/v1" });
@@ -268,7 +268,7 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     .catch((err) => app.log.error({ err }, "Failed to load ask route"));
 
   // 路由注册：/v1/admin/daily-summary（管理摘要）
-  import("./routes/admin/daily-summary")
+  import("./routes/admin/daily-summary.js")
     .then((m) => m.default)
     .then((dailySummaryRoute) => {
       // 模块内已声明完整路径 /v1/admin/daily-summary，这里不再叠加 prefix
@@ -277,7 +277,7 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     .catch((err) => app.log.error({ err }, "Failed to load admin/dailySummary route"));
 
   // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
-  import("./routes/admin/ragIngest")
+  import("./routes/admin/ragIngest.js")
     .then((m) => m.default)
     .then((ragIngestRoute) => {
       // 模块内已声明完整路径 /v1/admin/rag/ingest，这里不再叠加 prefix
@@ -324,7 +324,10 @@ async function start() {
 }
 
 // 仅当直接运行时启动（便于测试 import）
-if (require.main === module) {
+// 在 ES 模块中，入口文件应该总是启动
+// 检查是否为主模块（通过 import.meta.url 和 process.argv[1] 比较）
+const isMainModule = process.argv[1] && import.meta.url.startsWith("file://") && import.meta.url.replace("file://", "") === process.argv[1];
+if (isMainModule) {
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   start();
 }

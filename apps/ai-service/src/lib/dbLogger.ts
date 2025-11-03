@@ -18,7 +18,7 @@
  *   await logAiInteraction({ userId, question, answer, lang: "ja", model, ragHits, safetyFlag: "ok", costEstUsd });
  */
 
-import { defaultLogger } from "./logger";
+import { defaultLogger } from "./logger.js";
 
 export type AiLogRecord = {
   userId?: string | null;

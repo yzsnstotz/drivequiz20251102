@@ -21,8 +21,8 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import type { ServiceConfig } from "../index";
-import { runDailySummarize } from "../tasks/dailySummarize";
+import type { ServiceConfig } from "../index.js";
+import { runDailySummarize } from "../tasks/dailySummarize.js";
 
 /** 可选：从 config 中解析日志 provider */
 type FetchLogs = (fromIso: string, toIso: string) => Promise<
