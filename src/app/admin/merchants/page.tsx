@@ -48,7 +48,7 @@ export default function MerchantsPage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Merchant[]>([]);
   const [categories, setCategories] = useState<MerchantCategory[]>([]);
-  const [pagination, setPagination] = useState<ListResponse["pagination"]>(null);
+  const [pagination, setPagination] = useState<ListResponse["pagination"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState<Merchant | null>(null);
