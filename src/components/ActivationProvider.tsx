@@ -22,6 +22,38 @@ export default function ActivationProvider({ children }: ActivationProviderProps
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastCheckTimeRef = useRef<number>(0); // 记录上次检查时间
   const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5分钟
+  const isCheckingRef = useRef<boolean>(false); // 防止并发检查
+
+  // 检查是否是前台互动页面（需要禁用定期检查的页面）
+  const isInteractivePage = useCallback((path: string | null): boolean => {
+    if (!path) return false;
+    
+    // Admin 页面不需要保护（已经在其他地方处理）
+    if (path.startsWith('/admin')) return false;
+    
+    // 前台互动页面列表
+    const interactivePages = [
+      '/royalbattle',
+      '/exam',
+      '/study',
+      '/mistakes',
+      '/nearby',
+      '/cars',
+      '/profile',
+    ];
+    
+    // 精确匹配
+    if (interactivePages.includes(path)) return true;
+    
+    // 路径前缀匹配
+    const prefixMatches = [
+      '/royalbattle/',
+      '/exam/',
+      '/study/',
+    ];
+    
+    return prefixMatches.some(prefix => path.startsWith(prefix));
+  }, []);
 
   // 检查激活状态是否有效
   // 定期检查逻辑说明：
@@ -31,24 +63,30 @@ export default function ActivationProvider({ children }: ActivationProviderProps
   // 4. 如果API错误、网络问题或返回非明确无效，保持当前激活状态
   // 5. 这样可以确保：定期检查不会因为临时网络问题而误清除激活状态
   const checkActivationStatus = useCallback(async () => {
+    // 防止并发检查
+    if (isCheckingRef.current) {
+      console.log('[ActivationProvider] Check already in progress, skipping');
+      return;
+    }
+    
     // 检查最小间隔，避免频繁检查
     const now = Date.now();
     if (now - lastCheckTimeRef.current < MIN_CHECK_INTERVAL) {
       console.log('[ActivationProvider] Skipping check due to minimum interval, keeping activation state');
       return;
     }
+    
+    isCheckingRef.current = true;
     lastCheckTimeRef.current = now;
     
     try {
       const email = localStorage.getItem(ACTIVATION_EMAIL_KEY);
       const activated = localStorage.getItem(ACTIVATION_KEY);
 
-      // 如果没有邮箱但有激活状态，说明是旧用户，清除激活状态
+      // 如果没有邮箱但有激活状态，不清除，只记录日志（可能是新用户，兼容旧数据）
       if (!email && activated === 'true') {
-        console.warn('[ActivationProvider] Found activation without email, clearing activation state');
-        localStorage.removeItem(ACTIVATION_KEY);
-        setIsActivated(false);
-        setShowModal(true);
+        console.warn('[ActivationProvider] Found activation without email, keeping activation state for safety');
+        isCheckingRef.current = false;
         return;
       }
 
@@ -56,6 +94,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       if (!email) {
         setIsActivated(false);
         setShowModal(true);
+        isCheckingRef.current = false;
         return;
       }
 
@@ -85,6 +124,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
           setIsActivated(true);
           setShowModal(false);
         }
+        isCheckingRef.current = false;
         return;
       }
 
@@ -100,6 +140,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
           setIsActivated(true);
           setShowModal(false);
         }
+        isCheckingRef.current = false;
         return;
       }
 
@@ -109,6 +150,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         setIsActivated(true);
         setShowModal(false);
         console.log('[ActivationProvider] Activation status validated successfully');
+        isCheckingRef.current = false;
       } else {
         // API返回结果处理
         if (result.ok && result.data?.valid === false) {
@@ -128,9 +170,10 @@ export default function ActivationProvider({ children }: ActivationProviderProps
           // 如果是其他原因（如未找到记录等），可能是数据同步问题，保持激活状态
           if (isDefinitiveInvalid && currentActivated === 'true' && currentEmail === email) {
             // 确认无效，清除激活状态
-            console.warn('[ActivationProvider] Activation definitively invalid from API, clearing activation state', {
+            console.error('[ActivationProvider] ⚠️ CRITICAL: Activation definitively invalid from API, clearing activation state', {
               reason,
-              email
+              email,
+              timestamp: new Date().toISOString()
             });
             localStorage.removeItem(ACTIVATION_KEY);
             localStorage.removeItem(ACTIVATION_EMAIL_KEY);
@@ -160,6 +203,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
           });
           // 不执行任何清除操作，保持当前状态
         }
+        isCheckingRef.current = false;
       }
     } catch (error: any) {
       // 网络错误、超时或其他异常，保持现有激活状态
@@ -174,6 +218,10 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         setShowModal(false);
         console.log('[ActivationProvider] Keeping activation state due to check error');
       }
+      isCheckingRef.current = false;
+    } finally {
+      // 确保无论如何都释放检查锁
+      isCheckingRef.current = false;
     }
   }, []);
 
@@ -187,6 +235,25 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
         checkIntervalRef.current = null;
+      }
+      return;
+    }
+    
+    // 🎮 前台互动页面：禁用定期检查，避免使用过程中被中断
+    // 包括：游戏页面、学习页面、错题本等所有前台功能页面
+    if (isInteractivePage(pathname)) {
+      console.log('[ActivationProvider] Interactive page detected, disabling periodic checks to prevent interruption', { pathname });
+      // 清除检查定时器，但不清除激活状态
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
+      // 如果有本地激活状态，直接信任
+      const activated = localStorage.getItem(ACTIVATION_KEY);
+      const email = localStorage.getItem(ACTIVATION_EMAIL_KEY);
+      if (activated === 'true' && email) {
+        setIsActivated(true);
+        setShowModal(false);
       }
       return;
     }
@@ -247,6 +314,19 @@ export default function ActivationProvider({ children }: ActivationProviderProps
     if (pathname?.startsWith('/admin')) {
       setIsActivated(true);
       setShowModal(false);
+      return;
+    }
+    
+    // 🎮 前台互动页面：始终保持激活状态，不显示模态框
+    // 包括：游戏页面、学习页面、错题本等所有前台功能页面
+    if (isInteractivePage(pathname)) {
+      const activated = localStorage.getItem(ACTIVATION_KEY);
+      const email = localStorage.getItem(ACTIVATION_EMAIL_KEY);
+      if (activated === 'true' && email) {
+        console.log('[ActivationProvider] Interactive page navigation, keeping activation state', { pathname });
+        setIsActivated(true);
+        setShowModal(false);
+      }
       return;
     }
 

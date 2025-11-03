@@ -217,22 +217,26 @@ export default function HomePage() {
             <span className="text-xl font-bold text-gray-900">ZALEM</span>
           </div>
           <div className="flex items-center space-x-2">
-            {/* 清除激活码按钮（测试用） */}
-            <button
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  localStorage.removeItem('drive-quiz-activated');
-                  localStorage.removeItem('drive-quiz-email');
-                  alert('激活码已清除，页面将刷新');
-                  window.location.reload();
-                }
-              }}
-              className="flex items-center space-x-1 text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
-              title="清除激活码（测试用）"
-            >
-              <XSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">清除激活</span>
-            </button>
+            {/* 清除激活码按钮（仅开发环境） */}
+            {process.env.NODE_ENV === 'development' && (
+              <button
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    if (confirm('确定要清除激活状态吗？此操作仅用于测试。')) {
+                      localStorage.removeItem('drive-quiz-activated');
+                      localStorage.removeItem('drive-quiz-email');
+                      alert('激活码已清除，页面将刷新');
+                      window.location.reload();
+                    }
+                  }
+                }}
+                className="flex items-center space-x-1 text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                title="清除激活码（仅开发环境）"
+              >
+                <XSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">清除激活</span>
+              </button>
+            )}
             <button
               onClick={() => setShowAI(true)}
               className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
