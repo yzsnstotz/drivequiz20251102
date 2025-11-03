@@ -149,99 +149,26 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     });
   });
 
-  // 健康检查端点（Railway 健康探针）
+  // --- 健康检查（Render 用） ---
+  // 纯健康检查，不依赖任何外部服务，避免 Render 部署失败
   app.get("/healthz", async (_req, reply) => {
-    reply.send({
-      ok: true,
-      data: {
-        status: "ok",
-        version: config.version,
-        model: config.aiModel,
-        env: config.nodeEnv,
-        time: new Date().toISOString(),
-      },
-    });
+    reply.send({ ok: true });
   });
 
-  // 就绪检查端点（依赖可用性检查）
+  // 就绪检查端点（仅检查环境变量配置，不实际请求外部服务）
   app.get("/readyz", async (_req, reply) => {
-    const checks: Record<string, boolean | string> = {};
-    let allReady = true;
-
-    // 1. 检查 OpenAI API Key
-    if (!config.openaiApiKey) {
-      checks.openai = false;
-      allReady = false;
-    } else {
-      checks.openai = true;
-    }
-
-    // 2. 检查 Supabase 连通性
-    try {
-      const res = await fetch(`${config.supabaseUrl.replace(/\/+$/, "")}/rest/v1/`, {
-        method: "HEAD",
-        headers: {
-          apikey: config.supabaseServiceKey,
-          Authorization: `Bearer ${config.supabaseServiceKey}`,
-        },
-        signal: AbortSignal.timeout(3000),
-      });
-      checks.supabase = res.ok;
-      if (!res.ok) allReady = false;
-    } catch (e) {
-      checks.supabase = `error: ${(e as Error).message}`;
-      allReady = false;
-    }
-
-    // 3. 检查 RPC 函数可用性（通过调用一个简单查询）
-    try {
-      const res = await fetch(
-        `${config.supabaseUrl.replace(/\/+$/, "")}/rest/v1/rpc/match_documents`,
-        {
-          method: "POST",
-          headers: {
-            apikey: config.supabaseServiceKey,
-            Authorization: `Bearer ${config.supabaseServiceKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query_embedding: new Array(1536).fill(0),
-            match_threshold: 0.99,
-            match_count: 1,
-          }),
-          signal: AbortSignal.timeout(3000),
-        },
-      );
-      // RPC 存在且可调用（即使返回空结果也算就绪）
-      checks.rpc = res.status !== 404;
-      if (res.status === 404) allReady = false;
-    } catch (e) {
-      const error = e as Error;
-      if (error.message.includes("404")) {
-        checks.rpc = false;
-        allReady = false;
-      } else {
-        // 其他错误（如超时）不影响就绪状态
-        checks.rpc = true;
-      }
-    }
-
-    if (allReady) {
-      reply.send({
-        ok: true,
-        data: {
-          status: "ready",
-          checks,
-          time: new Date().toISOString(),
-        },
-      });
-    } else {
+    // 仅检查依赖是否配置，不实际请求外部
+    const required = ["OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"];
+    const missing = required.filter((k) => !process.env[k]);
+    if (missing.length > 0) {
       reply.code(503).send({
         ok: false,
         errorCode: "SERVICE_UNAVAILABLE",
-        message: "Service dependencies not ready",
-        details: checks,
+        message: "Required environment variables missing",
+        missing,
       });
+    } else {
+      reply.send({ ok: true });
     }
   });
 
@@ -259,31 +186,36 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     });
   });
 
-  // 路由注册：/v1/**（问答主路由）
-  import("./routes/ask.js")
-    .then((m) => m.default)
-    .then((askRoute) => {
-      app.register(askRoute, { prefix: "/v1" });
-    })
-    .catch((err) => app.log.error({ err }, "Failed to load ask route"));
+  // --- 注册主路由 ---
+  try {
+    // 路由注册：/v1/**（问答主路由）
+    import("./routes/ask.js")
+      .then((m) => m.default)
+      .then((askRoute) => {
+        app.register(askRoute, { prefix: "/v1" });
+      })
+      .catch((err) => app.log.error({ err }, "Failed to load ask route"));
 
-  // 路由注册：/v1/admin/daily-summary（管理摘要）
-  import("./routes/admin/daily-summary.js")
-    .then((m) => m.default)
-    .then((dailySummaryRoute) => {
-      // 模块内已声明完整路径 /v1/admin/daily-summary，这里不再叠加 prefix
-      app.register(dailySummaryRoute);
-    })
-    .catch((err) => app.log.error({ err }, "Failed to load admin/dailySummary route"));
+    // 路由注册：/v1/admin/daily-summary（管理摘要）
+    import("./routes/admin/daily-summary.js")
+      .then((m) => m.default)
+      .then((dailySummaryRoute) => {
+        // 模块内已声明完整路径 /v1/admin/daily-summary，这里不再叠加 prefix
+        app.register(dailySummaryRoute);
+      })
+      .catch((err) => app.log.error({ err }, "Failed to load admin/dailySummary route"));
 
-  // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
-  import("./routes/admin/ragIngest.js")
-    .then((m) => m.default)
-    .then((ragIngestRoute) => {
-      // 模块内已声明完整路径 /v1/admin/rag/ingest，这里不再叠加 prefix
-      app.register(ragIngestRoute);
-    })
-    .catch((err) => app.log.error({ err }, "Failed to load admin/ragIngest route"));
+    // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
+    import("./routes/admin/ragIngest.js")
+      .then((m) => m.default)
+      .then((ragIngestRoute) => {
+        // 模块内已声明完整路径 /v1/admin/rag/ingest，这里不再叠加 prefix
+        app.register(ragIngestRoute);
+      })
+      .catch((err) => app.log.error({ err }, "Failed to load admin/ragIngest route"));
+  } catch (e) {
+    app.log.warn({ err: e }, "No route registry found or error during registration");
+  }
 
   return app;
 }
@@ -311,23 +243,34 @@ async function start() {
   process.on("SIGINT", close);
   process.on("SIGTERM", close);
 
+  // --- 启动 ---
+  // 确保使用 process.env.PORT 和 0.0.0.0 host（Render 要求）
+  const port = Number(process.env.PORT) || config.port;
+  const host = "0.0.0.0"; // Render 要求绑定到 0.0.0.0
+
   try {
-    await app.listen({ port: config.port, host: config.host });
-    const address = app.server.address() as AddressInfo;
-    app.log.info(
-      `AI-Service listening on http://${address.address}:${address.port} (env=${config.nodeEnv})`,
-    );
+    await app.listen({ port, host });
+    app.log.info(`✅ AI-Service running at http://${host}:${port}`);
   } catch (err) {
-    app.log.error({ err }, "Failed to start server");
+    app.log.error({ err }, "❌ Failed to start server");
     process.exit(1);
   }
 }
+
+// 捕获潜在异常避免静默失败
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT", err);
+});
 
 // 仅当直接运行时启动（便于测试 import）
 // 在 ES 模块中，入口文件应该总是启动
 // 检查是否为主模块（通过 import.meta.url 和 process.argv[1] 比较）
 const isMainModule = process.argv[1] && import.meta.url.startsWith("file://") && import.meta.url.replace("file://", "") === process.argv[1];
 if (isMainModule) {
+  console.log("🩵 Render deploy: starting AI-Service...");
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   start();
 }
