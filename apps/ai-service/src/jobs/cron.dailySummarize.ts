@@ -1,0 +1,242 @@
+// apps/ai-service/src/jobs/cron.dailySummarize.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * ZALEM · AI-Service · Daily Summarize Cron (UTC)
+ *
+ * 目标：
+ *  - 每日按 UTC 指定时间运行 runDailySummarize（默认 02:00 UTC）
+ *  - 从配置或注入的 provider 拉取问答日志
+ *  - 将结果写入缓存键：ai:summary:<YYYY-MM-DD>:day（由任务内部完成）
+ *
+ * 依赖：
+ *  - 无第三方定时库；使用 setTimeout + 24h 节拍，避免额外依赖
+ *  - 环境变量可控制：启用/禁用、小时/分钟、开机即跑、最大记录数
+ *
+ * 环境变量：
+ *  - CRON_DAILY_SUMMARY_ENABLED        (default: "true")
+ *  - CRON_DAILY_SUMMARY_UTC_HOUR       (default: "2")
+ *  - CRON_DAILY_SUMMARY_UTC_MINUTE     (default: "0")
+ *  - CRON_DAILY_SUMMARY_RUN_ON_BOOT    (default: "0")  // "1" 则服务启动即跑一次（跑昨天）
+ *  - CRON_DAILY_SUMMARY_MAX_RECORDS    (default: "1000")
+ */
+
+import type { FastifyInstance } from "fastify";
+import type { ServiceConfig } from "../index";
+import { runDailySummarize } from "../tasks/dailySummarize";
+
+/** 可选：从 config 中解析日志 provider */
+type FetchLogs = (fromIso: string, toIso: string) => Promise<
+  Array<{
+    id: string;
+    userId: string | null;
+    question: string;
+    answer?: string;
+    locale?: string;
+    createdAt: string;
+    sources?: Array<{ title: string; url: string; score?: number }>;
+    safetyFlag?: "ok" | "needs_human" | "blocked";
+    model?: string;
+    meta?: Record<string, unknown>;
+  }>
+>;
+
+function getEnvBoolean(name: string, fallback: boolean): boolean {
+  const v = process.env[name];
+  if (v === undefined) return fallback;
+  return ["1", "true", "yes", "on"].includes(String(v).toLowerCase());
+}
+
+function getEnvInt(name: string, fallback: number): number {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) ? (v as number) : fallback;
+}
+
+/** 计算下一次在 UTC 指定时刻触发的时间点（毫秒时间戳） */
+function nextUtcTime(hour: number, minute: number): number {
+  const now = Date.now();
+  const d = new Date();
+  const next = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hour, minute, 0, 0);
+  const first = next > now ? next : next + 24 * 3600 * 1000;
+  return first;
+}
+
+/** 计算“昨天”的 UTC 日期字符串（YYYY-MM-DD） */
+function yesterdayUtcDate(): string {
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
+  const y = new Date(todayUtc - 24 * 3600 * 1000);
+  const mm = String(y.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(y.getUTCDate()).padStart(2, "0");
+  return `${y.getUTCFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * 注册每日定时任务。
+ * 返回一个取消函数，可在应用关闭时调用以清理定时器。
+ */
+export function registerCronDailySummarize(
+  app: FastifyInstance,
+  config: ServiceConfig,
+): () => void {
+  const enabled = getEnvBoolean("CRON_DAILY_SUMMARY_ENABLED", true);
+  if (!enabled) {
+    app.log.info("[cron.dailySummarize] disabled by env");
+    return () => void 0;
+  }
+
+  const hour = getEnvInt("CRON_DAILY_SUMMARY_UTC_HOUR", 2);
+  const minute = getEnvInt("CRON_DAILY_SUMMARY_UTC_MINUTE", 0);
+  const runOnBoot = getEnvBoolean("CRON_DAILY_SUMMARY_RUN_ON_BOOT", false);
+  const maxRecords = getEnvInt("CRON_DAILY_SUMMARY_MAX_RECORDS", 1000);
+
+  // 解析 fetchLogs provider：优先 config.providers.fetchAskLogs → config.fetchAskLogs
+  const anyCfg = config as any;
+  const fetchLogs: FetchLogs | undefined =
+    anyCfg?.providers?.fetchAskLogs || anyCfg?.fetchAskLogs;
+
+  if (typeof fetchLogs !== "function") {
+    app.log.warn(
+      "[cron.dailySummarize] No fetchLogs provider found in config.providers.fetchAskLogs or config.fetchAskLogs; task will run with empty dataset.",
+    );
+  }
+
+  let timer: NodeJS.Timeout | null = null;
+
+  /** 实际执行一次任务（默认 dateUtc=昨天），独立函数便于复用与错误捕获 */
+  const runOnce = async (tag: string, dateUtc = yesterdayUtcDate()) => {
+    try {
+      app.log.info(
+        { dateUtc, hour, minute, tag },
+        "[cron.dailySummarize] start runDailySummarize",
+      );
+
+      const result = await runDailySummarize(config, {
+        dateUtc,
+        fetchLogs: async (fromIso, toIso) => {
+          try {
+            if (fetchLogs) return await fetchLogs(fromIso, toIso);
+            // 无 provider 时返回空数组，允许任务跑通并生成空摘要
+            return [];
+          } catch (e) {
+            app.log.error(
+              { err: e, fromIso, toIso },
+              "[cron.dailySummarize] fetchLogs provider error",
+            );
+            return [];
+          }
+        },
+        maxRecords,
+      });
+
+      if (result.ok) {
+        const t = result.data.totals;
+        app.log.info(
+          {
+            dateUtc: result.data.dateUtc,
+            questions: t.questions,
+            answered: t.answered,
+            blocked: t.blocked,
+            needsHuman: t.needsHuman,
+            cacheKey: `ai:summary:${result.data.dateUtc}:day`,
+          },
+          "[cron.dailySummarize] success",
+        );
+      } else {
+        app.log.error(
+          { errorCode: result.errorCode, message: result.message },
+          "[cron.dailySummarize] failed",
+        );
+      }
+    } catch (e) {
+      app.log.error({ err: e }, "[cron.dailySummarize] unexpected error");
+    }
+  };
+
+  // 可选：启动即跑（跑昨天）
+  if (runOnBoot) {
+    // 不阻塞启动流程
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    runOnce("boot");
+  }
+
+  // 计划下一次触发
+  const scheduleNext = () => {
+    const at = nextUtcTime(hour, minute);
+    const delay = Math.max(0, at - Date.now());
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(async () => {
+      await runOnce("scheduled");
+      // 下一轮循环（固定每 24h）
+      timer = setTimeout(async () => {
+        await runOnce("interval");
+        scheduleNext();
+      }, 24 * 3600 * 1000);
+    }, delay);
+    const etaMin = Math.round(delay / 60000);
+    app.log.info(
+      { runAt: new Date(at).toISOString(), etaMin },
+      "[cron.dailySummarize] scheduled",
+    );
+  };
+
+  scheduleNext();
+
+  // 取消函数
+  return () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    app.log.info("[cron.dailySummarize] stopped");
+  };
+}
+
+/**
+ * 手动触发：供其他模块按需调用（如管理 API）
+ * - 若未传 dateUtc，则使用昨天（UTC）
+ */
+export async function triggerDailySummarizeOnce(
+  app: FastifyInstance,
+  config: ServiceConfig,
+  opts?: { dateUtc?: string; maxRecords?: number },
+): Promise<void> {
+  const anyCfg = config as any;
+  const fetchLogs: FetchLogs | undefined =
+    anyCfg?.providers?.fetchAskLogs || anyCfg?.fetchAskLogs;
+
+  const dateUtc = opts?.dateUtc || yesterdayUtcDate();
+  const maxRecords = typeof opts?.maxRecords === "number" ? opts!.maxRecords : getEnvInt("CRON_DAILY_SUMMARY_MAX_RECORDS", 1000);
+
+  try {
+    app.log.info({ dateUtc }, "[cron.dailySummarize] manual trigger");
+    const result = await runDailySummarize(config, {
+      dateUtc,
+      fetchLogs: async (fromIso, toIso) => {
+        try {
+          if (fetchLogs) return await fetchLogs(fromIso, toIso);
+          return [];
+        } catch (e) {
+          app.log.error({ err: e, fromIso, toIso }, "[cron.dailySummarize] fetchLogs error");
+          return [];
+        }
+      },
+      maxRecords,
+    });
+
+    if (!result.ok) {
+      app.log.error(
+        { errorCode: result.errorCode, message: result.message },
+        "[cron.dailySummarize] manual run failed",
+      );
+    } else {
+      app.log.info(
+        {
+          dateUtc: result.data.dateUtc,
+          totals: result.data.totals,
+          cacheKey: `ai:summary:${result.data.dateUtc}:day`,
+        },
+        "[cron.dailySummarize] manual run success",
+      );
+    }
+  } catch (e) {
+    app.log.error({ err: e }, "[cron.dailySummarize] manual trigger unexpected error");
+  }
+}
