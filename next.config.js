@@ -13,6 +13,12 @@ const nextConfig = {
       },
     ],
   },
+  eslint: {
+    // 在构建时忽略 ESLint 警告，避免构建失败
+    ignoreDuringBuilds: false,
+    // 或者设置为 true 来完全忽略 ESLint（不推荐）
+    // ignoreDuringBuilds: true,
+  },
 };
 
 module.exports = nextConfig;
