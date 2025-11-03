@@ -163,9 +163,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1) 用户鉴权（JWT）
-    const auth = req.headers.get("authorization") || undefined;
-    const session = await verifyJwt(auth);
+    // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
+    let jwt: string | null = null;
+    
+    // 1) Authorization: Bearer <jwt>
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      jwt = authHeader.slice("Bearer ".length).trim();
+    }
+    
+    // 2) Cookie（Supabase 前端可能使用）
+    if (!jwt) {
+      try {
+        const cookieJwt = req.cookies.get("sb-access-token")?.value;
+        if (cookieJwt && cookieJwt.trim()) jwt = cookieJwt.trim();
+      } catch {
+        // Ignore cookie read errors
+      }
+    }
+    
+    // 3) Query 参数（?token=<jwt>，便于测试/脚本）
+    if (!jwt) {
+      try {
+        const url = new URL(req.url);
+        const token = url.searchParams.get("token");
+        if (token && token.trim()) jwt = token.trim();
+      } catch {
+        // Ignore URL parsing errors
+      }
+    }
+    
+    if (!jwt) {
+      return err("AUTH_REQUIRED", "Authentication required.", 401);
+    }
+    
+    // 验证 JWT（如果配置了公钥，否则仅检测存在性）
+    const session = await verifyJwt(jwt ? `Bearer ${jwt}` : undefined);
     if (!session) return err("AUTH_REQUIRED", "Authentication required.", 401);
 
     // 2) 解析与参数校验
