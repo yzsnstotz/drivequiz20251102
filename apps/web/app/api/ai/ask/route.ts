@@ -84,20 +84,28 @@ function todayUtcDate(): string {
 /** 统一读取用户JWT：优先 Bearer，其次 Cookie，最后 query=token（便于 smoke 测试） */
 function readUserJwt(req: NextRequest): string | null {
   // 1) Authorization: Bearer <jwt>
-  const auth = req.headers.get("authorization") || req.headers.get("Authorization");
-  if (auth) {
-    const m = auth.match(/^Bearer\s+(.+)$/i);
-    if (m) return m[1].trim();
+  const authHeader = req.headers.get("authorization");
+  if (authHeader) {
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (token) return token;
   }
 
   // 2) Supabase Cookie（如果是前端页面请求）
-  const cookieJwt = req.cookies.get("sb-access-token")?.value;
-  if (cookieJwt) return cookieJwt;
+  try {
+    const cookieJwt = req.cookies.get("sb-access-token")?.value;
+    if (cookieJwt && cookieJwt.trim()) return cookieJwt.trim();
+  } catch {
+    // Ignore cookie read errors
+  }
 
   // 3) 兜底：?token=<jwt>（仅联调/脚本测试使用）
-  const { searchParams } = new URL(req.url);
-  const token = searchParams.get("token");
-  if (token) return token;
+  try {
+    const url = new URL(req.url);
+    const token = url.searchParams.get("token");
+    if (token && token.trim()) return token.trim();
+  } catch {
+    // Ignore URL parsing errors
+  }
 
   return null;
 }
