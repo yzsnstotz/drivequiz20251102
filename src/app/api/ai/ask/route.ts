@@ -308,15 +308,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// === DEBUG ONLY: enable GET for route existence probe ===
-export async function GET() {
-  if (process.env.DEBUG_API_ASK !== "1") {
-    // 与 Next 约定对齐：不允许的方法返回 405
-    return new NextResponse("Method Not Allowed", { status: 405 });
-  }
-  return NextResponse.json({ ok: true, probe: "GET /api/ai/ask", note: "DEBUG_API_ASK=1" });
-}
-
 // ==== 辅助 ====
 function joinUrl(base: string, path: string) {
   return `${base.replace(/\/+$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
