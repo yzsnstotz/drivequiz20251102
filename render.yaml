@@ -1,0 +1,46 @@
+# render.yaml
+# Render 部署配置文件：一键在 Render 创建 Web 服务 + Cron 作业
+
+services:
+  - type: web
+    name: zalem-ai-service
+    env: node
+    rootDir: apps/ai-service
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: node dist/index.js
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /healthz
+    runtime: node
+    region: singapore
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SERVICE_TOKENS
+        sync: false
+      - key: AI_MODEL
+        value: gpt-4o-mini
+      - key: AI_CACHE_REDIS_URL
+        sync: false
+      - key: PORT
+        value: "10000"
+
+  - type: cron
+    name: ai-daily-summarize
+    rootDir: apps/ai-service
+    schedule: "0 0 * * *"        # 每日 00:00 UTC
+    env: node
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: node dist/tasks/dailySummarize.js
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: AI_CACHE_REDIS_URL
+        sync: false
+
