@@ -114,13 +114,17 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
       return success({
         items,
-        pagination: getPaginationMeta(total, safePage, safeLimit),
+        pagination: getPaginationMeta(safePage, safeLimit, total),
       });
     } catch (err: any) {
       console.error("[GET /api/admin/videos] Error:", err);
       // 如果表不存在，返回空数组
       if (err.message && (err.message.includes("does not exist") || err.message.includes("relation"))) {
-        return success({ items: [], pagination: getPaginationMeta(0, safePage, safeLimit) });
+        // 在 catch 块中重新解析分页参数，因为 safePage 和 safeLimit 可能在 try 块外不可用
+        const { page, limit } = parsePagination(sp);
+        const fallbackPage = Number(page) > 0 ? Number(page) : 1;
+        const fallbackLimit = Number(limit) > 0 ? Number(limit) : 20;
+        return success({ items: [], pagination: getPaginationMeta(fallbackPage, fallbackLimit, 0) });
       }
       return internalError("Failed to fetch videos");
     }
