@@ -245,7 +245,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 4) 转发到 AI-Service
-    const upstream = await fetch(joinUrl(AI_SERVICE_URL, "/v1/ask"), {
+    // 确保 AI_SERVICE_URL 不重复 /v1 路径
+    const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+    const upstream = await fetch(`${baseUrl}/v1/ask`, {
       method: "POST",
       headers: {
         "content-type": "application/json; charset=utf-8",
