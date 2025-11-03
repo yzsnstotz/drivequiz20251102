@@ -51,6 +51,7 @@ interface AdminTable {
   username: string;
   token: string;
   is_active: boolean;
+  permissions: string[]; // JSONB数组，存储权限类别
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -72,13 +73,89 @@ interface OperationLogTable {
 }
 
 // ------------------------------------------------------------
-// 5️⃣ 数据库总接口定义
+// 5️⃣ merchant_categories 表结构定义
+// ------------------------------------------------------------
+interface MerchantCategoryTable {
+  id: Generated<number>;
+  name: string;
+  display_order: number;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 6️⃣ merchants 表结构定义
+// ------------------------------------------------------------
+interface MerchantTable {
+  id: Generated<number>;
+  name: string;
+  description: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  image_url: string | null;
+  category: string | null;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 7️⃣ videos 表结构定义
+// ------------------------------------------------------------
+interface VideoTable {
+  id: Generated<number>;
+  title: string;
+  description: string | null;
+  url: string;
+  thumbnail: string | null;
+  category: "basic" | "advanced";
+  display_order: number;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣ contact_info 表结构定义
+// ------------------------------------------------------------
+interface ContactInfoTable {
+  id: Generated<number>;
+  type: "business" | "purchase";
+  wechat: string | null;
+  email: string | null;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 9️⃣ terms_of_service 表结构定义
+// ------------------------------------------------------------
+interface TermsOfServiceTable {
+  id: Generated<number>;
+  title: string;
+  content: string;
+  version: string;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 🔟 数据库总接口定义
 // ------------------------------------------------------------
 interface Database {
   activations: ActivationTable;
   activation_codes: ActivationCodeTable;
   admins: AdminTable;
   operation_logs: OperationLogTable;
+  merchant_categories: MerchantCategoryTable;
+  merchants: MerchantTable;
+  videos: VideoTable;
+  contact_info: ContactInfoTable;
+  terms_of_service: TermsOfServiceTable;
 }
 
 // ------------------------------------------------------------

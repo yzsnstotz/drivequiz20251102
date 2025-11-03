@@ -35,6 +35,7 @@ type RawRow = {
   username: string;
   token: string;
   is_active: boolean;
+  permissions: string[] | any; // JSONB数组
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -73,11 +74,27 @@ export const GET = withAdminAuth(
 
       if (!row) return notFound("Admin not found");
 
+      // 解析permissions（JSONB数组）
+      let permissions: string[] = [];
+      if (row.permissions) {
+        try {
+          if (Array.isArray(row.permissions)) {
+            permissions = row.permissions;
+          } else if (typeof row.permissions === 'string') {
+            permissions = JSON.parse(row.permissions);
+          }
+        } catch (e) {
+          console.error("[GET /api/admin/admins/:id] Failed to parse permissions:", e);
+          permissions = [];
+        }
+      }
+
       const data = {
         id: row.id,
         username: row.username,
         token: row.token.substring(0, 8) + "***", // 隐藏token
         isActive: row.is_active,
+        permissions: permissions,
         createdAt: toISO(row.created_at) ?? "",
         updatedAt: toISO(row.updated_at) ?? "",
       };
@@ -107,10 +124,10 @@ export const PUT = withAdminAuth(
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
       const body = await req.json();
-      const { username, token, isActive } = body;
+      const { username, token, isActive, permissions: permissionsInput } = body;
 
       // 校验输入（至少一个字段）
-      if (username === undefined && token === undefined && isActive === undefined) {
+      if (username === undefined && token === undefined && isActive === undefined && permissionsInput === undefined) {
         return badRequest("At least one field must be provided");
       }
 
@@ -192,6 +209,16 @@ export const PUT = withAdminAuth(
         updates.is_active = Boolean(isActive);
       }
 
+      if (permissionsInput !== undefined) {
+        // 验证permissions（必须是字符串数组）
+        if (Array.isArray(permissionsInput)) {
+          const permissionsArray = permissionsInput.filter(p => typeof p === 'string');
+          updates.permissions = sql`${JSON.stringify(permissionsArray)}::jsonb`;
+        } else {
+          return badRequest("Permissions must be an array of strings");
+        }
+      }
+
       updates.updated_at = sql`NOW()`;
 
       // 执行更新
@@ -216,11 +243,27 @@ export const PUT = withAdminAuth(
         `更新管理员: ${updated.username}`
       );
 
+      // 解析permissions（JSONB数组）
+      let permissionsResult: string[] = [];
+      if (updated.permissions) {
+        try {
+          if (Array.isArray(updated.permissions)) {
+            permissionsResult = updated.permissions;
+          } else if (typeof updated.permissions === 'string') {
+            permissionsResult = JSON.parse(updated.permissions);
+          }
+        } catch (e) {
+          console.error("[PUT /api/admin/admins/:id] Failed to parse permissions:", e);
+          permissionsResult = [];
+        }
+      }
+
       const data = {
         id: updated.id,
         username: updated.username,
         token: updated.token.substring(0, 8) + "***", // 隐藏token
         isActive: updated.is_active,
+        permissions: permissionsResult,
         createdAt: toISO(updated.created_at) ?? "",
         updatedAt: toISO(updated.updated_at) ?? "",
       };

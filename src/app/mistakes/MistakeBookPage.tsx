@@ -108,6 +108,7 @@ function MistakeBookPage() {
                   src={selectedQuestion.image}
                   alt="题目图片"
                   fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
                   className="object-contain rounded-lg shadow-sm"
                 />
               </div>

@@ -4,12 +4,14 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ApiError, apiGet, apiPut } from "@/lib/apiClient";
 import Link from "next/link";
+import { PERMISSION_CATEGORIES, PERMISSION_LABELS, type PermissionCategory } from "@/lib/adminPermissions";
 
 type Admin = {
   id: number;
   username: string;
   token: string;
   isActive: boolean;
+  permissions?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -67,6 +69,7 @@ export default function AdminEditPage() {
   const [username, setUsername] = useState("");
   const [token, setToken] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
 
   // 加载管理员信息
   useEffect(() => {
@@ -86,6 +89,7 @@ export default function AdminEditPage() {
         setUsername(data.username);
         setToken(data.token); // 显示部分token（前8位）
         setIsActive(data.isActive);
+        setSelectedPermissions(data.permissions || []);
       } catch (e) {
         if (!mounted) return;
         if (e instanceof ApiError) {
@@ -118,6 +122,12 @@ export default function AdminEditPage() {
       if (username !== admin?.username) payload.username = username;
       if (token && token !== admin?.token) payload.token = token;
       if (isActive !== admin?.isActive) payload.isActive = isActive;
+      // 权限数组需要深度比较
+      const currentPerms = (admin?.permissions || []).sort().join(',');
+      const newPerms = selectedPermissions.sort().join(',');
+      if (currentPerms !== newPerms) {
+        payload.permissions = selectedPermissions;
+      }
 
       if (Object.keys(payload).length === 0) {
         setSaving(false);
@@ -259,6 +269,38 @@ export default function AdminEditPage() {
             />
             <span className="text-sm text-gray-700">启用</span>
           </label>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            权限类别 *
+          </label>
+          <div className="space-y-2 border border-gray-300 rounded-md p-3 max-h-64 overflow-y-auto">
+            {Object.entries(PERMISSION_CATEGORIES)
+              .filter(([key]) => key !== 'ADMINS') // 排除管理员管理权限（只有超级管理员）
+              .map(([key, value]) => (
+                <label key={value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPermissions.includes(value)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedPermissions([...selectedPermissions, value]);
+                      } else {
+                        setSelectedPermissions(selectedPermissions.filter(p => p !== value));
+                      }
+                    }}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm text-gray-700">
+                    {PERMISSION_LABELS[value as PermissionCategory]}
+                  </span>
+                </label>
+              ))}
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            选择此管理员可以访问的管理页面。超级管理员自动拥有所有权限。
+          </p>
         </div>
 
         <div className="flex items-center gap-2">

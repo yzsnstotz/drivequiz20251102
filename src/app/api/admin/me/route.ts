@@ -15,6 +15,7 @@ export const fetchCache = "force-no-store";
 import { NextRequest } from "next/server";
 import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { success, internalError } from "@/app/api/_lib/errors";
+import { db } from "@/lib/db";
 
 // ============================================================
 // GET /api/admin/me
@@ -27,12 +28,37 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       return internalError("Failed to get admin info");
     }
 
+    // 查询管理员的完整信息（包括permissions）
+    const admin = await db
+      .selectFrom("admins")
+      .selectAll()
+      .where("id", "=", adminInfo.id)
+      .executeTakeFirst();
+
+    if (!admin) {
+      return internalError("Admin not found");
+    }
+
+    // 解析permissions（JSONB数组）
+    let permissions: string[] = [];
+    if (admin.permissions) {
+      try {
+        permissions = Array.isArray(admin.permissions) 
+          ? admin.permissions 
+          : (typeof admin.permissions === 'string' ? JSON.parse(admin.permissions) : []);
+      } catch (e) {
+        console.error("[GET /api/admin/me] Failed to parse permissions:", e);
+        permissions = [];
+      }
+    }
+
     // 返回管理员信息（不返回 token）
     const data = {
       id: adminInfo.id,
       username: adminInfo.username,
       isActive: adminInfo.is_active,
       isDefaultAdmin: adminInfo.username === "admin",
+      permissions: permissions,
     };
 
     return success(data);

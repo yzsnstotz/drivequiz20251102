@@ -4,12 +4,14 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, apiGet, apiDelete, apiPost } from "@/lib/apiClient";
+import { PERMISSION_CATEGORIES, PERMISSION_LABELS, type PermissionCategory } from "@/lib/adminPermissions";
 
 type Admin = {
   id: number;
   username: string;
   token: string;
   isActive: boolean;
+  permissions?: string[]; // 权限类别数组
   createdAt: string;
   updatedAt: string;
 };
@@ -109,6 +111,7 @@ export default function AdminsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createPermissions, setCreatePermissions] = useState<string[]>([]);
 
   // 同步 filters 到 URL
   useEffect(() => {
@@ -209,6 +212,7 @@ export default function AdminsPage() {
       const payload: Record<string, any> = {
         username,
         isActive,
+        permissions: createPermissions,
       };
       if (token) payload.token = token;
 
@@ -221,6 +225,7 @@ export default function AdminsPage() {
       }
 
       setShowCreateForm(false);
+      setCreatePermissions([]);
       setFilters((f) => ({ ...f }));
     } catch (e) {
       if (e instanceof ApiError) {
@@ -315,6 +320,37 @@ export default function AdminsPage() {
                 <span className="text-xs text-gray-700">启用</span>
               </label>
             </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-2">
+                权限类别
+              </label>
+              <div className="space-y-2 border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto">
+                {Object.entries(PERMISSION_CATEGORIES)
+                  .filter(([key]) => key !== 'ADMINS') // 排除管理员管理权限（只有超级管理员）
+                  .map(([key, value]) => (
+                    <label key={value} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={createPermissions.includes(value)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setCreatePermissions([...createPermissions, value]);
+                          } else {
+                            setCreatePermissions(createPermissions.filter(p => p !== value));
+                          }
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                      <span className="text-xs text-gray-700">
+                        {PERMISSION_LABELS[value as PermissionCategory]}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                选择此管理员可以访问的管理页面。超级管理员自动拥有所有权限。
+              </p>
+            </div>
             {createError && (
               <div className="text-xs text-red-600">{createError}</div>
             )}
@@ -331,6 +367,7 @@ export default function AdminsPage() {
                 onClick={() => {
                   setShowCreateForm(false);
                   setCreateError(null);
+                  setCreatePermissions([]);
                 }}
                 className="rounded-md border border-gray-300 text-sm px-3 py-1.5 hover:bg-gray-100"
               >

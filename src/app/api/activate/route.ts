@@ -197,11 +197,26 @@ export async function POST(request: NextRequest) {
         throw new Error("INSERT_ACTIVATION_FAILED");
       }
 
+      // 重新读取激活码以获取最新的有效期信息
+      const updatedCodeRow = await trx
+        .selectFrom("activation_codes")
+        .select(["expires_at", "validity_period", "validity_unit", "activation_started_at"])
+        .where("code", "=", activationCode)
+        .executeTakeFirst();
+
+      let expiresAt: string | null = null;
+      if (updatedCodeRow?.expires_at) {
+        expiresAt = new Date(updatedCodeRow.expires_at as unknown as string).toISOString();
+      } else if (calculatedExpiresAt) {
+        expiresAt = calculatedExpiresAt.toISOString();
+      }
+
       return ok(
         {
           activationId: inserted.id,
           activatedAt: inserted.activated_at.toISOString(),
           email,
+          expiresAt,
         },
         200,
       );

@@ -117,6 +117,7 @@ function ActivityBanner() {
               src={item.imageUrl}
               alt={item.title}
               fill
+              sizes="100vw"
               className="object-cover"
             />
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4 text-white">

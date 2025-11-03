@@ -31,6 +31,7 @@ type RawRow = {
   username: string;
   token: string;
   is_active: boolean;
+  permissions: string[] | any; // JSONB数组
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -40,6 +41,7 @@ type CamelRow = {
   username: string;
   token: string; // ⚠️ 返回时应该隐藏token，只显示部分
   isActive: boolean;
+  permissions: string[]; // 权限类别数组
   createdAt: string; // ISO8601
   updatedAt: string; // ISO8601
 };
@@ -56,11 +58,27 @@ function toISO(v: Date | string | null | undefined): string | null {
 }
 
 function mapRow(r: RawRow): CamelRow {
+  // 解析permissions（JSONB数组）
+  let permissions: string[] = [];
+  if (r.permissions) {
+    try {
+      if (Array.isArray(r.permissions)) {
+        permissions = r.permissions;
+      } else if (typeof r.permissions === 'string') {
+        permissions = JSON.parse(r.permissions);
+      }
+    } catch (e) {
+      console.error("[mapRow] Failed to parse permissions:", e);
+      permissions = [];
+    }
+  }
+
   return {
     id: r.id,
     username: r.username,
     token: r.token.substring(0, 8) + "***", // 只显示前8位，其余隐藏
     isActive: r.is_active,
+    permissions: permissions,
     createdAt: toISO(r.created_at) ?? "",
     updatedAt: toISO(r.updated_at) ?? "",
   };
@@ -146,7 +164,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
   try {
     const body = await req.json();
-    const { username, token, isActive } = body;
+    const { username, token, isActive, permissions } = body;
 
     // 校验输入
     if (!username || typeof username !== "string" || username.trim().length === 0) {
@@ -195,6 +213,16 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       }
     }
 
+    // 验证permissions（必须是字符串数组）
+    let permissionsArray: string[] = [];
+    if (permissions) {
+      if (Array.isArray(permissions)) {
+        permissionsArray = permissions.filter(p => typeof p === 'string');
+      } else {
+        return badRequest("Permissions must be an array of strings");
+      }
+    }
+
     // 创建管理员
     const now = new Date().toISOString();
     const inserted = await db
@@ -203,6 +231,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         username: username.trim(),
         token: adminToken,
         is_active: isActive !== undefined ? Boolean(isActive) : true,
+        permissions: sql`${JSON.stringify(permissionsArray)}::jsonb`,
         created_at: sql`${now}::timestamp`,
         updated_at: sql`${now}::timestamp`,
       })

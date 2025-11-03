@@ -1,69 +1,83 @@
 "use client";
 
-import React, { useState } from 'react';
-import Image from 'next/image';
-import { Star, MapPin, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MapPin, Phone, Mail } from 'lucide-react';
 
-interface Restaurant {
-  id: string;
+type Merchant = {
+  id: number;
   name: string;
-  type: string;
-  distance: string;
-  rating: number;
-  address: string;
-  openTime: string;
-  imageUrl: string;
-}
+  description: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  imageUrl: string | null;
+  category: string | null;
+};
 
-// 示例数据
-const restaurantData: Restaurant[] = [
-  {
-    id: '1',
-    name: '樱花日本料理',
-    type: '日本料理',
-    distance: '350m',
-    rating: 4.5,
-    address: '东京都新宿区西新宿1-2-3',
-    openTime: '11:00-22:00',
-    imageUrl: 'https://images.unsplash.com/photo-1617196034796-73dfa7b1fd56?w=800&auto=format&fit=crop'
-  },
-  {
-    id: '2',
-    name: '北京烤鸭店',
-    type: '中餐',
-    distance: '500m',
-    rating: 4.8,
-    address: '东京都新宿区西新宿4-5-6',
-    openTime: '11:30-21:30',
-    imageUrl: 'https://images.unsplash.com/photo-1571167366136-b57e07761625?w=800&auto=format&fit=crop'
-  },
-  {
-    id: '3',
-    name: '7-Eleven',
-    type: '便利店',
-    distance: '150m',
-    rating: 4.0,
-    address: '东京都新宿区西新宿7-8-9',
-    openTime: '24小时营业',
-    imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop'
-  },
-];
-
-const categories = ['全部', '中餐', '日本料理', '便利店', '快餐', '咖啡厅'];
+type MerchantCategory = {
+  id: number;
+  name: string;
+  displayOrder: number;
+};
 
 function NearbyPage() {
-  const [selectedCategory, setSelectedCategory] = useState('全部');
-  const [sortBy, setSortBy] = useState<'distance' | 'rating'>('distance');
+  const [loading, setLoading] = useState(true);
+  const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [categories, setCategories] = useState<MerchantCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('全部');
 
-  const filteredRestaurants = restaurantData
-    .filter(restaurant => selectedCategory === '全部' || restaurant.type === selectedCategory)
-    .sort((a, b) => {
-      if (sortBy === 'distance') {
-        return parseInt(a.distance) - parseInt(b.distance);
-      } else {
-        return b.rating - a.rating;
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      
+      // 加载商户类型
+      const categoryRes = await fetch('/api/merchant-categories');
+      if (categoryRes.ok) {
+        const categoryData = await categoryRes.json();
+        if (categoryData.ok) {
+          setCategories(categoryData.data.items || []);
+        }
       }
-    });
+
+      // 加载商户列表
+      await loadMerchants();
+    } catch (error) {
+      console.error('加载数据失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMerchants = async (category?: string) => {
+    try {
+      const url = category && category !== '全部' 
+        ? `/api/merchants?category=${encodeURIComponent(category)}`
+        : '/api/merchants';
+      
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) {
+          setMerchants(data.data.items || []);
+        }
+      }
+    } catch (error) {
+      console.error('加载商户失败:', error);
+    }
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    loadMerchants(category === '全部' ? undefined : category);
+  };
+
+  const allCategories = ['全部', ...categories.map(cat => cat.name)];
+
+  const filteredMerchants = merchants;
 
   return (
     <div className="container mx-auto px-4 py-6 pb-20">
@@ -76,10 +90,10 @@ function NearbyPage() {
       {/* 分类筛选 */}
       <div className="mb-6 overflow-x-auto">
         <div className="flex space-x-2 pb-2">
-          {categories.map(category => (
+          {allCategories.map(category => (
             <button
               key={category}
-              onClick={() => setSelectedCategory(category)}
+              onClick={() => handleCategoryChange(category)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${selectedCategory === category ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
               {category}
@@ -88,57 +102,71 @@ function NearbyPage() {
         </div>
       </div>
 
-      {/* 排序选项 */}
-      <div className="mb-6 flex space-x-4">
-        <button
-          onClick={() => setSortBy('distance')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${sortBy === 'distance' ? 'bg-blue-50 text-blue-600' : 'text-gray-600'}`}
-        >
-          按距离
-        </button>
-        <button
-          onClick={() => setSortBy('rating')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${sortBy === 'rating' ? 'bg-blue-50 text-blue-600' : 'text-gray-600'}`}
-        >
-          按评分
-        </button>
-      </div>
-
-      {/* 餐厅列表 */}
-      <div className="space-y-4">
-        {filteredRestaurants.map(restaurant => (
-          <div key={restaurant.id} className="bg-white rounded-2xl p-4 shadow-sm">
-            <div className="flex space-x-4">
-              <div className="w-24 h-24 flex-shrink-0 relative">
-                <Image
-                  src={restaurant.imageUrl}
-                  alt={restaurant.name}
-                  fill
-                  className="object-cover rounded-lg"
-                />
-              </div>
-              <div className="flex-1">
-                <div className="flex justify-between items-start">
-                  <h3 className="text-lg font-bold text-gray-900">{restaurant.name}</h3>
-                  <div className="flex items-center text-yellow-500">
-                    <Star className="h-4 w-4 fill-current" />
-                    <span className="ml-1 text-sm">{restaurant.rating}</span>
+      {loading ? (
+        <div className="text-center py-8 text-gray-500">加载中...</div>
+      ) : (
+        /* 商户列表 */
+        <div className="space-y-4">
+          {filteredMerchants.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">暂无商户</div>
+          ) : (
+            filteredMerchants.map(merchant => (
+              <div key={merchant.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex space-x-4">
+                  {merchant.imageUrl && (
+                    <div className="w-24 h-24 flex-shrink-0 relative">
+                      <img
+                        src={merchant.imageUrl}
+                        alt={merchant.name}
+                        className="w-full h-full object-cover rounded-lg"
+                        onError={(e) => {
+                          // 图片加载失败时隐藏
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="text-lg font-bold text-gray-900">{merchant.name}</h3>
+                      {merchant.category && (
+                        <span className="px-2 py-1 bg-blue-50 text-blue-600 text-xs rounded">
+                          {merchant.category}
+                        </span>
+                      )}
+                    </div>
+                    {merchant.description && (
+                      <p className="text-sm text-gray-600 mb-2">{merchant.description}</p>
+                    )}
+                    {merchant.address && (
+                      <div className="flex items-center text-gray-600 text-sm mb-1">
+                        <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
+                        <span>{merchant.address}</span>
+                      </div>
+                    )}
+                    {merchant.phone && (
+                      <div className="flex items-center text-gray-600 text-sm mb-1">
+                        <Phone className="h-4 w-4 mr-1 flex-shrink-0" />
+                        <a href={`tel:${merchant.phone}`} className="hover:text-blue-600">
+                          {merchant.phone}
+                        </a>
+                      </div>
+                    )}
+                    {merchant.email && (
+                      <div className="flex items-center text-gray-600 text-sm">
+                        <Mail className="h-4 w-4 mr-1 flex-shrink-0" />
+                        <a href={`mailto:${merchant.email}`} className="hover:text-blue-600">
+                          {merchant.email}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 mb-2">{restaurant.type}</p>
-                <div className="flex items-center text-gray-600 text-sm mb-1">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  <span>{restaurant.distance} · {restaurant.address}</span>
-                </div>
-                <div className="flex items-center text-gray-600 text-sm">
-                  <Clock className="h-4 w-4 mr-1" />
-                  <span>{restaurant.openTime}</span>
-                </div>
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

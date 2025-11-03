@@ -116,6 +116,7 @@ function CarsPage() {
                   src={car.imageUrl}
                   alt={car.name}
                   fill
+                  sizes="96px"
                   className="object-cover rounded-lg"
                 />
               </div>

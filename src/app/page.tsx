@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import {
   Book,
@@ -54,12 +54,115 @@ const welcomeData = [
   },
 ];
 
+type Video = {
+  id: number;
+  title: string;
+  description: string | null;
+  url: string;
+  thumbnail: string | null;
+  category: "basic" | "advanced";
+  displayOrder: number;
+};
+
+function VideosSection() {
+  const [loading, setLoading] = useState(true);
+  const [basicVideos, setBasicVideos] = useState<Video[]>([]);
+  const [advancedVideos, setAdvancedVideos] = useState<Video[]>([]);
+
+  useEffect(() => {
+    loadVideos();
+  }, []);
+
+  const loadVideos = async () => {
+    try {
+      setLoading(true);
+      
+      // 加载基础视频
+      const basicRes = await fetch('/api/videos?category=basic');
+      if (basicRes.ok) {
+        const basicData = await basicRes.json();
+        if (basicData.ok) {
+          setBasicVideos(basicData.data.items || []);
+        }
+      }
+
+      // 加载进阶视频
+      const advancedRes = await fetch('/api/videos?category=advanced');
+      if (advancedRes.ok) {
+        const advancedData = await advancedRes.json();
+        if (advancedData.ok) {
+          setAdvancedVideos(advancedData.data.items || []);
+        }
+      }
+    } catch (error) {
+      console.error('加载视频失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderVideoCard = (video: Video) => (
+    <div key={video.id} className="flex-none w-[280px]">
+      <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden mb-2">
+        <iframe
+          className="w-full h-full"
+          src={video.url}
+          title={video.title}
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        ></iframe>
+      </div>
+      <h3 className="font-medium text-gray-900">{video.title}</h3>
+      {video.description && (
+        <p className="text-sm text-gray-600 mt-1">{video.description}</p>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {/* 本免许学试 Videos */}
+      {basicVideos.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-gray-900">本免许学试</h2>
+            <p className="text-gray-600 text-sm mt-1">精选视频教程</p>
+          </div>
+          <div className="flex overflow-x-auto space-x-4 pb-4">
+            {basicVideos.map(renderVideoCard)}
+          </div>
+        </div>
+      )}
+
+      {/* 二种免许学试 Videos */}
+      {advancedVideos.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-gray-900">二种免许学试</h2>
+            <p className="text-gray-600 text-sm mt-1">进阶视频教程</p>
+          </div>
+          <div className="flex overflow-x-auto space-x-4 pb-4">
+            {advancedVideos.map(renderVideoCard)}
+          </div>
+        </div>
+      )}
+
+      {!loading && basicVideos.length === 0 && advancedVideos.length === 0 && (
+        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm text-center text-gray-500">
+          暂无视频
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function HomePage() {
   const [showAI, setShowAI] = useState(false);
   const [totalProgress, setTotalProgress] = useState(0);
   const [currentWelcomeIndex, setCurrentWelcomeIndex] = useState(0);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
-  const welcomeScrollRef = React.useRef<HTMLDivElement>(null);
+  const welcomeScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
@@ -113,12 +216,30 @@ export default function HomePage() {
             <Truck className="h-6 w-6 text-blue-600" />
             <span className="text-xl font-bold text-gray-900">ZALEM</span>
           </div>
-          <button
-            onClick={() => setShowAI(true)}
-            className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
-          >
-            <Bot className="h-6 w-6" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {/* 清除激活码按钮（测试用） */}
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('drive-quiz-activated');
+                  localStorage.removeItem('drive-quiz-email');
+                  alert('激活码已清除，页面将刷新');
+                  window.location.reload();
+                }
+              }}
+              className="flex items-center space-x-1 text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+              title="清除激活码（测试用）"
+            >
+              <XSquare className="h-4 w-4" />
+              <span className="hidden sm:inline">清除激活</span>
+            </button>
+            <button
+              onClick={() => setShowAI(true)}
+              className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
+            >
+              <Bot className="h-6 w-6" />
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -149,6 +270,7 @@ export default function HomePage() {
                       src={item.imageUrl}
                       alt={item.title}
                       fill
+                      sizes="(max-width: 768px) 100vw, 300px"
                       className="object-cover"
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
@@ -237,77 +359,7 @@ export default function HomePage() {
           </a>
         </div>
 
-        {/* 本免许学试 Videos */}
-        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-900">本免许学试</h2>
-            <p className="text-gray-600 text-sm mt-1">精选视频教程</p>
-          </div>
-          <div className="flex overflow-x-auto space-x-4 pb-4">
-            <div className="flex-none w-[280px]">
-              <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden mb-2">
-                <iframe
-                  className="w-full h-full"
-                  src="https://www.youtube.com/embed/VIDEO_ID_1"
-                  title="本免许学试 - 视频 1"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              </div>
-              <h3 className="font-medium text-gray-900">基础知识讲解</h3>
-            </div>
-            <div className="flex-none w-[280px]">
-              <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden mb-2">
-                <iframe
-                  className="w-full h-full"
-                  src="https://www.youtube.com/embed/VIDEO_ID_2"
-                  title="本免许学试 - 视频 2"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              </div>
-              <h3 className="font-medium text-gray-900">实战技巧分享</h3>
-            </div>
-          </div>
-        </div>
-
-        {/* 二种免许学试 Videos */}
-        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-900">二种免许学试</h2>
-            <p className="text-gray-600 text-sm mt-1">进阶视频教程</p>
-          </div>
-          <div className="flex overflow-x-auto space-x-4 pb-4">
-            <div className="flex-none w-[280px]">
-              <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden mb-2">
-                <iframe
-                  className="w-full h-full"
-                  src="https://www.youtube.com/embed/VIDEO_ID_3"
-                  title="二种免许学试 - 视频 1"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              </div>
-              <h3 className="font-medium text-gray-900">高级驾驶技巧</h3>
-            </div>
-            <div className="flex-none w-[280px]">
-              <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden mb-2">
-                <iframe
-                  className="w-full h-full"
-                  src="https://www.youtube.com/embed/VIDEO_ID_4"
-                  title="二种免许学试 - 视频 2"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              </div>
-              <h3 className="font-medium text-gray-900">考试要点解析</h3>
-            </div>
-          </div>
-        </div>
+        <VideosSection />
       </main>
     </div>
   );

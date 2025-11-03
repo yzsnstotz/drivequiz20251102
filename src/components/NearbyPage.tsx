@@ -112,6 +112,7 @@ function NearbyPage() {
                   src={restaurant.imageUrl}
                   alt={restaurant.name}
                   fill
+                  sizes="96px"
                   className="object-cover rounded-lg"
                 />
               </div>
