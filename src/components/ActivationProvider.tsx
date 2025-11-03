@@ -373,11 +373,28 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         // 不再立即检查激活状态，避免跳回激活页面
         // 注意：成功提示关闭后，用户已处于激活状态，不需要再次检查
       } else {
-        throw new Error(result.message || '激活失败');
+        // 根据错误码提供更友好的错误信息
+        const errorCode = result.errorCode;
+        let errorMessage = result.message || '激活失败';
+        
+        if (errorCode === 'DUPLICATE_ACTIVATION') {
+          errorMessage = '该激活码已被使用，请使用其他激活码';
+        } else if (errorCode === 'CODE_USAGE_EXCEEDED') {
+          errorMessage = '该激活码已达到使用上限，请使用其他激活码';
+        } else if (errorCode === 'CODE_EXPIRED') {
+          errorMessage = '该激活码已过期，请使用其他激活码';
+        } else if (errorCode === 'CODE_STATUS_INVALID') {
+          errorMessage = '该激活码状态不可用，请使用其他激活码';
+        } else if (errorCode === 'INVALID_CODE') {
+          errorMessage = '无效的激活码，请检查后重试';
+        }
+        
+        throw new Error(errorMessage);
       }
     } catch (error: any) {
       // 重新抛出错误，让 ActivationModal 组件可以捕获并显示
-      throw new Error(error.message || '网络错误，请稍后重试');
+      const errorMessage = error.message || '网络错误，请稍后重试';
+      throw new Error(errorMessage);
     }
   };
 

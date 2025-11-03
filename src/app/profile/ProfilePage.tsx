@@ -66,6 +66,17 @@ function ProfilePage() {
     setIsEditing(false);
   };
 
+  const handleClearActivation = () => {
+    if (confirm('确定要清除激活状态吗？清除后需要重新激活才能使用应用。')) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('drive-quiz-activated');
+        localStorage.removeItem('drive-quiz-email');
+        alert('激活状态已清除，页面将刷新');
+        window.location.reload();
+      }
+    }
+  };
+
   const menuItems = [
     {
       id: 'mistakes',
@@ -87,6 +98,14 @@ function ProfilePage() {
       title: '做题历史',
       description: '查看最近50题记录',
       onClick: () => document.getElementById('practice-history-section')?.scrollIntoView({ behavior: 'smooth' })
+    },
+    {
+      id: 'clear-activation',
+      icon: <XSquare className="h-6 w-6 text-red-600" />,
+      title: '清除激活',
+      description: '清除当前激活状态，需要重新激活',
+      onClick: handleClearActivation,
+      isDanger: true
     },
     {
       id: 'settings',
@@ -132,34 +151,59 @@ function ProfilePage() {
 
       {/* 功能菜单区域 */}
       <div className="space-y-4 mb-6">
-        {menuItems.map((item) => (
-          <Link
-            key={item.id}
-            href={item.href || '#'}
-            onClick={(e) => {
-              if (item.href) {
-                // 如果有href，让Link组件处理导航
-                return;
-              }
-              // 如果没有href，阻止默认行为并执行onClick
-              e.preventDefault();
-              if (item.onClick) {
-                item.onClick();
-              }
-            }}
-            className="block"
-          >
-            <div className="bg-white rounded-2xl p-4 shadow-sm flex items-center space-x-4 cursor-pointer hover:bg-gray-50 transition-colors">
-              <div className="flex-shrink-0">
-                {item.icon}
-              </div>
-              <div className="flex-grow">
-                <h3 className="text-gray-900 font-medium">{item.title}</h3>
-                <p className="text-gray-500 text-sm">{item.description}</p>
+        {menuItems.map((item) => {
+          // 如果有 href，使用 Link 组件
+          if (item.href) {
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="block"
+              >
+                <div className={`bg-white rounded-2xl p-4 shadow-sm flex items-center space-x-4 cursor-pointer transition-colors ${
+                  item.isDanger ? 'hover:bg-red-50' : 'hover:bg-gray-50'
+                }`}>
+                  <div className="flex-shrink-0">
+                    {item.icon}
+                  </div>
+                  <div className="flex-grow">
+                    <h3 className={`font-medium ${
+                      item.isDanger ? 'text-red-600' : 'text-gray-900'
+                    }`}>{item.title}</h3>
+                    <p className="text-gray-500 text-sm">{item.description}</p>
+                  </div>
+                </div>
+              </Link>
+            );
+          }
+          
+          // 如果没有 href，使用 div 并执行 onClick
+          return (
+            <div
+              key={item.id}
+              onClick={() => {
+                if (item.onClick) {
+                  item.onClick();
+                }
+              }}
+              className="block"
+            >
+              <div className={`bg-white rounded-2xl p-4 shadow-sm flex items-center space-x-4 cursor-pointer transition-colors ${
+                item.isDanger ? 'hover:bg-red-50' : 'hover:bg-gray-50'
+              }`}>
+                <div className="flex-shrink-0">
+                  {item.icon}
+                </div>
+                <div className="flex-grow">
+                  <h3 className={`font-medium ${
+                    item.isDanger ? 'text-red-600' : 'text-gray-900'
+                  }`}>{item.title}</h3>
+                  <p className="text-gray-500 text-sm">{item.description}</p>
+                </div>
               </div>
             </div>
-          </Link>
-        ))}
+          );
+        })}
       </div>
 
       {/* 考试历史区域 */}

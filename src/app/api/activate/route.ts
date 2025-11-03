@@ -181,16 +181,41 @@ export async function POST(request: NextRequest) {
         .execute();
 
       // 6) 记录激活
-      const inserted = await trx
-        .insertInto("activations")
-        .values({
+      let inserted;
+      try {
+        inserted = await trx
+          .insertInto("activations")
+          .values({
+            email,
+            activation_code: activationCode,
+            ip_address: ipAddress,
+            user_agent: userAgent,
+          })
+          .returning(["id", "activated_at"])
+          .executeTakeFirst();
+      } catch (insertError: any) {
+        // 捕获数据库约束错误
+        const errorMessage = insertError?.message || String(insertError || '');
+        console.error('[POST /api/activate] Database insert error:', {
+          error: errorMessage,
           email,
-          activation_code: activationCode,
-          ip_address: ipAddress,
-          user_agent: userAgent,
-        })
-        .returning(["id", "activated_at"])
-        .executeTakeFirst();
+          activationCode,
+        });
+        
+        // 检查是否是唯一性约束违反（PostgreSQL 错误代码 23505）
+        if (errorMessage.includes('unique') || 
+            errorMessage.includes('23505') ||
+            errorMessage.includes('duplicate key')) {
+          return err(
+            "DUPLICATE_ACTIVATION",
+            "该激活码已被使用（同一邮箱重复激活或数据库约束限制）",
+            409
+          );
+        }
+        
+        // 其他数据库错误
+        throw new Error("INSERT_ACTIVATION_FAILED");
+      }
 
       if (!inserted?.id) {
         // 理论上不应发生，抛出以触发回滚
@@ -228,10 +253,28 @@ export async function POST(request: NextRequest) {
     // 兜底错误
     const message =
       e instanceof Error ? e.message : typeof e === "string" ? e : "UNKNOWN";
+    
+    console.error('[POST /api/activate] Unhandled error:', {
+      error: message,
+      stack: e instanceof Error ? e.stack : undefined,
+    });
+    
     // 特判插入失败
     if (message === "INSERT_ACTIVATION_FAILED") {
-      return err("INTERNAL_ERROR", "无法记录激活信息", 500);
+      return err("INTERNAL_ERROR", "无法记录激活信息，请稍后重试", 500);
     }
-    return err("INTERNAL_ERROR", "服务器内部错误", 500);
+    
+    // 检查是否是数据库约束错误
+    if (message.includes('unique') || 
+        message.includes('23505') ||
+        message.includes('duplicate key')) {
+      return err(
+        "DUPLICATE_ACTIVATION",
+        "该激活码已被使用",
+        409
+      );
+    }
+    
+    return err("INTERNAL_ERROR", `服务器内部错误: ${message}`, 500);
   }
 }
