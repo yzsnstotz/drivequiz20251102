@@ -42,8 +42,8 @@ function toISO(v: Date | string | null | undefined): string | null {
  * GET /api/admin/videos
  */
 export const GET = withAdminAuth(async (req: NextRequest) => {
+  const sp = req.nextUrl.searchParams;
   try {
-    const sp = req.nextUrl.searchParams;
     const title = (sp.get("title") || "").trim();
     const category = sp.get("category") || "";
     const status = sp.get("status") || "";

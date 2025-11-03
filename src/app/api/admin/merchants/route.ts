@@ -40,8 +40,8 @@ function toISO(v: Date | string | null | undefined): string | null {
  * GET /api/admin/merchants
  */
 export const GET = withAdminAuth(async (req: NextRequest) => {
+  const sp = req.nextUrl.searchParams;
   try {
-    const sp = req.nextUrl.searchParams;
     const name = (sp.get("name") || "").trim();
     const status = sp.get("status") || "";
 

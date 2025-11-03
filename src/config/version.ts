@@ -2,5 +2,5 @@
 // 每次提交本地修复时，增加版本号
 // 格式：主版本号.次版本号.修订号（如 1.0.1 表示第一次修复）
 
-export const APP_VERSION = "1.0.6"; // 修复商户API路由中catch块的分页参数错误
+export const APP_VERSION = "1.0.7"; // 修复商户和视频API路由中catch块sp变量作用域问题
 
