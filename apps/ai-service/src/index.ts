@@ -3,7 +3,6 @@
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import dotenv from "dotenv";
-import { AddressInfo } from "net";
 import { registerCronDailySummarize } from "./jobs/cron.dailySummarize.js";
 
 // 环境变量加载（优先 .env）
