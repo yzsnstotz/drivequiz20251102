@@ -227,7 +227,9 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "";
     const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN || "";
     if (AI_SERVICE_URL && AI_SERVICE_TOKEN) {
-      void fetch(`${AI_SERVICE_URL.replace(/\/+$/, "")}/v1/admin/rag/ingest`, {
+      // 确保 AI_SERVICE_URL 不重复 /v1 路径（与 /api/ai/ask 保持一致）
+      const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+      void fetch(`${baseUrl}/v1/admin/rag/ingest`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
