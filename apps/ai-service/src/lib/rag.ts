@@ -63,7 +63,7 @@ async function callSupabaseMatch(
   config: ServiceConfig,
   queryEmbedding: number[],
   lang: string,
-  matchCount = DEFAULT_MATCH_COUNT
+  matchCount: number = DEFAULT_MATCH_COUNT
 ): Promise<RagHit[]> {
   // 基础配置缺失 → 直接降级为空（由上层兜底）
   if (!config.supabaseUrl || !config.supabaseServiceKey) return [];
