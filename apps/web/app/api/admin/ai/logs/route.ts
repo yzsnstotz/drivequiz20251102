@@ -320,6 +320,27 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
   } catch (err) {
     console.error("[GET /api/admin/ai/logs] Error:", err);
     const message = err instanceof Error ? err.message : "Unknown Error";
+    
+    // 检查是否是 DNS 解析错误
+    if (message.includes("ENOTFOUND") || message.includes("getaddrinfo")) {
+      const connectionString = process.env.AI_DATABASE_URL || "";
+      const isDirectConnection = connectionString.includes("db.") && connectionString.includes(".supabase.co:5432");
+      
+      let errorMessage = `Database connection failed: ${message}`;
+      
+      if (isDirectConnection) {
+        errorMessage += "\n\nPossible solutions:\n";
+        errorMessage += "1. The Supabase database may be paused (free tier projects pause after inactivity). Please check your Supabase dashboard and resume the project.\n";
+        errorMessage += "2. Try using the connection pooler instead of direct connection in Vercel Dashboard:\n";
+        errorMessage += "   For project ID 'cgpmpfnjzlzbquakmmrj', use:\n";
+        errorMessage += "   postgresql://postgres.cgpmpfnjzlzbquakmmrj:zKV0rtIV1QOByu89@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require\n";
+        errorMessage += "   Or check your Supabase Dashboard → Settings → Database → Connection Pooling for the correct pooler URL.\n";
+      }
+      
+      console.error("[GET /api/admin/ai/logs] DNS resolution error. Connection string:", connectionString.substring(0, 50) + "...");
+      return internalError(errorMessage);
+    }
+    
     return internalError(`Failed to fetch AI logs: ${message}`);
   }
 });
