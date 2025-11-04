@@ -145,8 +145,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 2) 校验请求体
         const { question, lang, userId } = parseAndValidateBody(request.body);
 
-        // 3) 命中缓存
-        const model = (config as any).aiModel ?? config["aiModel"];
+        // 3) 从数据库读取模型配置（优先）或使用环境变量
+        const model = await getModelFromConfig();
         const cacheKey = buildCacheKey(question, lang, model);
         const cached = await cacheGet<AskResult>(cacheKey);
         if (cached) {
