@@ -38,9 +38,6 @@ const LANG_WHITELIST = new Set(["zh", "ja", "en"]);
 /** 问题长度限制，避免滥用 */
 const MAX_QUESTION_LEN = 2000;
 
-/** 缓存时长（秒） */
-const CACHE_TTL_SECONDS = 1800;
-
 /**
  * 估算 OpenAI 成本（USD）
  * 基于 2024 年 OpenAI 定价（gpt-4o-mini 等）
