@@ -161,25 +161,19 @@ function truncateAnswer(ans: string, limit: number): string {
 // ---- 路由处理 ----
 export async function POST(req: NextRequest) {
   // 1) 鉴权：用户 JWT（前端 -> 主站）
+  // 允许未登录用户匿名访问（使用匿名 ID）
   const jwt = readUserJwt(req);
-  if (!jwt) {
-    const err: Err = { ok: false, errorCode: "AUTH_REQUIRED", message: "Missing user JWT" };
-    return NextResponse.json(err, { status: 401 });
+  let userId: string | null = null;
+  
+  if (jwt) {
+    userId = unsafeDecodeJwtSub(jwt);
   }
-
-  const userId = unsafeDecodeJwtSub(jwt);
-  if (!userId) {
-    // 仍允许使用 token 哈希做配额键，避免因JWT结构差异导致服务不可用
-    const fallbackKey = `anon:${jwt.slice(0, 16)}`;
-    const limitRes = incrAndCheckDailyLimit(fallbackKey);
-    if (!limitRes.ok) {
-      return rateLimited({ limit: DAILY_LIMIT, resetAt: limitRes.resetAt });
-    }
-  } else {
-    const limitRes = incrAndCheckDailyLimit(`u:${userId}`);
-    if (!limitRes.ok) {
-      return rateLimited({ limit: DAILY_LIMIT, resetAt: limitRes.resetAt });
-    }
+  
+  // 如果没有 token 或无法解析 userId，使用匿名 ID
+  const quotaKey = userId ? `u:${userId}` : (jwt ? `anon:${jwt.slice(0, 16)}` : "anon:anonymous");
+  const limitRes = incrAndCheckDailyLimit(quotaKey);
+  if (!limitRes.ok) {
+    return rateLimited({ limit: DAILY_LIMIT, resetAt: limitRes.resetAt });
   }
 
   // 2) 校验请求体
@@ -203,7 +197,7 @@ export async function POST(req: NextRequest) {
   }
 
   const forwardPayload: Record<string, unknown> = {
-    userId: userId ?? null,
+    userId: userId ?? "anonymous",
     // AI-Service 期望字段为 lang
     lang: mapLocaleToLang(locale),
     question,
@@ -212,15 +206,19 @@ export async function POST(req: NextRequest) {
 
   let aiResp: Response;
   try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json; charset=utf-8",
+      // 服务间鉴权走 Service Token
+      authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+    };
+    // 透传用户信息（可选，用于日志或风控）
+    if (jwt) {
+      headers["x-user-jwt"] = jwt;
+    }
+    
     aiResp = await fetch(`${AI_SERVICE_URL.replace(/\/$/, "")}/v1/ask`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        // 服务间鉴权走 Service Token
-        authorization: `Bearer ${AI_SERVICE_TOKEN}`,
-        // 透传用户信息（可选，用于日志或风控）
-        "x-user-jwt": jwt,
-      },
+      headers,
       body: JSON.stringify(forwardPayload),
     });
   } catch (e: any) {

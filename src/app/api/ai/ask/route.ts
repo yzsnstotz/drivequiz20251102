@@ -90,12 +90,22 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
   const token = authorization.slice("Bearer ".length).trim();
   if (!token) return null;
 
-  // 若未配置公钥，则仅以存在性作为通过（开发模式兜底）
+  // 若未配置公钥，则尝试从 token 中解析 userId（仅用于开发/预览环境）
   if (!USER_JWT_PUBLIC_KEY) {
-    // 允许从简：sub 不可得时，用匿名ID（会影响配额维度，建议尽快配置公钥）
-    return { userId: "anonymous" };
+    try {
+      const [header, payload, signature] = token.split(".");
+      if (!header || !payload) return null;
+      // 尝试解析 payload（不验证签名）
+      const json = JSON.parse(atobUrlSafe(payload)) as { sub?: string; user_id?: string; userId?: string };
+      const userId = json.sub || json.user_id || json.userId || "anonymous";
+      return { userId };
+    } catch {
+      // 如果解析失败，返回匿名 ID
+      return { userId: "anonymous" };
+    }
   }
 
+  // 配置了公钥：严格验证签名
   try {
     const [header, payload, signature] = token.split(".");
     if (!header || !payload || !signature) return null;
@@ -120,8 +130,8 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
     );
     if (!valid) return null;
 
-    const json = JSON.parse(atobUrlSafe(payload)) as { sub?: string };
-    const userId = json.sub || "anonymous";
+    const json = JSON.parse(atobUrlSafe(payload)) as { sub?: string; user_id?: string; userId?: string };
+    const userId = json.sub || json.user_id || json.userId || "anonymous";
     return { userId };
   } catch {
     return null;
@@ -164,6 +174,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
+    // 允许未登录用户匿名访问（使用匿名 ID）
     let jwt: string | null = null;
     
     // 1) Authorization: Bearer <jwt>
@@ -193,13 +204,20 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    if (!jwt) {
-      return err("AUTH_REQUIRED", "Authentication required.", 401);
+    // 验证 JWT（如果提供了 token，否则使用匿名 ID）
+    let session: { userId: string } | null = null;
+    if (jwt) {
+      session = await verifyJwt(`Bearer ${jwt}`);
+      // 如果配置了公钥但验证失败，拒绝请求
+      if (!session && USER_JWT_PUBLIC_KEY) {
+        return err("AUTH_REQUIRED", "Invalid or expired authentication token.", 401);
+      }
     }
     
-    // 验证 JWT（如果配置了公钥，否则仅检测存在性）
-    const session = await verifyJwt(jwt ? `Bearer ${jwt}` : undefined);
-    if (!session) return err("AUTH_REQUIRED", "Authentication required.", 401);
+    // 如果没有 token 或验证失败但未配置公钥，使用匿名 ID（允许未登录用户访问）
+    if (!session) {
+      session = { userId: "anonymous" };
+    }
 
     // 2) 解析与参数校验
     const body = (await req.json()) as AskRequest | null;
