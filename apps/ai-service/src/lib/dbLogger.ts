@@ -33,6 +33,27 @@ export type AiLogRecord = {
 };
 
 /**
+ * 检查是否为有效的 UUID 格式
+ */
+function isValidUuid(str: string | null | undefined): boolean {
+  if (!str || typeof str !== "string") return false;
+  // UUID v4 格式: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+/**
+ * 规范化 user_id：如果是 "anonymous" 或无效 UUID，则返回 null
+ */
+function normalizeUserId(userId: string | null | undefined): string | null {
+  if (!userId) return null;
+  if (userId === "anonymous" || !isValidUuid(userId)) {
+    return null;
+  }
+  return userId;
+}
+
+/**
  * 向 Supabase 的 ai_logs 表插入记录（统一入口：logAiInteraction）。
  * 若环境变量缺失或请求失败，则仅打印警告。
  */
@@ -50,7 +71,7 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
 
   const payload = [
     {
-      user_id: log.userId ?? null,
+      user_id: normalizeUserId(log.userId),
       question: log.question,
       answer: log.answer,
       locale: log.lang ?? null, // 数据库表中的字段名是 locale，不是 language
