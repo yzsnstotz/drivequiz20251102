@@ -273,7 +273,9 @@ export async function POST(req: NextRequest) {
         "x-zalem-client": "web",
       },
       body: JSON.stringify({
-        userId: session.userId,
+        // 传递 userId（如果是有效 UUID）或 null（匿名用户）
+        // AI Service 的 normalizeUserId 会处理 "anonymous" 和非 UUID 格式
+        userId: session.userId === "anonymous" ? null : session.userId,
         locale,
         question,
         metadata: {
@@ -281,6 +283,8 @@ export async function POST(req: NextRequest) {
           client: "zalem",
           answerCharLimit: ANSWER_CHAR_LIMIT,
           version: "v1.0.1",
+          isAnonymous: session.userId === "anonymous",
+          originalUserId: session.userId, // 原始 userId（用于日志追踪）
         },
       }),
       // 如需：可在此增加超时与重试（指数退避）

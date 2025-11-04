@@ -44,9 +44,10 @@ function isValidUuid(str: string | null | undefined): boolean {
 
 /**
  * 规范化 user_id：如果是 "anonymous" 或无效 UUID，则返回 null
+ * 注意：如果传入的是 null，直接返回 null（匿名用户）
  */
 function normalizeUserId(userId: string | null | undefined): string | null {
-  if (!userId) return null;
+  if (!userId || userId === null) return null;
   if (userId === "anonymous" || !isValidUuid(userId)) {
     return null;
   }

@@ -115,12 +115,60 @@ function unsafeDecodeJwtSub(jwt: string): string | null {
   try {
     const parts = jwt.split(".");
     if (parts.length < 2) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    const sub = payload.sub || payload.user_id || payload.userId || null;
-    if (!sub || typeof sub !== "string") return null;
-    return sub;
-  } catch {
+    
+    // 处理 base64url 解码（添加 padding 如果需要）
+    let payloadBase64 = parts[1];
+    const padding = (4 - (payloadBase64.length % 4)) % 4;
+    if (padding > 0) {
+      payloadBase64 += "=".repeat(padding);
+    }
+    
+    // 替换 base64url 字符为 base64 字符
+    payloadBase64 = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+    
+    // 解码并解析 JSON
+    const payloadStr = Buffer.from(payloadBase64, "base64").toString("utf8");
+    const payload = JSON.parse(payloadStr) as { 
+      sub?: string; 
+      user_id?: string; 
+      userId?: string;
+      id?: string;
+    };
+    
+    // 尝试多种可能的字段名
+    const userId = payload.sub || payload.user_id || payload.userId || payload.id || null;
+    if (!userId || typeof userId !== "string") return null;
+    
+    // 验证是否为有效的 UUID 格式（可选，但建议）
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(userId)) {
+      return userId;
+    }
+    
+    // 如果不是 UUID 格式，但仍然返回（可能是其他格式的 ID）
+    return userId;
+  } catch (e) {
+    // 解析失败，返回 null
     return null;
+  }
+}
+
+// 生成匿名用户ID（基于 token 的 hash，确保同一 token 生成相同的匿名ID）
+function generateAnonymousId(token: string): string {
+  try {
+    // 使用简单的 hash 函数生成一个稳定的匿名ID
+    // 注意：这不是加密安全的，仅用于区分不同的匿名用户
+    let hash = 0;
+    for (let i = 0; i < token.length; i++) {
+      const char = token.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 转换为32位整数
+    }
+    // 生成一个类似 UUID 的格式（但不是真正的 UUID）
+    const hex = Math.abs(hash).toString(16).padStart(8, "0");
+    return `anon-${hex.slice(0, 8)}-${hex.slice(8, 12) || "0000"}-${hex.slice(12, 16) || "0000"}-${hex.slice(16, 20) || "0000"}-${hex.slice(20, 32) || "000000000000"}`.slice(0, 36);
+  } catch {
+    return "anonymous";
   }
 }
 
@@ -164,13 +212,23 @@ export async function POST(req: NextRequest) {
   // 允许未登录用户匿名访问（使用匿名 ID）
   const jwt = readUserJwt(req);
   let userId: string | null = null;
+  let isAnonymous = false;
   
   if (jwt) {
     userId = unsafeDecodeJwtSub(jwt);
+    // 如果解析失败，但有 token，使用基于 token 的匿名ID
+    if (!userId) {
+      userId = generateAnonymousId(jwt);
+      isAnonymous = true;
+    }
+  } else {
+    // 没有 token，使用默认匿名ID
+    userId = "anonymous";
+    isAnonymous = true;
   }
   
-  // 如果没有 token 或无法解析 userId，使用匿名 ID
-  const quotaKey = userId ? `u:${userId}` : (jwt ? `anon:${jwt.slice(0, 16)}` : "anon:anonymous");
+  // 配额统计：使用 userId（真实用户）或匿名ID
+  const quotaKey = isAnonymous ? `anon:${userId}` : `u:${userId}`;
   const limitRes = incrAndCheckDailyLimit(quotaKey);
   if (!limitRes.ok) {
     return rateLimited({ limit: DAILY_LIMIT, resetAt: limitRes.resetAt });
@@ -197,11 +255,18 @@ export async function POST(req: NextRequest) {
   }
 
   const forwardPayload: Record<string, unknown> = {
-    userId: userId ?? "anonymous",
+    // 传递 userId（如果是有效 UUID）或 null（匿名用户）
+    // AI Service 的 normalizeUserId 会处理 "anonymous" 和非 UUID 格式
+    userId: isAnonymous ? null : userId,
     // AI-Service 期望字段为 lang
     lang: mapLocaleToLang(locale),
     question,
-    metadata: { channel: "web", client: "zalem" },
+    metadata: { 
+      channel: "web", 
+      client: "zalem",
+      isAnonymous, // 标记是否为匿名用户
+      userId: userId, // 原始 userId（用于日志追踪）
+    },
   };
 
   let aiResp: Response;

@@ -79,9 +79,9 @@ function estimateCostUsd(
 function parseAndValidateBody(body: unknown): {
   question: string;
   lang: string;
-  userId?: string;
+  userId?: string | null;
 } {
-  const b = (body ?? {}) as AskBody;
+  const b = (body ?? {}) as AskBody & { userId?: string | null };
 
   if (!b.question || typeof b.question !== "string") {
     const err: Error & { statusCode?: number } = new Error("Missing or invalid 'question'");
@@ -98,7 +98,19 @@ function parseAndValidateBody(body: unknown): {
   const lang = (typeof b.lang === "string" ? b.lang.toLowerCase().trim() : "zh") || "zh";
   const validLang = LANG_WHITELIST.has(lang) ? lang : "zh";
 
-  return { question, lang: validLang, userId: typeof b.userId === "string" ? b.userId : undefined };
+  // 处理 userId：支持 string、null、undefined
+  let userId: string | null | undefined = undefined;
+  if (b.userId !== undefined && b.userId !== null) {
+    if (typeof b.userId === "string") {
+      userId = b.userId;
+    } else {
+      userId = null;
+    }
+  } else if (b.userId === null) {
+    userId = null;
+  }
+
+  return { question, lang: validLang, userId };
 }
 
 /** 生成缓存 Key（包含语言与模型，避免跨配置命中） */
