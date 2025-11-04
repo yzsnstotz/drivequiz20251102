@@ -1,15 +1,10 @@
-// src/app/api/admin/ai/filters/route.ts
+// apps/web/app/api/admin/ai/filters/route.ts
 /* 功能：管理员读取/更新 AI 禁答关键词规则（not-driving / sensitive），统一响应结构与鉴权 */
 import { NextRequest } from "next/server";
 import { sql } from "kysely";
 import { db } from "@/lib/db";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
-export const runtime = "nodejs";
 
 type FilterItem = {
   type: "not-driving" | "sensitive";
@@ -127,3 +122,5 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
   }
 });
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";

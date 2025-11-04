@@ -1,4 +1,4 @@
-// src/app/api/admin/ai/rag/docs/route.ts
+// apps/web/app/api/admin/ai/rag/docs/route.ts
 /* 功能：管理员管理 RAG 文档（列表 + 新增），统一鉴权与响应结构 */
 
 import { NextRequest } from "next/server";
@@ -7,11 +7,6 @@ import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { db } from "@/lib/db";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
-export const runtime = "nodejs";
 
 type DocRow = {
   id: string;
@@ -227,9 +222,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "";
     const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN || "";
     if (AI_SERVICE_URL && AI_SERVICE_TOKEN) {
-      // 确保 AI_SERVICE_URL 不重复 /v1 路径（与 /api/ai/ask 保持一致）
-      const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
-      void fetch(`${baseUrl}/v1/admin/rag/ingest`, {
+      void fetch(`${AI_SERVICE_URL.replace(/\/+$/, "")}/v1/admin/rag/ingest`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -273,3 +266,5 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
   }
 });
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
