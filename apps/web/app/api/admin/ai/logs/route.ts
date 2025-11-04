@@ -129,6 +129,14 @@ function mapRow(r: RawRow): CamelRow {
  */
 export const GET = withAdminAuth(async (req: NextRequest) => {
   try {
+    // 检查 AI_DATABASE_URL 环境变量是否配置
+    if (!process.env.AI_DATABASE_URL) {
+      console.error("[GET /api/admin/ai/logs] AI_DATABASE_URL environment variable is not configured");
+      return internalError(
+        "AI_DATABASE_URL environment variable is not configured. Please configure it in Vercel Dashboard for Preview/Production environments."
+      );
+    }
+
     const { searchParams } = new URL(req.url);
 
     // 分页 + 排序参数
