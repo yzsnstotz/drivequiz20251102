@@ -45,10 +45,19 @@ function isValidUuid(str: string | null | undefined): boolean {
 /**
  * 规范化 user_id：如果是 "anonymous" 或无效 UUID，则返回 null
  * 注意：如果传入的是 null，直接返回 null（匿名用户）
+ * 
+ * 注意：对于非 UUID 格式的 ID（如匿名 ID），我们不保存到数据库，
+ * 但会在日志中记录原始 userId 用于追踪
  */
 function normalizeUserId(userId: string | null | undefined): string | null {
   if (!userId || userId === null) return null;
-  if (userId === "anonymous" || !isValidUuid(userId)) {
+  // 如果是 "anonymous" 字符串，直接返回 null
+  if (userId === "anonymous") return null;
+  // 如果是匿名 ID 格式（以 "anon-" 开头），返回 null
+  if (userId.startsWith("anon-")) return null;
+  // 验证是否为有效的 UUID 格式
+  if (!isValidUuid(userId)) {
+    // 如果不是 UUID，返回 null（但会在日志中记录原始值用于追踪）
     return null;
   }
   return userId;
@@ -70,9 +79,20 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
     return;
   }
 
+  // 规范化 user_id（只保存有效的 UUID）
+  const normalizedUserId = normalizeUserId(log.userId);
+  
+  // 如果 userId 无效，记录警告日志（用于调试）
+  if (log.userId && !normalizedUserId) {
+    defaultLogger.warn("ai_logs: userId is not valid UUID, will be saved as null", {
+      originalUserId: log.userId,
+      userIdType: typeof log.userId,
+    });
+  }
+  
   const payload = [
     {
-      user_id: normalizeUserId(log.userId),
+      user_id: normalizedUserId,
       question: log.question,
       answer: log.answer,
       locale: log.lang ?? null, // 数据库表中的字段名是 locale，不是 language
