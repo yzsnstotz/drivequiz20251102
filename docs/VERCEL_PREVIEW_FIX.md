@@ -148,6 +148,56 @@ curl https://your-preview-url.vercel.app/api/ai/chat
   - `preview` - Preview 部署
   - `production` - 生产环境
 
+## 🔒 生产环境安全要求
+
+**⚠️ 重要**：生产环境有严格的安全要求，必须配置以下环境变量：
+
+| 环境变量 | 是否必需 | 说明 |
+|---------|---------|------|
+| `USER_JWT_SECRET` | ✅ **必需** | 生产环境必须配置，否则 API 会拒绝所有请求 |
+| `OPENAI_API_KEY` | ✅ **必需** | 生产环境必须配置，否则无法调用 OpenAI API |
+
+### 生产环境安全检查
+
+代码会在请求处理前进行安全检查：
+
+1. **启动检查**：在处理请求前，检查必需的环境变量是否配置
+2. **JWT 验证**：生产环境必须提供有效的 JWT Token
+3. **错误日志**：所有安全相关错误都会记录到日志
+
+### 生产环境配置清单
+
+在部署到生产环境前，确保在 Vercel Dashboard 中配置：
+
+```bash
+# 必需的环境变量（Production 环境）
+USER_JWT_SECRET=<your-secret-key>  # 至少 32 个字符
+OPENAI_API_KEY=sk-xxx...           # OpenAI API 密钥
+OPENAI_API_KEY=sk-xxx...           # OpenAI API 密钥（重复检查）
+AI_MODEL=gpt-4o-mini               # 可选，默认值
+```
+
+### 验证生产环境配置
+
+部署后，可以通过以下方式验证：
+
+```bash
+# 测试健康检查（不需要认证）
+curl https://your-domain.vercel.app/api/ai/chat
+
+# 应该返回配置信息
+{
+  "ok": true,
+  "data": {
+    "service": "ai-chat",
+    "model": "gpt-4o-mini",
+    "ts": "..."
+  }
+}
+```
+
+如果返回 `SERVER_MISCONFIG` 错误，说明必需的环境变量未配置。
+
 ## 📚 相关文档
 
 - [环境变量配置指南](./ENV_SETUP.md)

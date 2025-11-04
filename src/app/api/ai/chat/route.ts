@@ -11,6 +11,34 @@ const AI_MODEL = process.env.AI_MODEL ?? "gpt-4o-mini"; // 可切换模型
 const REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS ?? 30000);
 
 /** ===============================
+ * 环境检测
+ * =============================== */
+function isProduction(): boolean {
+  // VERCEL_ENV: 'development' | 'preview' | 'production'
+  // NODE_ENV: 'development' | 'production' | 'test'
+  const vercelEnv = process.env.VERCEL_ENV;
+  const nodeEnv = process.env.NODE_ENV;
+  
+  // 明确的生产环境：VERCEL_ENV === 'production' 或 NODE_ENV === 'production' 且不是预览环境
+  if (vercelEnv === "production") return true;
+  if (nodeEnv === "production" && vercelEnv !== "preview") return true;
+  
+  return false;
+}
+
+function isDevelopmentOrPreview(): boolean {
+  const vercelEnv = process.env.VERCEL_ENV;
+  const nodeEnv = process.env.NODE_ENV;
+  
+  // 开发环境
+  if (nodeEnv === "development" || !nodeEnv) return true;
+  // 预览环境
+  if (vercelEnv === "preview" || vercelEnv === "development") return true;
+  
+  return false;
+}
+
+/** ===============================
  * 统一响应工具
  * =============================== */
 type Ok<T> = { ok: true; data: T };
@@ -78,29 +106,41 @@ function checkSafety(input: string): { pass: true } | { pass: false; code: strin
 /** ===============================
  * 用户 JWT 校验
  * - 使用 HMAC（HS256/HS512）验证
- * - 开发模式：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试）
+ * - 开发模式：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
+ * - 生产环境：必须配置 USER_JWT_SECRET，严格验证 JWT（安全要求）
  * =============================== */
 async function verifyUserJwt(authorization?: string) {
-  // 开发模式或 Preview 环境：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
-  if (!USER_JWT_SECRET) {
-    // 开发模式兜底：如果有 Bearer token，即使不验证也允许通过
-    if (authorization?.startsWith("Bearer ")) {
-      const token = authorization.slice("Bearer ".length).trim();
-      if (token) {
-        // 简单检查 token 是否存在，不验证签名（仅开发/预览模式）
-        return { valid: true as const, payload: { sub: "dev-user" } };
-      }
+  // 生产环境安全检查：必须配置 USER_JWT_SECRET
+  if (isProduction()) {
+    if (!USER_JWT_SECRET) {
+      console.error("[Security] Production environment requires USER_JWT_SECRET");
+      return { 
+        valid: false, 
+        reason: "SERVER_MISCONFIG" as const, 
+        detail: "USER_JWT_SECRET is required in production environment" 
+      };
     }
-    // 检测是否为开发或预览环境
-    // VERCEL_ENV: 'development' | 'preview' | 'production'
-    const isDev = process.env.NODE_ENV === "development" || 
-                  !process.env.NODE_ENV ||
-                  process.env.VERCEL_ENV === "preview" ||
-                  process.env.VERCEL_ENV === "development";
-    
-    if (isDev) {
+    // 生产环境必须提供有效的 Authorization header
+    if (!authorization?.startsWith("Bearer ")) {
+      return { valid: false, reason: "MISSING_BEARER" as const };
+    }
+  }
+  
+  // 开发或预览环境：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
+  if (!USER_JWT_SECRET) {
+    if (isDevelopmentOrPreview()) {
+      // 开发模式兜底：如果有 Bearer token，即使不验证也允许通过
+      if (authorization?.startsWith("Bearer ")) {
+        const token = authorization.slice("Bearer ".length).trim();
+        if (token) {
+          // 简单检查 token 是否存在，不验证签名（仅开发/预览模式）
+          return { valid: true as const, payload: { sub: "dev-user" } };
+        }
+      }
+      // 开发或预览环境允许跳过认证
       return { valid: true as const, payload: { sub: "anonymous-dev" } };
     }
+    // 非开发/预览环境但未配置密钥，返回错误
     return { valid: false, reason: "SERVER_MISCONFIG" as const, detail: "USER_JWT_SECRET not set" };
   }
 
@@ -121,7 +161,15 @@ async function verifyUserJwt(authorization?: string) {
  * - 如接入自建 AI-Service，可在此改为内部 fetch，并附带 SERVICE_TOKEN
  * =============================== */
 async function callOpenAI(question: string, meta?: ChatRequestBody["meta"]): Promise<string> {
-  if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
+  // 生产环境安全检查：必须配置 OPENAI_API_KEY
+  if (isProduction() && !OPENAI_API_KEY) {
+    console.error("[Security] Production environment requires OPENAI_API_KEY");
+    throw new Error("OPENAI_API_KEY is required in production environment");
+  }
+  
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY not configured");
+  }
 
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS);
@@ -180,32 +228,48 @@ async function safeJson(r: Response) {
  * 路由实现
  * =============================== */
 export async function POST(req: NextRequest) {
+  // 0) 生产环境启动检查（提前检查，避免不必要的处理）
+  if (isProduction()) {
+    if (!USER_JWT_SECRET) {
+      console.error("[Security] Production environment: USER_JWT_SECRET is missing");
+      return internalError(
+        "Server misconfigured: USER_JWT_SECRET is required in production environment",
+        "SERVER_MISCONFIG"
+      );
+    }
+    if (!OPENAI_API_KEY) {
+      console.error("[Security] Production environment: OPENAI_API_KEY is missing");
+      return internalError(
+        "Server misconfigured: OPENAI_API_KEY is required in production environment",
+        "SERVER_MISCONFIG"
+      );
+    }
+  }
+  
   // 1) 用户 JWT 校验
   const auth = req.headers.get("authorization") ?? undefined;
   const jwtRes = await verifyUserJwt(auth);
   
-  // 如果验证失败，根据原因返回相应错误（开发模式下可能已跳过）
+  // 如果验证失败，根据原因返回相应错误
   if (!jwtRes.valid) {
     if (jwtRes.reason === "SERVER_MISCONFIG") {
-      // 在生产环境中，如果未配置 USER_JWT_SECRET，返回错误
-      // 但开发或预览环境允许跳过
-      const isDev = process.env.NODE_ENV === "development" || 
-                    !process.env.NODE_ENV ||
-                    process.env.VERCEL_ENV === "preview" ||
-                    process.env.VERCEL_ENV === "development";
-      if (!isDev) {
-        return internalError("Server misconfigured: USER_JWT_SECRET missing", "SERVER_MISCONFIG");
+      // 生产环境已经在前面检查过了，这里不应该到达
+      // 但为了类型安全和防御性编程，保留检查
+      if (isProduction()) {
+        return internalError(
+          "Server misconfigured: USER_JWT_SECRET is required in production environment",
+          "SERVER_MISCONFIG"
+        );
       }
-      // 开发模式：如果未配置 USER_JWT_SECRET，verifyUserJwt 应该已经返回 valid: true
-      // 这里不应该到达，但为了类型安全保留
+      // 非生产环境的配置错误，允许继续（开发模式）
       // 继续执行（开发模式允许跳过认证）
     } else if (jwtRes.reason === "MISSING_BEARER") {
-      // 只有在生产环境且配置了 USER_JWT_SECRET 时才需要 Bearer token
-      const isDev = process.env.NODE_ENV === "development" || 
-                    !process.env.NODE_ENV ||
-                    process.env.VERCEL_ENV === "preview" ||
-                    process.env.VERCEL_ENV === "development";
-      if (!USER_JWT_SECRET && isDev) {
+      // 生产环境必须提供 Bearer token
+      if (isProduction()) {
+        return unauthorized("NO_AUTH", "缺少认证信息（Authorization: Bearer ...）");
+      }
+      // 开发或预览环境：如果未配置 USER_JWT_SECRET，允许跳过
+      if (!USER_JWT_SECRET && isDevelopmentOrPreview()) {
         // 开发模式且未配置密钥，允许继续（verifyUserJwt 应该已经返回 valid: true）
         // 这里不应该到达
       } else {
