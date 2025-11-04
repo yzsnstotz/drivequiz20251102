@@ -332,12 +332,48 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         errorMessage += "\n\nPossible solutions:\n";
         errorMessage += "1. The Supabase database may be paused (free tier projects pause after inactivity). Please check your Supabase dashboard and resume the project.\n";
         errorMessage += "2. Try using the connection pooler instead of direct connection in Vercel Dashboard:\n";
-        errorMessage += "   For project ID 'cgpmpfnjzlzbquakmmrj', use:\n";
-        errorMessage += "   postgresql://postgres.cgpmpfnjzlzbquakmmrj:zKV0rtIV1QOByu89@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require\n";
+        errorMessage += "   For project ID 'cgpmpfnjzlzbquakmmrj', use connection pooler:\n";
+        errorMessage += "   postgresql://postgres.cgpmpfnjzlzbquakmmrj:zKV0rtIV1QOByu89@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require\n";
         errorMessage += "   Or check your Supabase Dashboard → Settings → Database → Connection Pooling for the correct pooler URL.\n";
+        errorMessage += "   Note: The pooler username format is 'postgres.PROJECT_ID', not 'postgres'.\n";
       }
       
       console.error("[GET /api/admin/ai/logs] DNS resolution error. Connection string:", connectionString.substring(0, 50) + "...");
+      return internalError(errorMessage);
+    }
+    
+    // 检查是否是 "Tenant or user not found" 错误（通常发生在 pooler 配置错误时）
+    if (message.includes("Tenant or user not found") || message.includes("tenant") || message.includes("user not found")) {
+      const connectionString = process.env.AI_DATABASE_URL || "";
+      const isPoolerConnection = connectionString.includes("pooler.supabase.com") || connectionString.includes(":6543");
+      
+      let errorMessage = `Database authentication failed: ${message}`;
+      
+      if (isPoolerConnection) {
+        errorMessage += "\n\nThis error usually means the pooler connection string is incorrect.\n";
+        errorMessage += "Please check the following:\n\n";
+        errorMessage += "1. Username format: For pooler, username must be 'postgres.PROJECT_ID'\n";
+        errorMessage += "   ❌ Wrong: postgres:password@...\n";
+        errorMessage += "   ✅ Correct: postgres.cgpmpfnjzlzbquakmmrj:password@...\n\n";
+        errorMessage += "2. Project ID: Make sure the project ID in the username matches your Supabase project\n";
+        errorMessage += "   Project ID should be: cgpmpfnjzlzbquakmmrj\n\n";
+        errorMessage += "3. Password: Verify the password is correct\n\n";
+        errorMessage += "4. Pooler URL: Check the correct pooler URL in Supabase Dashboard:\n";
+        errorMessage += "   Settings → Database → Connection Pooling\n";
+        errorMessage += "   The URL format should be: aws-X-ap-southeast-1.pooler.supabase.com:6543\n\n";
+        errorMessage += "5. Alternative: Try using direct connection instead:\n";
+        errorMessage += "   postgresql://postgres:zKV0rtIV1QOByu89@db.cgpmpfnjzlzbquakmmrj.supabase.co:5432/postgres?sslmode=require\n";
+        errorMessage += "   (Note: Direct connection may require the database to be active/not paused)\n";
+      } else {
+        errorMessage += "\n\nPlease check:\n";
+        errorMessage += "1. Username and password are correct\n";
+        errorMessage += "2. Database is active (not paused)\n";
+        errorMessage += "3. Connection string format is correct\n";
+      }
+      
+      // 记录连接字符串（隐藏密码部分）
+      const maskedConnectionString = connectionString.replace(/:([^:@]+)@/, ":***@");
+      console.error("[GET /api/admin/ai/logs] Authentication error. Connection string:", maskedConnectionString.substring(0, 80) + "...");
       return internalError(errorMessage);
     }
     
