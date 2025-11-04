@@ -1,5 +1,4 @@
 // apps/web/app/api/admin/ai/summary/route.ts
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 
 // 运行时配置（保持与项目其他路由一致）
