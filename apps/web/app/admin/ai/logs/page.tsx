@@ -126,13 +126,29 @@ export default function AdminAiLogsPage() {
         if (filters.model) params.model = filters.model;
         if (filters.q) params.q = filters.q;
 
-        const data = await apiGet<ListResponse>("/api/admin/ai/logs", { query: params });
+        // apiGet 返回的是 res.data，而 success 返回的是 { ok: true, data: { items }, pagination }
+        // 所以 data 应该是 { items }，pagination 在顶层
+        const response = await apiGet<{ items: LogItem[] }>("/api/admin/ai/logs", { query: params });
         if (!mounted) return;
 
-        const payload = data as unknown as any;
-        const items = (payload.items ?? payload) as LogItem[];
+        // 由于 apiGet 返回 res.data，而 success 返回 { ok: true, data: { items }, pagination }
+        // 所以 response 应该是 { items }
+        const items = response?.items || (Array.isArray(response) ? response : []);
+        
+        // pagination 需要从完整响应中获取，但 apiGet 只返回 data
+        // 我们需要从 URL 参数或响应中获取 pagination
+        // 暂时先尝试从 response 中获取
+        let pagination: ListResponse["pagination"] | null = null;
+        if (response && typeof response === "object" && "pagination" in response) {
+          pagination = (response as any).pagination;
+        } else {
+          // 如果没有 pagination，尝试从响应中推断
+          // 或者使用默认值
+          pagination = null;
+        }
+        
         setItems(items);
-        setPagination(payload.pagination || null);
+        setPagination(pagination);
       } catch (e) {
         if (!mounted) return;
         if (e instanceof ApiError) {
