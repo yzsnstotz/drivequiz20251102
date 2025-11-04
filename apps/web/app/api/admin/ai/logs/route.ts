@@ -1,5 +1,6 @@
 // apps/web/app/api/admin/ai/logs/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { sql } from "kysely";
 import { aiDb } from "@/lib/aiDb";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
@@ -155,14 +156,14 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     // 检查 sources 字段是否存在
     let hasSourcesColumn = false;
     try {
-      const columnCheck = await aiDb
-        .selectFrom("information_schema.columns")
-        .select(["column_name"])
-        .where("table_schema", "=", "public")
-        .where("table_name", "=", "ai_logs")
-        .where("column_name", "=", "sources")
-        .executeTakeFirst();
-      hasSourcesColumn = !!columnCheck;
+      const columnCheck = await sql<{ column_name: string }>`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ai_logs'
+          AND column_name = 'sources'
+      `.execute(aiDb);
+      hasSourcesColumn = columnCheck.rows.length > 0;
     } catch {
       // 如果检查失败，假设字段不存在
       hasSourcesColumn = false;
