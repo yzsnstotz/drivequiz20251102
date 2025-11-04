@@ -114,7 +114,7 @@ function parseAndValidateBody(body: unknown): {
 }
 
 /** 生成缓存 Key（包含语言与模型，避免跨配置命中） */
-function buildCacheKey(question: string, lang: string, model: string): string {
+export function buildCacheKey(question: string, lang: string, model: string): string {
   return `ask:v1:q=${encodeURIComponent(question)}:l=${lang}:m=${model}`;
 }
 

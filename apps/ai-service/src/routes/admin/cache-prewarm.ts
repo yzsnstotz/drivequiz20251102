@@ -33,7 +33,6 @@ type Err = { ok: false; errorCode: ErrCode; message: string; details?: unknown }
 // RAG 检索配置
 const RAG_TOP_K = Number(process.env.RAG_TOP_K || 3);
 const RAG_THRESHOLD = Number(process.env.RAG_THRESHOLD || 0.75);
-const AI_MODEL_VERSION = process.env.AI_MODEL_VERSION || "v1";
 
 // 计算 UTC 昨天（YYYY-MM-DD）
 function utcYesterday(): string {
@@ -91,7 +90,7 @@ async function prewarmQuestion(
     }
 
     // RAG 检索
-    const ragSources = await ragSearch(question, RAG_TOP_K, RAG_THRESHOLD, config, lang);
+    const ragSources = await ragSearch(question, RAG_TOP_K, RAG_THRESHOLD, config);
     const ragHits = ragSources.length;
 
     // 构建参考上下文
@@ -167,7 +166,7 @@ async function prewarmQuestion(
 
     return { success: true, question };
   } catch (error) {
-    defaultLogger.error({ error, question }, "Failed to prewarm question");
+    defaultLogger.error("Failed to prewarm question", { error, question });
     return {
       success: false,
       question,
@@ -244,7 +243,7 @@ export default async function cachePrewarmRoute(app: FastifyInstance): Promise<v
           results: Array<{ question: string; success: boolean; error?: string }>;
         }>);
       } catch (error) {
-        defaultLogger.error({ error }, "Cache prewarm failed");
+        defaultLogger.error("Cache prewarm failed", { error });
         reply.code(500).send({
           ok: false,
           errorCode: "INTERNAL_ERROR",
