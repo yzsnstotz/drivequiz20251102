@@ -96,12 +96,25 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
       const [header, payload, signature] = token.split(".");
       if (!header || !payload) return null;
       // 尝试解析 payload（不验证签名）
-      const json = JSON.parse(atobUrlSafe(payload)) as { sub?: string; user_id?: string; userId?: string };
-      const userId = json.sub || json.user_id || json.userId || "anonymous";
-      return { userId };
+      const json = JSON.parse(atobUrlSafe(payload)) as { 
+        sub?: string; 
+        user_id?: string; 
+        userId?: string;
+        id?: string;
+      };
+      // 尝试多种可能的字段名
+      const userId = json.sub || json.user_id || json.userId || json.id || null;
+      if (!userId || typeof userId !== "string") return null;
+      // 验证是否为有效的 UUID 格式
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(userId)) {
+        return { userId };
+      }
+      // 如果不是 UUID 格式，返回 null（将被视为匿名用户）
+      return null;
     } catch {
-      // 如果解析失败，返回匿名 ID
-      return { userId: "anonymous" };
+      // 如果解析失败，返回 null
+      return null;
     }
   }
 
@@ -130,9 +143,22 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
     );
     if (!valid) return null;
 
-    const json = JSON.parse(atobUrlSafe(payload)) as { sub?: string; user_id?: string; userId?: string };
-    const userId = json.sub || json.user_id || json.userId || "anonymous";
-    return { userId };
+    const json = JSON.parse(atobUrlSafe(payload)) as { 
+      sub?: string; 
+      user_id?: string; 
+      userId?: string;
+      id?: string;
+    };
+    // 尝试多种可能的字段名
+    const userId = json.sub || json.user_id || json.userId || json.id || null;
+    if (!userId || typeof userId !== "string") return null;
+    // 验证是否为有效的 UUID 格式
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(userId)) {
+      return { userId };
+    }
+    // 如果不是 UUID 格式，返回 null（将被视为匿名用户）
+    return null;
   } catch {
     return null;
   }
