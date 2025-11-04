@@ -207,7 +207,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
 
         const completion = await openai.chat.completions.create({
-          model: (config as any).aiModel ?? config["aiModel"],
+          model: model, // 使用从数据库读取的模型配置
           temperature: 0.4,
           messages: [
             { role: "system", content: sys },
@@ -267,7 +267,9 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         };
 
         // 7) 写入缓存（不影响主流程）
-        void cacheSet(cacheKey, result, CACHE_TTL_SECONDS).catch(() => {});
+        // 从数据库读取缓存 TTL 配置（优先）或使用环境变量
+        const cacheTtl = await getCacheTtlFromConfig();
+        void cacheSet(cacheKey, result, cacheTtl).catch(() => {});
 
         // 8) 异步写 ai_logs（失败仅告警，不阻断）
         void logAiInteraction({
