@@ -46,6 +46,7 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants" },
   { key: "nav.videos", href: "/admin/videos", match: (p: string) => p.startsWith("/admin/videos"), permission: "videos" },
   { key: "nav.contactAndTerms", href: "/admin/contact-and-terms", match: (p: string) => p.startsWith("/admin/contact-and-terms"), permission: "contact_and_terms" },
+  { key: "nav.ai", href: "/admin/ai", match: (p: string) => p.startsWith("/admin/ai"), permission: "ai" },
 ] as const;
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {

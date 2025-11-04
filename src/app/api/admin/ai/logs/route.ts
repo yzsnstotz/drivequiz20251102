@@ -1,6 +1,6 @@
 // src/app/api/admin/ai/logs/route.ts
 import { NextRequest } from "next/server";
-import { db } from "@/lib/db";
+import { aiDb } from "@/lib/aiDb";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
@@ -22,7 +22,7 @@ type RawRow = {
   user_id: string | null;
   question: string;
   answer: string | null;
-  language: string | null;
+  locale: string | null; // 注意：数据库表中的字段名是 locale，不是 language
   model: string | null;
   rag_hits: number | null;
   safety_flag: string; // 数据库返回 string，在 mapRow 中进行类型校验
@@ -42,7 +42,7 @@ type CamelRow = {
   userId: string | null;
   question: string;
   answer: string | null;
-  language: string | null;
+  locale: string | null; // 返回 locale 字段（与数据库字段名一致）
   model: string | null;
   ragHits: number;
   safetyFlag: "ok" | "needs_human" | "blocked";
@@ -67,7 +67,7 @@ function mapRow(r: RawRow): CamelRow {
     userId: r.user_id,
     question: r.question,
     answer: r.answer,
-    language: r.language,
+    locale: r.locale, // 使用 locale 字段（数据库表中的实际字段名）
     model: r.model,
     ragHits: Number(r.rag_hits ?? 0),
     safetyFlag: (r.safety_flag === "ok" || r.safety_flag === "needs_human" || r.safety_flag === "blocked") 
@@ -101,14 +101,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const sortColumn = SORT_MAP[sortKey];
 
     // 基础查询（只查询 ai_logs）
-    const base = db
+    // 注意：数据库表中的字段名是 locale，不是 language
+    const base = aiDb
       .selectFrom("ai_logs")
       .select([
         "id",
         "user_id",
         "question",
         "answer",
-        "language",
+        "locale", // 使用 locale 字段（数据库表中的实际字段名）
         "model",
         "rag_hits",
         "safety_flag",
@@ -117,7 +118,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       ] as const);
 
     // 计数
-    const totalRow = await db
+    const totalRow = await aiDb
       .selectFrom("ai_logs")
       .select((eb) => eb.fn.countAll().as("cnt"))
       .executeTakeFirst();

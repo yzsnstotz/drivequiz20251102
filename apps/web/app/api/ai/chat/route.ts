@@ -87,12 +87,13 @@ async function writeAiLogToSupabase(log: {
     return;
   }
   // 与后端约定的 snake_case 字段
+  // 注意：数据库表中的字段名是 locale，不是 language
   const payload = [
     {
       user_id: log.userId ?? null,
       question: log.question,
       answer: log.answer,
-      language: (log.lang || "") || null,
+      locale: log.lang ?? null, // 使用 locale 字段（数据库表中的实际字段名）
       model: log.model,
       rag_hits: log.ragHits,
       safety_flag: log.safetyFlag,

@@ -55,6 +55,8 @@ const API_BASE =
   (process.env.NEXT_PUBLIC_AI_API_BASE as string | undefined) ?? "";
 const CHAT_PATH = "/api/ai/ask"; // 使用 /api/ai/ask 路由，转发到 AI-Service (Render)
 const REQUEST_TIMEOUT_MS = 30_000;
+const LOCAL_STORAGE_KEY = "AI_CHAT_HISTORY";
+const MAX_HISTORY_MESSAGES = 100;
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -72,14 +74,31 @@ function formatErrorMessage(err: unknown): string {
 
 /** ---- 组件 ---- */
 const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: uid(),
-      role: "ai",
-      content: "你好！我是你的 AI 助手，有什么我可以帮你的吗？",
-      createdAt: Date.now(),
-    },
-  ]);
+  // 初始化消息历史：从 localStorage 读取，如果不存在则使用默认欢迎消息
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved) as ChatMessage[];
+          // 确保解析的数据是有效的数组
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch {
+        // 解析失败时忽略，使用默认值
+      }
+    }
+    return [
+      {
+        id: uid(),
+        role: "ai",
+        content: "你好！我是你的 AI 助手，有什么我可以帮你的吗？",
+        createdAt: Date.now(),
+      },
+    ];
+  });
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [errorTip, setErrorTip] = useState<string>("");
@@ -103,6 +122,19 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
+
+  // 持久化消息历史到 localStorage（限制最大条数）
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        // 限制最大保存条数，只保存最近的 N 条消息
+        const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
+      } catch {
+        // 写入失败时忽略（例如 localStorage 已满或不可用）
+      }
+    }
+  }, [messages]);
 
   const pushMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
@@ -217,16 +249,38 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
   return (
     <div className="flex h-screen flex-col bg-gray-100 fixed inset-0 z-[100]">
       {/* 顶栏 */}
-      <div className="flex items-center space-x-3 border-b bg-white p-4 flex-shrink-0">
+      <div className="flex items-center justify-between border-b bg-white p-4 flex-shrink-0">
+        <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-lg p-1 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            aria-label="返回"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <h1 className="text-xl font-bold text-gray-900">AI 助手</h1>
+        </div>
         <button
           type="button"
-          onClick={onBack}
-          className="rounded-lg p-1 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-          aria-label="返回"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              localStorage.removeItem(LOCAL_STORAGE_KEY);
+            }
+            setMessages([
+              {
+                id: uid(),
+                role: "ai",
+                content: "你好！我是你的 AI 助手，有什么我可以帮你的吗？",
+                createdAt: Date.now(),
+              },
+            ]);
+          }}
+          className="rounded-lg px-3 py-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+          aria-label="清空历史"
         >
-          <ChevronLeft className="h-6 w-6" />
+          清空历史
         </button>
-        <h1 className="text-xl font-bold text-gray-900">AI 助手</h1>
       </div>
 
       {/* 消息区 */}
