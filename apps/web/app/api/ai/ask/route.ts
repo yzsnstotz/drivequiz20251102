@@ -255,9 +255,10 @@ export async function POST(req: NextRequest) {
   }
 
   const forwardPayload: Record<string, unknown> = {
-    // 传递 userId（如果是有效 UUID）或 null（匿名用户）
-    // AI Service 的 normalizeUserId 会处理 "anonymous" 和非 UUID 格式
-    userId: isAnonymous ? null : userId,
+    // 传递 userId（无论是否为 UUID）
+    // AI Service 的 normalizeUserId 会验证 UUID 格式，非 UUID 会转换为 null
+    // 但如果是有效的 UUID，应该传递它；如果是匿名 ID，也应该传递（虽然会被转换为 null）
+    userId: userId, // 传递实际解析出的 userId，让 AI Service 处理验证
     // AI-Service 期望字段为 lang
     lang: mapLocaleToLang(locale),
     question,
@@ -265,7 +266,7 @@ export async function POST(req: NextRequest) {
       channel: "web", 
       client: "zalem",
       isAnonymous, // 标记是否为匿名用户
-      userId: userId, // 原始 userId（用于日志追踪）
+      originalUserId: userId, // 原始 userId（用于日志追踪）
     },
   };
 
