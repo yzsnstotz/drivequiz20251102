@@ -26,6 +26,26 @@ interface ApiErrorBody {
 
 type ApiResponse<T = unknown> = ApiSuccess<T> | ApiErrorBody;
 
+// /api/ai/ask 的响应类型
+interface AiAskResponse {
+  ok: boolean;
+  data?: {
+    answer: string;
+    sources?: Array<{
+      title: string;
+      url: string;
+      snippet?: string;
+      score?: number;
+      version?: string;
+    }>;
+    model?: string;
+    safetyFlag?: "ok" | "needs_human" | "blocked";
+    costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
+  };
+  errorCode?: string;
+  message?: string;
+}
+
 interface AIPageProps {
   onBack: () => void;
 }
@@ -33,7 +53,7 @@ interface AIPageProps {
 /** ---- 常量与工具 ---- */
 const API_BASE =
   (process.env.NEXT_PUBLIC_AI_API_BASE as string | undefined) ?? "";
-const CHAT_PATH = "/api/ai/chat"; // 由主站路由或 BFF 代理到 AI-Service
+const CHAT_PATH = "/api/ai/ask"; // 使用 /api/ai/ask 路由，转发到 AI-Service (Render)
 const REQUEST_TIMEOUT_MS = 30_000;
 
 function uid() {
@@ -119,23 +139,16 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        // 统一协议：{ question } → { ok, data: { answer }, errorCode, message }
+        // 统一协议：{ question, locale? } → { ok, data: { answer, sources?, ... }, errorCode, message }
         body: JSON.stringify({
           question: q,
-          // 可选字段（按需由后端取用）：前端无需执行 safety，后端统一 checkSafety()
-          meta: {
-            client: "web",
-            locale:
-              (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
-            tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            // 视情况增加 pageId / userId / sessionId 等
-          },
+          locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
         }),
       });
 
-      let payload: ApiResponse<{ answer: string }>;
+      let payload: AiAskResponse;
       try {
-        payload = (await res.json()) as ApiResponse<{ answer: string }>;
+        payload = (await res.json()) as AiAskResponse;
       } catch {
         throw new Error(`Bad JSON response (status ${res.status})`);
       }
@@ -152,11 +165,23 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         return;
       }
 
+      // 处理响应数据：/api/ai/ask 返回 { ok, data: { answer, sources?, ... } }
       const answer = payload.data?.answer ?? "";
+      const sources = payload.data?.sources;
+      
+      // 构建回复内容，如果有来源则附加
+      let content = answer || "（空响应）";
+      if (sources && sources.length > 0) {
+        content += "\n\n📚 参考来源：\n";
+        sources.forEach((source, idx) => {
+          content += `${idx + 1}. ${source.title || source.url}\n`;
+        });
+      }
+      
       pushMessage({
         id: uid(),
         role: "ai",
-        content: answer || "（空响应）",
+        content,
         createdAt: Date.now(),
       });
     } catch (err) {

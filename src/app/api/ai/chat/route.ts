@@ -161,13 +161,20 @@ async function verifyUserJwt(authorization?: string) {
  * - 如接入自建 AI-Service，可在此改为内部 fetch，并附带 SERVICE_TOKEN
  * =============================== */
 async function callOpenAI(question: string, meta?: ChatRequestBody["meta"]): Promise<string> {
-  // 生产环境安全检查：必须配置 OPENAI_API_KEY
-  if (isProduction() && !OPENAI_API_KEY) {
-    console.error("[Security] Production environment requires OPENAI_API_KEY");
-    throw new Error("OPENAI_API_KEY is required in production environment");
-  }
+  // 注意：此路由直接调用 OpenAI，不推荐在生产环境使用
+  // 推荐使用 /api/ai/ask 路由，它转发到 AI-Service (Render)
+  // 如果使用此路由，需要在 Vercel 配置 OPENAI_API_KEY
   
   if (!OPENAI_API_KEY) {
+    // 开发环境允许跳过（但建议使用 /api/ai/ask）
+    if (isDevelopmentOrPreview()) {
+      throw new Error("OPENAI_API_KEY not configured. Please use /api/ai/ask instead, or configure OPENAI_API_KEY for /api/ai/chat");
+    }
+    // 生产环境必须配置
+    if (isProduction()) {
+      console.error("[Security] Production environment: /api/ai/chat requires OPENAI_API_KEY, but this route is not recommended. Use /api/ai/ask instead.");
+      throw new Error("OPENAI_API_KEY is required for /api/ai/chat in production, but /api/ai/ask is recommended");
+    }
     throw new Error("OPENAI_API_KEY not configured");
   }
 
