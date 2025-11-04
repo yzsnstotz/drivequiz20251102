@@ -7,6 +7,7 @@ import { cacheGet, cacheSet } from "../lib/cache.js";
 import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { logAiInteraction } from "../lib/dbLogger.js";
+import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
 
 /** 请求体类型 */
 type AskBody = {
@@ -150,12 +151,13 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const cached = await cacheGet<AskResult>(cacheKey);
         if (cached) {
           // 异步记录日志（不阻断）
+          // 注意：使用当前配置的模型，而不是缓存中的模型（因为配置可能已更改）
           void logAiInteraction({
             userId,
             question,
             answer: cached.answer,
             lang,
-            model: cached.model,
+            model: model, // 使用当前配置的模型，而不是缓存中的旧模型
             ragHits: Array.isArray(cached.sources) ? cached.sources.length : (cached.reference ? 1 : 0),
             safetyFlag: cached.safetyFlag || "ok",
             costEstUsd: cached.costEstimate?.approxUsd ?? null,
