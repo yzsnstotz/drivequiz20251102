@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ApiError, apiGet } from "@/lib/apiClient";
+import { ApiError, apiGet, apiFetch } from "@/lib/apiClient";
 
 type SourceInfo = {
   title: string;
@@ -126,26 +126,24 @@ export default function AdminAiLogsPage() {
         if (filters.model) params.model = filters.model;
         if (filters.q) params.q = filters.q;
 
-        // apiGet 返回的是 res.data，而 success 返回的是 { ok: true, data: { items }, pagination }
-        // 所以 data 应该是 { items }，pagination 在顶层
-        const response = await apiGet<{ items: LogItem[] }>("/api/admin/ai/logs", { query: params });
+        // success 返回 { ok: true, data: { items }, pagination }
+        // apiGet 只返回 res.data，会丢失 pagination
+        // 需要构建完整的 URL 来传递查询参数
+        const queryString = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            queryString.append(k, String(v));
+          }
+        });
+        const url = `/api/admin/ai/logs${queryString.toString() ? `?${queryString.toString()}` : ""}`;
+        
+        // 使用 apiFetch 获取完整响应 { ok: true, data: { items }, pagination }
+        const response = await apiFetch<ListResponse>(url);
         if (!mounted) return;
 
-        // 由于 apiGet 返回 res.data，而 success 返回 { ok: true, data: { items }, pagination }
-        // 所以 response 应该是 { items }
-        const items = response?.items || (Array.isArray(response) ? response : []);
-        
-        // pagination 需要从完整响应中获取，但 apiGet 只返回 data
-        // 我们需要从 URL 参数或响应中获取 pagination
-        // 暂时先尝试从 response 中获取
-        let pagination: ListResponse["pagination"] | null = null;
-        if (response && typeof response === "object" && "pagination" in response) {
-          pagination = (response as any).pagination;
-        } else {
-          // 如果没有 pagination，尝试从响应中推断
-          // 或者使用默认值
-          pagination = null;
-        }
+        // apiFetch 返回 { ok: true, data: { items }, pagination }
+        const items = response.data?.items || (Array.isArray(response.data) ? response.data : []);
+        const pagination = response.pagination || null;
         
         setItems(items);
         setPagination(pagination);
