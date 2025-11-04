@@ -81,18 +81,23 @@ function checkSafety(input: string): { pass: true } | { pass: false; code: strin
  * - 开发模式：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试）
  * =============================== */
 async function verifyUserJwt(authorization?: string) {
-  // 开发模式：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试）
+  // 开发模式或 Preview 环境：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
   if (!USER_JWT_SECRET) {
     // 开发模式兜底：如果有 Bearer token，即使不验证也允许通过
     if (authorization?.startsWith("Bearer ")) {
       const token = authorization.slice("Bearer ".length).trim();
       if (token) {
-        // 简单检查 token 是否存在，不验证签名（仅开发模式）
+        // 简单检查 token 是否存在，不验证签名（仅开发/预览模式）
         return { valid: true as const, payload: { sub: "dev-user" } };
       }
     }
-    // 如果没有 token，在开发模式下也允许（方便测试）
-    const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+    // 检测是否为开发或预览环境
+    // VERCEL_ENV: 'development' | 'preview' | 'production'
+    const isDev = process.env.NODE_ENV === "development" || 
+                  !process.env.NODE_ENV ||
+                  process.env.VERCEL_ENV === "preview" ||
+                  process.env.VERCEL_ENV === "development";
+    
     if (isDev) {
       return { valid: true as const, payload: { sub: "anonymous-dev" } };
     }
@@ -183,7 +188,11 @@ export async function POST(req: NextRequest) {
   if (!jwtRes.valid) {
     if (jwtRes.reason === "SERVER_MISCONFIG") {
       // 在生产环境中，如果未配置 USER_JWT_SECRET，返回错误
-      const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+      // 但开发或预览环境允许跳过
+      const isDev = process.env.NODE_ENV === "development" || 
+                    !process.env.NODE_ENV ||
+                    process.env.VERCEL_ENV === "preview" ||
+                    process.env.VERCEL_ENV === "development";
       if (!isDev) {
         return internalError("Server misconfigured: USER_JWT_SECRET missing", "SERVER_MISCONFIG");
       }
@@ -192,7 +201,10 @@ export async function POST(req: NextRequest) {
       // 继续执行（开发模式允许跳过认证）
     } else if (jwtRes.reason === "MISSING_BEARER") {
       // 只有在生产环境且配置了 USER_JWT_SECRET 时才需要 Bearer token
-      const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+      const isDev = process.env.NODE_ENV === "development" || 
+                    !process.env.NODE_ENV ||
+                    process.env.VERCEL_ENV === "preview" ||
+                    process.env.VERCEL_ENV === "development";
       if (!USER_JWT_SECRET && isDev) {
         // 开发模式且未配置密钥，允许继续（verifyUserJwt 应该已经返回 valid: true）
         // 这里不应该到达
