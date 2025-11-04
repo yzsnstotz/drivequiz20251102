@@ -236,6 +236,8 @@ async function safeJson(r: Response) {
  * =============================== */
 export async function POST(req: NextRequest) {
   // 0) 生产环境启动检查（提前检查，避免不必要的处理）
+  // 注意：/api/ai/chat 路由直接调用 OpenAI，不推荐使用
+  // 推荐使用 /api/ai/ask 路由，它转发到 AI-Service (Render)
   if (isProduction()) {
     if (!USER_JWT_SECRET) {
       console.error("[Security] Production environment: USER_JWT_SECRET is missing");
@@ -244,13 +246,8 @@ export async function POST(req: NextRequest) {
         "SERVER_MISCONFIG"
       );
     }
-    if (!OPENAI_API_KEY) {
-      console.error("[Security] Production environment: OPENAI_API_KEY is missing");
-      return internalError(
-        "Server misconfigured: OPENAI_API_KEY is required in production environment",
-        "SERVER_MISCONFIG"
-      );
-    }
+    // OPENAI_API_KEY 检查已移除：此路由不推荐使用，应使用 /api/ai/ask
+    // 如果必须使用此路由，需要在 Vercel 配置 OPENAI_API_KEY
   }
   
   // 1) 用户 JWT 校验
