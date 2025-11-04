@@ -21,6 +21,7 @@ export const adminTranslations: Translations = {
     'nav.merchants': '商户管理',
     'nav.videos': '视频管理',
     'nav.contactAndTerms': '联系与条款',
+    'nav.ai': 'AI 总览',
     
     // 顶部栏
     'header.title': 'ZALEM Admin',
@@ -157,6 +158,7 @@ export const adminTranslations: Translations = {
     'nav.merchants': 'Merchants',
     'nav.videos': 'Videos',
     'nav.contactAndTerms': 'Contact & Terms',
+    'nav.ai': 'AI Overview',
     
     // 顶部栏
     'header.title': 'ZALEM Admin',
@@ -293,6 +295,7 @@ export const adminTranslations: Translations = {
     'nav.merchants': '店舗管理',
     'nav.videos': '動画管理',
     'nav.contactAndTerms': '連絡と規約',
+    'nav.ai': 'AI 概要',
     
     // 顶部栏
     'header.title': 'ZALEM Admin',

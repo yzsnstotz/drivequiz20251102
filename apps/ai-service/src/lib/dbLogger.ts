@@ -53,7 +53,7 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
       user_id: log.userId ?? null,
       question: log.question,
       answer: log.answer,
-      language: log.lang ?? null,
+      locale: log.lang ?? null, // 数据库表中的字段名是 locale，不是 language
       model: log.model,
       rag_hits: log.ragHits,
       safety_flag: log.safetyFlag,
