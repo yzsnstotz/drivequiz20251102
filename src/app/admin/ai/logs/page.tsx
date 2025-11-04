@@ -370,6 +370,7 @@ export default function AdminAiLogsPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-2 text-left">ID</th>
+                    <th className="px-4 py-2 text-left">用户ID</th>
                     <th className="px-4 py-2 text-left">问题</th>
                     <th className="px-4 py-2 text-left">回答</th>
                     <th className="px-4 py-2 text-left">语言</th>
@@ -384,7 +385,7 @@ export default function AdminAiLogsPage() {
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                         暂无数据
                       </td>
                     </tr>
@@ -392,6 +393,13 @@ export default function AdminAiLogsPage() {
                     items.map((item) => (
                       <tr key={item.id} className="border-t hover:bg-gray-50">
                         <td className="px-4 py-2 text-xs">{item.id}</td>
+                        <td className="px-4 py-2 text-xs font-mono" title={item.userId || "匿名用户"}>
+                          {item.userId ? (
+                            <span className="text-blue-600">{item.userId.slice(0, 8)}...</span>
+                          ) : (
+                            <span className="text-gray-400">匿名</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2 max-w-xs truncate" title={item.question}>
                           {item.question}
                         </td>

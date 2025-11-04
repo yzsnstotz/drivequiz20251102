@@ -88,7 +88,15 @@ export default function AdminAiConfigPage() {
     try {
       const resp = await fetchConfig();
       if (resp.ok && resp.data) {
-        setConfig(resp.data);
+        // API 返回的值是字符串，需要转换为数字
+        const data = resp.data;
+        setConfig({
+          dailyAskLimit: typeof data.dailyAskLimit === "string" ? Number(data.dailyAskLimit) : (data.dailyAskLimit ?? 10),
+          answerCharLimit: typeof data.answerCharLimit === "string" ? Number(data.answerCharLimit) : (data.answerCharLimit ?? 300),
+          model: data.model ?? "gpt-4o-mini",
+          cacheTtl: typeof data.cacheTtl === "string" ? Number(data.cacheTtl) : (data.cacheTtl ?? 86400),
+          costAlertUsdThreshold: typeof data.costAlertUsdThreshold === "string" ? Number(data.costAlertUsdThreshold) : (data.costAlertUsdThreshold ?? 10.0),
+        });
       }
     } catch (err) {
       console.error("Failed to load config:", err);
@@ -247,7 +255,7 @@ export default function AdminAiConfigPage() {
             <div className="space-y-2 text-sm">
               <div>
                 <div className="font-medium text-gray-700">当前成本阈值</div>
-                <div className="text-gray-600">${config.costAlertUsdThreshold.toFixed(2)} USD</div>
+                <div className="text-gray-600">${(typeof config.costAlertUsdThreshold === "number" ? config.costAlertUsdThreshold : Number(config.costAlertUsdThreshold) || 0).toFixed(2)} USD</div>
                 <p className="text-xs text-gray-500 mt-1">
                   当每日成本超过此值时，系统会触发警告通知
                 </p>
