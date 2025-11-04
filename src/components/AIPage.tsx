@@ -190,9 +190,9 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
   );
 
   return (
-    <div className="flex h-screen flex-col bg-gray-100">
+    <div className="flex h-screen flex-col bg-gray-100 fixed inset-0 z-[100]">
       {/* 顶栏 */}
-      <div className="flex items-center space-x-3 border-b bg-white p-4">
+      <div className="flex items-center space-x-3 border-b bg-white p-4 flex-shrink-0">
         <button
           type="button"
           onClick={onBack}
@@ -207,7 +207,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       {/* 消息区 */}
       <div
         ref={listRef}
-        className="flex-1 space-y-4 overflow-y-auto p-4"
+        className="flex-1 space-y-4 overflow-y-auto p-4 min-h-0"
         aria-live="polite"
       >
         {messages.map((m) => {
@@ -232,7 +232,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       </div>
 
       {/* 底部输入区 */}
-      <div className="border-t bg-white p-4">
+      <div className="border-t bg-white p-4 flex-shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         <div className="flex items-end space-x-2">
           <div className="relative flex-1">
             <textarea

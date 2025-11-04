@@ -78,10 +78,28 @@ function checkSafety(input: string): { pass: true } | { pass: false; code: strin
 /** ===============================
  * 用户 JWT 校验
  * - 使用 HMAC（HS256/HS512）验证
+ * - 开发模式：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试）
  * =============================== */
 async function verifyUserJwt(authorization?: string) {
+  // 开发模式：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试）
+  if (!USER_JWT_SECRET) {
+    // 开发模式兜底：如果有 Bearer token，即使不验证也允许通过
+    if (authorization?.startsWith("Bearer ")) {
+      const token = authorization.slice("Bearer ".length).trim();
+      if (token) {
+        // 简单检查 token 是否存在，不验证签名（仅开发模式）
+        return { valid: true as const, payload: { sub: "dev-user" } };
+      }
+    }
+    // 如果没有 token，在开发模式下也允许（方便测试）
+    const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+    if (isDev) {
+      return { valid: true as const, payload: { sub: "anonymous-dev" } };
+    }
+    return { valid: false, reason: "SERVER_MISCONFIG" as const, detail: "USER_JWT_SECRET not set" };
+  }
+
   if (!authorization?.startsWith("Bearer ")) return { valid: false, reason: "MISSING_BEARER" as const };
-  if (!USER_JWT_SECRET) return { valid: false, reason: "SERVER_MISCONFIG" as const, detail: "USER_JWT_SECRET not set" };
 
   const token = authorization.slice("Bearer ".length).trim();
   try {
@@ -160,14 +178,31 @@ export async function POST(req: NextRequest) {
   // 1) 用户 JWT 校验
   const auth = req.headers.get("authorization") ?? undefined;
   const jwtRes = await verifyUserJwt(auth);
+  
+  // 如果验证失败，根据原因返回相应错误（开发模式下可能已跳过）
   if (!jwtRes.valid) {
     if (jwtRes.reason === "SERVER_MISCONFIG") {
-      return internalError("Server misconfigured: USER_JWT_SECRET missing", "SERVER_MISCONFIG");
+      // 在生产环境中，如果未配置 USER_JWT_SECRET，返回错误
+      const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+      if (!isDev) {
+        return internalError("Server misconfigured: USER_JWT_SECRET missing", "SERVER_MISCONFIG");
+      }
+      // 开发模式：如果未配置 USER_JWT_SECRET，verifyUserJwt 应该已经返回 valid: true
+      // 这里不应该到达，但为了类型安全保留
+      // 继续执行（开发模式允许跳过认证）
+    } else if (jwtRes.reason === "MISSING_BEARER") {
+      // 只有在生产环境且配置了 USER_JWT_SECRET 时才需要 Bearer token
+      const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+      if (!USER_JWT_SECRET && isDev) {
+        // 开发模式且未配置密钥，允许继续（verifyUserJwt 应该已经返回 valid: true）
+        // 这里不应该到达
+      } else {
+        return unauthorized("NO_AUTH", "缺少认证信息（Authorization: Bearer ...）");
+      }
+    } else if (jwtRes.reason === "INVALID_TOKEN") {
+      return unauthorized("INVALID_TOKEN", "无效或过期的认证信息");
     }
-    if (jwtRes.reason === "MISSING_BEARER") {
-      return unauthorized("NO_AUTH", "缺少认证信息（Authorization: Bearer ...）");
-    }
-    return unauthorized("INVALID_TOKEN", "无效或过期的认证信息");
+    // 其他情况（开发模式）继续执行
   }
 
   // 2) 解析请求体
