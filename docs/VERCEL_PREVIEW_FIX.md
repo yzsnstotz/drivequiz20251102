@@ -173,7 +173,6 @@ curl https://your-preview-url.vercel.app/api/ai/chat
 # 必需的环境变量（Production 环境）
 USER_JWT_SECRET=<your-secret-key>  # 至少 32 个字符
 OPENAI_API_KEY=sk-xxx...           # OpenAI API 密钥
-OPENAI_API_KEY=sk-xxx...           # OpenAI API 密钥（重复检查）
 AI_MODEL=gpt-4o-mini               # 可选，默认值
 ```
 
