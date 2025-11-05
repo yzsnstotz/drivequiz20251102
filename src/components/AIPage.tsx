@@ -279,7 +279,12 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
 
 
   return (
-    <div className="flex h-screen flex-col bg-gray-100 fixed inset-0 z-[100]">
+    <div className="flex flex-col bg-gray-100 fixed inset-0 z-[100]" style={{
+      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      height: '100dvh', // 使用动态视口高度，适配移动端浏览器
+      maxHeight: '100dvh',
+      overflow: 'hidden'
+    }}>
       {/* 顶栏 */}
       <div className="flex items-center justify-between border-b bg-white p-4 flex-shrink-0">
         <div className="flex items-center space-x-3">
@@ -342,10 +347,13 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         })}
       </div>
 
-      {/* 底部输入区 */}
+      {/* 底部输入区 - 移动端优化：确保不被浏览器导航栏遮挡 */}
       <div className="border-t bg-white p-3 flex-shrink-0" style={{ 
-        paddingBottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
-        paddingTop: '0.75rem'
+        paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 1.5rem + 80px))',
+        paddingTop: '0.75rem',
+        marginBottom: 'max(0px, calc(env(safe-area-inset-bottom) - 10px))',
+        position: 'relative',
+        zIndex: 10
       }}>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">

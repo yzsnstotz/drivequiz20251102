@@ -307,11 +307,20 @@ export async function POST(req: NextRequest) {
       console.log("[JWT Debug] JWT extracted from Bearer header", { jwtLength: jwt.length });
     }
     
-    // 2) Cookie（Supabase 前端可能使用）
+    // 2) Cookie（优先检查 USER_TOKEN，兼容移动端）
     if (!jwt) {
       try {
-        const cookieJwt = req.cookies.get("sb-access-token")?.value;
-        console.log("[JWT Debug] Checking cookie", { hasCookie: !!cookieJwt, cookieLength: cookieJwt?.length });
+        // 优先检查 USER_TOKEN cookie（激活时设置的）
+        let cookieJwt = req.cookies.get("USER_TOKEN")?.value;
+        if (!cookieJwt) {
+          // 如果没有 USER_TOKEN，检查 sb-access-token（Supabase 前端可能使用）
+          cookieJwt = req.cookies.get("sb-access-token")?.value;
+        }
+        console.log("[JWT Debug] Checking cookie", { 
+          hasUserToken: !!req.cookies.get("USER_TOKEN")?.value,
+          hasSbToken: !!req.cookies.get("sb-access-token")?.value,
+          cookieLength: cookieJwt?.length 
+        });
         if (cookieJwt && cookieJwt.trim()) {
           jwt = cookieJwt.trim();
           console.log("[JWT Debug] JWT extracted from cookie", { jwtLength: jwt.length });
