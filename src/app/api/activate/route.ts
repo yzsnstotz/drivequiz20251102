@@ -350,16 +350,33 @@ export async function POST(request: NextRequest) {
       }
       const userToken = `act-${Math.abs(tokenHash).toString(16).padStart(8, "0")}-${inserted.id.toString(16).padStart(8, "0")}`;
 
-      return ok(
+      // 创建响应，同时设置HTTP cookie（确保移动端也能获取token）
+      const response = NextResponse.json(
         {
-          activationId: inserted.id,
-          activatedAt: inserted.activated_at.toISOString(),
-          email,
-          expiresAt,
-          userToken, // 返回用户token，前端存储用于后续请求
+          ok: true,
+          data: {
+            activationId: inserted.id,
+            activatedAt: inserted.activated_at.toISOString(),
+            email,
+            expiresAt,
+            userToken, // 返回用户token，前端存储用于后续请求
+          },
         },
-        200,
+        { status: 200 }
       );
+
+      // 设置HTTP cookie（30天有效期，兼容移动端）
+      const cookieExpires = new Date();
+      cookieExpires.setTime(cookieExpires.getTime() + 30 * 24 * 60 * 60 * 1000);
+      response.cookies.set("USER_TOKEN", userToken, {
+        expires: cookieExpires,
+        path: "/",
+        sameSite: "lax",
+        httpOnly: false, // 设置为false，允许前端JavaScript读取（兼容移动端）
+        secure: process.env.NODE_ENV === "production", // 生产环境使用HTTPS时启用secure
+      });
+
+      return response;
     });
 
     // 事务返回的已经是 NextResponse（ok/err），直接 return
