@@ -361,6 +361,11 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         localStorage.setItem(ACTIVATION_KEY, 'true');
         localStorage.setItem(ACTIVATION_EMAIL_KEY, email);
         
+        // 保存用户token（基于激活码生成，用于后续请求标识用户）
+        if (result.data?.userToken) {
+          localStorage.setItem('USER_TOKEN', result.data.userToken);
+        }
+        
         // 保存有效期信息用于显示
         const expiresAt = result.data?.expiresAt || null;
         setSuccessExpiresAt(expiresAt);
