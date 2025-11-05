@@ -130,72 +130,22 @@ function isBuildTime(): boolean {
 function getAiConnectionString(): string {
   const connectionString = process.env.AI_DATABASE_URL;
   
-  console.log('[AI DB] [Step 1] Checking AI_DATABASE_URL environment variable...');
-  console.log('[AI DB] [Step 1] AI_DATABASE_URL exists:', !!connectionString);
-  
   if (!connectionString) {
-    console.error('[AI DB] [Step 1] ❌ AI_DATABASE_URL is not configured!');
+    console.error('[AI DB] AI_DATABASE_URL is not configured!');
     return 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
-  }
-  
-  // 记录连接字符串的前50个字符（隐藏密码）
-  const maskedConnection = connectionString.replace(/:([^:@]+)@/, ':***@');
-  console.log('[AI DB] [Step 1] ✅ AI_DATABASE_URL found:', maskedConnection.substring(0, 80) + '...');
-  
-  // 解析连接字符串以诊断问题
-  try {
-    const url = new URL(connectionString);
-    const username = url.username;
-    const hostname = url.hostname;
-    const port = url.port;
-    const isPooler = hostname.includes('pooler.supabase.com') || port === '6543';
-    const isDirect = hostname.includes('db.') && hostname.includes('.supabase.co') || port === '5432';
-    
-    console.log('[AI DB] [Step 1] Connection string analysis:');
-    console.log('[AI DB] [Step 1]   - Username:', username);
-    console.log('[AI DB] [Step 1]   - Hostname:', hostname);
-    console.log('[AI DB] [Step 1]   - Port:', port || 'default');
-    console.log('[AI DB] [Step 1]   - Is Pooler:', isPooler);
-    console.log('[AI DB] [Step 1]   - Is Direct:', isDirect);
-    
-    // 检查用户名格式
-    if (isPooler) {
-      const expectedUsername = `postgres.cgpmpfnjzlzbquakmmrj`;
-      if (username !== expectedUsername) {
-        console.error('[AI DB] [Step 1] ⚠️  Pooler username format issue!');
-        console.error('[AI DB] [Step 1]   Current:', username);
-        console.error('[AI DB] [Step 1]   Expected:', expectedUsername);
-        console.error('[AI DB] [Step 1]   Format should be: postgres.PROJECT_ID');
-      } else {
-        console.log('[AI DB] [Step 1]   ✅ Pooler username format correct');
-      }
-    } else if (isDirect) {
-      if (username !== 'postgres') {
-        console.warn('[AI DB] [Step 1] ⚠️  Direct connection username should be "postgres"');
-        console.warn('[AI DB] [Step 1]   Current:', username);
-      } else {
-        console.log('[AI DB] [Step 1]   ✅ Direct connection username correct');
-      }
-    }
-  } catch (err) {
-    console.error('[AI DB] [Step 1] ⚠️  Failed to parse connection string:', err);
   }
   
   return connectionString;
 }
 
 function createAiDbInstance(): Kysely<AiDatabase> {
-  console.log('[AI DB] [Step 2] Creating database instance...');
   const connectionString = getAiConnectionString();
 
   const isPlaceholder = connectionString === 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
   
   if (isPlaceholder) {
-    console.warn('[AI DB] [Step 2] ⚠️  Using placeholder database instance (no real connection)');
     return createPlaceholderAiDb();
   }
-
-  console.log('[AI DB] [Step 2] ✅ Real connection string detected, creating actual connection...');
 
   // 检测是否需要SSL连接（Supabase必须使用SSL）
   const isSupabase = connectionString && (
@@ -203,8 +153,6 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     connectionString.includes('supabase.co') ||
     connectionString.includes('sslmode=require')
   );
-
-  console.log('[AI DB] [Step 2] Detected Supabase connection:', isSupabase);
 
   // 创建 Pool 配置对象
   const poolConfig: {
@@ -219,44 +167,26 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     poolConfig.ssl = {
       rejectUnauthorized: false,
     };
-    console.log('[AI DB] [Step 2] ✅ SSL enabled for Supabase connection');
-    console.log('[AI DB] [Step 2] SSL config:', JSON.stringify(poolConfig.ssl));
-  } else {
-    console.log('[AI DB] [Step 2] ℹ️  SSL not enabled (not Supabase connection)');
   }
 
   // 创建 Pool 实例并传递给 PostgresDialect
-  console.log('[AI DB] [Step 2] Creating PostgreSQL Pool...');
   const pool = new Pool(poolConfig);
-  console.log('[AI DB] [Step 2] ✅ Pool created successfully');
-
-  // 验证 Pool 配置
-  console.log('[AI DB] [Step 2] Pool config summary:', {
-    hasSSL: !!poolConfig.ssl,
-    sslRejectUnauthorized: poolConfig.ssl?.rejectUnauthorized ?? 'N/A',
-    connectionType: isSupabase ? 'Supabase (Direct)' : 'Other',
-  });
   
   try {
     if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-      console.log('[AI DB] [Step 2] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL');
     }
   } catch (e) {
-    console.error('[AI DB] [Step 2] Failed to set NODE_TLS_REJECT_UNAUTHORIZED:', e);
+    console.error('[AI DB] Failed to set NODE_TLS_REJECT_UNAUTHORIZED:', e);
   }
 
-  console.log('[AI DB] [Step 2] Creating PostgresDialect...');
   const dialect = new PostgresDialect({
     pool,
   });
-  console.log('[AI DB] [Step 2] ✅ PostgresDialect created');
 
-  console.log('[AI DB] [Step 2] Creating Kysely instance...');
   const kysely = new Kysely<AiDatabase>({
     dialect,
   });
-  console.log('[AI DB] [Step 2] ✅ Kysely instance created successfully');
 
   return kysely;
 }
@@ -319,24 +249,16 @@ let placeholderInstance: Kysely<AiDatabase> | null = null;
 
 // 获取实际的数据库实例（用于运行时）
 function getActualDbInstance(): Kysely<AiDatabase> {
-  console.log('[AI DB] [Step 3] Getting actual database instance...');
   if (!aiDbInstance) {
     try {
-      console.log('[AI DB] [Step 3] Instance not cached, creating new instance...');
       aiDbInstance = createAiDbInstance();
-      console.log('[AI DB] [Step 3] ✅ Database instance created and cached');
     } catch (error) {
-      console.error('[AI DB] [Step 3] ❌ Failed to create database instance:', error);
-      console.error('[AI DB] [Step 3] Error details:', error instanceof Error ? error.message : String(error));
-      console.error('[AI DB] [Step 3] Error stack:', error instanceof Error ? error.stack : 'N/A');
+      console.error('[AI DB] Failed to create database instance:', error);
       if (!placeholderInstance) {
-        console.warn('[AI DB] [Step 3] Falling back to placeholder instance...');
         placeholderInstance = createPlaceholderAiDb();
       }
       return placeholderInstance;
     }
-  } else {
-    console.log('[AI DB] [Step 3] ✅ Using cached database instance');
   }
   return aiDbInstance;
 }
@@ -347,37 +269,25 @@ function getDbInstance(): Kysely<AiDatabase> {
   const isBuild = isBuildTime();
   const shouldUsePlaceholder = isBuild || !hasDbUrl;
   
-  console.log('[AI DB] [Step 4] Determining which instance to use...');
-  console.log('[AI DB] [Step 4] - Has DB URL:', hasDbUrl);
-  console.log('[AI DB] [Step 4] - Is build time:', isBuild);
-  console.log('[AI DB] [Step 4] - Should use placeholder:', shouldUsePlaceholder);
-  
   if (shouldUsePlaceholder) {
-    console.log('[AI DB] [Step 4] ⚠️  Using placeholder instance');
     if (!placeholderInstance) {
       placeholderInstance = createPlaceholderAiDb();
     }
     return placeholderInstance;
   }
   
-  console.log('[AI DB] [Step 4] ✅ Using actual database instance');
   return getActualDbInstance();
 }
 
 export const aiDb = new Proxy({} as Kysely<AiDatabase>, {
   get(_target, prop) {
-    const propName = String(prop);
-    console.log(`[AI DB] [Proxy] Accessing property: ${propName}`);
-    
     const instance = getDbInstance();
     const value = instance[prop as keyof Kysely<AiDatabase>];
     
     // 对于 Kysely 的方法，直接返回，不需要绑定
     // Kysely 的方法会自动处理 this 上下文
     if (typeof value === 'function') {
-      console.log(`[AI DB] [Proxy] Returning function wrapper for: ${propName}`);
       return (...args: any[]) => {
-        console.log(`[AI DB] [Proxy] Calling method: ${propName}`, args.length > 0 ? `with ${args.length} args` : 'with no args');
         // 确保每次调用时都获取最新的实例
         const currentInstance = getDbInstance();
         const method = currentInstance[prop as keyof Kysely<AiDatabase>];
@@ -387,21 +297,19 @@ export const aiDb = new Proxy({} as Kysely<AiDatabase>, {
             // 如果是 Promise，添加错误处理日志
             if (result instanceof Promise) {
               return result.catch((err) => {
-                console.error(`[AI DB] [Proxy] ❌ Method ${propName} failed:`, err);
-                console.error(`[AI DB] [Proxy] Error details:`, err instanceof Error ? err.message : String(err));
+                console.error(`[AI DB] Method ${String(prop)} failed:`, err);
                 throw err;
               });
             }
             return result;
           } catch (err) {
-            console.error(`[AI DB] [Proxy] ❌ Method ${propName} threw synchronously:`, err);
+            console.error(`[AI DB] Method ${String(prop)} threw synchronously:`, err);
             throw err;
           }
         }
         return method;
       };
     }
-    console.log(`[AI DB] [Proxy] Returning property: ${propName}`);
     return value;
   }
 });
