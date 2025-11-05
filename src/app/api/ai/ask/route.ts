@@ -366,6 +366,24 @@ export async function POST(req: NextRequest) {
       session = { userId: "anonymous" };
     }
     
+    // 汇总日志：显示所有关键信息
+    console.log("[JWT Debug] ========== JWT SUMMARY ==========");
+    console.log("[JWT Debug] JWT Token Status:", {
+      jwtExtracted: !!jwt,
+      jwtLength: jwt?.length || 0,
+      jwtPrefix: jwt?.substring(0, 30) || "N/A",
+      hasSecret: !!USER_JWT_SECRET,
+      secretLength: USER_JWT_SECRET?.length || 0,
+      isProduction: isProduction(),
+      isDevOrPreview: isDevelopmentOrPreview(),
+    });
+    console.log("[JWT Debug] Verification Result:", {
+      hasSession: !!session,
+      userId: session?.userId || "null",
+      isAnonymous: session?.userId === "anonymous",
+    });
+    console.log("[JWT Debug] ==================================");
+    
     console.log("[JWT Debug] Final session", { userId: session.userId });
 
     // 2) 解析与参数校验
