@@ -54,7 +54,24 @@ async function rebuildSummary(dateISO: string, token?: string): Promise<{ ok: bo
       "Authorization": `Bearer ${token}`,
     } : {},
   });
-  return (await res.json()) as { ok: boolean; message?: string };
+  
+  // 即使返回非2xx状态码，也尝试解析JSON（后端统一返回JSON格式）
+  const data = await res.json().catch(() => ({ 
+    ok: false, 
+    message: res.status === 502 
+      ? "AI服务不可用，请检查服务状态或稍后重试" 
+      : `请求失败 (${res.status})` 
+  }));
+  
+  // 如果响应不是ok，返回错误信息
+  if (!res.ok || !data.ok) {
+    return {
+      ok: false,
+      message: data.message || data.errorCode || `请求失败 (${res.status})`,
+    };
+  }
+  
+  return data as { ok: boolean; message?: string };
 }
 
 async function prewarmCache(token?: string): Promise<{ ok: boolean; message?: string; data?: any }> {
@@ -167,16 +184,19 @@ export default function AdminAiMonitorPage() {
       const result = await rebuildSummary(yesterdayISO, token || undefined);
       
       if (result.ok) {
-        setRebuildMessage("重跑任务已启动，10秒后将自动刷新数据");
+        setRebuildMessage("✅ 重跑任务已启动，10秒后将自动刷新数据");
         // 10秒后自动刷新
         setTimeout(() => {
-          setDateISO(new Date().toISOString().slice(0, 10));
+          loadData();
         }, 10000);
       } else {
-        setRebuildMessage(result.message || "重跑失败");
+        const errorMsg = result.message || "重跑失败";
+        setRebuildMessage(`❌ ${errorMsg}`);
       }
     } catch (err) {
-      setRebuildMessage(err instanceof Error ? err.message : "重跑失败");
+      const errorMsg = err instanceof Error ? err.message : "重跑失败";
+      console.error("Rebuild failed:", err);
+      setRebuildMessage(`❌ 网络错误: ${errorMsg}`);
     } finally {
       setRebuilding(false);
     }
