@@ -163,6 +163,14 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
 
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("USER_TOKEN") : null;
+      
+      // 调试日志：检查 token 是否存在
+      console.log("[Frontend Debug] JWT Token Status:", {
+        hasToken: !!token,
+        tokenLength: token?.length || 0,
+        tokenPrefix: token?.substring(0, 30) || "N/A",
+        localStorageKeys: typeof window !== "undefined" ? Object.keys(localStorage) : [],
+      });
 
       const res = await fetch(endpoint, {
         method: "POST",
