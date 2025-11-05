@@ -60,13 +60,33 @@ function normalizeUserId(userId: string | null | undefined): string | null {
   // 允许激活系统使用的用户ID格式（act-{activationId}）
   if (userId.startsWith("act-")) {
     // 验证格式：act-{数字}
+    // 注意：userId 可能是 "act-123" 格式（从 token 提取的 activationId）
     const parts = userId.split("-");
-    if (parts.length === 2 && parts[0] === "act") {
-      const activationId = parseInt(parts[1], 10);
+    if (parts.length >= 2 && parts[0] === "act") {
+      // 取最后一部分作为 activationId（处理可能的格式：act-{activationId} 或 act-{hash}-{activationId}）
+      const activationIdStr = parts[parts.length - 1];
+      const activationId = parseInt(activationIdStr, 10);
       if (!isNaN(activationId) && activationId > 0) {
-        // 有效的激活用户ID，直接返回
-        return userId;
+        // 有效的激活用户ID，统一格式为 act-{activationId}
+        const normalizedActUserId = `act-${activationId}`;
+        defaultLogger.info("normalizeUserId: valid activation user ID", {
+          original: userId,
+          normalized: normalizedActUserId,
+          activationId,
+        });
+        return normalizedActUserId;
+      } else {
+        defaultLogger.warn("normalizeUserId: invalid activationId in act- format", {
+          userId,
+          activationIdStr,
+          parts,
+        });
       }
+    } else {
+      defaultLogger.warn("normalizeUserId: invalid act- format", {
+        userId,
+        parts,
+      });
     }
     // 如果格式不正确，返回 null
     return null;
@@ -95,12 +115,19 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
     return;
   }
 
-  // 规范化 user_id（只保存有效的 UUID）
+  // 规范化 user_id（只保存有效的 UUID 或激活用户ID）
   const normalizedUserId = normalizeUserId(log.userId);
+  
+  // 调试日志：记录 userId 规范化过程
+  defaultLogger.info("ai_logs: normalizing userId", {
+    originalUserId: log.userId,
+    normalizedUserId,
+    userIdType: typeof log.userId,
+  });
   
   // 如果 userId 无效，记录警告日志（用于调试）
   if (log.userId && !normalizedUserId) {
-    defaultLogger.warn("ai_logs: userId is not valid UUID, will be saved as null", {
+    defaultLogger.warn("ai_logs: userId is not valid, will be saved as null", {
       originalUserId: log.userId,
       userIdType: typeof log.userId,
     });
@@ -121,6 +148,12 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
   ];
 
   try {
+    defaultLogger.info("ai_logs: attempting to insert", {
+      payload,
+      supabaseUrl: SUPABASE_URL?.substring(0, 30) + "...",
+      hasServiceKey: !!SUPABASE_SERVICE_KEY,
+    });
+    
     const res = await fetch(`${SUPABASE_URL}/rest/v1/ai_logs`, {
       method: "POST",
       headers: {
@@ -134,10 +167,24 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      defaultLogger.warn("ai_logs insert non-2xx", { status: res.status, text });
+      defaultLogger.error("ai_logs insert non-2xx", { 
+        status: res.status, 
+        statusText: res.statusText,
+        text,
+        payload,
+      });
+    } else {
+      defaultLogger.info("ai_logs insert successful", {
+        status: res.status,
+        normalizedUserId,
+      });
     }
   } catch (e) {
-    defaultLogger.warn("ai_logs insert failed", { error: (e as Error).message });
+    defaultLogger.error("ai_logs insert failed", { 
+      error: (e as Error).message,
+      stack: (e as Error).stack?.substring(0, 200),
+      payload,
+    });
   }
 }
 
