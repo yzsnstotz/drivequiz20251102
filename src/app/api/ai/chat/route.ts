@@ -148,7 +148,16 @@ async function verifyUserJwt(authorization?: string) {
 
   const token = authorization.slice("Bearer ".length).trim();
   try {
-    const secret = new TextEncoder().encode(USER_JWT_SECRET);
+    // Supabase Legacy JWT Secret 通常是 Base64 编码的，需要先解码
+    let secret: Uint8Array;
+    try {
+      // 尝试 Base64 解码（Supabase Legacy JWT Secret 格式）
+      const decodedSecret = Buffer.from(USER_JWT_SECRET, "base64");
+      secret = new Uint8Array(decodedSecret);
+    } catch {
+      // 如果 Base64 解码失败，使用原始字符串（向后兼容）
+      secret = new TextEncoder().encode(USER_JWT_SECRET);
+    }
     const { payload } = await jwtVerify(token, secret); // 默认允许 HS256
     return { valid: true as const, payload };
   } catch (e) {
@@ -253,6 +262,28 @@ export async function POST(req: NextRequest) {
   // 1) 用户 JWT 校验
   const auth = req.headers.get("authorization") ?? undefined;
   const jwtRes = await verifyUserJwt(auth);
+  
+  // 提取用户 ID（如果验证成功）
+  let userId: string | null = null;
+  if (jwtRes.valid && jwtRes.payload) {
+    // 尝试多种可能的字段名
+    const payload = jwtRes.payload as { 
+      sub?: string; 
+      user_id?: string; 
+      userId?: string;
+      id?: string;
+    };
+    userId = payload.sub || payload.user_id || payload.userId || payload.id || null;
+    
+    // 验证是否为有效的 UUID 格式
+    if (userId && typeof userId === "string") {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId)) {
+        // 如果不是 UUID 格式，设置为 null（将被视为匿名用户）
+        userId = null;
+      }
+    }
+  }
   
   // 如果验证失败，根据原因返回相应错误
   if (!jwtRes.valid) {
