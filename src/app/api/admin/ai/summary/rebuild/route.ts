@@ -84,15 +84,49 @@ const handler = async (req: NextRequest): Promise<NextResponse> => {
         ? `${rebuildUrl}?${qs.toString()}`
         : rebuildUrl;
 
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${AI_SERVICE_TOKEN}`,
-      },
-      // 避免边缘环境缓存
-      cache: "no-store",
-    });
+    // 超时控制（30秒）
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+        },
+        // 发送空的 JSON body（Fastify 要求如果设置了 Content-Type: application/json，必须有 body）
+        body: JSON.stringify({}),
+        // 避免边缘环境缓存
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      const isTimeout = errorMessage.includes("aborted") || errorMessage.includes("timeout");
+      
+      console.error("[rebuild] Network error:", {
+        url,
+        error: errorMessage,
+        isTimeout,
+        timestamp: new Date().toISOString(),
+      });
+
+      return providerError(
+        isTimeout 
+          ? "AI Service request timeout (30s). Please try again later."
+          : `AI Service is unreachable: ${errorMessage}`,
+        {
+          url,
+          error: errorMessage,
+          isTimeout,
+        },
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const payload = (await resp.json().catch(() => ({}))) as
       | Ok<any>
@@ -101,8 +135,18 @@ const handler = async (req: NextRequest): Promise<NextResponse> => {
 
     // 下游非 2xx 统一映射为 PROVIDER_ERROR
     if (!resp.ok) {
-      return providerError("Upstream error", {
+      console.error("[rebuild] AI Service returned error:", {
+        url,
         status: resp.status,
+        statusText: resp.statusText,
+        body: payload,
+        timestamp: new Date().toISOString(),
+      });
+
+      return providerError("AI Service returned an error", {
+        status: resp.status,
+        statusText: resp.statusText,
+        url,
         body: payload,
       });
     }
