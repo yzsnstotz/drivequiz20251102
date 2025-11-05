@@ -150,6 +150,24 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         setIsActivated(true);
         setShowModal(false);
         console.log('[ActivationProvider] Activation status validated successfully');
+        
+        // 记录登录行为（异步，不阻塞）
+        // 注意：这里会在服务器端检查是否需要记录（避免频繁记录）
+        const token = localStorage.getItem('USER_TOKEN');
+        if (token) {
+          fetch('/api/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ email }),
+          }).catch((err) => {
+            // 静默失败，不影响用户体验
+            console.warn('[ActivationProvider] Failed to log login behavior:', err);
+          });
+        }
+        
         isCheckingRef.current = false;
       } else {
         // API返回结果处理
@@ -248,12 +266,27 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         clearInterval(checkIntervalRef.current);
         checkIntervalRef.current = null;
       }
-      // 如果有本地激活状态，直接信任
+      // 如果有本地激活状态，直接信任并记录登录
       const activated = localStorage.getItem(ACTIVATION_KEY);
       const email = localStorage.getItem(ACTIVATION_EMAIL_KEY);
       if (activated === 'true' && email) {
         setIsActivated(true);
         setShowModal(false);
+        
+        // 记录登录行为（异步，不阻塞）
+        const token = localStorage.getItem('USER_TOKEN');
+        if (token) {
+          fetch('/api/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ email }),
+          }).catch((err) => {
+            console.warn('[ActivationProvider] Failed to log login behavior:', err);
+          });
+        }
       }
       return;
     }
@@ -266,6 +299,21 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       // 有本地激活状态和邮箱，立即信任，不进行API检查（避免频繁检查）
       setIsActivated(true);
       setShowModal(false);
+      
+      // 记录登录行为（异步，不阻塞）
+      const token = localStorage.getItem('USER_TOKEN');
+      if (token) {
+        fetch('/api/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ email }),
+        }).catch((err) => {
+          console.warn('[ActivationProvider] Failed to log login behavior:', err);
+        });
+      }
       
       // 不立即进行API检查，避免在用户使用过程中被清除
       // 只在后台延迟检查（不影响用户体验）
@@ -360,6 +408,11 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         // 保存激活状态和邮箱
         localStorage.setItem(ACTIVATION_KEY, 'true');
         localStorage.setItem(ACTIVATION_EMAIL_KEY, email);
+        
+        // 保存用户token（基于激活码生成，用于后续请求标识用户）
+        if (result.data?.userToken) {
+          localStorage.setItem('USER_TOKEN', result.data.userToken);
+        }
         
         // 保存有效期信息用于显示
         const expiresAt = result.data?.expiresAt || null;

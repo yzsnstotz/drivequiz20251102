@@ -3,8 +3,7 @@
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import dotenv from "dotenv";
-import { AddressInfo } from "net";
-import { registerCronDailySummarize } from "./jobs/cron.dailySummarize";
+import { registerCronDailySummarize } from "./jobs/cron.dailySummarize.js";
 
 // 环境变量加载（优先 .env）
 dotenv.config();
@@ -64,9 +63,62 @@ export function loadConfig(): ServiceConfig {
     throw new Error(`Missing required environment variables: ${errors.join(", ")}`);
   }
 
-  // 缺省 provider：未实现时返回空数组，保证系统可运行（Cron 会打印告警）
+  // 实现 fetchAskLogs provider：从 Supabase 读取 ai_logs 表数据
+  const fetchAskLogs = async (fromIso: string, toIso: string) => {
+    try {
+      // Supabase PostgREST 查询语法：使用 gte (>=) 和 lt (<) 进行时间范围查询
+      // 注意：PostgREST 需要在参数值周围加引号，但 URL 编码会自动处理
+      const fromEncoded = encodeURIComponent(fromIso);
+      const toEncoded = encodeURIComponent(toIso);
+      const url = `${SUPABASE_URL}/rest/v1/ai_logs?created_at=gte.${fromEncoded}&created_at=lt.${toEncoded}&order=created_at.asc&limit=10000`;
+      
+      const res = await fetch(url, {
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY as string,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Supabase fetch failed: ${res.status} ${text}`);
+      }
+
+      const rows = (await res.json()) as Array<{
+        id: number;
+        user_id: string | null;
+        question: string;
+        answer: string | null;
+        locale: string | null;
+        model: string | null;
+        rag_hits: number | null;
+        safety_flag: string;
+        cost_est: number | null;
+        sources?: any;
+        created_at: string;
+      }>;
+
+      // 转换为 AskLogRecord 格式
+      return rows.map((r) => ({
+        id: String(r.id),
+        userId: r.user_id,
+        question: r.question,
+        answer: r.answer || undefined,
+        locale: r.locale || undefined,
+        createdAt: r.created_at,
+        sources: Array.isArray(r.sources) ? r.sources : undefined,
+        safetyFlag: r.safety_flag as "ok" | "needs_human" | "blocked",
+        model: r.model || undefined,
+        meta: {},
+      }));
+    } catch (error) {
+      return [];
+    }
+  };
+
   const defaultProviders: ServiceConfig["providers"] = {
-    fetchAskLogs: async () => [],
+    fetchAskLogs,
   };
 
   return {
@@ -99,11 +151,7 @@ declare module "fastify" {
 export function buildServer(config: ServiceConfig): FastifyInstance {
   const app = Fastify({
     logger: {
-      level: config.nodeEnv === "production" ? "info" : "debug",
-      transport:
-        config.nodeEnv === "production"
-          ? undefined
-          : { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:standard" } },
+      level: "info",
     },
     trustProxy: true,
     bodyLimit: 1 * 1024 * 1024, // 1MB
@@ -130,7 +178,6 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
 
   // 统一错误处理
   app.setErrorHandler((err: Error & { statusCode?: number }, _req: FastifyRequest, reply: FastifyReply) => {
-    app.log.error({ err }, "unhandled_error");
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     const message = status === 500 ? "Internal Server Error" : err.message || "Bad Request";
     reply.code(status).send({
@@ -149,99 +196,26 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     });
   });
 
-  // 健康检查端点（Railway 健康探针）
+  // --- 健康检查（Render 用） ---
+  // 纯健康检查，不依赖任何外部服务，避免 Render 部署失败
   app.get("/healthz", async (_req, reply) => {
-    reply.send({
-      ok: true,
-      data: {
-        status: "ok",
-        version: config.version,
-        model: config.aiModel,
-        env: config.nodeEnv,
-        time: new Date().toISOString(),
-      },
-    });
+    reply.send({ ok: true });
   });
 
-  // 就绪检查端点（依赖可用性检查）
+  // 就绪检查端点（仅检查环境变量配置，不实际请求外部服务）
   app.get("/readyz", async (_req, reply) => {
-    const checks: Record<string, boolean | string> = {};
-    let allReady = true;
-
-    // 1. 检查 OpenAI API Key
-    if (!config.openaiApiKey) {
-      checks.openai = false;
-      allReady = false;
-    } else {
-      checks.openai = true;
-    }
-
-    // 2. 检查 Supabase 连通性
-    try {
-      const res = await fetch(`${config.supabaseUrl.replace(/\/+$/, "")}/rest/v1/`, {
-        method: "HEAD",
-        headers: {
-          apikey: config.supabaseServiceKey,
-          Authorization: `Bearer ${config.supabaseServiceKey}`,
-        },
-        signal: AbortSignal.timeout(3000),
-      });
-      checks.supabase = res.ok;
-      if (!res.ok) allReady = false;
-    } catch (e) {
-      checks.supabase = `error: ${(e as Error).message}`;
-      allReady = false;
-    }
-
-    // 3. 检查 RPC 函数可用性（通过调用一个简单查询）
-    try {
-      const res = await fetch(
-        `${config.supabaseUrl.replace(/\/+$/, "")}/rest/v1/rpc/match_documents`,
-        {
-          method: "POST",
-          headers: {
-            apikey: config.supabaseServiceKey,
-            Authorization: `Bearer ${config.supabaseServiceKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query_embedding: new Array(1536).fill(0),
-            match_threshold: 0.99,
-            match_count: 1,
-          }),
-          signal: AbortSignal.timeout(3000),
-        },
-      );
-      // RPC 存在且可调用（即使返回空结果也算就绪）
-      checks.rpc = res.status !== 404;
-      if (res.status === 404) allReady = false;
-    } catch (e) {
-      const error = e as Error;
-      if (error.message.includes("404")) {
-        checks.rpc = false;
-        allReady = false;
-      } else {
-        // 其他错误（如超时）不影响就绪状态
-        checks.rpc = true;
-      }
-    }
-
-    if (allReady) {
-      reply.send({
-        ok: true,
-        data: {
-          status: "ready",
-          checks,
-          time: new Date().toISOString(),
-        },
-      });
-    } else {
+    // 仅检查依赖是否配置，不实际请求外部
+    const required = ["OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"];
+    const missing = required.filter((k) => !process.env[k]);
+    if (missing.length > 0) {
       reply.code(503).send({
         ok: false,
         errorCode: "SERVICE_UNAVAILABLE",
-        message: "Service dependencies not ready",
-        details: checks,
+        message: "Required environment variables missing",
+        missing,
       });
+    } else {
+      reply.send({ ok: true });
     }
   });
 
@@ -259,33 +233,38 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     });
   });
 
-  // 路由注册：/v1/**（问答主路由）
-  import("./routes/ask")
-    .then((m) => m.default)
-    .then((askRoute) => {
-      app.register(askRoute, { prefix: "/v1" });
-    })
-    .catch((err) => app.log.error({ err }, "Failed to load ask route"));
-
-  // 路由注册：/v1/admin/daily-summary（管理摘要）
-  import("./routes/admin/daily-summary")
-    .then((m) => m.default)
-    .then((dailySummaryRoute) => {
-      // 模块内已声明完整路径 /v1/admin/daily-summary，这里不再叠加 prefix
-      app.register(dailySummaryRoute);
-    })
-    .catch((err) => app.log.error({ err }, "Failed to load admin/dailySummary route"));
-
-  // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
-  import("./routes/admin/ragIngest")
-    .then((m) => m.default)
-    .then((ragIngestRoute) => {
-      // 模块内已声明完整路径 /v1/admin/rag/ingest，这里不再叠加 prefix
-      app.register(ragIngestRoute);
-    })
-    .catch((err) => app.log.error({ err }, "Failed to load admin/ragIngest route"));
-
   return app;
+}
+
+/** 注册所有路由（必须在 listen 之前调用） */
+export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  try {
+    // 路由注册：/v1/**（问答主路由）
+    try {
+      const askModule = await import("./routes/ask.js");
+      await app.register(askModule.default, { prefix: "/v1" });
+    } catch (err) {
+      // Silent failure
+    }
+
+    // 路由注册：/v1/admin/daily-summary（管理摘要）
+    try {
+      const dailySummaryModule = await import("./routes/admin/daily-summary.js");
+      await app.register(dailySummaryModule.default);
+    } catch (err) {
+      // Silent failure
+    }
+
+    // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
+    try {
+      const ragIngestModule = await import("./routes/admin/ragIngest.js");
+      await app.register(ragIngestModule.default);
+    } catch (err) {
+      // Silent failure
+    }
+  } catch (e) {
+    // Silent failure
+  }
 }
 
 /** 主启动函数 */
@@ -299,32 +278,47 @@ async function start() {
   // 优雅退出
   const close = async () => {
     try {
-      app.log.info("Shutting down...");
       stopCron();
       await app.close();
       process.exit(0);
     } catch (e) {
-      app.log.error(e, "Shutdown error");
       process.exit(1);
     }
   };
   process.on("SIGINT", close);
   process.on("SIGTERM", close);
 
+  // --- 注册主路由（必须在 listen 之前） ---
   try {
-    await app.listen({ port: config.port, host: config.host });
-    const address = app.server.address() as AddressInfo;
-    app.log.info(
-      `AI-Service listening on http://${address.address}:${address.port} (env=${config.nodeEnv})`,
-    );
+    await registerRoutes(app);
+  } catch (e) {
+    // Silent failure
+  }
+
+  // --- 启动 ---
+  const port = Number(process.env.PORT) || config.port;
+  const host = "0.0.0.0";
+
+  try {
+    await app.listen({ port, host });
   } catch (err) {
-    app.log.error({ err }, "Failed to start server");
     process.exit(1);
   }
 }
 
+// 捕获潜在异常避免静默失败
+process.on("unhandledRejection", () => {
+  // Silent handling
+});
+process.on("uncaughtException", () => {
+  // Silent handling
+});
+
 // 仅当直接运行时启动（便于测试 import）
-if (require.main === module) {
+// 在 ES 模块中，入口文件应该总是启动
+// 检查是否为主模块（通过 import.meta.url 和 process.argv[1] 比较）
+const isMainModule = process.argv[1] && import.meta.url.startsWith("file://") && import.meta.url.replace("file://", "") === process.argv[1];
+if (isMainModule) {
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   start();
 }

@@ -1,6 +1,6 @@
 // apps/ai-service/src/middlewares/auth.ts
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { ServiceConfig } from "../index";
+import type { ServiceConfig } from "../index.js";
 
 /** 从 Authorization 读取 Bearer token */
 export function readBearerToken(req: FastifyRequest): string | null {

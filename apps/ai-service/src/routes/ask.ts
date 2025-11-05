@@ -1,12 +1,13 @@
 // apps/ai-service/src/routes/ask.ts
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { checkSafety } from "../lib/safety";
-import { getRagContext } from "../lib/rag";
-import { getOpenAIClient } from "../lib/openaiClient";
-import { cacheGet, cacheSet } from "../lib/cache";
-import type { ServiceConfig } from "../index";
-import { ensureServiceAuth } from "../middlewares/auth";
-import { logAiInteraction } from "../lib/dbLogger";
+import { checkSafety } from "../lib/safety.js";
+import { getRagContext } from "../lib/rag.js";
+import { getOpenAIClient } from "../lib/openaiClient.js";
+import { cacheGet, cacheSet } from "../lib/cache.js";
+import type { ServiceConfig } from "../index.js";
+import { ensureServiceAuth } from "../middlewares/auth.js";
+import { logAiInteraction } from "../lib/dbLogger.js";
+import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
 
 /** 请求体类型 */
 type AskBody = {
@@ -36,9 +37,6 @@ const LANG_WHITELIST = new Set(["zh", "ja", "en"]);
 
 /** 问题长度限制，避免滥用 */
 const MAX_QUESTION_LEN = 2000;
-
-/** 缓存时长（秒） */
-const CACHE_TTL_SECONDS = 1800;
 
 /**
  * 估算 OpenAI 成本（USD）
@@ -79,9 +77,9 @@ function estimateCostUsd(
 function parseAndValidateBody(body: unknown): {
   question: string;
   lang: string;
-  userId?: string;
+  userId?: string | null;
 } {
-  const b = (body ?? {}) as AskBody;
+  const b = (body ?? {}) as AskBody & { userId?: string | null };
 
   if (!b.question || typeof b.question !== "string") {
     const err: Error & { statusCode?: number } = new Error("Missing or invalid 'question'");
@@ -98,11 +96,23 @@ function parseAndValidateBody(body: unknown): {
   const lang = (typeof b.lang === "string" ? b.lang.toLowerCase().trim() : "zh") || "zh";
   const validLang = LANG_WHITELIST.has(lang) ? lang : "zh";
 
-  return { question, lang: validLang, userId: typeof b.userId === "string" ? b.userId : undefined };
+  // 处理 userId：支持 string、null、undefined
+  let userId: string | null | undefined = undefined;
+  if (b.userId !== undefined && b.userId !== null) {
+    if (typeof b.userId === "string") {
+      userId = b.userId;
+    } else {
+      userId = null;
+    }
+  } else if (b.userId === null) {
+    userId = null;
+  }
+
+  return { question, lang: validLang, userId };
 }
 
 /** 生成缓存 Key（包含语言与模型，避免跨配置命中） */
-function buildCacheKey(question: string, lang: string, model: string): string {
+export function buildCacheKey(question: string, lang: string, model: string): string {
   return `ask:v1:q=${encodeURIComponent(question)}:l=${lang}:m=${model}`;
 }
 
@@ -132,18 +142,19 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 2) 校验请求体
         const { question, lang, userId } = parseAndValidateBody(request.body);
 
-        // 3) 命中缓存
-        const model = (config as any).aiModel ?? config["aiModel"];
+        // 3) 从数据库读取模型配置（优先）或使用环境变量
+        const model = await getModelFromConfig();
         const cacheKey = buildCacheKey(question, lang, model);
         const cached = await cacheGet<AskResult>(cacheKey);
         if (cached) {
           // 异步记录日志（不阻断）
+          // 注意：使用当前配置的模型，而不是缓存中的模型（因为配置可能已更改）
           void logAiInteraction({
             userId,
             question,
             answer: cached.answer,
             lang,
-            model: cached.model,
+            model: model, // 使用当前配置的模型，而不是缓存中的旧模型
             ragHits: Array.isArray(cached.sources) ? cached.sources.length : (cached.reference ? 1 : 0),
             safetyFlag: cached.safetyFlag || "ok",
             costEstUsd: cached.costEstimate?.approxUsd ?? null,
@@ -193,7 +204,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
 
         const completion = await openai.chat.completions.create({
-          model: (config as any).aiModel ?? config["aiModel"],
+          model: model, // 使用从数据库读取的模型配置
           temperature: 0.4,
           messages: [
             { role: "system", content: sys },
@@ -253,7 +264,9 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         };
 
         // 7) 写入缓存（不影响主流程）
-        void cacheSet(cacheKey, result, CACHE_TTL_SECONDS).catch(() => {});
+        // 从数据库读取缓存 TTL 配置（优先）或使用环境变量
+        const cacheTtl = await getCacheTtlFromConfig();
+        void cacheSet(cacheKey, result, cacheTtl).catch(() => {});
 
         // 8) 异步写 ai_logs（失败仅告警，不阻断）
         void logAiInteraction({
@@ -284,7 +297,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           },
         });
       } catch (e) {
-        request.log.error({ err: e }, "ask_route_error");
         const err = e as Error & { statusCode?: number };
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";

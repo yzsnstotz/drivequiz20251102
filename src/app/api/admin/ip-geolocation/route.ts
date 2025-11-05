@@ -70,7 +70,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       let response: Response;
       try {
         response = await fetch(
-          `http://ip-api.com/json/${ip}?fields=status,message,country,regionName,city`,
+          `https://ip-api.com/json/${ip}?fields=status,message,country,regionName,city`,
           {
             method: "GET",
             headers: {
@@ -87,9 +87,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      let data: any;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error(`[IP Geolocation] Failed to parse JSON for IP ${ip}:`, jsonError);
+        throw new Error("Failed to parse API response");
+      }
 
-      if (data.status === "success") {
+      if (data && data.status === "success") {
         const result = {
           country: data.country || undefined,
           region: data.regionName || undefined,

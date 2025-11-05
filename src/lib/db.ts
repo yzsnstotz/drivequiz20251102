@@ -144,7 +144,58 @@ interface TermsOfServiceTable {
 }
 
 // ------------------------------------------------------------
-// 🔟 数据库总接口定义
+// 🔟 ai_logs 表结构定义
+// ------------------------------------------------------------
+interface AiLogsTable {
+  id: Generated<number>;
+  user_id: string | null;
+  question: string;
+  answer: string | null;
+  language: string | null; // 注意：迁移脚本中为 locale，但代码中使用 language
+  model: string | null;
+  rag_hits: number | null;
+  cost_est: number | null; // NUMERIC(10,4)
+  safety_flag: string; // "ok" | "needs_human" | "blocked"
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣2️⃣ users 表结构定义
+// ------------------------------------------------------------
+interface UserTable {
+  id: Generated<number>;
+  userid: string | null; // 用户唯一标识符（区别于id，用于AI日志关联）
+  email: string;
+  name: string | null;
+  phone: string | null;
+  status: "active" | "inactive" | "suspended" | "pending";
+  activation_code_id: number | null;
+  registration_info: any | null; // JSONB
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+  last_login_at: Date | null;
+  notes: string | null;
+}
+
+// ------------------------------------------------------------
+// 1️⃣3️⃣ user_behaviors 表结构定义
+// ------------------------------------------------------------
+interface UserBehaviorTable {
+  id: Generated<number>;
+  user_id: number;
+  behavior_type: "login" | "logout" | "start_quiz" | "complete_quiz" | "pause_quiz" | "resume_quiz" | "view_page" | "ai_chat" | "other";
+  ip_address: string | null;
+  user_agent: string | null;
+  client_type: "web" | "mobile" | "api" | "desktop" | "other" | null;
+  client_version: string | null;
+  device_info: any | null; // JSONB
+  metadata: any | null; // JSONB
+  created_at: Generated<Date>;
+  notes: string | null;
+}
+
+// ------------------------------------------------------------
+// 1️⃣1️⃣ 数据库总接口定义
 // ------------------------------------------------------------
 interface Database {
   activations: ActivationTable;
@@ -156,6 +207,9 @@ interface Database {
   videos: VideoTable;
   contact_info: ContactInfoTable;
   terms_of_service: TermsOfServiceTable;
+  ai_logs: AiLogsTable;
+  users: UserTable;
+  user_behaviors: UserBehaviorTable;
 }
 
 // ------------------------------------------------------------
