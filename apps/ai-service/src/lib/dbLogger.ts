@@ -48,6 +48,8 @@ function isValidUuid(str: string | null | undefined): boolean {
  * 
  * 注意：对于非 UUID 格式的 ID（如匿名 ID），我们不保存到数据库，
  * 但会在日志中记录原始 userId 用于追踪
+ * 
+ * 例外：允许 "act-{activationId}" 格式的用户ID（激活系统使用）
  */
 function normalizeUserId(userId: string | null | undefined): string | null {
   if (!userId || userId === null) return null;
@@ -55,6 +57,20 @@ function normalizeUserId(userId: string | null | undefined): string | null {
   if (userId === "anonymous") return null;
   // 如果是匿名 ID 格式（以 "anon-" 开头），返回 null
   if (userId.startsWith("anon-")) return null;
+  // 允许激活系统使用的用户ID格式（act-{activationId}）
+  if (userId.startsWith("act-")) {
+    // 验证格式：act-{数字}
+    const parts = userId.split("-");
+    if (parts.length === 2 && parts[0] === "act") {
+      const activationId = parseInt(parts[1], 10);
+      if (!isNaN(activationId) && activationId > 0) {
+        // 有效的激活用户ID，直接返回
+        return userId;
+      }
+    }
+    // 如果格式不正确，返回 null
+    return null;
+  }
   // 验证是否为有效的 UUID 格式
   if (!isValidUuid(userId)) {
     // 如果不是 UUID，返回 null（但会在日志中记录原始值用于追踪）
