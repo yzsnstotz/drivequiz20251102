@@ -110,8 +110,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
         return success(result);
       } else {
-        // API返回失败，返回基本信息
+        // API返回失败，记录详细错误信息
+        const errorMessage = data?.message || "Unknown error";
+        console.warn(`[IP Geolocation] API returned failure for IP ${ip}:`, errorMessage);
+        
+        // API返回失败，返回基本信息（保留IP地址，但不包含国家信息）
         const result = {
+          country: undefined,
+          region: undefined,
+          city: undefined,
           displayName: "未知位置",
           rawIP: ip,
         };
@@ -120,9 +127,17 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         return success(result);
       }
     } catch (fetchError: any) {
-      console.error(`[IP Geolocation] Failed to fetch location for IP ${ip}:`, fetchError);
-      // 出错时返回基本信息
+      console.error(`[IP Geolocation] Failed to fetch location for IP ${ip}:`, {
+        error: fetchError?.message || String(fetchError),
+        name: fetchError?.name,
+        stack: fetchError?.stack?.substring(0, 200),
+      });
+      
+      // 出错时返回基本信息（保留IP地址，但不包含国家信息）
       const result = {
+        country: undefined,
+        region: undefined,
+        city: undefined,
         displayName: "查询失败",
         rawIP: ip,
       };

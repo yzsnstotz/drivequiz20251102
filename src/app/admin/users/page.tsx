@@ -787,11 +787,17 @@ export default function AdminUsersPage() {
                     {(() => {
                       const geolocation = ipGeolocations.get(r.ipAddress!);
                       if (geolocation) {
-                        return <span className="font-medium">{geolocation.displayName}</span>;
+                        // 显示IP地址和国家名称
+                        const countryText = geolocation.country ? ` · ${geolocation.country}` : "";
+                        return (
+                          <span className="font-medium">
+                            {r.ipAddress}{countryText}
+                          </span>
+                        );
                       } else if (isPrivateIP(r.ipAddress)) {
-                        return <span className="text-gray-500">内网地址</span>;
+                        return <span className="text-gray-500">{r.ipAddress} · 内网地址</span>;
                       } else {
-                        return <span className="text-gray-400">查询中...</span>;
+                        return <span className="text-gray-400">{r.ipAddress} · 查询中...</span>;
                       }
                     })()}
                   </button>
