@@ -256,6 +256,39 @@ export default function AdminAiMonitorPage() {
     loadData();
   };
 
+  const handleViewToday = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    setDateISO(today);
+  };
+
+  const handleRebuildToday = async () => {
+    try {
+      setRebuilding(true);
+      setRebuildMessage(null);
+      const today = new Date().toISOString().slice(0, 10);
+      
+      const token = typeof window !== "undefined" ? localStorage.getItem("ADMIN_TOKEN") : undefined;
+      const result = await rebuildSummary(today, token || undefined);
+      
+      if (result.ok) {
+        setRebuildMessage("✅ 今日汇总重跑任务已启动，10秒后将自动刷新数据");
+        // 10秒后自动刷新
+        setTimeout(() => {
+          loadData();
+        }, 10000);
+      } else {
+        const errorMsg = result.message || "重跑失败";
+        setRebuildMessage(`❌ ${errorMsg}`);
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "重跑失败";
+      console.error("Rebuild today failed:", err);
+      setRebuildMessage(`❌ 网络错误: ${errorMsg}`);
+    } finally {
+      setRebuilding(false);
+    }
+  };
+
   const handleRefreshConfigChange = (enabled: boolean, intervalMinutes: number) => {
     const newConfig = { enabled, intervalMinutes };
     setRefreshConfig(newConfig);
@@ -291,13 +324,31 @@ export default function AdminAiMonitorPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">AI 每日摘要</h1>
-          <div className="text-sm text-neutral-500">
-            日期（UTC）：{d.date}
-            {lastRefreshTime && (
-              <span className="ml-2">
-                · 最后刷新：{lastRefreshTime.toLocaleTimeString()}
-              </span>
-            )}
+          <div className="flex items-center gap-3 mt-2">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-neutral-600">日期（UTC）：</label>
+              <input
+                type="date"
+                value={dateISO}
+                onChange={(e) => setDateISO(e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+                max={new Date().toISOString().slice(0, 10)}
+              />
+            </div>
+            <button
+              onClick={handleViewToday}
+              className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
+              title="快速切换到今天"
+            >
+              查看今天
+            </button>
+            <div className="text-sm text-neutral-500">
+              {lastRefreshTime && (
+                <span>
+                  · 最后刷新：{lastRefreshTime.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex gap-2">
@@ -332,8 +383,17 @@ export default function AdminAiMonitorPage() {
             onClick={handleRebuild}
             disabled={rebuilding}
             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-400 text-sm"
+            title="重新计算昨天的汇总数据"
           >
             {rebuilding ? "重跑中..." : "重跑昨日汇总"}
+          </button>
+          <button
+            onClick={handleRebuildToday}
+            disabled={rebuilding}
+            className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:bg-gray-400 text-sm"
+            title="重新计算今天的汇总数据（包含今天0点到现在所有数据）"
+          >
+            {rebuilding ? "重跑中..." : "重跑今日汇总"}
           </button>
           <button
             onClick={handlePrewarm}

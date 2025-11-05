@@ -18,7 +18,7 @@
  *   await logAiInteraction({ userId, question, answer, lang: "ja", model, ragHits, safetyFlag: "ok", costEstUsd });
  */
 
-import { defaultLogger } from "./logger.js";
+// Logger import removed for performance
 
 export type AiLogRecord = {
   userId?: string | null;
@@ -69,24 +69,8 @@ function normalizeUserId(userId: string | null | undefined): string | null {
       if (!isNaN(activationId) && activationId > 0) {
         // 有效的激活用户ID，统一格式为 act-{activationId}
         const normalizedActUserId = `act-${activationId}`;
-        defaultLogger.info("normalizeUserId: valid activation user ID", {
-          original: userId,
-          normalized: normalizedActUserId,
-          activationId,
-        });
         return normalizedActUserId;
-      } else {
-        defaultLogger.warn("normalizeUserId: invalid activationId in act- format", {
-          userId,
-          activationIdStr,
-          parts,
-        });
       }
-    } else {
-      defaultLogger.warn("normalizeUserId: invalid act- format", {
-        userId,
-        parts,
-      });
     }
     // 如果格式不正确，返回 null
     return null;
@@ -108,30 +92,11 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    defaultLogger.warn("skip ai_logs insert: missing SUPABASE env", {
-      missingUrl: !SUPABASE_URL,
-      missingKey: !SUPABASE_SERVICE_KEY,
-    });
     return;
   }
 
   // 规范化 user_id（只保存有效的 UUID 或激活用户ID）
   const normalizedUserId = normalizeUserId(log.userId);
-  
-  // 调试日志：记录 userId 规范化过程
-  defaultLogger.info("ai_logs: normalizing userId", {
-    originalUserId: log.userId,
-    normalizedUserId,
-    userIdType: typeof log.userId,
-  });
-  
-  // 如果 userId 无效，记录警告日志（用于调试）
-  if (log.userId && !normalizedUserId) {
-    defaultLogger.warn("ai_logs: userId is not valid, will be saved as null", {
-      originalUserId: log.userId,
-      userIdType: typeof log.userId,
-    });
-  }
   
   const payload = [
     {
@@ -148,12 +113,6 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
   ];
 
   try {
-    defaultLogger.info("ai_logs: attempting to insert", {
-      payload,
-      supabaseUrl: SUPABASE_URL?.substring(0, 30) + "...",
-      hasServiceKey: !!SUPABASE_SERVICE_KEY,
-    });
-    
     const res = await fetch(`${SUPABASE_URL}/rest/v1/ai_logs`, {
       method: "POST",
       headers: {
@@ -166,25 +125,10 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      defaultLogger.error("ai_logs insert non-2xx", { 
-        status: res.status, 
-        statusText: res.statusText,
-        text,
-        payload,
-      });
-    } else {
-      defaultLogger.info("ai_logs insert successful", {
-        status: res.status,
-        normalizedUserId,
-      });
+      // Silent failure
     }
   } catch (e) {
-    defaultLogger.error("ai_logs insert failed", { 
-      error: (e as Error).message,
-      stack: (e as Error).stack?.substring(0, 200),
-      payload,
-    });
+    // Silent failure
   }
 }
 
@@ -208,9 +152,7 @@ export async function logAiInteractionsBatch(
     try {
       await Promise.all(group.map((r) => logAiInteraction(r)));
     } catch (e) {
-      defaultLogger.warn("logAiInteractionsBatch group failed", {
-        error: (e as Error).message,
-      });
+      // Silent failure
     }
   }
 }

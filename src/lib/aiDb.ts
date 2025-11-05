@@ -142,6 +142,45 @@ function getAiConnectionString(): string {
   const maskedConnection = connectionString.replace(/:([^:@]+)@/, ':***@');
   console.log('[AI DB] [Step 1] ✅ AI_DATABASE_URL found:', maskedConnection.substring(0, 80) + '...');
   
+  // 解析连接字符串以诊断问题
+  try {
+    const url = new URL(connectionString);
+    const username = url.username;
+    const hostname = url.hostname;
+    const port = url.port;
+    const isPooler = hostname.includes('pooler.supabase.com') || port === '6543';
+    const isDirect = hostname.includes('db.') && hostname.includes('.supabase.co') || port === '5432';
+    
+    console.log('[AI DB] [Step 1] Connection string analysis:');
+    console.log('[AI DB] [Step 1]   - Username:', username);
+    console.log('[AI DB] [Step 1]   - Hostname:', hostname);
+    console.log('[AI DB] [Step 1]   - Port:', port || 'default');
+    console.log('[AI DB] [Step 1]   - Is Pooler:', isPooler);
+    console.log('[AI DB] [Step 1]   - Is Direct:', isDirect);
+    
+    // 检查用户名格式
+    if (isPooler) {
+      const expectedUsername = `postgres.cgpmpfnjzlzbquakmmrj`;
+      if (username !== expectedUsername) {
+        console.error('[AI DB] [Step 1] ⚠️  Pooler username format issue!');
+        console.error('[AI DB] [Step 1]   Current:', username);
+        console.error('[AI DB] [Step 1]   Expected:', expectedUsername);
+        console.error('[AI DB] [Step 1]   Format should be: postgres.PROJECT_ID');
+      } else {
+        console.log('[AI DB] [Step 1]   ✅ Pooler username format correct');
+      }
+    } else if (isDirect) {
+      if (username !== 'postgres') {
+        console.warn('[AI DB] [Step 1] ⚠️  Direct connection username should be "postgres"');
+        console.warn('[AI DB] [Step 1]   Current:', username);
+      } else {
+        console.log('[AI DB] [Step 1]   ✅ Direct connection username correct');
+      }
+    }
+  } catch (err) {
+    console.error('[AI DB] [Step 1] ⚠️  Failed to parse connection string:', err);
+  }
+  
   return connectionString;
 }
 
