@@ -120,20 +120,30 @@ function err(
  * - 生产环境：必须配置 USER_JWT_SECRET，严格验证 JWT（安全要求）
  */
 async function verifyJwt(authorization?: string): Promise<{ userId: string } | null> {
+  console.log("[JWT Debug] verifyJwt called", {
+    hasAuth: !!authorization,
+    authPrefix: authorization?.substring(0, 20),
+    hasSecret: !!USER_JWT_SECRET,
+    isProduction: isProduction(),
+    isDevOrPreview: isDevelopmentOrPreview(),
+  });
+
   // 生产环境安全检查：必须配置 USER_JWT_SECRET
   if (isProduction()) {
     if (!USER_JWT_SECRET) {
-      console.error("[Security] Production environment requires USER_JWT_SECRET");
+      console.error("[JWT Debug] Production environment requires USER_JWT_SECRET");
       return null;
     }
     // 生产环境必须提供有效的 Authorization header
     if (!authorization?.startsWith("Bearer ")) {
+      console.log("[JWT Debug] Production: missing or invalid Bearer token");
       return null;
     }
   }
   
   // 开发或预览环境：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
   if (!USER_JWT_SECRET) {
+    console.log("[JWT Debug] USER_JWT_SECRET not configured");
     if (isDevelopmentOrPreview()) {
       // 开发模式兜底：如果有 Bearer token，即使不验证也允许通过
       if (authorization?.startsWith("Bearer ")) {
@@ -142,48 +152,84 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
           // 尝试解析 payload（不验证签名，仅开发/预览模式）
           try {
             const [header, payload, signature] = token.split(".");
-            if (!header || !payload) return null;
+            if (!header || !payload) {
+              console.log("[JWT Debug] Dev mode: invalid token format");
+              return null;
+            }
             const json = JSON.parse(atobUrlSafe(payload)) as { 
               sub?: string; 
               user_id?: string; 
               userId?: string;
               id?: string;
             };
+            console.log("[JWT Debug] Dev mode: parsed payload", {
+              hasSub: !!json.sub,
+              hasUser_id: !!json.user_id,
+              hasUserId: !!json.userId,
+              hasId: !!json.id,
+              payloadKeys: Object.keys(json),
+            });
             const userId = json.sub || json.user_id || json.userId || json.id || null;
-            if (!userId || typeof userId !== "string") return null;
+            if (!userId || typeof userId !== "string") {
+              console.log("[JWT Debug] Dev mode: no userId found in payload");
+              return null;
+            }
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             if (uuidRegex.test(userId)) {
+              console.log("[JWT Debug] Dev mode: valid UUID found", userId);
               return { userId };
             }
+            console.log("[JWT Debug] Dev mode: userId is not UUID format", userId);
             return null;
-          } catch {
-            // 如果解析失败，返回 null
+          } catch (e) {
+            console.error("[JWT Debug] Dev mode: parse error", (e as Error).message);
             return null;
           }
         }
       }
       // 开发或预览环境允许跳过认证
+      console.log("[JWT Debug] Dev mode: no Bearer token, returning null");
       return null; // 返回 null，让调用方使用匿名 ID
     }
     // 非开发/预览环境但未配置密钥，返回 null
+    console.log("[JWT Debug] Not dev/preview and no secret configured");
     return null;
   }
 
-  if (!authorization?.startsWith("Bearer ")) return null;
+  if (!authorization?.startsWith("Bearer ")) {
+    console.log("[JWT Debug] No Bearer token in authorization header");
+    return null;
+  }
 
   const token = authorization.slice("Bearer ".length).trim();
+  console.log("[JWT Debug] Token extracted", { tokenLength: token.length, tokenPrefix: token.substring(0, 20) });
+  
   try {
     // Supabase Legacy JWT Secret 通常是 Base64 编码的，需要先解码
     let secret: Uint8Array;
+    let secretType: "base64" | "raw" = "raw";
     try {
       // 尝试 Base64 解码（Supabase Legacy JWT Secret 格式）
       const decodedSecret = Buffer.from(USER_JWT_SECRET, "base64");
       secret = new Uint8Array(decodedSecret);
+      secretType = "base64";
+      console.log("[JWT Debug] Secret decoded as Base64", { secretLength: secret.length });
     } catch {
       // 如果 Base64 解码失败，使用原始字符串（向后兼容）
       secret = new TextEncoder().encode(USER_JWT_SECRET);
+      secretType = "raw";
+      console.log("[JWT Debug] Secret used as raw string", { secretLength: secret.length });
     }
+    
     const { payload } = await jwtVerify(token, secret); // 默认允许 HS256
+    console.log("[JWT Debug] JWT verification successful", {
+      secretType,
+      payloadKeys: Object.keys(payload),
+      hasSub: !!payload.sub,
+      hasUser_id: !!(payload as any).user_id,
+      hasUserId: !!(payload as any).userId,
+      hasId: !!payload.id,
+    });
     
     // 尝试多种可能的字段名
     const payloadWithUserId = payload as { 
@@ -193,16 +239,28 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
       id?: string;
     };
     const userId = payloadWithUserId.sub || payloadWithUserId.user_id || payloadWithUserId.userId || payloadWithUserId.id || null;
-    if (!userId || typeof userId !== "string") return null;
+    console.log("[JWT Debug] Extracted userId", { userId, type: typeof userId });
+    
+    if (!userId || typeof userId !== "string") {
+      console.log("[JWT Debug] userId is null or not string");
+      return null;
+    }
     
     // 验证是否为有效的 UUID 格式
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(userId)) {
+      console.log("[JWT Debug] Valid UUID userId found", userId);
       return { userId };
     }
     // 如果不是 UUID 格式，返回 null（将被视为匿名用户）
+    console.log("[JWT Debug] userId is not UUID format", userId);
     return null;
   } catch (e) {
+    console.error("[JWT Debug] JWT verification failed", {
+      error: (e as Error).message,
+      errorName: (e as Error).name,
+      stack: (e as Error).stack?.substring(0, 200),
+    });
     return null;
   }
 }
@@ -265,18 +323,36 @@ export async function POST(req: NextRequest) {
     
     // 验证 JWT（如果提供了 token，否则使用匿名 ID）
     let session: { userId: string } | null = null;
+    console.log("[JWT Debug] JWT extraction result", {
+      hasJwt: !!jwt,
+      jwtLength: jwt?.length,
+      jwtPrefix: jwt?.substring(0, 20),
+      hasSecret: !!USER_JWT_SECRET,
+    });
+    
     if (jwt) {
       session = await verifyJwt(`Bearer ${jwt}`);
+      console.log("[JWT Debug] verifyJwt result", {
+        hasSession: !!session,
+        userId: session?.userId,
+      });
+      
       // 如果配置了密钥但验证失败，拒绝请求（生产环境）
       if (!session && USER_JWT_SECRET && isProduction()) {
+        console.error("[JWT Debug] Production: JWT verification failed");
         return err("AUTH_REQUIRED", "Invalid or expired authentication token.", 401);
       }
+    } else {
+      console.log("[JWT Debug] No JWT token provided");
     }
     
     // 如果没有 token 或验证失败但未配置密钥，使用匿名 ID（允许未登录用户访问）
     if (!session) {
+      console.log("[JWT Debug] Using anonymous session");
       session = { userId: "anonymous" };
     }
+    
+    console.log("[JWT Debug] Final session", { userId: session.userId });
 
     // 2) 解析与参数校验
     const body = (await req.json()) as AskRequest | null;
@@ -324,6 +400,13 @@ export async function POST(req: NextRequest) {
     // 4) 转发到 AI-Service
     // 确保 AI_SERVICE_URL 不重复 /v1 路径
     const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+    const forwardedUserId = session.userId === "anonymous" ? null : session.userId;
+    console.log("[JWT Debug] Forwarding to AI-Service", {
+      originalUserId: session.userId,
+      forwardedUserId,
+      isAnonymous: session.userId === "anonymous",
+    });
+    
     const upstream = await fetch(`${baseUrl}/v1/ask`, {
       method: "POST",
       headers: {
@@ -334,7 +417,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         // 传递 userId（如果是有效 UUID）或 null（匿名用户）
         // AI Service 的 normalizeUserId 会处理 "anonymous" 和非 UUID 格式
-        userId: session.userId === "anonymous" ? null : session.userId,
+        userId: forwardedUserId,
         locale,
         question,
         metadata: {
