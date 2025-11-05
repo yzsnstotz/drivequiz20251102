@@ -128,11 +128,32 @@ function mapRow(r: RawRow): CamelRow {
  *  - format: "csv" | "json" (默认 json)
  */
 export const GET = withAdminAuth(async (req: NextRequest) => {
+  const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  console.log(`[GET /api/admin/ai/logs] [${requestId}] ===== Request started =====`);
+  
   try {
+    // 步骤 1: 检查环境变量
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 1] Checking AI_DATABASE_URL...`);
+    const hasAiDbUrl = !!process.env.AI_DATABASE_URL;
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 1] AI_DATABASE_URL exists:`, hasAiDbUrl);
+    
+    if (!hasAiDbUrl) {
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 1] ❌ AI_DATABASE_URL is not configured!`);
+      return internalError(
+        "AI_DATABASE_URL environment variable is not configured. Please configure it in Vercel Dashboard for Preview/Production environments."
+      );
+    }
+    
+    // 记录连接字符串信息（隐藏密码）
+    const maskedConnection = (process.env.AI_DATABASE_URL || '').replace(/:([^:@]+)@/, ':***@');
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 1] ✅ AI_DATABASE_URL found:`, maskedConnection.substring(0, 80) + '...');
+    
     const { searchParams } = new URL(req.url);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 2] Parsing query parameters...`);
 
     // 分页 + 排序参数
     const { page, limit, offset, sortBy, order } = parsePagination(searchParams);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 2] Pagination: page=${page}, limit=${limit}, offset=${offset}`);
 
     // 排序白名单校验
     const sortKey = (sortBy || "createdAt") as "createdAt" | "id" | "ragHits" | "costEstimate";
@@ -154,8 +175,10 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const format = searchParams.get("format") || "json";
 
     // 检查 sources 字段是否存在
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 3] Checking if 'sources' column exists...`);
     let hasSourcesColumn = false;
     try {
+      console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 3] Executing column check query...`);
       const columnCheck = await sql<{ column_name: string }>`
         SELECT column_name
         FROM information_schema.columns
@@ -164,8 +187,11 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           AND column_name = 'sources'
       `.execute(aiDb);
       hasSourcesColumn = columnCheck.rows.length > 0;
-    } catch {
+      console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 3] ✅ Column check completed. hasSourcesColumn:`, hasSourcesColumn);
+    } catch (err) {
       // 如果检查失败，假设字段不存在
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 3] ❌ Column check failed:`, err);
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 3] Error details:`, err instanceof Error ? err.message : String(err));
       hasSourcesColumn = false;
     }
 
@@ -189,11 +215,18 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       ? ([...baseFields, "sources"] as const)
       : baseFields;
 
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 4] Building query...`);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 4] Selected fields:`, fieldsWithSources);
+    
     let base = aiDb
       .selectFrom("ai_logs")
       .select(fieldsWithSources);
+    
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 4] ✅ Base query built`);
 
     // 应用筛选条件
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 5] Applying filters...`);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 5] Filters: from=${from}, to=${to}, userId=${userId}, locale=${locale}, model=${model}, q=${q}`);
     if (from) {
       try {
         const fromDate = new Date(from);
@@ -238,11 +271,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       );
     }
 
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 6] Building count query...`);
     let countBase = aiDb
       .selectFrom("ai_logs")
       .select((eb) => eb.fn.countAll<number>().as("cnt"));
     
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 6] ✅ Count query built`);
+    
     // 应用相同的筛选条件
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 7] Applying same filters to count query...`);
     if (from) {
       try {
         const fromDate = new Date(from);
@@ -287,14 +324,38 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       );
     }
 
-    const totalRow = await countBase.executeTakeFirst();
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 8] Executing count query...`);
+    let totalRow;
+    try {
+      totalRow = await countBase.executeTakeFirst();
+      console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 8] ✅ Count query executed successfully`);
+      console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 8] Count result:`, totalRow);
+    } catch (err) {
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 8] ❌ Count query failed:`, err);
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 8] Error details:`, err instanceof Error ? err.message : String(err));
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 8] Error stack:`, err instanceof Error ? err.stack : 'N/A');
+      throw err;
+    }
+    
     const total = Number(totalRow?.cnt ?? 0);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 8] Total count:`, total);
 
     // CSV 导出：不限制数量
     if (format === "csv") {
-      const rows = await base.orderBy(sortColumn, sortOrder).execute();
+      console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] Format: CSV, executing full query...`);
+      let rows;
+      try {
+        rows = await base.orderBy(sortColumn, sortOrder).execute();
+        console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] ✅ Query executed successfully, rows:`, rows.length);
+      } catch (err) {
+        console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] ❌ Query execution failed:`, err);
+        console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] Error details:`, err instanceof Error ? err.message : String(err));
+        console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] Error stack:`, err instanceof Error ? err.stack : 'N/A');
+        throw err;
+      }
       const items = rows.map(mapRow);
       const csv = convertToCSV(items);
+      console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] ✅ CSV generated, returning response`);
       return new NextResponse(csv, {
         status: 200,
         headers: {
@@ -305,13 +366,56 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     }
 
     // JSON 返回（分页）
-    const rows = await base.orderBy(sortColumn, sortOrder).limit(limit).offset(offset).execute();
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] Format: JSON, executing paginated query...`);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] Query: orderBy=${sortColumn} ${sortOrder}, limit=${limit}, offset=${offset}`);
+    let rows;
+    try {
+      rows = await base.orderBy(sortColumn, sortOrder).limit(limit).offset(offset).execute();
+      console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] ✅ Query executed successfully, rows:`, rows.length);
+    } catch (err) {
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] ❌ Query execution failed:`, err);
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] Error details:`, err instanceof Error ? err.message : String(err));
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] Error stack:`, err instanceof Error ? err.stack : 'N/A');
+      throw err;
+    }
     const items = rows.map(mapRow);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 9] ✅ Mapped ${items.length} items, returning response`);
+    console.log(`[GET /api/admin/ai/logs] [${requestId}] ===== Request completed successfully =====`);
 
     return success({ items }, getPaginationMeta(page, limit, total));
   } catch (err) {
-    console.error("[GET /api/admin/ai/logs] Error:", err);
+    // requestId is defined in outer scope, reuse it for error logging
+    console.error(`[GET /api/admin/ai/logs] [${requestId || 'unknown'}] ===== Request failed =====`);
+    console.error(`[GET /api/admin/ai/logs] [${requestId}] Error:`, err);
+    console.error(`[GET /api/admin/ai/logs] [${requestId}] Error type:`, err instanceof Error ? err.constructor.name : typeof err);
+    console.error(`[GET /api/admin/ai/logs] [${requestId}] Error message:`, err instanceof Error ? err.message : String(err));
+    console.error(`[GET /api/admin/ai/logs] [${requestId}] Error stack:`, err instanceof Error ? err.stack : 'N/A');
+    
+    // 检查是否是连接错误
     const message = err instanceof Error ? err.message : "Unknown Error";
+    const errorString = message.toLowerCase();
+    
+    if (errorString.includes('enotfound') || errorString.includes('getaddrinfo')) {
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] ❌ DNS resolution error detected`);
+      const connectionString = process.env.AI_DATABASE_URL || "";
+      const maskedConnection = connectionString.replace(/:([^:@]+)@/, ':***@');
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] Connection string:`, maskedConnection.substring(0, 80) + '...');
+    }
+    
+    if (errorString.includes('timeout') || errorString.includes('timed out')) {
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] ❌ Connection timeout detected`);
+    }
+    
+    if (errorString.includes('connection') && errorString.includes('refused')) {
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] ❌ Connection refused - database may be down or unreachable`);
+    }
+    
+    if (errorString.includes('authentication') || errorString.includes('password')) {
+      console.error(`[GET /api/admin/ai/logs] [${requestId}] ❌ Authentication error - check credentials`);
+    }
+    
+    console.error(`[GET /api/admin/ai/logs] [${requestId}] ===== End error report =====`);
+    
     return internalError(`Failed to fetch AI logs: ${message}`);
   }
 });
