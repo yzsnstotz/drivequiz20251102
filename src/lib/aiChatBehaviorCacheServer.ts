@@ -139,9 +139,9 @@ class AiChatBehaviorCacheServer {
    */
   private getTotalCacheSize(): number {
     let total = 0;
-    for (const records of this.cache.values()) {
+    this.cache.forEach((records) => {
       total += records.length;
-    }
+    });
     return total;
   }
 
@@ -169,18 +169,19 @@ class AiChatBehaviorCacheServer {
       console.log(`[AiChatBehaviorCacheServer] Flushing ${recordsMap.size} users' chat records`);
       
       // 遍历每个用户的记录，批量写入
-      for (const [userId, records] of recordsMap.entries()) {
+      const writePromises = Array.from(recordsMap.entries()).map(async ([userId, records]) => {
         if (records.length > 0) {
           await this.batchWriteRecords(userId, records);
         }
-      }
+      });
+      await Promise.all(writePromises);
     } catch (error) {
       console.error('[AiChatBehaviorCacheServer] Failed to flush cache:', error);
       // 刷新失败，将记录重新放回缓存（避免丢失）
-      for (const [userId, records] of recordsMap.entries()) {
+      recordsMap.forEach((records, userId) => {
         const existing = this.cache.get(userId) || [];
         this.cache.set(userId, [...existing, ...records]);
-      }
+      });
     } finally {
       this.isFlushing = false;
     }
