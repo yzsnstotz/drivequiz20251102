@@ -163,17 +163,13 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
 
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("USER_TOKEN") : null;
-      // 获取激活邮箱（激活系统使用邮箱作为用户标识）
-      const ACTIVATION_EMAIL_KEY = 'drive-quiz-email';
-      const email = typeof window !== "undefined" ? localStorage.getItem(ACTIVATION_EMAIL_KEY) : null;
       
-      // 调试日志：检查 token 和邮箱是否存在
+      // 调试日志：检查 token 是否存在
       console.log("[Frontend Debug] JWT Token Status:", {
         hasToken: !!token,
         tokenLength: token?.length || 0,
         tokenPrefix: token?.substring(0, 30) || "N/A",
-        hasEmail: !!email,
-        emailPrefix: email?.substring(0, 20) || "N/A",
+        isActivationToken: token?.startsWith("act-") || false,
         localStorageKeys: typeof window !== "undefined" ? Object.keys(localStorage) : [],
       });
 
@@ -183,8 +179,6 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          // 如果激活了但没有 JWT token，发送邮箱信息用于生成用户ID
-          ...(email && !token ? { "X-User-Email": email } : {}),
         },
         // 统一协议：{ question, locale? } → { ok, data: { answer, sources?, ... }, errorCode, message }
         body: JSON.stringify({
