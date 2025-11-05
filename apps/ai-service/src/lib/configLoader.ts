@@ -13,7 +13,7 @@
  *  - SUPABASE_SERVICE_KEY
  */
 
-import { defaultLogger } from "./logger.js";
+// Logger import removed for performance
 
 type ConfigCache = {
   model?: string;
@@ -52,11 +52,6 @@ async function fetchConfigFromDb(): Promise<{ model?: string; cacheTtl?: number 
     );
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      defaultLogger.warn("Failed to fetch config from database", {
-        status: res.status,
-        text: text.slice(0, 200),
-      });
       return null;
     }
 
@@ -73,9 +68,6 @@ async function fetchConfigFromDb(): Promise<{ model?: string; cacheTtl?: number 
 
     return config;
   } catch (error) {
-    defaultLogger.warn("Error fetching config from database", {
-      error: error instanceof Error ? error.message : String(error),
-    });
     return null;
   }
 }

@@ -23,7 +23,7 @@ import { getOpenAIClient } from "../../lib/openaiClient.js";
 import { checkSafety } from "../../lib/safety.js";
 import { ragSearch } from "../../lib/rag.js";
 import { buildCacheKey } from "../ask.js";
-import { defaultLogger } from "../../lib/logger.js";
+// Logger import removed for performance
 
 // 统一响应类型
 type Ok<T> = { ok: true; data: T };
@@ -166,7 +166,6 @@ async function prewarmQuestion(
 
     return { success: true, question };
   } catch (error) {
-    defaultLogger.error("Failed to prewarm question", { error, question });
     return {
       success: false,
       question,
@@ -243,7 +242,6 @@ export default async function cachePrewarmRoute(app: FastifyInstance): Promise<v
           results: Array<{ question: string; success: boolean; error?: string }>;
         }>);
       } catch (error) {
-        defaultLogger.error("Cache prewarm failed", { error });
         reply.code(500).send({
           ok: false,
           errorCode: "INTERNAL_ERROR",

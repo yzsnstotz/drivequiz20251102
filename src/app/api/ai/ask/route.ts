@@ -1,6 +1,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -454,15 +455,81 @@ export async function POST(req: NextRequest) {
       counters.set(k, c);
     }
 
-    // 4) 转发到 AI-Service
-    // 确保 AI_SERVICE_URL 不重复 /v1 路径
-    const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
-    const forwardedUserId = session.userId === "anonymous" ? null : session.userId;
+    // 4) 从users表获取userid（如果session.userId是act-格式，则查询数据库获取对应的userid）
+    let forwardedUserId: string | null = null;
+    
+    if (session.userId === "anonymous") {
+      forwardedUserId = null;
+    } else if (session.userId.startsWith("act-")) {
+      // 如果是act-格式，从users表查询对应的userid
+      try {
+        // 从act-{activationId}格式中提取activationId
+        const parts = session.userId.split("-");
+        if (parts.length >= 2 && parts[0] === "act") {
+          const activationId = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(activationId) && activationId > 0) {
+            // 通过activationId查找激活记录，然后查找用户
+            const activation = await db
+              .selectFrom("activations")
+              .select(["email"])
+              .where("id", "=", activationId)
+              .executeTakeFirst();
+            
+            if (activation) {
+              // 通过邮箱查找用户，获取userid
+              const user = await db
+                .selectFrom("users")
+                .select(["userid"])
+                .where("email", "=", activation.email)
+                .executeTakeFirst();
+              
+              if (user?.userid) {
+                forwardedUserId = user.userid;
+                console.log("[JWT Debug] Fetched userid from database", {
+                  originalUserId: session.userId,
+                  activationId,
+                  email: activation.email,
+                  userid: forwardedUserId,
+                });
+              } else {
+                // 如果用户表中没有userid，使用原始的act-格式（向后兼容）
+                forwardedUserId = session.userId;
+                console.log("[JWT Debug] User not found or no userid, using original", {
+                  originalUserId: session.userId,
+                  activationId,
+                });
+              }
+            } else {
+              // 激活记录不存在，使用原始格式
+              forwardedUserId = session.userId;
+            }
+          } else {
+            forwardedUserId = session.userId;
+          }
+        } else {
+          forwardedUserId = session.userId;
+        }
+      } catch (error) {
+        console.error("[JWT Debug] Failed to fetch userid from database", {
+          error: (error as Error).message,
+          originalUserId: session.userId,
+        });
+        // 查询失败时，使用原始userId（向后兼容）
+        forwardedUserId = session.userId;
+      }
+    } else {
+      // UUID格式或其他格式，直接使用
+      forwardedUserId = session.userId;
+    }
+    
     console.log("[JWT Debug] Forwarding to AI-Service", {
       originalUserId: session.userId,
       forwardedUserId,
       isAnonymous: session.userId === "anonymous",
     });
+    
+    // 确保 AI_SERVICE_URL 不重复 /v1 路径
+    const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
     
     const upstream = await fetch(`${baseUrl}/v1/ask`, {
       method: "POST",
@@ -522,7 +589,72 @@ export async function POST(req: NextRequest) {
       return err(code, msg, mapStatus(status));
     }
 
-    // 6) 成功：直接返回统一包裹结构
+    // 6) 成功：记录AI聊天行为到缓存（异步，不阻塞响应）
+    if (result.ok && session.userId !== "anonymous" && forwardedUserId) {
+      // forwardedUserId就是userid（如act-13），直接通过userid查找用户
+      try {
+        let userId: number | null = null;
+        
+        console.log("[AI Ask] Recording chat behavior", {
+          sessionUserId: session.userId,
+          forwardedUserId,
+        });
+        
+        // 直接通过userid查找用户（不需要通过activation）
+        const user = await db
+          .selectFrom("users")
+          .select(["id"])
+          .where("userid", "=", forwardedUserId)
+          .executeTakeFirst();
+        
+        if (user) {
+          userId = user.id;
+          console.log("[AI Ask] Found user ID by userid", { userId, userid: forwardedUserId });
+        } else {
+          console.warn("[AI Ask] User not found by userid", { userid: forwardedUserId });
+        }
+        
+        // 如果找到了用户ID，记录到缓存
+        if (userId) {
+          const { getAiChatBehaviorCache } = await import("@/lib/aiChatBehaviorCacheServer");
+          const cache = getAiChatBehaviorCache();
+          
+          const ipAddress =
+            req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+            req.headers.get("x-real-ip")?.trim() ||
+            null;
+          const userAgent = req.headers.get("user-agent") || null;
+          const clientType = "web"; // 可以从请求头或其他地方获取
+          
+          // 添加到缓存（异步，不阻塞）
+          // 在Serverless环境中，立即写入更可靠（不依赖定时器）
+          const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+          cache.addChatRecord(userId, question, ipAddress, userAgent, clientType, !!isServerless);
+          console.log("[AI Ask] Added chat record to cache", { 
+            userId, 
+            questionLength: question.length,
+            immediateFlush: !!isServerless,
+          });
+        } else {
+          console.warn("[AI Ask] User ID not found, skipping behavior record", {
+            forwardedUserId,
+            sessionUserId: session.userId,
+          });
+        }
+      } catch (error) {
+        // 记录行为失败不影响主流程，仅记录日志
+        console.error("[AI Ask] Failed to record chat behavior:", error);
+      }
+    } else {
+      console.log("[AI Ask] Skipping behavior record", {
+        resultOk: result.ok,
+        sessionUserId: session.userId,
+        forwardedUserId,
+        isAnonymous: session.userId === "anonymous",
+      });
+    }
+
+    // 7) 成功：直接返回统一包裹结构
     return ok(result.data || {});
   } catch (e) {
     return err("INTERNAL_ERROR", "Unexpected server error.", 500);

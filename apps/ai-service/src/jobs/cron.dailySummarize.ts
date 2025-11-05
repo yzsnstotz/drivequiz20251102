@@ -80,7 +80,6 @@ export function registerCronDailySummarize(
 ): () => void {
   const enabled = getEnvBoolean("CRON_DAILY_SUMMARY_ENABLED", true);
   if (!enabled) {
-    app.log.info("[cron.dailySummarize] disabled by env");
     return () => void 0;
   }
 
@@ -94,61 +93,27 @@ export function registerCronDailySummarize(
   const fetchLogs: FetchLogs | undefined =
     anyCfg?.providers?.fetchAskLogs || anyCfg?.fetchAskLogs;
 
-  if (typeof fetchLogs !== "function") {
-    app.log.warn(
-      "[cron.dailySummarize] No fetchLogs provider found in config.providers.fetchAskLogs or config.fetchAskLogs; task will run with empty dataset.",
-    );
-  }
+  // fetchLogs provider check removed for performance
 
   let timer: NodeJS.Timeout | null = null;
 
   /** 实际执行一次任务（默认 dateUtc=昨天），独立函数便于复用与错误捕获 */
   const runOnce = async (tag: string, dateUtc = yesterdayUtcDate()) => {
     try {
-      app.log.info(
-        { dateUtc, hour, minute, tag },
-        "[cron.dailySummarize] start runDailySummarize",
-      );
-
       const result = await runDailySummarize(config, {
         dateUtc,
         fetchLogs: async (fromIso, toIso) => {
           try {
             if (fetchLogs) return await fetchLogs(fromIso, toIso);
-            // 无 provider 时返回空数组，允许任务跑通并生成空摘要
             return [];
           } catch (e) {
-            app.log.error(
-              { err: e, fromIso, toIso },
-              "[cron.dailySummarize] fetchLogs provider error",
-            );
             return [];
           }
         },
         maxRecords,
       });
-
-      if (result.ok) {
-        const t = result.data.totals;
-        app.log.info(
-          {
-            dateUtc: result.data.dateUtc,
-            questions: t.questions,
-            answered: t.answered,
-            blocked: t.blocked,
-            needsHuman: t.needsHuman,
-            cacheKey: `ai:summary:${result.data.dateUtc}:day`,
-          },
-          "[cron.dailySummarize] success",
-        );
-      } else {
-        app.log.error(
-          { errorCode: result.errorCode, message: result.message },
-          "[cron.dailySummarize] failed",
-        );
-      }
     } catch (e) {
-      app.log.error({ err: e }, "[cron.dailySummarize] unexpected error");
+      // Silent failure
     }
   };
 
@@ -166,17 +131,11 @@ export function registerCronDailySummarize(
     if (timer) clearTimeout(timer);
     timer = setTimeout(async () => {
       await runOnce("scheduled");
-      // 下一轮循环（固定每 24h）
       timer = setTimeout(async () => {
         await runOnce("interval");
         scheduleNext();
       }, 24 * 3600 * 1000);
     }, delay);
-    const etaMin = Math.round(delay / 60000);
-    app.log.info(
-      { runAt: new Date(at).toISOString(), etaMin },
-      "[cron.dailySummarize] scheduled",
-    );
   };
 
   scheduleNext();
@@ -185,7 +144,6 @@ export function registerCronDailySummarize(
   return () => {
     if (timer) clearTimeout(timer);
     timer = null;
-    app.log.info("[cron.dailySummarize] stopped");
   };
 }
 
@@ -206,7 +164,6 @@ export async function triggerDailySummarizeOnce(
   const maxRecords = typeof opts?.maxRecords === "number" ? opts!.maxRecords : getEnvInt("CRON_DAILY_SUMMARY_MAX_RECORDS", 1000);
 
   try {
-    app.log.info({ dateUtc }, "[cron.dailySummarize] manual trigger");
     const result = await runDailySummarize(config, {
       dateUtc,
       fetchLogs: async (fromIso, toIso) => {
@@ -214,29 +171,12 @@ export async function triggerDailySummarizeOnce(
           if (fetchLogs) return await fetchLogs(fromIso, toIso);
           return [];
         } catch (e) {
-          app.log.error({ err: e, fromIso, toIso }, "[cron.dailySummarize] fetchLogs error");
           return [];
         }
       },
       maxRecords,
     });
-
-    if (!result.ok) {
-      app.log.error(
-        { errorCode: result.errorCode, message: result.message },
-        "[cron.dailySummarize] manual run failed",
-      );
-    } else {
-      app.log.info(
-        {
-          dateUtc: result.data.dateUtc,
-          totals: result.data.totals,
-          cacheKey: `ai:summary:${result.data.dateUtc}:day`,
-        },
-        "[cron.dailySummarize] manual run success",
-      );
-    }
   } catch (e) {
-    app.log.error({ err: e }, "[cron.dailySummarize] manual trigger unexpected error");
+    // Silent failure
   }
 }

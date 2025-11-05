@@ -131,7 +131,6 @@ export default async function dailySummaryRoute(app: FastifyInstance): Promise<v
           note: "no_cached_summary",
         } as Ok<Record<string, never>> & { note: string });
       } catch (e) {
-        request.log.error({ err: e }, "daily_summary_route_error");
         const err = e as Error & { statusCode?: number };
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";
@@ -193,7 +192,6 @@ export default async function dailySummaryRoute(app: FastifyInstance): Promise<v
           },
         } as Ok<{ date: string; message: string }>);
       } catch (e) {
-        request.log.error({ err: e }, "daily_summary_rebuild_route_error");
         const err = e as Error & { statusCode?: number };
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";

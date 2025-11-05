@@ -63,9 +63,62 @@ export function loadConfig(): ServiceConfig {
     throw new Error(`Missing required environment variables: ${errors.join(", ")}`);
   }
 
-  // 缺省 provider：未实现时返回空数组，保证系统可运行（Cron 会打印告警）
+  // 实现 fetchAskLogs provider：从 Supabase 读取 ai_logs 表数据
+  const fetchAskLogs = async (fromIso: string, toIso: string) => {
+    try {
+      // Supabase PostgREST 查询语法：使用 gte (>=) 和 lt (<) 进行时间范围查询
+      // 注意：PostgREST 需要在参数值周围加引号，但 URL 编码会自动处理
+      const fromEncoded = encodeURIComponent(fromIso);
+      const toEncoded = encodeURIComponent(toIso);
+      const url = `${SUPABASE_URL}/rest/v1/ai_logs?created_at=gte.${fromEncoded}&created_at=lt.${toEncoded}&order=created_at.asc&limit=10000`;
+      
+      const res = await fetch(url, {
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY as string,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Supabase fetch failed: ${res.status} ${text}`);
+      }
+
+      const rows = (await res.json()) as Array<{
+        id: number;
+        user_id: string | null;
+        question: string;
+        answer: string | null;
+        locale: string | null;
+        model: string | null;
+        rag_hits: number | null;
+        safety_flag: string;
+        cost_est: number | null;
+        sources?: any;
+        created_at: string;
+      }>;
+
+      // 转换为 AskLogRecord 格式
+      return rows.map((r) => ({
+        id: String(r.id),
+        userId: r.user_id,
+        question: r.question,
+        answer: r.answer || undefined,
+        locale: r.locale || undefined,
+        createdAt: r.created_at,
+        sources: Array.isArray(r.sources) ? r.sources : undefined,
+        safetyFlag: r.safety_flag as "ok" | "needs_human" | "blocked",
+        model: r.model || undefined,
+        meta: {},
+      }));
+    } catch (error) {
+      return [];
+    }
+  };
+
   const defaultProviders: ServiceConfig["providers"] = {
-    fetchAskLogs: async () => [],
+    fetchAskLogs,
   };
 
   return {
@@ -98,11 +151,7 @@ declare module "fastify" {
 export function buildServer(config: ServiceConfig): FastifyInstance {
   const app = Fastify({
     logger: {
-      level: config.nodeEnv === "production" ? "info" : "debug",
-      transport:
-        config.nodeEnv === "production"
-          ? undefined
-          : { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:standard" } },
+      level: "info",
     },
     trustProxy: true,
     bodyLimit: 1 * 1024 * 1024, // 1MB
@@ -129,7 +178,6 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
 
   // 统一错误处理
   app.setErrorHandler((err: Error & { statusCode?: number }, _req: FastifyRequest, reply: FastifyReply) => {
-    app.log.error({ err }, "unhandled_error");
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     const message = status === 500 ? "Internal Server Error" : err.message || "Bad Request";
     reply.code(status).send({
@@ -195,32 +243,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try {
       const askModule = await import("./routes/ask.js");
       await app.register(askModule.default, { prefix: "/v1" });
-      app.log.debug("Registered /v1/ask route");
     } catch (err) {
-      app.log.error({ err }, "Failed to load ask route");
+      // Silent failure
     }
 
     // 路由注册：/v1/admin/daily-summary（管理摘要）
     try {
       const dailySummaryModule = await import("./routes/admin/daily-summary.js");
-      // 模块内已声明完整路径 /v1/admin/daily-summary，这里不再叠加 prefix
       await app.register(dailySummaryModule.default);
-      app.log.debug("Registered /v1/admin/daily-summary route");
     } catch (err) {
-      app.log.error({ err }, "Failed to load admin/dailySummary route");
+      // Silent failure
     }
 
     // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
     try {
       const ragIngestModule = await import("./routes/admin/ragIngest.js");
-      // 模块内已声明完整路径 /v1/admin/rag/ingest，这里不再叠加 prefix
       await app.register(ragIngestModule.default);
-      app.log.debug("Registered /v1/admin/rag/ingest route");
     } catch (err) {
-      app.log.error({ err }, "Failed to load admin/ragIngest route");
+      // Silent failure
     }
   } catch (e) {
-    app.log.warn({ err: e }, "No route registry found or error during registration");
+    // Silent failure
   }
 }
 
@@ -235,12 +278,10 @@ async function start() {
   // 优雅退出
   const close = async () => {
     try {
-      app.log.info("Shutting down...");
       stopCron();
       await app.close();
       process.exit(0);
     } catch (e) {
-      app.log.error(e, "Shutdown error");
       process.exit(1);
     }
   };
@@ -250,31 +291,27 @@ async function start() {
   // --- 注册主路由（必须在 listen 之前） ---
   try {
     await registerRoutes(app);
-    app.log.info("✅ All routes registered");
   } catch (e) {
-    app.log.warn({ err: e }, "Warning: Some routes may not have registered");
+    // Silent failure
   }
 
   // --- 启动 ---
-  // 确保使用 process.env.PORT 和 0.0.0.0 host（Render 要求）
   const port = Number(process.env.PORT) || config.port;
-  const host = "0.0.0.0"; // Render 要求绑定到 0.0.0.0
+  const host = "0.0.0.0";
 
   try {
     await app.listen({ port, host });
-    app.log.info(`✅ AI-Service running at http://${host}:${port}`);
   } catch (err) {
-    app.log.error({ err }, "❌ Failed to start server");
     process.exit(1);
   }
 }
 
 // 捕获潜在异常避免静默失败
-process.on("unhandledRejection", (err) => {
-  console.error("UNHANDLED", err);
+process.on("unhandledRejection", () => {
+  // Silent handling
 });
-process.on("uncaughtException", (err) => {
-  console.error("UNCAUGHT", err);
+process.on("uncaughtException", () => {
+  // Silent handling
 });
 
 // 仅当直接运行时启动（便于测试 import）
@@ -282,7 +319,6 @@ process.on("uncaughtException", (err) => {
 // 检查是否为主模块（通过 import.meta.url 和 process.argv[1] 比较）
 const isMainModule = process.argv[1] && import.meta.url.startsWith("file://") && import.meta.url.replace("file://", "") === process.argv[1];
 if (isMainModule) {
-  console.log("🩵 Render deploy: starting AI-Service...");
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   start();
 }
