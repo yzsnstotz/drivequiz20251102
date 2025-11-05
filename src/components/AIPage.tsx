@@ -104,7 +104,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
   const [errorTip, setErrorTip] = useState<string>("");
 
   const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const endpoint = useMemo(() => `${API_BASE}${CHAT_PATH}`, []);
 
@@ -115,13 +115,14 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
     el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  // 多行输入框自动高度
+  // 输入框自动聚焦（移动端优化）
   useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [input]);
+    // 延迟聚焦，确保页面渲染完成
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 持久化消息历史到 localStorage（限制最大条数）
   useEffect(() => {
@@ -162,16 +163,34 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("USER_TOKEN") : null;
-      
-      // 调试日志：检查 token 是否存在
-      console.log("[Frontend Debug] JWT Token Status:", {
-        hasToken: !!token,
-        tokenLength: token?.length || 0,
-        tokenPrefix: token?.substring(0, 30) || "N/A",
-        isActivationToken: token?.startsWith("act-") || false,
-        localStorageKeys: typeof window !== "undefined" ? Object.keys(localStorage) : [],
-      });
+      // 尝试从多个来源获取token（兼容移动端和桌面端）
+      let token: string | null = null;
+      if (typeof window !== "undefined") {
+        // 优先从localStorage获取
+        token = localStorage.getItem("USER_TOKEN");
+        
+        // 如果localStorage没有，尝试从cookie获取（兼容某些移动浏览器）
+        if (!token) {
+          const cookies = document.cookie.split(";");
+          for (const cookie of cookies) {
+            const [name, value] = cookie.trim().split("=");
+            if (name === "USER_TOKEN" || name === "sb-access-token") {
+              token = decodeURIComponent(value);
+              break;
+            }
+          }
+        }
+        
+        // 调试日志：检查 token 是否存在
+        console.log("[Frontend Debug] JWT Token Status:", {
+          hasToken: !!token,
+          tokenLength: token?.length || 0,
+          tokenPrefix: token?.substring(0, 30) || "N/A",
+          isActivationToken: token?.startsWith("act-") || false,
+          localStorageKeys: typeof window !== "undefined" ? Object.keys(localStorage) : [],
+          cookieAvailable: typeof document !== "undefined",
+        });
+      }
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -196,13 +215,26 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
 
       if (!payload.ok) {
         const message = payload.message || "服务开小差了，请稍后再试";
-        setErrorTip(message);
-        pushMessage({
-          id: uid(),
-          role: "ai",
-          content: `【出错】${message}${payload.errorCode ? `（${payload.errorCode}）` : ""}`,
-          createdAt: Date.now(),
-        });
+        
+        // 如果是认证错误，提供更友好的提示
+        if (payload.errorCode === "AUTH_REQUIRED" || payload.errorCode === "INVALID_TOKEN") {
+          const authMessage = "认证失败，请重新激活或刷新页面";
+          setErrorTip(authMessage);
+          pushMessage({
+            id: uid(),
+            role: "ai",
+            content: `【认证错误】${authMessage}。如果您刚刚激活，请刷新页面重试。`,
+            createdAt: Date.now(),
+          });
+        } else {
+          setErrorTip(message);
+          pushMessage({
+            id: uid(),
+            role: "ai",
+            content: `【出错】${message}${payload.errorCode ? `（${payload.errorCode}）` : ""}`,
+            createdAt: Date.now(),
+          });
+        }
         return;
       }
 
@@ -245,15 +277,6 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
     }
   }, [endpoint, input, loading, pushMessage]);
 
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        void handleSend();
-      }
-    },
-    [handleSend],
-  );
 
   return (
     <div className="flex h-screen flex-col bg-gray-100 fixed inset-0 z-[100]">
@@ -295,7 +318,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       {/* 消息区 */}
       <div
         ref={listRef}
-        className="flex-1 space-y-4 overflow-y-auto p-4 min-h-0"
+        className="flex-1 space-y-4 overflow-y-auto p-4 pb-6 min-h-0"
         aria-live="polite"
       >
         {messages.map((m) => {
@@ -320,32 +343,42 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       </div>
 
       {/* 底部输入区 */}
-      <div className="border-t bg-white p-4 flex-shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-        <div className="flex items-end space-x-2">
+      <div className="border-t bg-white p-3 flex-shrink-0" style={{ 
+        paddingBottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
+        paddingTop: '0.75rem'
+      }}>
+        <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <textarea
-              ref={inputRef}
+            <input
+              ref={inputRef as React.RefObject<HTMLInputElement>}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="输入你的问题…（Shift+Enter 换行）"
-              className="max-h-40 min-h-[44px] w-full resize-none rounded-lg border p-2 pr-10 outline-none transition-[border-color] focus:border-blue-500"
-              rows={1}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend();
+                }
+              }}
+              placeholder="输入问题..."
+              className="w-full h-11 rounded-lg border px-3 pr-20 outline-none transition-[border-color] focus:border-blue-500 text-sm"
               spellCheck={false}
+              type="text"
             />
             {/* 字数提示（可选） */}
-            <span className="pointer-events-none absolute bottom-2 right-3 select-none text-xs text-gray-400">
-              {input.trim().length}
-            </span>
+            {input.trim().length > 0 && (
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-xs text-gray-400">
+                {input.trim().length}
+              </span>
+            )}
           </div>
           <button
             type="button"
             onClick={() => void handleSend()}
             disabled={loading || input.trim().length === 0}
-            className={`inline-flex items-center gap-1 rounded-lg px-4 py-2 transition-colors ${
+            className={`inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2.5 h-11 transition-colors flex-shrink-0 ${
               loading || input.trim().length === 0
                 ? "cursor-not-allowed bg-gray-200 text-gray-500"
-                : "bg-blue-500 text-white hover:bg-blue-600"
+                : "bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700"
             }`}
             aria-busy={loading}
           >
@@ -356,7 +389,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
 
         {/* 底部错误提示 */}
         {errorTip && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
+          <p className="mt-2 text-xs text-red-600" role="alert">
             {errorTip}
           </p>
         )}
