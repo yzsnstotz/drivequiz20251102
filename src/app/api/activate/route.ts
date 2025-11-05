@@ -368,12 +368,26 @@ export async function POST(request: NextRequest) {
       // 设置HTTP cookie（30天有效期，兼容移动端）
       const cookieExpires = new Date();
       cookieExpires.setTime(cookieExpires.getTime() + 30 * 24 * 60 * 60 * 1000);
+      
+      // 检查是否为HTTPS（生产环境）
+      const isSecure = request.headers.get("x-forwarded-proto") === "https" || 
+                       request.url.startsWith("https://");
+      
       response.cookies.set("USER_TOKEN", userToken, {
         expires: cookieExpires,
         path: "/",
         sameSite: "lax",
         httpOnly: false, // 设置为false，允许前端JavaScript读取（兼容移动端）
-        secure: process.env.NODE_ENV === "production", // 生产环境使用HTTPS时启用secure
+        secure: isSecure, // 只在HTTPS环境下启用secure
+      });
+      
+      // 调试日志
+      console.log("[Activate API] Cookie set", {
+        hasToken: !!userToken,
+        tokenLength: userToken.length,
+        tokenPrefix: userToken.substring(0, 20),
+        isSecure,
+        expires: cookieExpires.toISOString(),
       });
 
       return response;

@@ -316,14 +316,28 @@ export async function POST(req: NextRequest) {
           // 如果没有 USER_TOKEN，检查 sb-access-token（Supabase 前端可能使用）
           cookieJwt = req.cookies.get("sb-access-token")?.value;
         }
+        
+        // 详细调试日志
+        const allCookies = req.cookies.getAll();
         console.log("[JWT Debug] Checking cookie", { 
           hasUserToken: !!req.cookies.get("USER_TOKEN")?.value,
           hasSbToken: !!req.cookies.get("sb-access-token")?.value,
-          cookieLength: cookieJwt?.length 
+          cookieLength: cookieJwt?.length,
+          allCookieNames: allCookies.map(c => c.name),
+          userAgent: req.headers.get("user-agent")?.substring(0, 50),
         });
+        
         if (cookieJwt && cookieJwt.trim()) {
           jwt = cookieJwt.trim();
-          console.log("[JWT Debug] JWT extracted from cookie", { jwtLength: jwt.length });
+          console.log("[JWT Debug] JWT extracted from cookie", { 
+            jwtLength: jwt.length,
+            jwtPrefix: jwt.substring(0, 20),
+            isActivationToken: jwt.startsWith("act-"),
+          });
+        } else {
+          console.warn("[JWT Debug] No valid cookie found", {
+            cookieNames: allCookies.map(c => c.name),
+          });
         }
       } catch (e) {
         console.error("[JWT Debug] Cookie read error", (e as Error).message);
