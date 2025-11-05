@@ -366,47 +366,64 @@ export async function POST(req: NextRequest) {
       jwtLength: jwt?.length,
       jwtPrefix: jwt?.substring(0, 20),
       hasSecret: !!USER_JWT_SECRET,
+      isActivationToken: jwt?.startsWith("act-") || false,
     });
     
     if (jwt) {
-      session = await verifyJwt(`Bearer ${jwt}`);
-      console.log("[JWT Debug] verifyJwt result", {
-        hasSession: !!session,
-        userId: session?.userId,
-      });
-      
-      // 如果配置了密钥但验证失败，拒绝请求（生产环境）
-      if (!session && USER_JWT_SECRET && isProduction()) {
-        console.error("[JWT Debug] Production: JWT verification failed");
-        return err("AUTH_REQUIRED", "Invalid or expired authentication token.", 401);
-      }
-    } else {
-      console.log("[JWT Debug] No JWT token provided");
-    }
-    
-    // 如果没有 JWT token 或验证失败，尝试从激活token生成用户ID
-    if (!session && jwt) {
-      // 检查是否是激活token格式 (act-xxxxxxxx-xxxxxxxx)
+      // 先检查是否是激活token格式，激活token不需要JWT验证
       if (jwt.startsWith("act-")) {
+        // 处理激活token（act-xxxxxxxx-xxxxxxxx格式）
         try {
-          // 从token中提取activationId
           const parts = jwt.split("-");
           if (parts.length >= 3 && parts[0] === "act") {
-            const activationId = parseInt(parts[2], 16); // 从hex转换为数字
+            // 从 act-{hash}-{activationId} 格式中提取 activationId（最后一个部分）
+            const activationId = parseInt(parts[parts.length - 1], 16); // 从hex转换为数字
             if (!isNaN(activationId) && activationId > 0) {
               // 使用activationId作为用户ID（格式：act-{activationId}）
               const userId = `act-${activationId}`;
               console.log("[JWT Debug] Generated user ID from activation token", { 
                 activationId,
-                userId 
+                userId,
+                tokenParts: parts.length,
               });
               session = { userId };
+            } else {
+              console.warn("[JWT Debug] Invalid activation ID in token", { 
+                activationId,
+                tokenPrefix: jwt.substring(0, 30),
+              });
             }
+          } else {
+            console.warn("[JWT Debug] Invalid activation token format", { 
+              tokenPrefix: jwt.substring(0, 30),
+              partsCount: parts.length,
+            });
           }
         } catch (e) {
-          console.error("[JWT Debug] Failed to parse activation token", (e as Error).message);
+          console.error("[JWT Debug] Failed to parse activation token", {
+            error: (e as Error).message,
+            tokenPrefix: jwt.substring(0, 30),
+          });
+        }
+      } else {
+        // 标准JWT格式，需要验证
+        session = await verifyJwt(`Bearer ${jwt}`);
+        console.log("[JWT Debug] verifyJwt result", {
+          hasSession: !!session,
+          userId: session?.userId,
+        });
+        
+        // 如果配置了密钥但验证失败，拒绝请求（生产环境）
+        if (!session && USER_JWT_SECRET && isProduction()) {
+          console.error("[JWT Debug] Production: JWT verification failed", {
+            tokenPrefix: jwt.substring(0, 30),
+            hasSecret: !!USER_JWT_SECRET,
+          });
+          return err("AUTH_REQUIRED", "Invalid or expired authentication token.", 401);
         }
       }
+    } else {
+      console.log("[JWT Debug] No JWT token provided");
     }
     
     // 如果没有session，使用匿名ID
