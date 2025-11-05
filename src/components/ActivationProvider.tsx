@@ -411,7 +411,13 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         
         // 保存用户token（基于激活码生成，用于后续请求标识用户）
         if (result.data?.userToken) {
-          localStorage.setItem('USER_TOKEN', result.data.userToken);
+          const token = result.data.userToken;
+          // 同时保存到localStorage和cookie（兼容移动端）
+          localStorage.setItem('USER_TOKEN', token);
+          // 设置cookie（30天有效期，兼容移动端）
+          const expires = new Date();
+          expires.setTime(expires.getTime() + 30 * 24 * 60 * 60 * 1000);
+          document.cookie = `USER_TOKEN=${encodeURIComponent(token)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
         }
         
         // 保存有效期信息用于显示
