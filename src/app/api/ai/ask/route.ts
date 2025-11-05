@@ -121,30 +121,20 @@ function err(
  * - 生产环境：必须配置 USER_JWT_SECRET，严格验证 JWT（安全要求）
  */
 async function verifyJwt(authorization?: string): Promise<{ userId: string } | null> {
-  console.log("[JWT Debug] verifyJwt called", {
-    hasAuth: !!authorization,
-    authPrefix: authorization?.substring(0, 20),
-    hasSecret: !!USER_JWT_SECRET,
-    isProduction: isProduction(),
-    isDevOrPreview: isDevelopmentOrPreview(),
-  });
-
   // 生产环境安全检查：必须配置 USER_JWT_SECRET
   if (isProduction()) {
     if (!USER_JWT_SECRET) {
-      console.error("[JWT Debug] Production environment requires USER_JWT_SECRET");
+      console.error("[JWT] Production environment requires USER_JWT_SECRET");
       return null;
     }
     // 生产环境必须提供有效的 Authorization header
     if (!authorization?.startsWith("Bearer ")) {
-      console.log("[JWT Debug] Production: missing or invalid Bearer token");
       return null;
     }
   }
   
   // 开发或预览环境：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
   if (!USER_JWT_SECRET) {
-    console.log("[JWT Debug] USER_JWT_SECRET not configured");
     if (isDevelopmentOrPreview()) {
       // 开发模式兜底：如果有 Bearer token，即使不验证也允许通过
       if (authorization?.startsWith("Bearer ")) {
@@ -154,7 +144,6 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
           try {
             const [header, payload, signature] = token.split(".");
             if (!header || !payload) {
-              console.log("[JWT Debug] Dev mode: invalid token format");
               return null;
             }
             const json = JSON.parse(atobUrlSafe(payload)) as { 
@@ -163,74 +152,47 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
               userId?: string;
               id?: string;
             };
-            console.log("[JWT Debug] Dev mode: parsed payload", {
-              hasSub: !!json.sub,
-              hasUser_id: !!json.user_id,
-              hasUserId: !!json.userId,
-              hasId: !!json.id,
-              payloadKeys: Object.keys(json),
-            });
             const userId = json.sub || json.user_id || json.userId || json.id || null;
             if (!userId || typeof userId !== "string") {
-              console.log("[JWT Debug] Dev mode: no userId found in payload");
               return null;
             }
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             if (uuidRegex.test(userId)) {
-              console.log("[JWT Debug] Dev mode: valid UUID found", userId);
               return { userId };
             }
-            console.log("[JWT Debug] Dev mode: userId is not UUID format", userId);
             return null;
           } catch (e) {
-            console.error("[JWT Debug] Dev mode: parse error", (e as Error).message);
+            console.error("[JWT] Dev mode: parse error", (e as Error).message);
             return null;
           }
         }
       }
       // 开发或预览环境允许跳过认证
-      console.log("[JWT Debug] Dev mode: no Bearer token, returning null");
       return null; // 返回 null，让调用方使用匿名 ID
     }
     // 非开发/预览环境但未配置密钥，返回 null
-    console.log("[JWT Debug] Not dev/preview and no secret configured");
     return null;
   }
 
   if (!authorization?.startsWith("Bearer ")) {
-    console.log("[JWT Debug] No Bearer token in authorization header");
     return null;
   }
 
   const token = authorization.slice("Bearer ".length).trim();
-  console.log("[JWT Debug] Token extracted", { tokenLength: token.length, tokenPrefix: token.substring(0, 20) });
   
   try {
     // Supabase Legacy JWT Secret 通常是 Base64 编码的，需要先解码
     let secret: Uint8Array;
-    let secretType: "base64" | "raw" = "raw";
     try {
       // 尝试 Base64 解码（Supabase Legacy JWT Secret 格式）
       const decodedSecret = Buffer.from(USER_JWT_SECRET, "base64");
       secret = new Uint8Array(decodedSecret);
-      secretType = "base64";
-      console.log("[JWT Debug] Secret decoded as Base64", { secretLength: secret.length });
     } catch {
       // 如果 Base64 解码失败，使用原始字符串（向后兼容）
       secret = new TextEncoder().encode(USER_JWT_SECRET);
-      secretType = "raw";
-      console.log("[JWT Debug] Secret used as raw string", { secretLength: secret.length });
     }
     
     const { payload } = await jwtVerify(token, secret); // 默认允许 HS256
-    console.log("[JWT Debug] JWT verification successful", {
-      secretType,
-      payloadKeys: Object.keys(payload),
-      hasSub: !!payload.sub,
-      hasUser_id: !!(payload as any).user_id,
-      hasUserId: !!(payload as any).userId,
-      hasId: !!payload.id,
-    });
     
     // 尝试多种可能的字段名
     const payloadWithUserId = payload as { 
@@ -240,28 +202,20 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
       id?: string;
     };
     const userId = payloadWithUserId.sub || payloadWithUserId.user_id || payloadWithUserId.userId || payloadWithUserId.id || null;
-    console.log("[JWT Debug] Extracted userId", { userId, type: typeof userId });
     
     if (!userId || typeof userId !== "string") {
-      console.log("[JWT Debug] userId is null or not string");
       return null;
     }
     
     // 验证是否为有效的 UUID 格式
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(userId)) {
-      console.log("[JWT Debug] Valid UUID userId found", userId);
       return { userId };
     }
     // 如果不是 UUID 格式，返回 null（将被视为匿名用户）
-    console.log("[JWT Debug] userId is not UUID format", userId);
     return null;
   } catch (e) {
-    console.error("[JWT Debug] JWT verification failed", {
-      error: (e as Error).message,
-      errorName: (e as Error).name,
-      stack: (e as Error).stack?.substring(0, 200),
-    });
+    console.error("[JWT] JWT verification failed", (e as Error).message);
     return null;
   }
 }
@@ -297,14 +251,8 @@ export async function POST(req: NextRequest) {
     
     // 1) Authorization: Bearer <jwt>
     const authHeader = req.headers.get("authorization");
-    console.log("[JWT Debug] Checking authorization header", {
-      hasAuthHeader: !!authHeader,
-      authHeaderPrefix: authHeader?.substring(0, 30),
-      startsWithBearer: authHeader?.startsWith("Bearer "),
-    });
     if (authHeader?.startsWith("Bearer ")) {
       jwt = authHeader.slice("Bearer ".length).trim();
-      console.log("[JWT Debug] JWT extracted from Bearer header", { jwtLength: jwt.length });
     }
     
     // 2) Cookie（优先检查 USER_TOKEN，兼容移动端）
@@ -317,30 +265,11 @@ export async function POST(req: NextRequest) {
           cookieJwt = req.cookies.get("sb-access-token")?.value;
         }
         
-        // 详细调试日志
-        const allCookies = req.cookies.getAll();
-        console.log("[JWT Debug] Checking cookie", { 
-          hasUserToken: !!req.cookies.get("USER_TOKEN")?.value,
-          hasSbToken: !!req.cookies.get("sb-access-token")?.value,
-          cookieLength: cookieJwt?.length,
-          allCookieNames: allCookies.map(c => c.name),
-          userAgent: req.headers.get("user-agent")?.substring(0, 50),
-        });
-        
         if (cookieJwt && cookieJwt.trim()) {
           jwt = cookieJwt.trim();
-          console.log("[JWT Debug] JWT extracted from cookie", { 
-            jwtLength: jwt.length,
-            jwtPrefix: jwt.substring(0, 20),
-            isActivationToken: jwt.startsWith("act-"),
-          });
-        } else {
-          console.warn("[JWT Debug] No valid cookie found", {
-            cookieNames: allCookies.map(c => c.name),
-          });
         }
       } catch (e) {
-        console.error("[JWT Debug] Cookie read error", (e as Error).message);
+        console.error("[JWT] Cookie read error", (e as Error).message);
       }
     }
     
@@ -349,25 +278,16 @@ export async function POST(req: NextRequest) {
       try {
         const url = new URL(req.url);
         const token = url.searchParams.get("token");
-        console.log("[JWT Debug] Checking query parameter", { hasToken: !!token, tokenLength: token?.length });
         if (token && token.trim()) {
           jwt = token.trim();
-          console.log("[JWT Debug] JWT extracted from query parameter", { jwtLength: jwt.length });
         }
       } catch (e) {
-        console.error("[JWT Debug] URL parsing error", (e as Error).message);
+        console.error("[JWT] URL parsing error", (e as Error).message);
       }
     }
     
     // 验证 JWT（如果提供了 token，否则使用匿名 ID）
     let session: { userId: string } | null = null;
-    console.log("[JWT Debug] JWT extraction result", {
-      hasJwt: !!jwt,
-      jwtLength: jwt?.length,
-      jwtPrefix: jwt?.substring(0, 20),
-      hasSecret: !!USER_JWT_SECRET,
-      isActivationToken: jwt?.startsWith("act-") || false,
-    });
     
     if (jwt) {
       // 先检查是否是激活token格式，激活token不需要JWT验证
@@ -381,76 +301,28 @@ export async function POST(req: NextRequest) {
             if (!isNaN(activationId) && activationId > 0) {
               // 使用activationId作为用户ID（格式：act-{activationId}）
               const userId = `act-${activationId}`;
-              console.log("[JWT Debug] Generated user ID from activation token", { 
-                activationId,
-                userId,
-                tokenParts: parts.length,
-              });
               session = { userId };
-            } else {
-              console.warn("[JWT Debug] Invalid activation ID in token", { 
-                activationId,
-                tokenPrefix: jwt.substring(0, 30),
-              });
             }
-          } else {
-            console.warn("[JWT Debug] Invalid activation token format", { 
-              tokenPrefix: jwt.substring(0, 30),
-              partsCount: parts.length,
-            });
           }
         } catch (e) {
-          console.error("[JWT Debug] Failed to parse activation token", {
-            error: (e as Error).message,
-            tokenPrefix: jwt.substring(0, 30),
-          });
+          console.error("[JWT] Failed to parse activation token", (e as Error).message);
         }
       } else {
         // 标准JWT格式，需要验证
         session = await verifyJwt(`Bearer ${jwt}`);
-        console.log("[JWT Debug] verifyJwt result", {
-          hasSession: !!session,
-          userId: session?.userId,
-        });
         
         // 如果配置了密钥但验证失败，拒绝请求（生产环境）
         if (!session && USER_JWT_SECRET && isProduction()) {
-          console.error("[JWT Debug] Production: JWT verification failed", {
-            tokenPrefix: jwt.substring(0, 30),
-            hasSecret: !!USER_JWT_SECRET,
-          });
+          console.error("[JWT] Production: JWT verification failed");
           return err("AUTH_REQUIRED", "Invalid or expired authentication token.", 401);
         }
       }
-    } else {
-      console.log("[JWT Debug] No JWT token provided");
     }
     
     // 如果没有session，使用匿名ID
     if (!session) {
-      console.log("[JWT Debug] No valid token found, using anonymous session");
       session = { userId: "anonymous" };
     }
-    
-    // 汇总日志：显示所有关键信息
-    console.log("[JWT Debug] ========== JWT SUMMARY ==========");
-    console.log("[JWT Debug] JWT Token Status:", {
-      jwtExtracted: !!jwt,
-      jwtLength: jwt?.length || 0,
-      jwtPrefix: jwt?.substring(0, 30) || "N/A",
-      hasSecret: !!USER_JWT_SECRET,
-      secretLength: USER_JWT_SECRET?.length || 0,
-      isProduction: isProduction(),
-      isDevOrPreview: isDevelopmentOrPreview(),
-    });
-    console.log("[JWT Debug] Verification Result:", {
-      hasSession: !!session,
-      userId: session?.userId || "null",
-      isAnonymous: session?.userId === "anonymous",
-    });
-    console.log("[JWT Debug] ==================================");
-    
-    console.log("[JWT Debug] Final session", { userId: session.userId });
 
     // 2) 解析与参数校验
     const body = (await req.json()) as AskRequest | null;
@@ -525,19 +397,9 @@ export async function POST(req: NextRequest) {
               
               if (user?.userid) {
                 forwardedUserId = user.userid;
-                console.log("[JWT Debug] Fetched userid from database", {
-                  originalUserId: session.userId,
-                  activationId,
-                  email: activation.email,
-                  userid: forwardedUserId,
-                });
               } else {
                 // 如果用户表中没有userid，使用原始的act-格式（向后兼容）
                 forwardedUserId = session.userId;
-                console.log("[JWT Debug] User not found or no userid, using original", {
-                  originalUserId: session.userId,
-                  activationId,
-                });
               }
             } else {
               // 激活记录不存在，使用原始格式
@@ -550,10 +412,7 @@ export async function POST(req: NextRequest) {
           forwardedUserId = session.userId;
         }
       } catch (error) {
-        console.error("[JWT Debug] Failed to fetch userid from database", {
-          error: (error as Error).message,
-          originalUserId: session.userId,
-        });
+        console.error("[JWT] Failed to fetch userid from database", (error as Error).message);
         // 查询失败时，使用原始userId（向后兼容）
         forwardedUserId = session.userId;
       }
@@ -561,12 +420,6 @@ export async function POST(req: NextRequest) {
       // UUID格式或其他格式，直接使用
       forwardedUserId = session.userId;
     }
-    
-    console.log("[JWT Debug] Forwarding to AI-Service", {
-      originalUserId: session.userId,
-      forwardedUserId,
-      isAnonymous: session.userId === "anonymous",
-    });
     
     // 确保 AI_SERVICE_URL 不重复 /v1 路径
     const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
@@ -635,11 +488,6 @@ export async function POST(req: NextRequest) {
       try {
         let userId: number | null = null;
         
-        console.log("[AI Ask] Recording chat behavior", {
-          sessionUserId: session.userId,
-          forwardedUserId,
-        });
-        
         // 直接通过userid查找用户（不需要通过activation）
         const user = await db
           .selectFrom("users")
@@ -649,9 +497,6 @@ export async function POST(req: NextRequest) {
         
         if (user) {
           userId = user.id;
-          console.log("[AI Ask] Found user ID by userid", { userId, userid: forwardedUserId });
-        } else {
-          console.warn("[AI Ask] User not found by userid", { userid: forwardedUserId });
         }
         
         // 如果找到了用户ID，记录到缓存
@@ -670,28 +515,11 @@ export async function POST(req: NextRequest) {
           // 在Serverless环境中，立即写入更可靠（不依赖定时器）
           const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
           cache.addChatRecord(userId, question, ipAddress, userAgent, clientType, !!isServerless);
-          console.log("[AI Ask] Added chat record to cache", { 
-            userId, 
-            questionLength: question.length,
-            immediateFlush: !!isServerless,
-          });
-        } else {
-          console.warn("[AI Ask] User ID not found, skipping behavior record", {
-            forwardedUserId,
-            sessionUserId: session.userId,
-          });
         }
       } catch (error) {
         // 记录行为失败不影响主流程，仅记录日志
         console.error("[AI Ask] Failed to record chat behavior:", error);
       }
-    } else {
-      console.log("[AI Ask] Skipping behavior record", {
-        resultOk: result.ok,
-        sessionUserId: session.userId,
-        forwardedUserId,
-        isAnonymous: session.userId === "anonymous",
-      });
     }
 
     // 7) 成功：直接返回统一包裹结构
