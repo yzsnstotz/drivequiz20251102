@@ -171,13 +171,21 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         
         // 如果localStorage没有，尝试从cookie获取（兼容某些移动浏览器）
         if (!token) {
-          const cookies = document.cookie.split(";");
-          for (const cookie of cookies) {
-            const [name, value] = cookie.trim().split("=");
-            if (name === "USER_TOKEN" || name === "sb-access-token") {
-              token = decodeURIComponent(value);
-              break;
+          try {
+            const cookies = document.cookie.split(";");
+            for (const cookie of cookies) {
+              const [name, value] = cookie.trim().split("=");
+              if (name === "USER_TOKEN" || name === "sb-access-token") {
+                token = decodeURIComponent(value);
+                // 如果从cookie获取到token，也保存到localStorage（方便下次使用）
+                if (token) {
+                  localStorage.setItem("USER_TOKEN", token);
+                }
+                break;
+              }
             }
+          } catch (e) {
+            console.error("[Frontend Debug] Cookie read error:", e);
           }
         }
         
@@ -189,6 +197,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
           isActivationToken: token?.startsWith("act-") || false,
           localStorageKeys: typeof window !== "undefined" ? Object.keys(localStorage) : [],
           cookieAvailable: typeof document !== "undefined",
+          cookies: typeof document !== "undefined" ? document.cookie.split(";").map(c => c.trim().split("=")[0]) : [],
         });
       }
 
@@ -368,9 +377,10 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                 }
               }}
               placeholder="输入问题..."
-              className="w-full h-11 rounded-lg border px-3 pr-20 outline-none transition-[border-color] focus:border-blue-500 text-sm"
+              className="w-full h-11 rounded-lg border px-3 pr-20 outline-none transition-[border-color] focus:border-blue-500 text-base"
               spellCheck={false}
               type="text"
+              style={{ fontSize: '16px' }} // iOS Safari 需要至少16px才能避免自动缩放
             />
             {/* 字数提示（可选） */}
             {input.trim().length > 0 && (
