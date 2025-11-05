@@ -14,9 +14,10 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import type { ServiceConfig } from "../../index";
-import { ensureServiceAuth } from "../../middlewares/auth";
-import { cacheGet } from "../../lib/cache";
+import type { ServiceConfig } from "../../index.js";
+import { ensureServiceAuth } from "../../middlewares/auth.js";
+import { cacheGet } from "../../lib/cache.js";
+import { triggerDailySummarizeOnce } from "../../jobs/cron.dailySummarize.js";
 
 // 统一响应类型
 type Ok<T> = { ok: true; data: T };
@@ -130,7 +131,67 @@ export default async function dailySummaryRoute(app: FastifyInstance): Promise<v
           note: "no_cached_summary",
         } as Ok<Record<string, never>> & { note: string });
       } catch (e) {
-        request.log.error({ err: e }, "daily_summary_route_error");
+        const err = e as Error & { statusCode?: number };
+        const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+        const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";
+        reply.code(status).send({
+          ok: false,
+          errorCode:
+            status === 400
+              ? "VALIDATION_FAILED"
+              : status === 401
+              ? "AUTH_REQUIRED"
+              : status === 403
+              ? "FORBIDDEN"
+              : "INTERNAL_ERROR",
+          message,
+        } as Err);
+      }
+    },
+  );
+
+  // POST /v1/admin/daily-summary/rebuild - 手动触发重建指定日期的摘要
+  app.post(
+    "/v1/admin/daily-summary/rebuild",
+    async (
+      request: FastifyRequest<{ Querystring: QueryParams }>,
+      reply: FastifyReply,
+    ): Promise<void> => {
+      const config = app.config as ServiceConfig;
+
+      try {
+        // 1) 服务间鉴权
+        ensureServiceAuth(request, config);
+
+        // 2) 解析与校验参数（默认昨天）
+        const yesterday = new Date();
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        const defaultDate = yesterday.toISOString().slice(0, 10);
+        const dateUtc = (request.query.date && String(request.query.date)) || defaultDate;
+
+        if (!DATE_RE.test(dateUtc)) {
+          reply.code(400).send({
+            ok: false,
+            errorCode: "VALIDATION_FAILED",
+            message: "Invalid date format. Expect YYYY-MM-DD",
+            details: { received: dateUtc },
+          } as Err);
+          return;
+        }
+
+        // 3) 触发重建任务（异步执行，不阻塞响应）
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        triggerDailySummarizeOnce(app, config, { dateUtc });
+
+        // 4) 立即返回成功响应（任务已在后台执行）
+        reply.send({
+          ok: true,
+          data: {
+            date: dateUtc,
+            message: "Rebuild task started. Summary will be available shortly.",
+          },
+        } as Ok<{ date: string; message: string }>);
+      } catch (e) {
         const err = e as Error & { statusCode?: number };
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";

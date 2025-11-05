@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
         .where("id", "=", codeRow.id)
         .execute();
 
-      // 6) 记录激活
+      // 6) 记录激活（activations 表）
       let inserted;
       try {
         inserted = await trx
@@ -222,6 +222,109 @@ export async function POST(request: NextRequest) {
         throw new Error("INSERT_ACTIVATION_FAILED");
       }
 
+      // 7) 创建或更新用户记录（users 表）
+      // 生成userid：使用act-{activationId}格式，与AI日志系统保持一致
+      const userid = `act-${inserted.id}`;
+      
+      let userRecord;
+      try {
+        // 先尝试查找现有用户
+        const existingUser = await trx
+          .selectFrom("users")
+          .select(["id", "email", "activation_code_id", "userid"])
+          .where("email", "=", email)
+          .executeTakeFirst();
+
+        if (existingUser) {
+          // 如果用户已存在，更新激活码关联和userid（如果还没有）
+          const updateData: Record<string, any> = {
+            activation_code_id: codeRow.id,
+            status: "active",
+            updated_at: now,
+          };
+          
+          // 如果用户还没有userid，则设置
+          if (!existingUser.userid) {
+            updateData.userid = userid;
+          }
+          
+          userRecord = await trx
+            .updateTable("users")
+            .set(updateData)
+            .where("id", "=", existingUser.id)
+            .returning(["id", "email", "status", "userid"])
+            .executeTakeFirst();
+        } else {
+          // 如果用户不存在，创建新用户（包含userid）
+          userRecord = await trx
+            .insertInto("users")
+            .values({
+              email,
+              userid, // 生成并存储userid
+              activation_code_id: codeRow.id,
+              status: "active",
+              registration_info: {
+                activation_code: activationCode,
+                activation_id: inserted.id,
+                activated_at: inserted.activated_at.toISOString(),
+              },
+            })
+            .returning(["id", "email", "status", "userid"])
+            .executeTakeFirst();
+        }
+      } catch (userError: any) {
+        console.error('[POST /api/activate] User insert/update error:', {
+          error: userError?.message || String(userError || ''),
+          email,
+          activationCode,
+        });
+        // 如果用户表操作失败，记录错误但不中断激活流程（向后兼容）
+        // 可以选择抛出错误来中断事务，但为了兼容性，我们继续执行
+      }
+
+      // 8) 记录用户行为（user_behaviors 表）- 将激活视为登录行为
+      if (userRecord?.id) {
+        try {
+          // 检测客户端类型
+          let clientType: "web" | "mobile" | "api" | "desktop" | "other" | null = null;
+          if (userAgent) {
+            const ua = userAgent.toLowerCase();
+            if (ua.includes("mobile") || ua.includes("android") || ua.includes("iphone") || ua.includes("ipad")) {
+              clientType = "mobile";
+            } else if (ua.includes("electron") || ua.includes("desktop")) {
+              clientType = "desktop";
+            } else if (ua.includes("api") || ua.includes("curl") || ua.includes("postman")) {
+              clientType = "api";
+            } else {
+              clientType = "web";
+            }
+          }
+
+          await trx
+            .insertInto("user_behaviors")
+            .values({
+              user_id: userRecord.id,
+              behavior_type: "login", // 激活视为登录
+              ip_address: ipAddress !== "unknown" ? ipAddress : null,
+              user_agent: userAgent || null,
+              client_type: clientType,
+              metadata: {
+                activation_code: activationCode,
+                activation_id: inserted.id,
+                is_first_activation: isFirstActivation,
+              },
+            })
+            .execute();
+        } catch (behaviorError: any) {
+          console.error('[POST /api/activate] User behavior insert error:', {
+            error: behaviorError?.message || String(behaviorError || ''),
+            userId: userRecord.id,
+            email,
+          });
+          // 如果行为记录失败，记录错误但不中断激活流程
+        }
+      }
+
       // 重新读取激活码以获取最新的有效期信息
       const updatedCodeRow = await trx
         .selectFrom("activation_codes")
@@ -236,12 +339,24 @@ export async function POST(request: NextRequest) {
         expiresAt = calculatedExpiresAt.toISOString();
       }
 
+      // 生成用户token（基于activationId和激活码，用于后续请求标识用户）
+      // 使用简单的哈希函数生成稳定的token（不加密，仅用于标识）
+      const tokenData = `${inserted.id}-${activationCode}-${inserted.activated_at.toISOString()}`;
+      let tokenHash = 0;
+      for (let i = 0; i < tokenData.length; i++) {
+        const char = tokenData.charCodeAt(i);
+        tokenHash = ((tokenHash << 5) - tokenHash) + char;
+        tokenHash = tokenHash & tokenHash;
+      }
+      const userToken = `act-${Math.abs(tokenHash).toString(16).padStart(8, "0")}-${inserted.id.toString(16).padStart(8, "0")}`;
+
       return ok(
         {
           activationId: inserted.id,
           activatedAt: inserted.activated_at.toISOString(),
           email,
           expiresAt,
+          userToken, // 返回用户token，前端存储用于后续请求
         },
         200,
       );

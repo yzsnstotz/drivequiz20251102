@@ -6,8 +6,8 @@
  * - 返回拼接后的参考上下文字符串（失败/未配置时降级为空）
  */
 
-import type { ServiceConfig } from "../index";
-import { getOpenAIClient } from "./openaiClient";
+import type { ServiceConfig } from "../index.js";
+import { getOpenAIClient } from "./openaiClient.js";
 
 type RagHit = {
   content: string;
@@ -63,7 +63,7 @@ async function callSupabaseMatch(
   config: ServiceConfig,
   queryEmbedding: number[],
   lang: string,
-  matchCount = DEFAULT_MATCH_COUNT
+  matchCount: number = DEFAULT_MATCH_COUNT
 ): Promise<RagHit[]> {
   // 基础配置缺失 → 直接降级为空（由上层兜底）
   if (!config.supabaseUrl || !config.supabaseServiceKey) return [];
