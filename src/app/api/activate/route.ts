@@ -236,12 +236,24 @@ export async function POST(request: NextRequest) {
         expiresAt = calculatedExpiresAt.toISOString();
       }
 
+      // 生成用户token（基于activationId和激活码，用于后续请求标识用户）
+      // 使用简单的哈希函数生成稳定的token（不加密，仅用于标识）
+      const tokenData = `${inserted.id}-${activationCode}-${inserted.activated_at.toISOString()}`;
+      let tokenHash = 0;
+      for (let i = 0; i < tokenData.length; i++) {
+        const char = tokenData.charCodeAt(i);
+        tokenHash = ((tokenHash << 5) - tokenHash) + char;
+        tokenHash = tokenHash & tokenHash;
+      }
+      const userToken = `act-${Math.abs(tokenHash).toString(16).padStart(8, "0")}-${inserted.id.toString(16).padStart(8, "0")}`;
+
       return ok(
         {
           activationId: inserted.id,
           activatedAt: inserted.activated_at.toISOString(),
           email,
           expiresAt,
+          userToken, // 返回用户token，前端存储用于后续请求
         },
         200,
       );
