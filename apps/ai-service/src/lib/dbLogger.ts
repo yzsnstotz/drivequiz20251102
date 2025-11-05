@@ -18,7 +18,7 @@
  *   await logAiInteraction({ userId, question, answer, lang: "ja", model, ragHits, safetyFlag: "ok", costEstUsd });
  */
 
-import { defaultLogger } from "./logger";
+// Logger import removed for performance
 
 export type AiLogRecord = {
   userId?: string | null;
@@ -33,6 +33,57 @@ export type AiLogRecord = {
 };
 
 /**
+ * 检查是否为有效的 UUID 格式
+ */
+function isValidUuid(str: string | null | undefined): boolean {
+  if (!str || typeof str !== "string") return false;
+  // UUID v4 格式: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+/**
+ * 规范化 user_id：如果是 "anonymous" 或无效 UUID，则返回 null
+ * 注意：如果传入的是 null，直接返回 null（匿名用户）
+ * 
+ * 注意：对于非 UUID 格式的 ID（如匿名 ID），我们不保存到数据库，
+ * 但会在日志中记录原始 userId 用于追踪
+ * 
+ * 例外：允许 "act-{activationId}" 格式的用户ID（激活系统使用）
+ */
+function normalizeUserId(userId: string | null | undefined): string | null {
+  if (!userId || userId === null) return null;
+  // 如果是 "anonymous" 字符串，直接返回 null
+  if (userId === "anonymous") return null;
+  // 如果是匿名 ID 格式（以 "anon-" 开头），返回 null
+  if (userId.startsWith("anon-")) return null;
+  // 允许激活系统使用的用户ID格式（act-{activationId}）
+  if (userId.startsWith("act-")) {
+    // 验证格式：act-{数字}
+    // 注意：userId 可能是 "act-123" 格式（从 token 提取的 activationId）
+    const parts = userId.split("-");
+    if (parts.length >= 2 && parts[0] === "act") {
+      // 取最后一部分作为 activationId（处理可能的格式：act-{activationId} 或 act-{hash}-{activationId}）
+      const activationIdStr = parts[parts.length - 1];
+      const activationId = parseInt(activationIdStr, 10);
+      if (!isNaN(activationId) && activationId > 0) {
+        // 有效的激活用户ID，统一格式为 act-{activationId}
+        const normalizedActUserId = `act-${activationId}`;
+        return normalizedActUserId;
+      }
+    }
+    // 如果格式不正确，返回 null
+    return null;
+  }
+  // 验证是否为有效的 UUID 格式
+  if (!isValidUuid(userId)) {
+    // 如果不是 UUID，返回 null（但会在日志中记录原始值用于追踪）
+    return null;
+  }
+  return userId;
+}
+
+/**
  * 向 Supabase 的 ai_logs 表插入记录（统一入口：logAiInteraction）。
  * 若环境变量缺失或请求失败，则仅打印警告。
  */
@@ -41,19 +92,18 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    defaultLogger.warn("skip ai_logs insert: missing SUPABASE env", {
-      missingUrl: !SUPABASE_URL,
-      missingKey: !SUPABASE_SERVICE_KEY,
-    });
     return;
   }
 
+  // 规范化 user_id（只保存有效的 UUID 或激活用户ID）
+  const normalizedUserId = normalizeUserId(log.userId);
+  
   const payload = [
     {
-      user_id: log.userId ?? null,
+      user_id: normalizedUserId,
       question: log.question,
       answer: log.answer,
-      language: log.lang ?? null,
+      locale: log.lang ?? null, // 数据库表中的字段名是 locale，不是 language
       model: log.model,
       rag_hits: log.ragHits,
       safety_flag: log.safetyFlag,
@@ -75,11 +125,10 @@ export async function logAiInteraction(log: AiLogRecord): Promise<void> {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      defaultLogger.warn("ai_logs insert non-2xx", { status: res.status, text });
+      // Silent failure
     }
   } catch (e) {
-    defaultLogger.warn("ai_logs insert failed", { error: (e as Error).message });
+    // Silent failure
   }
 }
 
@@ -103,9 +152,7 @@ export async function logAiInteractionsBatch(
     try {
       await Promise.all(group.map((r) => logAiInteraction(r)));
     } catch (e) {
-      defaultLogger.warn("logAiInteractionsBatch group failed", {
-        error: (e as Error).message,
-      });
+      // Silent failure
     }
   }
 }

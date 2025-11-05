@@ -18,6 +18,7 @@ import {
   Truck,
   Swords,
 } from "lucide-react";
+import AIPage from "@/components/AIPage";
 
 const welcomeData = [
   {
@@ -207,6 +208,11 @@ export default function HomePage() {
     }
   };
 
+  // 如果显示 AI 页面，渲染 AIPage 组件
+  if (showAI) {
+    return <AIPage onBack={() => setShowAI(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
@@ -219,7 +225,8 @@ export default function HomePage() {
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setShowAI(true)}
-              className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
+              className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 transition-colors"
+              aria-label="打开 AI 助手"
             >
               <Bot className="h-6 w-6" />
             </button>
@@ -341,6 +348,25 @@ export default function HomePage() {
               </span>
             </div>
           </a>
+        </div>
+
+        {/* AI 助手入口 */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-4 mb-6 shadow-md">
+          <button
+            onClick={() => setShowAI(true)}
+            className="w-full flex items-center justify-between text-white hover:opacity-90 transition-opacity"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                <Bot className="h-6 w-6" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-lg font-bold">AI 智能助手</h3>
+                <p className="text-sm text-white/90">随时解答你的驾考问题</p>
+              </div>
+            </div>
+            <ChevronRight className="h-6 w-6" />
+          </button>
         </div>
 
         <VideosSection />

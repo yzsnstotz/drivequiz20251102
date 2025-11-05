@@ -5,7 +5,7 @@
  */
 
 import OpenAI from "openai";
-import type { ServiceConfig } from "../index";
+import type { ServiceConfig } from "../index.js";
 
 let clientInstance: OpenAI | null = null;
 

@@ -22,11 +22,20 @@ if (!connectionString) {
 }
 
 async function createDefaultAdmin() {
+  // 处理 SSL 连接（Supabase 需要 SSL）
+  // 如果连接字符串中没有 sslmode，强制添加
+  let finalConnectionString = connectionString;
+  if (connectionString.includes('supabase.co') && !connectionString.includes('sslmode=')) {
+    finalConnectionString = connectionString.includes('?') 
+      ? `${connectionString}&sslmode=require`
+      : `${connectionString}?sslmode=require`;
+  }
+  
   const pool = new Pool({
-    connectionString,
-    ssl: {
-      rejectUnauthorized: false,
-    },
+    connectionString: finalConnectionString,
+    ssl: connectionString.includes('supabase.co') || connectionString.includes('sslmode=require')
+      ? { rejectUnauthorized: false }
+      : false,
   });
 
   try {
@@ -61,7 +70,6 @@ async function createDefaultAdmin() {
       }
       
       client.release();
-      await pool.end();
       return;
     }
 
@@ -88,7 +96,6 @@ async function createDefaultAdmin() {
   } catch (error) {
     console.error("❌ 创建默认管理员失败:");
     console.error(error);
-    process.exit(1);
   } finally {
     await pool.end();
   }

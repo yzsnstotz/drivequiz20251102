@@ -1,5 +1,9 @@
 # Logs
 logs
+!src/app/api/admin/ai/logs/
+!apps/web/app/api/admin/ai/logs/
+!src/app/admin/ai/logs/
+!apps/web/app/admin/ai/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -36,7 +36,7 @@ echo "→ /api/admin/ai/filters (create)"
 curl -fsS -X POST "$BASE_URL/api/admin/ai/filters" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"type":"not-driving","pattern":"(?i)股票|恋爱"}' | jq '.ok' | grep true
+  -d '{"items":[{"type":"not-driving","pattern":"(?i)股票|恋爱"}]}' | jq '.ok' | grep true
 
 echo "→ /api/admin/ai/rag/docs (create)"
 curl -fsS -X POST "$BASE_URL/api/admin/ai/rag/docs" \
