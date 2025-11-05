@@ -19,7 +19,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { ServiceConfig } from "../../index.js";
 import { ensureServiceAuth } from "../../middlewares/auth.js";
 import { getOpenAIClient } from "../../lib/openaiClient.js";
-import { defaultLogger } from "../../lib/logger.js";
+// Logger import removed for performance
 
 // 统一响应类型
 type Ok<T> = { ok: true; data: T };
@@ -144,10 +144,7 @@ async function insertVectors(
         throw new Error(`Supabase insert failed: ${res.status} ${text}`);
       }
     } catch (e) {
-      defaultLogger.warn("Failed to insert vector batch", {
-        batchIndex: Math.floor(i / batchSize),
-        error: (e as Error).message,
-      });
+      // Silent failure
       throw e;
     }
   }
@@ -182,18 +179,10 @@ async function updateDocChunks(
     );
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      defaultLogger.warn("Failed to update doc chunks", {
-        docId,
-        status: res.status,
-        text,
-      });
+      // Silent failure
     }
   } catch (e) {
-    defaultLogger.warn("Failed to update doc chunks", {
-      docId,
-      error: (e as Error).message,
-    });
+    // Silent failure
   }
 }
 
@@ -269,11 +258,7 @@ export default async function ragIngestRoute(app: FastifyInstance): Promise<void
               version: finalVersion,
             });
           } catch (e) {
-            defaultLogger.warn("Failed to create embedding for chunk", {
-              docId,
-              chunkLength: chunk.length,
-              error: (e as Error).message,
-            });
+            // Silent failure
             // 继续处理其他 chunk，不阻断
           }
         }
@@ -303,7 +288,6 @@ export default async function ragIngestRoute(app: FastifyInstance): Promise<void
           },
         } as Ok<{ docId: string; chunks: number; version: string }>);
       } catch (e) {
-        request.log.error({ err: e }, "rag_ingest_route_error");
         const err = e as Error & { statusCode?: number };
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";

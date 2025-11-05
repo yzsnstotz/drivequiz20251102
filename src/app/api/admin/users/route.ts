@@ -17,23 +17,23 @@ import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
 
 /** S-4：排序白名单类型 */
-type UserSortKey = "activatedAt" | "email" | "code";
+type UserSortKey = "createdAt" | "email" | "lastLoginAt";
 
 /** S-4：严格白名单 */
-const SORT_WHITELIST = new Set<UserSortKey>(["activatedAt", "email", "code"]);
+const SORT_WHITELIST = new Set<UserSortKey>(["createdAt", "email", "lastLoginAt"]);
 
 /** S-4：列映射（返回合规列名字符串） */
 function mapSort(
   key: UserSortKey
-): "a.activated_at" | "a.email" | "a.activation_code" {
+): "u.created_at" | "u.email" | "u.last_login_at" {
   switch (key) {
     case "email":
-      return "a.email";
-    case "code":
-      return "a.activation_code";
-    case "activatedAt":
+      return "u.email";
+    case "lastLoginAt":
+      return "u.last_login_at";
+    case "createdAt":
     default:
-      return "a.activated_at";
+      return "u.created_at";
   }
 }
 
@@ -41,10 +41,10 @@ function mapSort(
  * GET /api/admin/users
  * query:
  *  - email?: string (不区分大小写模糊)
- *  - code?:  string (不区分大小写模糊)
+ *  - code?:  string (不区分大小写模糊，匹配激活码)
  *  - page?:  number (default 1)
  *  - limit?: number (default 20, max 100)
- *  - sortBy?: 'activatedAt' | 'email' | 'code' (default 'activatedAt')
+ *  - sortBy?: 'createdAt' | 'email' | 'lastLoginAt' (default 'createdAt')
  *  - order?:  'asc' | 'desc' (default 'desc')
  */
 export const GET = withAdminAuth(async (req: NextRequest) => {
@@ -67,7 +67,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const offset = (safePage - 1) * safeLimit;
 
     // S-4：默认与校验
-    const sortKey: UserSortKey = (sortBy as UserSortKey) || "activatedAt";
+    const sortKey: UserSortKey = (sortBy as UserSortKey) || "createdAt";
     if (!SORT_WHITELIST.has(sortKey)) {
       return badRequest("Invalid sortBy");
     }
@@ -76,20 +76,20 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
     // ====== K-6/K-5：计数查询独立构造 + 大小写不敏感匹配用 SQL 模板（K-5.b）======
     let countQ = db
-      .selectFrom("activations as a")
-      .leftJoin("activation_codes as c", "c.code", "a.activation_code")
+      .selectFrom("users as u")
+      .leftJoin("activation_codes as c", "c.id", "u.activation_code_id")
       .select((eb) => eb.fn.countAll<number>().as("count"));
 
     if (email) {
       const pat = "%" + email + "%";
       countQ = countQ.where(
-        sql<boolean>`LOWER(${sql.ref("a.email")}) LIKE LOWER(${pat})`
+        sql<boolean>`LOWER(${sql.ref("u.email")}) LIKE LOWER(${pat})`
       );
     }
     if (code) {
       const pat = "%" + code + "%";
       countQ = countQ.where(
-        sql<boolean>`LOWER(${sql.ref("a.activation_code")}) LIKE LOWER(${pat})`
+        sql<boolean>`LOWER(${sql.ref("c.code")}) LIKE LOWER(${pat})`
       );
     }
 
@@ -98,15 +98,19 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
     // ====== 主查询（与计数相同过滤）======
     let q = db
-      .selectFrom("activations as a")
-      .leftJoin("activation_codes as c", "c.code", "a.activation_code")
+      .selectFrom("users as u")
+      .leftJoin("activation_codes as c", "c.id", "u.activation_code_id")
       .select([
-        "a.id as id",
-        "a.email as email",
-        "a.activation_code as activation_code",
-        "a.activated_at as activated_at",
-        "a.ip_address as ip_address",
-        "a.user_agent as user_agent",
+        "u.id as id",
+        "u.userid as userid", // 添加userid字段
+        "u.email as email",
+        "u.name as name",
+        "u.phone as phone",
+        "u.status as status",
+        "u.created_at as created_at",
+        "u.updated_at as updated_at",
+        "u.last_login_at as last_login_at",
+        "c.code as activation_code",
         "c.status as code_status",
         "c.expires_at as code_expires_at",
         "c.validity_period as validity_period",
@@ -117,13 +121,13 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     if (email) {
       const pat = "%" + email + "%";
       q = q.where(
-        sql<boolean>`LOWER(${sql.ref("a.email")}) LIKE LOWER(${pat})`
+        sql<boolean>`LOWER(${sql.ref("u.email")}) LIKE LOWER(${pat})`
       );
     }
     if (code) {
       const pat = "%" + code + "%";
       q = q.where(
-        sql<boolean>`LOWER(${sql.ref("a.activation_code")}) LIKE LOWER(${pat})`
+        sql<boolean>`LOWER(${sql.ref("c.code")}) LIKE LOWER(${pat})`
       );
     }
 
@@ -131,6 +135,40 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     q = q.orderBy(sortColumn, sortOrder).limit(safeLimit).offset(offset);
 
     const rows = await q.execute();
+
+    // 获取每个用户的最近一次登录 IP 和 User Agent（优化：批量查询避免 N+1）
+    const userIds = rows.map((r: any) => r.id).filter((id: number) => id);
+    const lastLoginMap = new Map<number, any>();
+    
+    if (userIds.length > 0) {
+      // 获取所有登录记录，在应用层按用户分组取最近一条
+      const allLoginBehaviors = await db
+        .selectFrom("user_behaviors")
+        .select([
+          "user_id",
+          "ip_address",
+          "user_agent",
+          "client_type",
+          "created_at",
+        ])
+        .where("behavior_type", "=", "login")
+        .where("user_id", "in", userIds)
+        .orderBy("created_at", "desc")
+        .execute();
+
+      // 按用户ID分组，取每个用户最近一条记录
+      const userLatestMap = new Map<number, any>();
+      for (const behavior of allLoginBehaviors) {
+        if (!userLatestMap.has(behavior.user_id)) {
+          userLatestMap.set(behavior.user_id, behavior);
+        }
+      }
+
+      // 构建最终映射
+      for (const [userId, behavior] of userLatestMap) {
+        lastLoginMap.set(userId, behavior);
+      }
+    }
 
     // 计算实际到期时间的辅助函数
     const calculateActualExpiresAt = (
@@ -165,23 +203,38 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       return null;
     };
 
-    const data = rows.map((r: any) => ({
-      id: r.id,
-      email: r.email,
-      activationCode: r.activation_code,
-      activatedAt: r.activated_at
-        ? new Date(r.activated_at).toISOString()
-        : null,
-      codeStatus: r.code_status ?? null,
-      codeExpiresAt: calculateActualExpiresAt(
-        r.code_expires_at,
-        r.activation_started_at,
-        r.validity_period,
-        r.validity_unit
-      ),
-      ipAddress: r.ip_address ?? null,
-      userAgent: r.user_agent ?? null,
-    }));
+    const data = rows.map((r: any) => {
+      const lastLogin = lastLoginMap.get(r.id);
+      return {
+        id: r.id,
+        userid: r.userid ?? null, // 添加userid字段
+        email: r.email,
+        name: r.name ?? null,
+        phone: r.phone ?? null,
+        status: r.status ?? null,
+        createdAt: r.created_at
+          ? new Date(r.created_at).toISOString()
+          : null,
+        updatedAt: r.updated_at
+          ? new Date(r.updated_at).toISOString()
+          : null,
+        lastLoginAt: r.last_login_at
+          ? new Date(r.last_login_at).toISOString()
+          : null,
+        activationCode: r.activation_code ?? null,
+        codeStatus: r.code_status ?? null,
+        codeExpiresAt: calculateActualExpiresAt(
+          r.code_expires_at,
+          r.activation_started_at,
+          r.validity_period,
+          r.validity_unit
+        ),
+        // 最近一次登录的 IP 和 User Agent
+        ipAddress: lastLogin?.ip_address ?? null,
+        userAgent: lastLogin?.user_agent ?? null,
+        clientType: lastLogin?.client_type ?? null,
+      };
+    });
 
     // P-5：与当前库保持一致（位置参数版）
     const meta = getPaginationMeta(safePage, safeLimit, total);

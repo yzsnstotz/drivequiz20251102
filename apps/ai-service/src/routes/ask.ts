@@ -297,7 +297,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           },
         });
       } catch (e) {
-        request.log.error({ err: e }, "ask_route_error");
         const err = e as Error & { statusCode?: number };
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";

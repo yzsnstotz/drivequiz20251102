@@ -9,24 +9,48 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import apiClient from "@/lib/apiClient";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getIPGeolocation, isPrivateIP, type IPGeolocationInfo } from "@/lib/ipGeolocation";
 
 // ---- 类型定义（与后端契约保持一致） ----
-type SortKey = "activatedAt" | "email" | "code";
+type SortKey = "createdAt" | "email" | "lastLoginAt";
 type SortOrder = "asc" | "desc";
 
 type Row = {
   id: number;
+  userid: string | null; // 添加userid字段
   email: string;
+  name: string | null;
+  phone: string | null;
+  status: "active" | "inactive" | "suspended" | "pending" | null;
+  createdAt: string | null; // ISO8601
+  updatedAt: string | null; // ISO8601
+  lastLoginAt: string | null; // ISO8601
   activationCode: string | null;
-  activatedAt: string | null; // ISO8601
   codeStatus: "enabled" | "disabled" | "expired" | "suspended" | null;
   codeExpiresAt: string | null; // ISO8601
   ipAddress: string | null;
   userAgent: string | null;
+  clientType: string | null;
+};
+
+type BehaviorRecord = {
+  ip?: string | null;
+  userAgent?: string | null;
+  clientType?: string | null;
+  createdAt: string;
+};
+
+type UserBehaviorRecord = {
+  id: number;
+  behaviorType: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  clientType: string | null;
+  metadata: any | null;
+  createdAt: string;
 };
 
 type Pagination = {
@@ -41,7 +65,7 @@ type Pagination = {
 type ApiOk = { ok: true; data: Row[]; pagination?: Pagination };
 type ApiErr = { ok: false; errorCode?: string; message?: string };
 
-const SORT_KEYS: SortKey[] = ["activatedAt", "email", "code"];
+const SORT_KEYS: SortKey[] = ["createdAt", "email", "lastLoginAt"];
 const ORDERS: SortOrder[] = ["desc", "asc"];
 
 function buildQuery(params: Record<string, any>) {
@@ -61,7 +85,7 @@ export default function AdminUsersPage() {
   const [email, setEmail] = useState<string>(sp.get("email") ?? "");
   const [code, setCode] = useState<string>(sp.get("code") ?? "");
   const [sortBy, setSortBy] = useState<SortKey>(
-    (sp.get("sortBy") as SortKey) || "activatedAt"
+    (sp.get("sortBy") as SortKey) || "createdAt"
   );
   const [order, setOrder] = useState<SortOrder>(
     (sp.get("order") as SortOrder) || "desc"
@@ -82,6 +106,27 @@ export default function AdminUsersPage() {
 
   // IP地理位置信息缓存
   const [ipGeolocations, setIPGeolocations] = useState<Map<string, IPGeolocationInfo>>(new Map());
+  
+  // 历史记录弹窗状态
+  const [showHistoryModal, setShowHistoryModal] = useState<{
+    userId: number;
+    type: "ip" | "userAgent";
+    email: string;
+  } | null>(null);
+  const [historyRecords, setHistoryRecords] = useState<BehaviorRecord[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+
+  // 用户行为弹窗状态（点击用户ID时显示）
+  const [showBehaviorModal, setShowBehaviorModal] = useState<{
+    userId: number;
+    userid: string | null;
+    email: string;
+  } | null>(null);
+  const [behaviorRecords, setBehaviorRecords] = useState<UserBehaviorRecord[]>([]);
+  const [loadingBehaviors, setLoadingBehaviors] = useState<boolean>(false);
+  const [behaviorHasMore, setBehaviorHasMore] = useState<boolean>(false);
+  const [behaviorOffset, setBehaviorOffset] = useState<number>(0);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   // 触发加载
   useEffect(() => {
@@ -293,6 +338,139 @@ export default function AdminUsersPage() {
     { value: "expired", label: "已过期 (expired)" },
   ];
 
+  // 加载用户历史记录
+  async function loadUserHistory(userId: number, type: "ip" | "userAgent") {
+    setLoadingHistory(true);
+    try {
+      const res = await apiClient.get(
+        `/api/admin/users/${userId}/behaviors?type=${type}&limit=10`
+      );
+      if (res.ok && (res as any).data) {
+        setHistoryRecords((res as any).data.records || []);
+      } else {
+        setHistoryRecords([]);
+      }
+    } catch (e: any) {
+      console.error("Failed to load history:", e);
+      setHistoryRecords([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  // 打开历史记录弹窗
+  function openHistoryModal(userId: number, type: "ip" | "userAgent", email: string) {
+    setShowHistoryModal({ userId, type, email });
+    loadUserHistory(userId, type);
+  }
+
+  // 关闭历史记录弹窗
+  function closeHistoryModal() {
+    setShowHistoryModal(null);
+    setHistoryRecords([]);
+  }
+
+  // 打开用户行为弹窗（点击用户ID时）
+  function openBehaviorModal(userId: number, userid: string | null, email: string) {
+    setShowBehaviorModal({ userId, userid, email });
+    setBehaviorRecords([]);
+    setBehaviorOffset(0);
+    setBehaviorHasMore(false);
+    loadUserBehaviors(userId, 0, true);
+  }
+
+  // 关闭用户行为弹窗
+  function closeBehaviorModal() {
+    setShowBehaviorModal(null);
+    setBehaviorRecords([]);
+    setBehaviorOffset(0);
+    setBehaviorHasMore(false);
+  }
+
+  // 加载用户行为记录（支持分页和无限滚动）
+  const loadUserBehaviors = useCallback(async (userId: number, offset: number = 0, reset: boolean = false) => {
+    if (loadingBehaviors) return;
+    
+    setLoadingBehaviors(true);
+    try {
+      const res = await apiClient.get(
+        `/api/admin/users/${userId}/behaviors?limit=10&offset=${offset}`
+      );
+      if (res.ok && (res as any).data) {
+        const data = (res as any).data;
+        const newRecords = data.records || [];
+        
+        if (reset) {
+          setBehaviorRecords(newRecords);
+        } else {
+          setBehaviorRecords((prev) => [...prev, ...newRecords]);
+        }
+        
+        setBehaviorOffset(offset + newRecords.length);
+        setBehaviorHasMore(data.pagination?.hasMore ?? false);
+      } else {
+        if (!reset) {
+          // 如果不是重置，保留现有数据
+          return;
+        }
+        setBehaviorRecords([]);
+        setBehaviorHasMore(false);
+      }
+    } catch (e: any) {
+      console.error("Failed to load behaviors:", e);
+      if (reset) {
+        setBehaviorRecords([]);
+        setBehaviorHasMore(false);
+      }
+    } finally {
+      setLoadingBehaviors(false);
+    }
+  }, [loadingBehaviors]);
+
+  // 加载更多行为记录（无限滚动）
+  const loadMoreBehaviors = useCallback(() => {
+    if (!showBehaviorModal || loadingBehaviors || !behaviorHasMore) return;
+    loadUserBehaviors(showBehaviorModal.userId, behaviorOffset, false);
+  }, [showBehaviorModal, loadingBehaviors, behaviorHasMore, behaviorOffset, loadUserBehaviors]);
+
+  // 行为类型中文映射
+  const behaviorTypeLabels: Record<string, string> = {
+    login: "登录",
+    logout: "登出",
+    start_quiz: "开始答题",
+    complete_quiz: "完成答题",
+    pause_quiz: "暂停答题",
+    resume_quiz: "继续答题",
+    view_page: "查看页面",
+    ai_chat: "AI聊天",
+    other: "其他",
+  };
+
+  // 无限滚动：监听滚动到底部自动加载
+  useEffect(() => {
+    if (!showBehaviorModal || !behaviorHasMore || loadingBehaviors) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && behaviorHasMore && !loadingBehaviors && showBehaviorModal) {
+          loadMoreBehaviors();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [showBehaviorModal, behaviorHasMore, loadingBehaviors, loadMoreBehaviors]);
+
   return (
     <div className="mx-auto w-full max-w-full p-0">
       <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
@@ -302,7 +480,7 @@ export default function AdminUsersPage() {
           onClick={() => {
             setEmail("");
             setCode("");
-            setSortBy("activatedAt");
+            setSortBy("createdAt");
             setOrder("desc");
             setPage(1);
           }}
@@ -422,10 +600,11 @@ export default function AdminUsersPage() {
         <table className="min-w-full text-left text-sm">
           <thead className="bg-gray-50 text-gray-700">
             <tr>
-              <th className="px-4 py-2">ID</th>
+              <th className="px-4 py-2">用户ID</th>
               <th className="px-4 py-2">邮箱</th>
               <th className="px-4 py-2">激活码</th>
-              <th className="px-4 py-2">激活时间 (UTC)</th>
+              <th className="px-4 py-2">注册时间 (UTC)</th>
+              <th className="px-4 py-2">最后登录 (UTC)</th>
               <th className="px-4 py-2">激活码状态</th>
               <th className="px-4 py-2">激活码到期 (UTC)</th>
               <th className="px-4 py-2">IP</th>
@@ -436,23 +615,32 @@ export default function AdminUsersPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td className="px-4 py-3" colSpan={9}>
+                <td className="px-4 py-3" colSpan={10}>
                   加载中…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-center text-gray-500" colSpan={9}>
+                <td className="px-4 py-6 text-center text-gray-500" colSpan={10}>
                   暂无数据
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id} className="border-t">
-                  <td className="px-4 py-2">{r.id}</td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => openBehaviorModal(r.id, r.userid, r.email)}
+                      className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                      title="点击查看用户行为记录"
+                    >
+                      {r.userid ?? r.id}
+                    </button>
+                  </td>
                   <td className="px-4 py-2">{r.email}</td>
                   <td className="px-4 py-2 font-mono">{r.activationCode ?? "-"}</td>
-                  <td className="px-4 py-2">{r.activatedAt ?? "-"}</td>
+                  <td className="px-4 py-2">{r.createdAt ? new Date(r.createdAt).toLocaleString() : "-"}</td>
+                  <td className="px-4 py-2">{r.lastLoginAt ? new Date(r.lastLoginAt).toLocaleString() : "-"}</td>
                   <td className="px-4 py-2">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
@@ -473,16 +661,17 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-2">{r.codeExpiresAt ?? "-"}</td>
                   <td className="px-4 py-2">
                     {r.ipAddress && r.ipAddress !== "-" ? (
-                      <span
-                        title={`IP: ${r.ipAddress}`}
-                        className="inline-flex items-center text-sm cursor-help"
+                      <button
+                        onClick={() => openHistoryModal(r.id, "ip", r.email)}
+                        className="inline-flex items-center text-sm cursor-pointer text-blue-600 hover:text-blue-800 hover:underline"
+                        title="点击查看历史IP记录"
                       >
                         {(() => {
                           const geolocation = ipGeolocations.get(r.ipAddress!);
                           if (geolocation) {
                             return (
                               <span className="inline-flex items-center gap-1">
-                                <span className="text-gray-700 font-medium">{geolocation.displayName}</span>
+                                <span className="font-medium">{geolocation.displayName}</span>
                               </span>
                             );
                           } else if (isPrivateIP(r.ipAddress)) {
@@ -499,15 +688,23 @@ export default function AdminUsersPage() {
                             );
                           }
                         })()}
-                      </span>
+                      </button>
                     ) : (
                       "-"
                     )}
                   </td>
                   <td className="px-4 py-2">
-                    <span title={r.userAgent ?? ""} className="line-clamp-2 block max-w-[340px]">
-                      {r.userAgent ?? "-"}
-                    </span>
+                    {r.userAgent && r.userAgent !== "-" ? (
+                      <button
+                        onClick={() => openHistoryModal(r.id, "userAgent", r.email)}
+                        className="text-sm cursor-pointer text-blue-600 hover:text-blue-800 hover:underline line-clamp-2 block max-w-[340px] text-left"
+                        title="点击查看历史设备记录"
+                      >
+                        {r.userAgent}
+                      </button>
+                    ) : (
+                      "-"
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     {r.activationCode ? (
@@ -539,7 +736,13 @@ export default function AdminUsersPage() {
           rows.map((r) => (
             <div key={r.id} className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">ID: {r.id}</span>
+                <button
+                  onClick={() => openBehaviorModal(r.id, r.userid, r.email)}
+                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                  title="点击查看用户行为记录"
+                >
+                  用户ID: {r.userid ?? r.id}
+                </button>
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                     r.codeStatus === "enabled"
@@ -568,27 +771,41 @@ export default function AdminUsersPage() {
               )}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-gray-500">激活:</span> {r.activatedAt ? new Date(r.activatedAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
+                  <span className="text-gray-500">注册:</span> {r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
                 </div>
                 <div>
-                  <span className="text-gray-500">到期:</span> {r.codeExpiresAt ? new Date(r.codeExpiresAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
+                  <span className="text-gray-500">登录:</span> {r.lastLoginAt ? new Date(r.lastLoginAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
                 </div>
               </div>
               {r.ipAddress && r.ipAddress !== "-" && (
                 <div>
                   <div className="text-xs text-gray-500 mb-1">IP地址</div>
-                  <div className="text-xs">
+                  <button
+                    onClick={() => openHistoryModal(r.id, "ip", r.email)}
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
+                  >
                     {(() => {
                       const geolocation = ipGeolocations.get(r.ipAddress!);
                       if (geolocation) {
-                        return <span className="text-gray-700 font-medium">{geolocation.displayName}</span>;
+                        return <span className="font-medium">{geolocation.displayName}</span>;
                       } else if (isPrivateIP(r.ipAddress)) {
                         return <span className="text-gray-500">内网地址</span>;
                       } else {
                         return <span className="text-gray-400">查询中...</span>;
                       }
                     })()}
-                  </div>
+                  </button>
+                </div>
+              )}
+              {r.userAgent && r.userAgent !== "-" && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">设备</div>
+                  <button
+                    onClick={() => openHistoryModal(r.id, "userAgent", r.email)}
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline text-left break-all"
+                  >
+                    {r.userAgent}
+                  </button>
                 </div>
               )}
               {r.activationCode && (
@@ -677,6 +894,167 @@ export default function AdminUsersPage() {
               >
                 {saving ? "保存中…" : "保存"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 历史记录弹窗 */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-lg max-h-[80vh] overflow-y-auto">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">
+                {showHistoryModal.type === "ip" ? "IP 历史记录" : "设备历史记录"} - {showHistoryModal.email}
+              </h2>
+              <button
+                onClick={closeHistoryModal}
+                className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+              >
+                关闭
+              </button>
+            </div>
+            {loadingHistory ? (
+              <div className="text-center py-8 text-gray-500">加载中…</div>
+            ) : historyRecords.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">暂无记录</div>
+            ) : (
+              <div className="space-y-2">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr>
+                      {showHistoryModal.type === "ip" ? (
+                        <>
+                          <th className="px-4 py-2 text-left">IP地址</th>
+                          <th className="px-4 py-2 text-left">设备</th>
+                          <th className="px-4 py-2 text-left">客户端类型</th>
+                          <th className="px-4 py-2 text-left">登录时间</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="px-4 py-2 text-left">User-Agent</th>
+                          <th className="px-4 py-2 text-left">IP地址</th>
+                          <th className="px-4 py-2 text-left">客户端类型</th>
+                          <th className="px-4 py-2 text-left">登录时间</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRecords.map((record, index) => (
+                      <tr key={index} className="border-t">
+                        {showHistoryModal.type === "ip" ? (
+                          <>
+                            <td className="px-4 py-2 font-mono">{record.ip ?? "-"}</td>
+                            <td className="px-4 py-2 text-xs max-w-xs truncate" title={record.userAgent ?? ""}>
+                              {record.userAgent ?? "-"}
+                            </td>
+                            <td className="px-4 py-2">{record.clientType ?? "-"}</td>
+                            <td className="px-4 py-2">{new Date(record.createdAt).toLocaleString()}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-4 py-2 text-xs max-w-md truncate" title={record.userAgent ?? ""}>
+                              {record.userAgent ?? "-"}
+                            </td>
+                            <td className="px-4 py-2 font-mono">{record.ip ?? "-"}</td>
+                            <td className="px-4 py-2">{record.clientType ?? "-"}</td>
+                            <td className="px-4 py-2">{new Date(record.createdAt).toLocaleString()}</td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 用户行为弹窗（点击用户ID时显示） */}
+      {showBehaviorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-4xl rounded-lg bg-white p-6 shadow-lg max-h-[80vh] flex flex-col">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">用户行为记录</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {showBehaviorModal.userid && `用户ID: ${showBehaviorModal.userid}`} | 邮箱: {showBehaviorModal.email}
+                </p>
+              </div>
+              <button
+                onClick={closeBehaviorModal}
+                className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+              >
+                关闭
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto">
+              {loadingBehaviors && behaviorRecords.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">加载中…</div>
+              ) : behaviorRecords.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">暂无行为记录</div>
+              ) : (
+                <div className="space-y-2">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-700 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-2 text-left">行为类型</th>
+                        <th className="px-4 py-2 text-left">IP地址</th>
+                        <th className="px-4 py-2 text-left">客户端类型</th>
+                        <th className="px-4 py-2 text-left">User-Agent</th>
+                        <th className="px-4 py-2 text-left">时间</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {behaviorRecords.map((record) => (
+                        <tr key={record.id} className="border-t">
+                          <td className="px-4 py-2">
+                            <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800">
+                              {behaviorTypeLabels[record.behaviorType] || record.behaviorType}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 font-mono text-xs">
+                            {record.ipAddress ?? "-"}
+                          </td>
+                          <td className="px-4 py-2 text-xs">
+                            {record.clientType ?? "-"}
+                          </td>
+                          <td className="px-4 py-2 text-xs max-w-xs truncate" title={record.userAgent ?? ""}>
+                            {record.userAgent ?? "-"}
+                          </td>
+                          <td className="px-4 py-2 text-xs">
+                            {new Date(record.createdAt).toLocaleString('zh-CN')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {/* 无限滚动触发器 */}
+                  {behaviorHasMore && (
+                    <div className="mt-4 text-center">
+                      {loadingBehaviors ? (
+                        <div className="text-sm text-gray-500 py-4">加载中…</div>
+                      ) : (
+                        <button
+                          onClick={loadMoreBehaviors}
+                          className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 active:bg-gray-100"
+                        >
+                          加载更多
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* 滚动到底部自动加载触发器 */}
+                  {behaviorHasMore && (
+                    <div ref={loadMoreRef} className="h-4" />
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
