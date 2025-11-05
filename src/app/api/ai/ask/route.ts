@@ -296,17 +296,27 @@ export async function POST(req: NextRequest) {
     
     // 1) Authorization: Bearer <jwt>
     const authHeader = req.headers.get("authorization");
+    console.log("[JWT Debug] Checking authorization header", {
+      hasAuthHeader: !!authHeader,
+      authHeaderPrefix: authHeader?.substring(0, 30),
+      startsWithBearer: authHeader?.startsWith("Bearer "),
+    });
     if (authHeader?.startsWith("Bearer ")) {
       jwt = authHeader.slice("Bearer ".length).trim();
+      console.log("[JWT Debug] JWT extracted from Bearer header", { jwtLength: jwt.length });
     }
     
     // 2) Cookie（Supabase 前端可能使用）
     if (!jwt) {
       try {
         const cookieJwt = req.cookies.get("sb-access-token")?.value;
-        if (cookieJwt && cookieJwt.trim()) jwt = cookieJwt.trim();
-      } catch {
-        // Ignore cookie read errors
+        console.log("[JWT Debug] Checking cookie", { hasCookie: !!cookieJwt, cookieLength: cookieJwt?.length });
+        if (cookieJwt && cookieJwt.trim()) {
+          jwt = cookieJwt.trim();
+          console.log("[JWT Debug] JWT extracted from cookie", { jwtLength: jwt.length });
+        }
+      } catch (e) {
+        console.error("[JWT Debug] Cookie read error", (e as Error).message);
       }
     }
     
@@ -315,9 +325,13 @@ export async function POST(req: NextRequest) {
       try {
         const url = new URL(req.url);
         const token = url.searchParams.get("token");
-        if (token && token.trim()) jwt = token.trim();
-      } catch {
-        // Ignore URL parsing errors
+        console.log("[JWT Debug] Checking query parameter", { hasToken: !!token, tokenLength: token?.length });
+        if (token && token.trim()) {
+          jwt = token.trim();
+          console.log("[JWT Debug] JWT extracted from query parameter", { jwtLength: jwt.length });
+        }
+      } catch (e) {
+        console.error("[JWT Debug] URL parsing error", (e as Error).message);
       }
     }
     
