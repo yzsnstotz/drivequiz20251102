@@ -1,9 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // 配置 basePath 以支持部署到 www.zalem.app/ai
-  // 如果环境变量设置了 BASEPATH，使用环境变量；否则使用 /ai
-  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '/ai',
+  // 配置 basePath 以支持部署到子路径（如 www.zalem.app/ai）
+  // 如果环境变量设置了 NEXT_PUBLIC_BASE_PATH，使用环境变量；否则使用空字符串（根路径）
+  // 如果需要部署到 /ai 子路径，在 Vercel 环境变量中设置 NEXT_PUBLIC_BASE_PATH=/ai
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   images: {
     remotePatterns: [
       {
