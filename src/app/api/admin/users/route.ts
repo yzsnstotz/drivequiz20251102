@@ -165,9 +165,9 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       }
 
       // 构建最终映射
-      for (const [userId, behavior] of userLatestMap) {
+      userLatestMap.forEach((behavior, userId) => {
         lastLoginMap.set(userId, behavior);
-      }
+      });
     }
 
     // 计算实际到期时间的辅助函数
