@@ -1,10 +1,12 @@
+import "server-only";
 import { NextRequest, NextResponse } from "next/server";
+import { jwtVerify } from "jose";
 
 export const runtime = "nodejs";
 
 /**
  * ZALEM · 前端 → 主站 API：/api/ai/ask
- * - 校验用户 JWT（Bearer）
+ * - 校验用户 JWT（Bearer）- 使用 HS256 (USER_JWT_SECRET)
  * - 用户维度配额：10次/日（内存计数，UTC按日重置，生产可切Redis/DB）
  * - 入参校验（question 非空、≤1000字符；locale 可选、满足 BCP-47）
  * - 转发到 AI-Service /v1/ask（携带 Service Token），透传统一响应结构
@@ -45,7 +47,33 @@ const BCP47 =
 // ==== 环境变量 ====
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
 const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN;
-const USER_JWT_PUBLIC_KEY = process.env.USER_JWT_PUBLIC_KEY; // PEM (RS256)；如使用别的方案，可替换 verifyJwt()
+const USER_JWT_SECRET = process.env.USER_JWT_SECRET; // HMAC 密钥（用户端 JWT 校验，HS256）
+
+// ==== 环境检测 ====
+function isProduction(): boolean {
+  // VERCEL_ENV: 'development' | 'preview' | 'production'
+  // NODE_ENV: 'development' | 'production' | 'test'
+  const vercelEnv = process.env.VERCEL_ENV;
+  const nodeEnv = process.env.NODE_ENV;
+  
+  // 明确的生产环境：VERCEL_ENV === 'production' 或 NODE_ENV === 'production' 且不是预览环境
+  if (vercelEnv === "production") return true;
+  if (nodeEnv === "production" && vercelEnv !== "preview") return true;
+  
+  return false;
+}
+
+function isDevelopmentOrPreview(): boolean {
+  const vercelEnv = process.env.VERCEL_ENV;
+  const nodeEnv = process.env.NODE_ENV;
+  
+  // 开发环境
+  if (nodeEnv === "development" || !nodeEnv) return true;
+  // 预览环境
+  if (vercelEnv === "preview" || vercelEnv === "development") return true;
+  
+  return false;
+}
 
 // ==== 内存配额（生产建议改造为 Redis / DB 聚合）====
 type Counter = { count: number; dayKey: string };
@@ -84,74 +112,89 @@ function err(
   return NextResponse.json({ ok: false, errorCode: code, message, details } as const, { status });
 }
 
-// ==== JWT 解析（RS256 公钥验证，缺省时退化为仅检测存在性）====
+// ==== JWT 解析（HS256 HMAC 验证，缺省时退化为仅检测存在性）====
+/**
+ * 用户 JWT 校验
+ * - 使用 HMAC（HS256/HS512）验证
+ * - 开发模式：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
+ * - 生产环境：必须配置 USER_JWT_SECRET，严格验证 JWT（安全要求）
+ */
 async function verifyJwt(authorization?: string): Promise<{ userId: string } | null> {
-  if (!authorization?.startsWith("Bearer ")) return null;
-  const token = authorization.slice("Bearer ".length).trim();
-  if (!token) return null;
-
-  // 若未配置公钥，则尝试从 token 中解析 userId（仅用于开发/预览环境）
-  if (!USER_JWT_PUBLIC_KEY) {
-    try {
-      const [header, payload, signature] = token.split(".");
-      if (!header || !payload) return null;
-      // 尝试解析 payload（不验证签名）
-      const json = JSON.parse(atobUrlSafe(payload)) as { 
-        sub?: string; 
-        user_id?: string; 
-        userId?: string;
-        id?: string;
-      };
-      // 尝试多种可能的字段名
-      const userId = json.sub || json.user_id || json.userId || json.id || null;
-      if (!userId || typeof userId !== "string") return null;
-      // 验证是否为有效的 UUID 格式
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuidRegex.test(userId)) {
-        return { userId };
-      }
-      // 如果不是 UUID 格式，返回 null（将被视为匿名用户）
+  // 生产环境安全检查：必须配置 USER_JWT_SECRET
+  if (isProduction()) {
+    if (!USER_JWT_SECRET) {
+      console.error("[Security] Production environment requires USER_JWT_SECRET");
       return null;
-    } catch {
-      // 如果解析失败，返回 null
+    }
+    // 生产环境必须提供有效的 Authorization header
+    if (!authorization?.startsWith("Bearer ")) {
       return null;
     }
   }
+  
+  // 开发或预览环境：如果未配置 USER_JWT_SECRET，允许跳过认证（仅用于本地测试和预览）
+  if (!USER_JWT_SECRET) {
+    if (isDevelopmentOrPreview()) {
+      // 开发模式兜底：如果有 Bearer token，即使不验证也允许通过
+      if (authorization?.startsWith("Bearer ")) {
+        const token = authorization.slice("Bearer ".length).trim();
+        if (token) {
+          // 尝试解析 payload（不验证签名，仅开发/预览模式）
+          try {
+            const [header, payload, signature] = token.split(".");
+            if (!header || !payload) return null;
+            const json = JSON.parse(atobUrlSafe(payload)) as { 
+              sub?: string; 
+              user_id?: string; 
+              userId?: string;
+              id?: string;
+            };
+            const userId = json.sub || json.user_id || json.userId || json.id || null;
+            if (!userId || typeof userId !== "string") return null;
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(userId)) {
+              return { userId };
+            }
+            return null;
+          } catch {
+            // 如果解析失败，返回 null
+            return null;
+          }
+        }
+      }
+      // 开发或预览环境允许跳过认证
+      return null; // 返回 null，让调用方使用匿名 ID
+    }
+    // 非开发/预览环境但未配置密钥，返回 null
+    return null;
+  }
 
-  // 配置了公钥：严格验证签名
+  if (!authorization?.startsWith("Bearer ")) return null;
+
+  const token = authorization.slice("Bearer ".length).trim();
   try {
-    const [header, payload, signature] = token.split(".");
-    if (!header || !payload || !signature) return null;
-
-    const enc = new TextEncoder();
-    const data = `${header}.${payload}`;
-    const sig = base64UrlToUint8Array(signature);
-
-    const pubKey = await crypto.subtle.importKey(
-      "spki",
-      pemToArrayBuffer(USER_JWT_PUBLIC_KEY),
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-
-    const valid = await crypto.subtle.verify(
-      "RSASSA-PKCS1-v1_5",
-      pubKey,
-      sig,
-      enc.encode(data),
-    );
-    if (!valid) return null;
-
-    const json = JSON.parse(atobUrlSafe(payload)) as { 
+    // Supabase Legacy JWT Secret 通常是 Base64 编码的，需要先解码
+    let secret: Uint8Array;
+    try {
+      // 尝试 Base64 解码（Supabase Legacy JWT Secret 格式）
+      const decodedSecret = Buffer.from(USER_JWT_SECRET, "base64");
+      secret = new Uint8Array(decodedSecret);
+    } catch {
+      // 如果 Base64 解码失败，使用原始字符串（向后兼容）
+      secret = new TextEncoder().encode(USER_JWT_SECRET);
+    }
+    const { payload } = await jwtVerify(token, secret); // 默认允许 HS256
+    
+    // 尝试多种可能的字段名
+    const payloadWithUserId = payload as { 
       sub?: string; 
       user_id?: string; 
       userId?: string;
       id?: string;
     };
-    // 尝试多种可能的字段名
-    const userId = json.sub || json.user_id || json.userId || json.id || null;
+    const userId = payloadWithUserId.sub || payloadWithUserId.user_id || payloadWithUserId.userId || payloadWithUserId.id || null;
     if (!userId || typeof userId !== "string") return null;
+    
     // 验证是否为有效的 UUID 格式
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(userId)) {
@@ -159,22 +202,12 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
     }
     // 如果不是 UUID 格式，返回 null（将被视为匿名用户）
     return null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
 
 // ==== 工具 ====
-function base64UrlToUint8Array(b64url: string) {
-  const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
-  const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/") + pad;
-  const raw = Buffer.from(b64, "base64");
-  return new Uint8Array(raw);
-}
-function pemToArrayBuffer(pem: string) {
-  const b64 = pem.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, "").replace(/\s+/g, "");
-  return Buffer.from(b64, "base64");
-}
 function atobUrlSafe(b64url: string) {
   const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
   const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/") + pad;
@@ -234,13 +267,13 @@ export async function POST(req: NextRequest) {
     let session: { userId: string } | null = null;
     if (jwt) {
       session = await verifyJwt(`Bearer ${jwt}`);
-      // 如果配置了公钥但验证失败，拒绝请求
-      if (!session && USER_JWT_PUBLIC_KEY) {
+      // 如果配置了密钥但验证失败，拒绝请求（生产环境）
+      if (!session && USER_JWT_SECRET && isProduction()) {
         return err("AUTH_REQUIRED", "Invalid or expired authentication token.", 401);
       }
     }
     
-    // 如果没有 token 或验证失败但未配置公钥，使用匿名 ID（允许未登录用户访问）
+    // 如果没有 token 或验证失败但未配置密钥，使用匿名 ID（允许未登录用户访问）
     if (!session) {
       session = { userId: "anonymous" };
     }
