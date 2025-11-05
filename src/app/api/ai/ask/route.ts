@@ -360,10 +360,56 @@ export async function POST(req: NextRequest) {
       console.log("[JWT Debug] No JWT token provided");
     }
     
-    // 如果没有 token 或验证失败但未配置密钥，使用匿名 ID（允许未登录用户访问）
+    // 如果没有 token 或验证失败但未配置密钥，尝试从邮箱生成用户ID
     if (!session) {
-      console.log("[JWT Debug] Using anonymous session");
-      session = { userId: "anonymous" };
+      // 尝试从 header 或 cookie 中获取邮箱（激活系统使用邮箱作为用户标识）
+      let email: string | null = null;
+      
+      // 1) 尝试从 X-User-Email header 获取（前端可以设置）
+      const emailHeader = req.headers.get("x-user-email");
+      if (emailHeader) {
+        email = emailHeader.trim();
+        console.log("[JWT Debug] Email extracted from header", { emailLength: email.length });
+      }
+      
+      // 2) 如果还没有，尝试从 Cookie 获取（如果前端设置了）
+      if (!email) {
+        try {
+          const emailCookie = req.cookies.get("user-email")?.value;
+          if (emailCookie) {
+            email = emailCookie.trim();
+            console.log("[JWT Debug] Email extracted from cookie", { emailLength: email.length });
+          }
+        } catch (e) {
+          console.error("[JWT Debug] Cookie read error for email", (e as Error).message);
+        }
+      }
+      
+      // 3) 如果有邮箱，基于邮箱生成稳定的用户ID
+      if (email) {
+        // 使用简单的哈希函数生成稳定的用户ID（基于邮箱）
+        // 注意：这不是加密安全的，仅用于区分不同的激活用户
+        let hash = 0;
+        const normalizedEmail = email.toLowerCase().trim();
+        for (let i = 0; i < normalizedEmail.length; i++) {
+          const char = normalizedEmail.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // 转换为32位整数
+        }
+        // 生成一个类似 UUID 的格式（但不是真正的 UUID）
+        const hex = Math.abs(hash).toString(16).padStart(8, "0");
+        const userId = `user-${hex.slice(0, 8)}-${hex.slice(8, 12) || "0000"}-${hex.slice(12, 16) || "0000"}-${hex.slice(16, 20) || "0000"}-${hex.slice(20, 32) || "000000000000"}`.slice(0, 36);
+        
+        console.log("[JWT Debug] Generated user ID from email", { 
+          email: normalizedEmail.substring(0, 20) + "...",
+          userId 
+        });
+        session = { userId };
+      } else {
+        // 没有邮箱，使用匿名ID
+        console.log("[JWT Debug] No email found, using anonymous session");
+        session = { userId: "anonymous" };
+      }
     }
     
     // 汇总日志：显示所有关键信息
