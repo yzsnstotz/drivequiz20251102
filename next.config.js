@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // 配置 basePath 以支持部署到 www.zalem.app/ai
+  // 如果环境变量设置了 BASEPATH，使用环境变量；否则使用 /ai
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '/ai',
   images: {
     remotePatterns: [
       {
