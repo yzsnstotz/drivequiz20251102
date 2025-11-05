@@ -12,6 +12,21 @@ import { db } from "@/lib/db";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError, notFound } from "@/app/api/_lib/errors";
 
+// 定义有效的行为类型
+type BehaviorType = "login" | "logout" | "start_quiz" | "complete_quiz" | "pause_quiz" | "resume_quiz" | "view_page" | "ai_chat" | "other";
+
+const VALID_BEHAVIOR_TYPES: BehaviorType[] = [
+  "login",
+  "logout",
+  "start_quiz",
+  "complete_quiz",
+  "pause_quiz",
+  "resume_quiz",
+  "view_page",
+  "ai_chat",
+  "other",
+];
+
 /**
  * GET /api/admin/users/[id]/behaviors
  * 获取用户行为记录（支持分页和无限滚动）
@@ -35,7 +50,17 @@ export async function GET(
       const sp = req.nextUrl.searchParams;
       const limit = Math.min(Number(sp.get("limit") || 10), 50);
       const offset = Math.max(Number(sp.get("offset") || 0), 0);
-      const behaviorType = sp.get("behaviorType") || null;
+      const behaviorTypeParam = sp.get("behaviorType");
+
+      // 验证行为类型
+      let behaviorType: BehaviorType | null = null;
+      if (behaviorTypeParam) {
+        if (VALID_BEHAVIOR_TYPES.includes(behaviorTypeParam as BehaviorType)) {
+          behaviorType = behaviorTypeParam as BehaviorType;
+        } else {
+          return badRequest(`Invalid behavior type. Valid types are: ${VALID_BEHAVIOR_TYPES.join(", ")}`);
+        }
+      }
 
       // 验证用户是否存在
       const user = await db
