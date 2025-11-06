@@ -1,0 +1,486 @@
+openapi: 3.0.3
+info:
+  title: DriveQuiz RAG Ingestion API
+  description: API for ingesting documents into RAG knowledge base
+  version: 1.0.0
+  contact:
+    name: DriveQuiz Team
+
+servers:
+  - url: https://your-drivequiz-domain.com/api/v1/rag
+    description: Production server
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: v1
+
+  /docs:
+    post:
+      summary: Upload single document
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Document'
+      responses:
+        '200':
+          description: Document uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: Query documents
+      tags:
+        - Documents
+      parameters:
+        - name: sourceId
+          in: query
+          schema:
+            type: string
+        - name: url
+          in: query
+          schema:
+            type: string
+        - name: version
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Documents retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+
+  /docs/batch:
+    post:
+      summary: Upload multiple documents
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchDocumentRequest'
+      responses:
+        '200':
+          description: Documents uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDocumentResponse'
+        '207':
+          description: Partial success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDocumentResponse'
+
+  /operations:
+    get:
+      summary: Query operation records
+      tags:
+        - Operations
+      parameters:
+        - name: sourceId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [success, failed, pending]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Operations retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationListResponse'
+
+  /operations/{operationId}:
+    get:
+      summary: Get operation details
+      tags:
+        - Operations
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Operation details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationDetailResponse'
+
+  /docs/versions/{version}/replace:
+    post:
+      summary: Replace documents by version
+      tags:
+        - Documents
+      parameters:
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sourceIds:
+                  type: array
+                  items:
+                    type: string
+                dryRun:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Version replacement initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  operationId:
+                    type: string
+                  replacedCount:
+                    type: integer
+                  message:
+                    type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Document:
+      type: object
+      required:
+        - title
+        - url
+        - content
+        - version
+        - lang
+      properties:
+        title:
+          type: string
+          example: 警察庁 外国免許 FAQ #1
+        url:
+          type: string
+          format: uri
+          example: https://www.npa.go.jp/bureau/traffic/license/
+        content:
+          type: string
+          minLength: 100
+          maxLength: 2000
+          example: 外国免許を日本で使用する場合...
+        version:
+          type: string
+          example: 2025Q1
+        lang:
+          type: string
+          enum: [ja, zh, en]
+          example: ja
+        meta:
+          type: object
+          properties:
+            sourceId:
+              type: string
+            type:
+              type: string
+              enum: [official, organization, education, multilingual]
+            chunkIndex:
+              type: integer
+            totalChunks:
+              type: integer
+            contentHash:
+              type: string
+
+    DocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        docId:
+          type: string
+        message:
+          type: string
+        operationId:
+          type: string
+
+    BatchDocumentRequest:
+      type: object
+      required:
+        - docs
+      properties:
+        docs:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Document'
+        sourceId:
+          type: string
+        batchMetadata:
+          type: object
+          properties:
+            totalDocs:
+              type: integer
+            crawledAt:
+              type: string
+              format: date-time
+            crawlerVersion:
+              type: string
+
+    BatchDocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        processed:
+          type: integer
+        failed:
+          type: integer
+        operationId:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              docId:
+                type: string
+              status:
+                type: string
+                enum: [success, failed]
+              index:
+                type: integer
+              error:
+                $ref: '#/components/schemas/Error'
+
+    DocumentListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              docId:
+                type: string
+              title:
+                type: string
+              url:
+                type: string
+              version:
+                type: string
+              lang:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    OperationListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Operation'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Operation:
+      type: object
+      properties:
+        operationId:
+          type: string
+        sourceId:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, pending]
+        docsCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+        metadata:
+          type: object
+
+    OperationDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Operation'
+            - type: object
+              properties:
+                failedCount:
+                  type: integer
+                documents:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      docId:
+                        type: string
+                      title:
+                        type: string
+                      url:
+                        type: string
+                      status:
+                        type: string
+                      ingestedAt:
+                        type: string
+                        format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          $ref: '#/components/schemas/Error'
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - INVALID_REQUEST
+            - INVALID_CONTENT
+            - CONTENT_TOO_SHORT
+            - CONTENT_TOO_LONG
+            - DUPLICATE_DOCUMENT
+            - RATE_LIMIT_EXCEEDED
+            - INTERNAL_ERROR
+            - SERVICE_UNAVAILABLE
+        message:
+          type: string
+        details:
+          type: object
+
