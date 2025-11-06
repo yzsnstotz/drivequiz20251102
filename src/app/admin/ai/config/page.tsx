@@ -8,6 +8,7 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
+  aiProvider: "online" | "local";
 };
 
 type ConfigResp = {
@@ -74,6 +75,7 @@ export default function AdminAiConfigPage() {
     model: "gpt-4o-mini",
     cacheTtl: 86400,
     costAlertUsdThreshold: 10.0,
+    aiProvider: "online",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -96,6 +98,7 @@ export default function AdminAiConfigPage() {
           model: data.model ?? "gpt-4o-mini",
           cacheTtl: typeof data.cacheTtl === "string" ? Number(data.cacheTtl) : (data.cacheTtl ?? 86400),
           costAlertUsdThreshold: typeof data.costAlertUsdThreshold === "string" ? Number(data.costAlertUsdThreshold) : (data.costAlertUsdThreshold ?? 10.0),
+          aiProvider: (data.aiProvider === "local" || data.aiProvider === "online") ? data.aiProvider : "online",
         });
       }
     } catch (err) {
@@ -235,6 +238,27 @@ export default function AdminAiConfigPage() {
                 className="w-full border rounded px-3 py-2"
               />
               <p className="text-xs text-gray-500 mt-1">当成本超过此阈值时触发警告</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                AI 服务提供商 <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={config.aiProvider}
+                onChange={(e) =>
+                  setConfig({ ...config, aiProvider: e.target.value as "online" | "local" })
+                }
+                className="w-full border rounded px-3 py-2"
+              >
+                <option value="online">在线AI（OpenAI）</option>
+                <option value="local">本地AI（Ollama）</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {config.aiProvider === "online"
+                  ? "使用在线AI服务（OpenAI API），需要网络连接"
+                  : "使用本地AI服务（Ollama），需要本地Ollama服务运行"}
+              </p>
             </div>
 
             <button

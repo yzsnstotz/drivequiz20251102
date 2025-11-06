@@ -2,6 +2,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { db } from "@/lib/db";
+import { aiDb } from "@/lib/aiDb";
 
 export const runtime = "nodejs";
 
@@ -264,7 +265,29 @@ export async function POST(req: NextRequest) {
       // Ignore URL parsing errors
     }
     
-    const wantLocal = forceMode ? forceMode === "local" : USE_LOCAL_AI;
+    // 从数据库读取 aiProvider 配置（如果 URL 参数没有强制指定）
+    let aiProviderFromDb: "online" | "local" = "online";
+    if (!forceMode) {
+      try {
+        const configRow = await (aiDb as any)
+          .selectFrom("ai_config")
+          .select(["value"])
+          .where("key", "=", "aiProvider")
+          .executeTakeFirst();
+        
+        if (configRow && (configRow.value === "local" || configRow.value === "online")) {
+          aiProviderFromDb = configRow.value as "online" | "local";
+        }
+      } catch (e) {
+        // 如果读取配置失败，使用环境变量作为后备
+        console.error("[AI Config] Failed to read aiProvider from database:", e);
+      }
+    }
+    
+    // 优先级：URL 参数 > 数据库配置 > 环境变量
+    const wantLocal = forceMode 
+      ? forceMode === "local" 
+      : (aiProviderFromDb === "local" || USE_LOCAL_AI);
     
     if (wantLocal) {
       if (!LOCAL_AI_SERVICE_URL || !LOCAL_AI_SERVICE_TOKEN) {
@@ -635,7 +658,16 @@ export async function POST(req: NextRequest) {
       })();
     }
 
-    // 7) 成功：直接返回统一包裹结构
+    // 7) 成功：返回结果，包含AI类型信息
+    if (result.ok && result.data) {
+      // 在返回数据中添加AI类型信息
+      return ok({
+        ...result.data,
+        aiProvider: aiServiceMode, // "online" 或 "local"
+      });
+    }
+    
+    // 如果result.ok为false，应该已经在上面处理了，这里作为后备
     return ok(result.data || {});
   } catch (e) {
     return err("INTERNAL_ERROR", "Unexpected server error.", 500);

@@ -46,7 +46,8 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants" },
   { key: "nav.videos", href: "/admin/videos", match: (p: string) => p.startsWith("/admin/videos"), permission: "videos" },
   { key: "nav.contactAndTerms", href: "/admin/contact-and-terms", match: (p: string) => p.startsWith("/admin/contact-and-terms"), permission: "contact_and_terms" },
-  { key: "nav.ai", href: "/admin/ai", match: (p: string) => p.startsWith("/admin/ai"), permission: "ai" },
+  // AI板块：总览页面需要至少有一个AI权限才能显示
+  { key: "nav.ai", href: "/admin/ai", match: (p: string) => p.startsWith("/admin/ai"), permission: "ai_monitor" },
 ] as const;
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
@@ -138,6 +139,22 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         // 隐藏需要超级管理员权限的项
         if (item.requireDefaultAdmin) {
           return false;
+        }
+        // 特殊处理：AI总览页面需要至少有一个AI权限
+        if (item.href === "/admin/ai") {
+          if (!adminPermissions || !Array.isArray(adminPermissions)) {
+            return false;
+          }
+          // 检查是否有任意AI权限
+          const aiPermissions = [
+            "ai_monitor",
+            "ai_logs",
+            "ai_filters",
+            "ai_config",
+            "ai_rag",
+            "ai_rag_list",
+          ];
+          return aiPermissions.some((perm) => adminPermissions.includes(perm));
         }
         // 检查权限类别
         if (item.permission && adminPermissions) {
