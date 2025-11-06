@@ -50,6 +50,23 @@ const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
 const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN;
 const USER_JWT_SECRET = process.env.USER_JWT_SECRET; // HMAC 密钥（用户端 JWT 校验，HS256）
 
+// 本地 AI 服务配置（如果启用）
+const USE_LOCAL_AI = process.env.USE_LOCAL_AI === "true" || process.env.USE_LOCAL_AI === "1";
+const LOCAL_AI_SERVICE_URL = process.env.LOCAL_AI_SERVICE_URL;
+const LOCAL_AI_SERVICE_TOKEN = process.env.LOCAL_AI_SERVICE_TOKEN;
+
+// 在模块加载时记录环境变量
+console.log("[ENV MODULE] 模块加载时的环境变量配置", {
+  USE_LOCAL_AI,
+  USE_LOCAL_AI_RAW: process.env.USE_LOCAL_AI,
+  LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL || "(empty)",
+  LOCAL_AI_SERVICE_TOKEN: LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+  AI_SERVICE_URL: AI_SERVICE_URL || "(empty)",
+  AI_SERVICE_TOKEN: AI_SERVICE_TOKEN ? "***" : "(empty)",
+  NODE_ENV: process.env.NODE_ENV,
+  VERCEL_ENV: process.env.VERCEL_ENV,
+});
+
 // ==== 环境检测 ====
 function isProduction(): boolean {
   // VERCEL_ENV: 'development' | 'preview' | 'production'
@@ -232,17 +249,98 @@ function normalizeQuestion(q: string) {
 
 // ==== 入口：POST /api/ai/ask ====
 export async function POST(req: NextRequest) {
+  // 记录请求开始时的环境变量（运行时读取）
+  console.log("[POST START] 请求开始时的环境变量", {
+    USE_LOCAL_AI: process.env.USE_LOCAL_AI,
+    USE_LOCAL_AI_BOOL: USE_LOCAL_AI,
+    LOCAL_AI_SERVICE_URL: process.env.LOCAL_AI_SERVICE_URL || "(empty)",
+    LOCAL_AI_SERVICE_TOKEN: process.env.LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+    AI_SERVICE_URL: process.env.AI_SERVICE_URL || "(empty)",
+    AI_SERVICE_TOKEN: process.env.AI_SERVICE_TOKEN ? "***" : "(empty)",
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL: process.env.VERCEL,
+  });
+  
   try {
-    // 0) 基础校验：AI-Service 配置
-    if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
-      return err(
-        "INTERNAL_ERROR",
-        "AI service is not configured.",
-        500,
-        { missing: ["AI_SERVICE_URL", "AI_SERVICE_TOKEN"].filter(
-          (k) => !process.env[k as "AI_SERVICE_URL" | "AI_SERVICE_TOKEN"],
-        ) },
-      );
+    // 0) 选择 AI 服务（本地或在线）
+    let selectedAiServiceUrl: string;
+    let selectedAiServiceToken: string;
+    let aiServiceMode: "local" | "online";
+    
+    // 检查 URL 参数是否强制选择模式
+    let forceMode: "local" | "online" | null = null;
+    try {
+      const url = new URL(req.url);
+      const aiParam = url.searchParams.get("ai")?.toLowerCase();
+      if (aiParam === "local" || aiParam === "online") {
+        forceMode = aiParam as "local" | "online";
+      }
+    } catch (e) {
+      // Ignore URL parsing errors
+    }
+    
+    const wantLocal = forceMode ? forceMode === "local" : USE_LOCAL_AI;
+    
+    console.log("[AI SERVICE SELECT] 开始选择AI服务", {
+      forceMode,
+      USE_LOCAL_AI,
+      wantLocal,
+      reason: forceMode ? `URL参数强制: ${forceMode}` : `环境变量: USE_LOCAL_AI=${USE_LOCAL_AI}`,
+    });
+    
+    if (wantLocal) {
+      console.log("[AI SERVICE SELECT] 尝试使用本地AI服务");
+      if (!LOCAL_AI_SERVICE_URL || !LOCAL_AI_SERVICE_TOKEN) {
+        console.error("[AI SERVICE SELECT] 本地AI服务配置不完整", {
+          LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL || "(empty)",
+          LOCAL_AI_SERVICE_TOKEN: LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+        });
+        // 如果本地AI服务配置不完整，回退到在线服务
+        if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
+          return err(
+            "INTERNAL_ERROR",
+            "AI service is not configured.",
+            500,
+            { missing: ["AI_SERVICE_URL", "AI_SERVICE_TOKEN"].filter(
+              (k) => !process.env[k as "AI_SERVICE_URL" | "AI_SERVICE_TOKEN"],
+            ) },
+          );
+        }
+        console.log("[AI SERVICE SELECT] 本地AI服务配置不完整，回退到在线服务");
+        selectedAiServiceUrl = AI_SERVICE_URL;
+        selectedAiServiceToken = AI_SERVICE_TOKEN;
+        aiServiceMode = "online";
+      } else {
+        selectedAiServiceUrl = LOCAL_AI_SERVICE_URL;
+        selectedAiServiceToken = LOCAL_AI_SERVICE_TOKEN;
+        aiServiceMode = "local";
+        console.log("[AI SERVICE SELECT] 选择本地AI服务", {
+          mode: aiServiceMode,
+          url: selectedAiServiceUrl,
+          token: "***",
+        });
+      }
+    } else {
+      console.log("[AI SERVICE SELECT] 使用在线AI服务");
+      if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
+        return err(
+          "INTERNAL_ERROR",
+          "AI service is not configured.",
+          500,
+          { missing: ["AI_SERVICE_URL", "AI_SERVICE_TOKEN"].filter(
+            (k) => !process.env[k as "AI_SERVICE_URL" | "AI_SERVICE_TOKEN"],
+          ) },
+        );
+      }
+      selectedAiServiceUrl = AI_SERVICE_URL;
+      selectedAiServiceToken = AI_SERVICE_TOKEN;
+      aiServiceMode = "online";
+      console.log("[AI SERVICE SELECT] 选择在线AI服务", {
+        mode: aiServiceMode,
+        url: selectedAiServiceUrl,
+        token: "***",
+      });
     }
 
     // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
@@ -421,14 +519,21 @@ export async function POST(req: NextRequest) {
       forwardedUserId = session.userId;
     }
     
-    // 确保 AI_SERVICE_URL 不重复 /v1 路径
-    const baseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+    // 确保 selectedAiServiceUrl 不重复 /v1 路径
+    const baseUrl = selectedAiServiceUrl.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+    
+    console.log("[AI SERVICE CALL] 准备调用AI服务", {
+      mode: aiServiceMode,
+      baseUrl,
+      requestUrl: `${baseUrl}/v1/ask`,
+      token: "***",
+    });
     
     const upstream = await fetch(`${baseUrl}/v1/ask`, {
       method: "POST",
       headers: {
         "content-type": "application/json; charset=utf-8",
-        authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+        authorization: `Bearer ${selectedAiServiceToken}`,
         "x-zalem-client": "web",
       },
       body: JSON.stringify({
@@ -485,41 +590,96 @@ export async function POST(req: NextRequest) {
     // 6) 成功：记录AI聊天行为到缓存（异步，不阻塞响应）
     if (result.ok && session.userId !== "anonymous" && forwardedUserId) {
       // forwardedUserId就是userid（如act-13），直接通过userid查找用户
-      try {
-        let userId: number | null = null;
-        
-        // 直接通过userid查找用户（不需要通过activation）
-        const user = await db
-          .selectFrom("users")
-          .select(["id"])
-          .where("userid", "=", forwardedUserId)
-          .executeTakeFirst();
-        
-        if (user) {
-          userId = user.id;
-        }
-        
-        // 如果找到了用户ID，记录到缓存
-        if (userId) {
-          const { getAiChatBehaviorCache } = await import("@/lib/aiChatBehaviorCacheServer");
-          const cache = getAiChatBehaviorCache();
+      // 使用异步执行，不阻塞响应
+      void (async () => {
+        try {
+          let userId: number | null = null;
           
-          const ipAddress =
-            req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-            req.headers.get("x-real-ip")?.trim() ||
-            null;
-          const userAgent = req.headers.get("user-agent") || null;
-          const clientType = "web"; // 可以从请求头或其他地方获取
+          // 重试机制：最多重试3次
+          let retries = 3;
+          let lastError: Error | null = null;
           
-          // 添加到缓存（异步，不阻塞）
-          // 在Serverless环境中，立即写入更可靠（不依赖定时器）
-          const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
-          cache.addChatRecord(userId, question, ipAddress, userAgent, clientType, !!isServerless);
+          while (retries > 0) {
+            try {
+              // 直接通过userid查找用户（不需要通过activation）
+              // 添加超时处理：使用 Promise.race 实现超时
+              const queryPromise = db
+                .selectFrom("users")
+                .select(["id"])
+                .where("userid", "=", forwardedUserId)
+                .executeTakeFirst();
+              
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error("Database query timeout")), 10000); // 10秒超时
+              });
+              
+              const user = await Promise.race([queryPromise, timeoutPromise]);
+              
+              if (user) {
+                userId = user.id;
+              }
+              
+              // 查询成功，跳出重试循环
+              break;
+            } catch (error) {
+              lastError = error as Error;
+              retries--;
+              
+              // 如果是连接错误，等待后重试
+              if (retries > 0 && (
+                (error as Error).message.includes("Connection terminated") ||
+                (error as Error).message.includes("timeout") ||
+                (error as Error).message.includes("pool") ||
+                (error as Error).message.includes("shutdown")
+              )) {
+                // 等待指数退避：1秒、2秒、4秒
+                const waitTime = Math.pow(2, 3 - retries) * 1000;
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                continue;
+              }
+              
+              // 其他错误或重试次数用完，抛出错误
+              throw error;
+            }
+          }
+          
+          // 如果所有重试都失败，记录错误但不影响主流程
+          if (retries === 0 && lastError) {
+            throw lastError;
+          }
+          
+          // 如果找到了用户ID，记录到缓存
+          if (userId) {
+            const { getAiChatBehaviorCache } = await import("@/lib/aiChatBehaviorCacheServer");
+            const cache = getAiChatBehaviorCache();
+            
+            const ipAddress =
+              req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+              req.headers.get("x-real-ip")?.trim() ||
+              null;
+            const userAgent = req.headers.get("user-agent") || null;
+            const clientType = "web"; // 可以从请求头或其他地方获取
+            
+            // 添加到缓存（异步，不阻塞）
+            // 在Serverless环境中，立即写入更可靠（不依赖定时器）
+            const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+            cache.addChatRecord(userId, question, ipAddress, userAgent, clientType, !!isServerless);
+          }
+        } catch (error) {
+          // 记录行为失败不影响主流程，仅记录日志
+          // 过滤掉常见的连接错误，避免日志过多
+          const errorMessage = (error as Error).message || String(error);
+          if (
+            !errorMessage.includes("Connection terminated") &&
+            !errorMessage.includes("timeout") &&
+            !errorMessage.includes("pool") &&
+            !errorMessage.includes("shutdown") &&
+            !errorMessage.includes("DbHandler exited")
+          ) {
+            console.error("[AI Ask] Failed to record chat behavior:", error);
+          }
         }
-      } catch (error) {
-        // 记录行为失败不影响主流程，仅记录日志
-        console.error("[AI Ask] Failed to record chat behavior:", error);
-      }
+      })();
     }
 
     // 7) 成功：直接返回统一包裹结构
