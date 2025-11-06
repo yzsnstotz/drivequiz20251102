@@ -1,0 +1,1142 @@
+"use client";
+
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ApiError, apiFetch, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
+
+type QuestionType = "single" | "multiple" | "truefalse";
+
+type Question = {
+  id: number;
+  type: QuestionType;
+  content: string;
+  options?: string[];
+  correctAnswer: string | string[];
+  image?: string;
+  explanation?: string;
+  category?: string;
+};
+
+type ListResponse = {
+  items: Question[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages?: number; // 兼容旧字段
+    totalPages?: number; // 实际API返回的字段
+    hasPrev?: boolean;
+    hasNext?: boolean;
+  };
+};
+
+type Filters = {
+  page: number;
+  limit: number;
+  category: string;
+  search: string;
+  sortBy: "id" | "content" | "category";
+  sortOrder: "asc" | "desc";
+};
+
+const DEFAULT_FILTERS: Filters = {
+  page: 1,
+  limit: 20,
+  category: "",
+  search: "",
+  sortBy: "id",
+  sortOrder: "asc",
+};
+
+export default function QuestionsPage() {
+  const router = useRouter();
+  const search = useSearchParams();
+
+  const [filters, setFilters] = useState<Filters>(() => {
+    const q = (k: string, d = "") => (search?.get(k) ?? d);
+    const n = (k: string, d: number) => {
+      const v = Number(search?.get(k));
+      return Number.isFinite(v) && v > 0 ? v : d;
+    };
+    return {
+      page: n("page", DEFAULT_FILTERS.page),
+      limit: n("limit", DEFAULT_FILTERS.limit),
+      category: q("category", DEFAULT_FILTERS.category),
+      search: q("search", DEFAULT_FILTERS.search),
+      sortBy: (q("sortBy", DEFAULT_FILTERS.sortBy) as Filters["sortBy"]) || "id",
+      sortOrder: (q("sortOrder", DEFAULT_FILTERS.sortOrder) as Filters["sortOrder"]) || "asc",
+    };
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [items, setItems] = useState<Question[]>([]);
+  const [pagination, setPagination] = useState<ListResponse["pagination"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const loadMoreRef = React.useRef<HTMLDivElement>(null);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: number;
+    failed: number;
+    errors: string[];
+  } | null>(null);
+
+  // 加载卷类列表
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const response = await apiFetch<string[]>("/api/admin/questions/categories", {
+          method: "GET",
+        });
+        const data = response.data;
+        if (!mounted) return;
+        setCategories(data || []);
+      } catch (e) {
+        if (!mounted) return;
+        console.error("Failed to load categories:", e);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // 同步 filters 到 URL
+  useEffect(() => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v === "" || v === undefined || v === null) return;
+      params.set(k, String(v));
+    });
+    const qs = params.toString();
+    const href = qs ? `/admin/questions?${qs}` : `/admin/questions`;
+    window.history.replaceState(null, "", href);
+  }, [filters]);
+
+  // 加载数据函数
+  const loadData = useCallback(async (page: number, append: boolean = false) => {
+    try {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setError(null);
+      }
+
+      const params: Record<string, any> = {
+        page,
+        limit: filters.limit,
+        sortBy: filters.sortBy,
+        sortOrder: filters.sortOrder,
+      };
+      if (filters.category) params.category = filters.category;
+      if (filters.search) params.search = filters.search;
+
+      // 构建查询字符串
+      const queryString = new URLSearchParams(
+        Object.entries(params).reduce((acc, [k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            acc[k] = String(v);
+          }
+          return acc;
+        }, {} as Record<string, string>)
+      ).toString();
+
+      const fullUrl = queryString ? `/api/admin/questions?${queryString}` : "/api/admin/questions";
+      
+      // 使用 apiFetch 获取完整响应（包括 pagination）
+      const fullResponse = await apiFetch<ListResponse>(fullUrl, {
+        method: "GET",
+      });
+
+      const payload = fullResponse.data as unknown as any;
+      const newItems = (payload.items ?? payload) as Question[];
+      const newPagination = fullResponse.pagination || null;
+
+      if (append) {
+        // 追加模式：添加到现有列表（去重，避免重复的 ID）
+        setItems((prev) => {
+          const existingIds = new Set(prev.map((item) => item.id));
+          const uniqueNewItems = newItems.filter((item) => !existingIds.has(item.id));
+          return [...prev, ...uniqueNewItems];
+        });
+      } else {
+        // 重置模式：替换列表
+        setItems(newItems);
+      }
+
+      setPagination(newPagination);
+      
+      // 检查是否还有更多数据
+      if (newPagination) {
+        // 优先使用 API 返回的 hasNext 字段（最准确）
+        // 如果没有 hasNext，则使用 totalPages 计算
+        const pag = newPagination as ListResponse["pagination"];
+        if (pag && pag.hasNext !== undefined) {
+          setHasMore(pag.hasNext);
+          console.log(`[loadData] page=${pag.page}, totalPages=${pag.totalPages || pag.pages || 0}, hasNext=${pag.hasNext}`);
+        } else if (pag) {
+          const totalPages = pag.totalPages || pag.pages || 0;
+          const currentPage = pag.page || page;
+          const hasMoreData = currentPage < totalPages;
+          console.log(`[loadData] currentPage=${currentPage}, totalPages=${totalPages}, hasMore=${hasMoreData}`);
+          setHasMore(hasMoreData);
+        } else {
+          setHasMore(false);
+        }
+      } else {
+        setHasMore(false);
+      }
+    } catch (e) {
+      if (e instanceof ApiError) {
+        if (e.status === 401) {
+          setError("未授权：请先登录管理口令");
+        } else {
+          setError(`${e.errorCode}: ${e.message}`);
+        }
+      } else {
+        setError(e instanceof Error ? e.message : "未知错误");
+      }
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [filters.category, filters.search, filters.limit, filters.sortBy, filters.sortOrder]);
+
+  // 初始加载或筛选条件改变时重置
+  useEffect(() => {
+    setItems([]);
+    setHasMore(true);
+    loadData(1, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.category, filters.search, filters.sortBy, filters.sortOrder]);
+
+  // 无限滚动：加载更多
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore || !pagination) {
+      console.log(`[loadMore] Skipped: loadingMore=${loadingMore}, hasMore=${hasMore}, pagination=${!!pagination}`);
+      return;
+    }
+    
+    const pag: ListResponse["pagination"] = pagination as ListResponse["pagination"];
+    if (!pag) return;
+    
+    const nextPage = pag.page + 1;
+    // 使用 API 返回的 totalPages 字段（兼容 pages 字段）
+    const totalPages = pag.totalPages || pag.pages || 0;
+    console.log(`[loadMore] Loading page ${nextPage} of ${totalPages} (current page: ${pag.page})`);
+    
+    // 如果使用 hasNext，则根据 hasNext 判断
+    if (pag.hasNext !== undefined) {
+      if (!pag.hasNext) {
+        setHasMore(false);
+        return;
+      }
+    } else {
+      // 否则使用 totalPages 计算
+      if (nextPage > totalPages) {
+        setHasMore(false);
+        return;
+      }
+    }
+    
+    loadData(nextPage, true);
+  }, [loadingMore, hasMore, pagination, loadData]);
+
+  // Intersection Observer：检测滚动到底部
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        console.log(`[IntersectionObserver] isIntersecting=${target.isIntersecting}, hasMore=${hasMore}, loadingMore=${loadingMore}, loading=${loading}`);
+        if (target.isIntersecting && hasMore && !loadingMore && !loading) {
+          console.log('[IntersectionObserver] Triggering loadMore()');
+          loadMore();
+        }
+      },
+      {
+        root: null,
+        rootMargin: "200px", // 提前200px开始加载，给更好的用户体验
+        threshold: 0.1,
+      }
+    );
+
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      console.log('[IntersectionObserver] Observing ref');
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [hasMore, loadingMore, loading, loadMore]);
+
+  const onSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // 搜索时重置到第一页并清空列表
+    setItems([]);
+    setHasMore(true);
+    // 触发重新加载（通过filters变化触发useEffect）
+  };
+
+  const onReset = () => {
+    setFilters({ ...DEFAULT_FILTERS });
+  };
+
+  // 移除分页功能，改用无限滚动
+
+  const handleDelete = async (id: number) => {
+    if (!confirm(`确认删除题目 #${id}？`)) return;
+    try {
+      await apiDelete<{ deleted: number }>(`/api/admin/questions/${id}`);
+      // 删除后重新加载第一页
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        alert(`删除失败：${e.errorCode} - ${e.message}`);
+      } else {
+        alert("删除失败：未知错误");
+      }
+    }
+  };
+
+  const handleEdit = (question: Question) => {
+    setEditingQuestion(question);
+    setShowEditForm(true);
+    setShowCreateForm(false);
+  };
+
+  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setCreating(true);
+    setFormError(null);
+
+    const formData = new FormData(e.currentTarget);
+    const type = formData.get("type")?.toString() as QuestionType;
+    const content = formData.get("content")?.toString() || "";
+    const category = formData.get("category")?.toString() || "免许-1";
+    const image = formData.get("image")?.toString() || "";
+    const explanation = formData.get("explanation")?.toString() || "";
+
+    // 解析选项
+    const options: string[] = [];
+    if (type === "single" || type === "multiple") {
+      const optA = formData.get("optionA")?.toString() || "";
+      const optB = formData.get("optionB")?.toString() || "";
+      const optC = formData.get("optionC")?.toString() || "";
+      const optD = formData.get("optionD")?.toString() || "";
+      if (optA) options.push(optA);
+      if (optB) options.push(optB);
+      if (optC) options.push(optC);
+      if (optD) options.push(optD);
+    }
+
+    // 解析正确答案
+    let correctAnswer: string | string[];
+    if (type === "truefalse") {
+      correctAnswer = formData.get("correctAnswer")?.toString() === "true" ? "true" : "false";
+    } else if (type === "single") {
+      correctAnswer = formData.get("correctAnswer")?.toString()?.toUpperCase() || "A";
+    } else {
+      const answers = formData.getAll("correctAnswer") as string[];
+      correctAnswer = answers.map((a) => a.toUpperCase());
+    }
+
+    try {
+      await apiPost<Question>("/api/admin/questions", {
+        type,
+        content,
+        options: options.length > 0 ? options : undefined,
+        correctAnswer,
+        image: image || undefined,
+        explanation: explanation || undefined,
+        category,
+      });
+
+      setShowCreateForm(false);
+      // 创建后重新加载第一页
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setFormError(`${e.errorCode}: ${e.message}`);
+      } else {
+        setFormError(e instanceof Error ? e.message : "创建失败");
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingQuestion) return;
+
+    setUpdating(true);
+    setFormError(null);
+
+    const formData = new FormData(e.currentTarget);
+    const type = formData.get("type")?.toString() as QuestionType;
+    const content = formData.get("content")?.toString() || "";
+    const category = formData.get("category")?.toString() || editingQuestion.category || "免许-1";
+    const image = formData.get("image")?.toString() || "";
+    const explanation = formData.get("explanation")?.toString() || "";
+
+    // 解析选项
+    const options: string[] = [];
+    if (type === "single" || type === "multiple") {
+      const optA = formData.get("optionA")?.toString() || "";
+      const optB = formData.get("optionB")?.toString() || "";
+      const optC = formData.get("optionC")?.toString() || "";
+      const optD = formData.get("optionD")?.toString() || "";
+      if (optA) options.push(optA);
+      if (optB) options.push(optB);
+      if (optC) options.push(optC);
+      if (optD) options.push(optD);
+    }
+
+    // 解析正确答案
+    let correctAnswer: string | string[];
+    if (type === "truefalse") {
+      correctAnswer = formData.get("correctAnswer")?.toString() === "true" ? "true" : "false";
+    } else if (type === "single") {
+      correctAnswer = formData.get("correctAnswer")?.toString()?.toUpperCase() || "A";
+    } else {
+      const answers = formData.getAll("correctAnswer") as string[];
+      correctAnswer = answers.map((a) => a.toUpperCase());
+    }
+
+    try {
+      await apiPut<Question>(`/api/admin/questions/${editingQuestion.id}`, {
+        type,
+        content,
+        options: options.length > 0 ? options : undefined,
+        correctAnswer,
+        image: image || undefined,
+        explanation: explanation || undefined,
+        category,
+      });
+
+      setShowEditForm(false);
+      setEditingQuestion(null);
+      // 更新后重新加载第一页
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setFormError(`${e.errorCode}: ${e.message}`);
+      } else {
+        setFormError(e instanceof Error ? e.message : "更新失败");
+      }
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const token = localStorage.getItem("ADMIN_TOKEN");
+      if (!token) {
+        alert("请先登录");
+        return;
+      }
+
+      const response = await fetch("/api/admin/questions/template", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      });
+
+      if (!response.ok) {
+        // 尝试解析错误响应
+        let errorMessage = "下载失败";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.errorCode || errorMessage;
+        } catch {
+          // 如果不是 JSON，使用状态文本
+          errorMessage = `下载失败: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // 检查响应类型
+      const contentType = response.headers.get("content-type");
+      
+      // 如果是 JSON 错误响应，先解析
+      if (contentType && contentType.includes("application/json")) {
+        // 这是错误响应（JSON）
+        const errorData = await response.json();
+        throw new Error(errorData.message || errorData.errorCode || "服务器返回了错误");
+      }
+
+      // 验证响应类型是 Excel 文件
+      if (!contentType || !contentType.includes("spreadsheetml")) {
+        // 尝试读取错误响应
+        try {
+          const text = await response.text();
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.message || errorData.errorCode || "服务器返回了错误响应");
+        } catch {
+          throw new Error("服务器返回的不是 Excel 文件");
+        }
+      }
+
+      // 获取二进制数据
+      const blob = await response.blob();
+      
+      // 检查 blob 大小，如果太小可能是错误响应
+      if (blob.size < 100) {
+        // 尝试作为文本读取，可能是错误信息
+        const text = await blob.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.message || errorData.errorCode || "服务器返回了错误");
+        } catch {
+          throw new Error("下载的文件格式不正确或文件为空");
+        }
+      }
+
+      // 创建下载链接 - 使用安全的文件名
+      const dateStr = new Date().toISOString().split("T")[0];
+      const downloadFilename = `题目导入模板_${dateStr}.xlsx`;
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = downloadFilename; // 浏览器会自动处理中文文件名编码
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      
+      // 清理
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        if (document.body.contains(a)) {
+          document.body.removeChild(a);
+        }
+      }, 100);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : "下载模板失败";
+      console.error("[handleDownloadTemplate] Error:", e);
+      alert(`下载失败: ${errorMessage}\n\n请检查控制台获取更多信息。`);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
+      alert("只支持Excel文件 (.xlsx, .xls)");
+      return;
+    }
+
+    setUploading(true);
+    setImportResult(null);
+    setFormError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const token = localStorage.getItem("ADMIN_TOKEN");
+      if (!token) {
+        throw new Error("请先登录");
+      }
+
+      const response = await fetch("/api/admin/questions/import", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "导入失败");
+      }
+
+      const result = await response.json();
+      if (result.ok && result.data) {
+        setImportResult(result.data);
+        // 导入后重新加载第一页
+        setItems([]);
+        setHasMore(true);
+        loadData(1, false);
+        e.target.value = ""; // 清空文件选择
+      } else {
+        throw new Error(result.message || "导入失败");
+      }
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "导入失败");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 sm:space-y-4">
+      {/* 顶部操作区 */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+        <h2 className="text-base sm:text-lg font-semibold">题库管理</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            className="inline-flex items-center rounded-xl bg-green-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-green-600 active:bg-green-700 touch-manipulation transition-colors shadow-sm"
+            onClick={handleDownloadTemplate}
+          >
+            下载模板
+          </button>
+          <label className="inline-flex items-center rounded-xl bg-blue-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm cursor-pointer">
+            {uploading ? "导入中..." : "批量导入"}
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImport}
+              className="hidden"
+              disabled={uploading}
+            />
+          </label>
+          <button
+            className="inline-flex items-center rounded-xl bg-blue-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
+            onClick={() => {
+              setShowCreateForm(!showCreateForm);
+              setShowEditForm(false);
+              setEditingQuestion(null);
+            }}
+          >
+            + 创建题目
+          </button>
+          <button
+            className="rounded-md border border-gray-300 text-sm px-3 py-2 sm:py-1.5 hover:bg-gray-100 active:bg-gray-200 touch-manipulation"
+            onClick={() => {
+              setItems([]);
+              setHasMore(true);
+              loadData(1, false);
+            }}
+          >
+            刷新
+          </button>
+        </div>
+      </div>
+
+      {/* 导入结果 */}
+      {importResult && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-blue-50">
+          <div className="text-sm font-medium mb-2">导入结果</div>
+          <div className="text-xs space-y-1">
+            <div className="text-green-600">成功: {importResult.success} 条</div>
+            {importResult.failed > 0 && (
+              <div className="text-red-600">失败: {importResult.failed} 条</div>
+            )}
+            {importResult.errors.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-red-600">查看错误详情</summary>
+                <ul className="mt-2 space-y-1 pl-4 list-disc">
+                  {importResult.errors.map((err, idx) => (
+                    <li key={idx} className="text-xs">{err}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+          <button
+            className="mt-2 text-xs text-blue-600 hover:underline"
+            onClick={() => setImportResult(null)}
+          >
+            关闭
+          </button>
+        </div>
+      )}
+
+      {/* 创建表单 */}
+      {showCreateForm && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+          <h3 className="text-sm font-medium mb-3">创建新题目</h3>
+          <QuestionForm
+            onSubmit={handleCreate}
+            onCancel={() => {
+              setShowCreateForm(false);
+              setFormError(null);
+            }}
+            submitting={creating}
+            error={formError}
+            categories={categories}
+          />
+        </div>
+      )}
+
+      {/* 编辑表单 */}
+      {showEditForm && editingQuestion && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+          <h3 className="text-sm font-medium mb-3">编辑题目 #{editingQuestion.id}</h3>
+          <QuestionForm
+            question={editingQuestion}
+            onSubmit={handleUpdate}
+            onCancel={() => {
+              setShowEditForm(false);
+              setEditingQuestion(null);
+              setFormError(null);
+            }}
+            submitting={updating}
+            error={formError}
+            categories={categories}
+          />
+        </div>
+      )}
+
+      {/* 筛选表单 */}
+      <form onSubmit={onSearchSubmit} className="flex flex-wrap items-end gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-gray-700 mb-1">卷类</label>
+          <select
+            value={filters.category}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                category: e.target.value,
+                page: 1,
+              }))
+            }
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">全部卷类</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-gray-700 mb-1">搜索内容</label>
+          <input
+            type="text"
+            value={filters.search}
+            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            placeholder="搜索题目内容、选项、解析..."
+          />
+        </div>
+        <button
+          type="submit"
+          className="rounded-md bg-gray-900 text-white text-sm px-3 py-1.5 hover:bg-black"
+        >
+          搜索
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          className="rounded-md border border-gray-300 text-sm px-3 py-1.5 hover:bg-gray-100"
+        >
+          重置
+        </button>
+      </form>
+
+      {/* 错误提示 */}
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* 列表 - 桌面端 */}
+      {loading ? (
+        <div className="text-center py-8 text-gray-500 text-sm">加载中...</div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">暂无数据</div>
+      ) : (
+        <>
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">ID</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">卷类</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">类型</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">题目内容</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={`${item.category}-${item.id}`} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-2 px-3 text-xs">{item.id}</td>
+                    <td className="py-2 px-3 text-xs font-medium">{item.category || "—"}</td>
+                    <td className="py-2 px-3 text-xs">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {item.type === "single" ? "单选" : item.type === "multiple" ? "多选" : "判断"}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-xs max-w-md truncate">{item.content}</td>
+                    <td className="py-2 px-3 text-xs">
+                      {Array.isArray(item.correctAnswer)
+                        ? item.correctAnswer.join(", ")
+                        : item.correctAnswer}
+                    </td>
+                    <td className="py-2 px-3 text-xs">
+                      <button
+                        onClick={() => handleEdit(item)}
+                        className="text-blue-600 hover:underline mr-2"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="text-red-600 hover:underline"
+                      >
+                        删除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 移动端卡片 */}
+          <div className="md:hidden space-y-3">
+            {items.map((item) => (
+              <div key={`${item.category}-${item.id}`} className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">ID: {item.id}</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    {item.type === "single" ? "单选" : item.type === "multiple" ? "多选" : "判断"}
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">卷类</div>
+                  <div className="text-sm font-medium">{item.category || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">题目内容</div>
+                  <div className="text-sm">{item.content}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">正确答案</div>
+                  <div className="text-xs">
+                    {Array.isArray(item.correctAnswer)
+                      ? item.correctAnswer.join(", ")
+                      : item.correctAnswer}
+                  </div>
+                </div>
+                {item.options && item.options.length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">选项</div>
+                    <div className="text-xs space-y-1">
+                      {item.options.map((opt, idx) => (
+                        <div key={idx}>{String.fromCharCode(65 + idx)}. {opt}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+                  <button
+                    onClick={() => handleEdit(item)}
+                    className="flex-1 text-center rounded-xl bg-blue-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="flex-1 text-center rounded-xl bg-red-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-red-600 active:bg-red-700 touch-manipulation transition-colors shadow-sm"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 无限滚动触发器 */}
+          <div ref={loadMoreRef} className="h-20 flex items-center justify-center">
+            {loadingMore && (
+              <div className="text-sm text-gray-500">加载中...</div>
+            )}
+            {!hasMore && items.length > 0 && (
+              <div className="text-sm text-gray-500">没有更多数据了</div>
+            )}
+            {!loadingMore && hasMore && items.length > 0 && (
+              <div className="text-sm text-gray-400">滚动加载更多</div>
+            )}
+          </div>
+
+          {/* 数据统计 */}
+          {pagination && (
+            <div className="text-center text-xs text-gray-500 mt-2">
+              已加载 {items.length} / {pagination.total} 条
+              <span className="ml-2">
+                (第 {pagination.page} / {pagination.totalPages || pagination.pages || 0} 页)
+              </span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// 题目表单组件
+function QuestionForm({
+  question,
+  onSubmit,
+  onCancel,
+  submitting,
+  error,
+  categories,
+}: {
+  question?: Question;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
+  submitting: boolean;
+  error: string | null;
+  categories: string[];
+}) {
+  const [type, setType] = useState<QuestionType>(question?.type || "single");
+  const [showOptions, setShowOptions] = useState(
+    question?.type === "single" || question?.type === "multiple" || !question
+  );
+
+  useEffect(() => {
+    setShowOptions(type === "single" || type === "multiple");
+  }, [type]);
+
+  const correctAnswer = question?.correctAnswer;
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          卷类 * 
+          <span className="text-gray-500 font-normal ml-1">(可选择现有卷类或输入新卷类名称)</span>
+        </label>
+        <input
+          type="text"
+          name="category"
+          required
+          list="category-list"
+          defaultValue={question?.category || categories[0] || "免许-1"}
+          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          placeholder="输入卷类名称，或从下拉列表选择..."
+        />
+        <datalist id="category-list">
+          {categories.map((cat) => (
+            <option key={cat} value={cat} />
+          ))}
+          {categories.length === 0 && (
+            <option value="免许-1" />
+          )}
+        </datalist>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">类型 *</label>
+        <select
+          name="type"
+          required
+          value={type}
+          onChange={(e) => setType(e.target.value as QuestionType)}
+          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+        >
+          <option value="single">单选题</option>
+          <option value="multiple">多选题</option>
+          <option value="truefalse">判断题</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">题目内容 *</label>
+        <textarea
+          name="content"
+          required
+          rows={3}
+          defaultValue={question?.content || ""}
+          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          placeholder="请输入题目内容..."
+        />
+      </div>
+
+      {showOptions && (
+        <>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">选项A *</label>
+            <input
+              type="text"
+              name="optionA"
+              required={showOptions}
+              defaultValue={question?.options?.[0] || ""}
+              className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">选项B *</label>
+            <input
+              type="text"
+              name="optionB"
+              required={showOptions}
+              defaultValue={question?.options?.[1] || ""}
+              className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">选项C</label>
+            <input
+              type="text"
+              name="optionC"
+              defaultValue={question?.options?.[2] || ""}
+              className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">选项D</label>
+            <input
+              type="text"
+              name="optionD"
+              defaultValue={question?.options?.[3] || ""}
+              className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            />
+          </div>
+        </>
+      )}
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">正确答案 *</label>
+        {type === "truefalse" ? (
+          <select
+            name="correctAnswer"
+            required
+            defaultValue={
+              typeof correctAnswer === "string" ? correctAnswer : "true"
+            }
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="true">正确</option>
+            <option value="false">错误</option>
+          </select>
+        ) : type === "single" ? (
+          <select
+            name="correctAnswer"
+            required
+            defaultValue={
+              typeof correctAnswer === "string" ? correctAnswer.toUpperCase() : "A"
+            }
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+        ) : (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="correctAnswer"
+                value="A"
+                defaultChecked={
+                  Array.isArray(correctAnswer) ? correctAnswer.includes("A") : false
+                }
+              />
+              <span className="text-sm">A</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="correctAnswer"
+                value="B"
+                defaultChecked={
+                  Array.isArray(correctAnswer) ? correctAnswer.includes("B") : false
+                }
+              />
+              <span className="text-sm">B</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="correctAnswer"
+                value="C"
+                defaultChecked={
+                  Array.isArray(correctAnswer) ? correctAnswer.includes("C") : false
+                }
+              />
+              <span className="text-sm">C</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="correctAnswer"
+                value="D"
+                defaultChecked={
+                  Array.isArray(correctAnswer) ? correctAnswer.includes("D") : false
+                }
+              />
+              <span className="text-sm">D</span>
+            </label>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">图片URL</label>
+        <input
+          type="text"
+          name="image"
+          defaultValue={question?.image || ""}
+          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          placeholder="https://..."
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">解析</label>
+        <textarea
+          name="explanation"
+          rows={2}
+          defaultValue={question?.explanation || ""}
+          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          placeholder="请输入题目解析..."
+        />
+      </div>
+
+      {error && <div className="text-xs text-red-600">{error}</div>}
+
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="inline-flex items-center rounded-md bg-gray-900 text-white text-sm px-3 py-1.5 hover:bg-black disabled:opacity-50"
+        >
+          {submitting ? "保存中..." : question ? "更新" : "创建"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md border border-gray-300 text-sm px-3 py-1.5 hover:bg-gray-100"
+        >
+          取消
+        </button>
+      </div>
+    </form>
+  );
+}
+

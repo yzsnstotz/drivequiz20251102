@@ -1,0 +1,61 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "single",
+      "content": "遇到这种情况时，驾驶人应当如何正确处置？",
+      "image": "/images/safety/tire-burst.png",
+      "options": [
+        "A. 立即用力踩制动踏板",
+        "B. 握稳方向盘，缓慢减速，平稳靠边停车",
+        "C. 迅速向右打方向盘",
+        "D. 马上关闭发动机"
+      ],
+      "correctAnswer": "B"
+    },
+    {
+      "id": 2,
+      "type": "multiple",
+      "content": "以下哪些是汽车安全带的正确使用方法？",
+      "image": "/images/safety/seatbelt.png",
+      "options": [
+        "A. 安全带应该贴身佩戴",
+        "B. 腰带应系在腹部",
+        "C. 肩带要从锁骨中间通过",
+        "D. 孕妇可以不系安全带"
+      ],
+      "correctAnswer": ["A", "C"]
+    },
+    {
+      "id": 3,
+      "type": "truefalse",
+      "content": "发生交通事故后，应立即报警，不得移动车辆。",
+      "correctAnswer": "false"
+    },
+    {
+      "id": 4,
+      "type": "single",
+      "content": "驾驶机动车遇到这种天气情况时，以下做法正确的是？",
+      "image": "/images/safety/heavy-rain.png",
+      "options": [
+        "A. 开启雾灯和危险警示灯",
+        "B. 关闭所有车灯，减少能见度",
+        "C. 立即在路边停车等待",
+        "D. 加速行驶，尽快离开"
+      ],
+      "correctAnswer": "A"
+    },
+    {
+      "id": 5,
+      "type": "multiple",
+      "content": "以下哪些是正确的交通事故现场处置方法？",
+      "options": [
+        "A. 保护现场，放置警示标志",
+        "B. 抢救伤员，拨打急救电话",
+        "C. 记录现场，收集证据",
+        "D. 主动承认责任"
+      ],
+      "correctAnswer": ["A", "B", "C"]
+    }
+  ]
+}

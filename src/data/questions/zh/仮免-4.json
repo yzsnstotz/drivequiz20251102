@@ -1,0 +1,362 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "truefalse",
+      "content": "1. 在等信号停车时突然想起有急事而使用了手机，但因为对面的信号变绿了，所以边说话边起动了。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 2,
+      "type": "truefalse",
+      "content": "2. 该标示表示前方有人行横道或自行车横道。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2013.57.03.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 3,
+      "type": "truefalse",
+      "content": "3. 在用标志或标示指定为直行或左转弯等通行方向的交叉路，必须按所指定的方向行进。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 4,
+      "type": "truefalse",
+      "content": "4. 因为有行人想横过人行横道所以暂时停了车，但由于有急事，鸣笛提醒行人注意后，比行人先行通过了。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 5,
+      "type": "truefalse",
+      "content": "5. 即使是在前方车辆准备超越其前面的汽车时，只要能够确认前方的安全就可以超越这些车辆。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 6,
+      "type": "truefalse",
+      "content": "6. 在交叉路跟着前面的车右转弯时，如果前面的车已经发出信号的话，就不必发出右转弯的信号。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 7,
+      "type": "truefalse",
+      "content": "7. 该标志表示不得以超过时速50公里的速度行驶。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2013.57.28.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 8,
+      "type": "truefalse",
+      "content": "8. 在为进出面向道路的场所而横过路侧带时，如有行人应缓行通过。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 9,
+      "type": "truefalse",
+      "content": "9. 驾驶员感觉到危险后刹车到制动器实际开始起作用之间的车辆行驶距离称为空走距离。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 10,
+      "type": "truefalse",
+      "content": "10. 如果发出起车信号之前确认了前后左右安全的话，发出信号后，就不必再次确认安全。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 11,
+      "type": "truefalse",
+      "content": "11. 在行驶方向的前方有障碍物时，要提前暂时停车或减速，让对面驶来的车辆先通行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 12,
+      "type": "truefalse",
+      "content": "12. 正确地使用儿童安全椅，在发生交通事故时可以大大地减少伤害，同时可以防止儿童妨碍驾驶。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 13,
+      "type": "truefalse",
+      "content": "13. 该标示表示是禁止入内部分。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2013.57.54.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 14,
+      "type": "truefalse",
+      "content": "14. 打算在前方交叉路左转弯时，必须在临左转弯之前靠向道路的左端左转弯。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 15,
+      "type": "truefalse",
+      "content": "15. 在停止的车辆旁通过时，不必连车内是否有人也注意。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 16,
+      "type": "truefalse",
+      "content": "16. 因为车辆横穿、掉头、倒车是妨碍交通顺畅的驾驶行为，所以必须充分注意不要妨碍行人和其它车辆的正常通行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 17,
+      "type": "truefalse",
+      "content": "17. 自动变速车的发动机刚起动时，因为发动机的转数升高，所以不踩紧刹车踏板操作会有急起动的危险。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 18,
+      "type": "truefalse",
+      "content": "18. 警察用手势信号指挥交通时必须遵守，但由于交通巡查员不是警察，所以不遵守其手势信号也行。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 19,
+      "type": "truefalse",
+      "content": "19. 只有在没有自行车通行的情况下，轻型摩托车才可以在自行车道通行。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 20,
+      "type": "truefalse",
+      "content": "20. 在交叉路左转弯时，应该充分注意靠向左侧通行的二轮摩托车，提前靠近道路的左端缓行，以免发生卷入事故。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 21,
+      "type": "truefalse",
+      "content": "21. 看到儿童在道路上玩时，只要鸣笛警告就可以不用缓行通过。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 22,
+      "type": "truefalse",
+      "content": "22. 在没有车辆通行带的隧道，不得为超越汽车或轻型摩托车改变车道或在其车辆旁边通过。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 23,
+      "type": "truefalse",
+      "content": "23. 发生交通事故时，刑事责任由驾驶员承担，但民事责任全部由所加入的保险公司承担。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 24,
+      "type": "truefalse",
+      "content": "24. 该标志表示必须鸣笛。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2013.58.14.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 25,
+      "type": "truefalse",
+      "content": "25. 在交叉路附近行驶时，因为紧急车辆接近，所以没有进入交叉路，而是靠道路的左侧暂时停了下来。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 26,
+      "type": "truefalse",
+      "content": "26. 刹车时，刚一开始要尽量轻踩，然后慢慢地踩到需要的强度。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 27,
+      "type": "truefalse",
+      "content": "27. 在交通量少的交叉路，在交叉路近前发出右转弯或左转弯的信号即可。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 28,
+      "type": "truefalse",
+      "content": "28. 最大载重量为4,000kg的货车用普通驾驶执照即可驾驶。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 29,
+      "type": "truefalse",
+      "content": "29. 饮酒后不得驾驶，若是酒精度数低的啤酒，喝了以后驾驶也无妨。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 30,
+      "type": "truefalse",
+      "content": "30. 该标志表示道路到前方已是尽头。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2013.58.37.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 31,
+      "type": "truefalse",
+      "content": "31. 轻型摩托车和小型特殊汽车可以在公共汽车专用通行带通行，但大型二轮摩托车等除了左转弯或不得已的情况以外不能通行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 32,
+      "type": "truefalse",
+      "content": "32. 车辆在行人旁边通过时，必须与行人之间留出安全间隔或缓行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 33,
+      "type": "truefalse",
+      "content": "33. 改变车道时，不得使用迫使从后方接近的车辆急刹车或急打方向盘的方法。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 34,
+      "type": "truefalse",
+      "content": "34. 自动变速车的变速杆的正确操作方法是，前进时切入D档、倒车时切入R档、驻车时切入P档。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 35,
+      "type": "truefalse",
+      "content": "35. 该图所示的警察的灯光信号，对于箭头方向的交通而言，与信号灯的黄色信号含义相同。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2013.59.13.png?raw=true",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 36,
+      "type": "truefalse",
+      "content": "36. 道路的左侧部分没有足够的宽度通行时，可以完全或一部分越入右侧部分通行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 37,
+      "type": "truefalse",
+      "content": "37. 在通过视野较好的铁路道时，不必在铁路道近前（有停车线时，在停车线近前）暂时停车，只要缓行并确认安全即可。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 38,
+      "type": "truefalse",
+      "content": "38. 初学驾驶员（取得普通驾驶执照未经过1年者）有表示「初学者标记」的义务，使周围驾驶员知道自己是初学驾驶员而得到保护。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 39,
+      "type": "truefalse",
+      "content": "39. 汽车进入道路的右侧部分超车时，需要充分注意前方车辆的行动和从对面驶来的车辆及前方过横道的行人。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 40,
+      "type": "truefalse",
+      "content": "40. 不得从行驶的车内向外扔空瓶罐，但若是烟头和纸屑即使扔也无妨。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 41,
+      "type": "truefalse",
+      "content": "41. 该标志表示前方道路是向右弯路。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2013.59.38.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 42,
+      "type": "truefalse",
+      "content": "42. 在单行路上有紧急车辆接近时，如果靠向道路的左侧会妨碍通行，应靠向右侧让路。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 43,
+      "type": "truefalse",
+      "content": "43. 在没有交通指示而且左右视野不好的交叉路通行时，无论道路的宽度是宽是窄，都必须缓行并确认安全。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 44,
+      "type": "truefalse",
+      "content": "44. 在视野不好的交叉路，即使是有「鸣笛地段」标志以外的地段，也必须时常鸣笛。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 45,
+      "type": "truefalse",
+      "content": "45. 取得临时驾驶执照后，为了尽快地掌握驾驶技术，最好在交通特别拥挤的道路及上学路等练习。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 46,
+      "type": "truefalse",
+      "content": "46. 该标志表示大型乘用汽车及特定中型乘用汽车不得通行。",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2014.00.02.png?raw=true",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 47,
+      "type": "truefalse",
+      "content": "47. 在同一方向有两条车辆通行带的道路上，车速快的车辆应在右侧的车辆通行带通行，而车速慢的车辆应在左侧的车辆通行带通行。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 48,
+      "type": "truefalse",
+      "content": "48. 在没有用标志指定最高限速的道路上，驾驶员可以以自认为是安全的速度驾驶。",
+      "correctAnswer": "false",
+      "explanation": ""
+    },
+    {
+      "id": 49,
+      "type": "truefalse",
+      "content": "49. 在交通量多的地方上下车时，最好从左侧的车门上下车。",
+      "correctAnswer": "true",
+      "explanation": ""
+    },
+    {
+      "id": 50,
+      "type": "truefalse",
+      "content": "50. 超越前面的车辆时，必须与其保持充分的间隔通行。",
+      "correctAnswer": "true",
+      "explanation": ""
+    }
+  ]
+}
