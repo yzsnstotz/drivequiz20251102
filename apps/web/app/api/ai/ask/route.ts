@@ -1,6 +1,127 @@
 // apps/web/app/api/ai/ask/route.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
+import { config } from "dotenv";
+import { resolve } from "path";
+
+/* AI_ENV_BLOCK_START */
+function readRaw(key: string, d = ""): string {
+  const v = process.env[key];
+  return (typeof v === "string" ? v : d).trim();
+}
+
+function readBool(key: string, d = false): boolean {
+  const v = readRaw(key, d ? "true" : "false").toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+function readUrl(key: string, d = ""): string {
+  const v = readRaw(key, d).replace(/\/+$/, "");
+  return v;
+}
+
+const ENV = {
+  USE_LOCAL_AI: readBool("USE_LOCAL_AI", false),
+  LOCAL_AI_SERVICE_URL: readUrl("LOCAL_AI_SERVICE_URL"),
+  LOCAL_AI_SERVICE_TOKEN: readRaw("LOCAL_AI_SERVICE_TOKEN"),
+  AI_SERVICE_URL: readUrl("AI_SERVICE_URL"),
+  AI_SERVICE_TOKEN: readRaw("AI_SERVICE_TOKEN"),
+};
+
+function forceModeFromReq(req: NextRequest): "local" | "online" | null {
+  try {
+    const url = new URL(req.url);
+    const m = url.searchParams.get("ai")?.toLowerCase();
+    if (m === "local" || m === "online") return m as "local" | "online";
+  } catch {
+    // Ignore URL parsing errors
+  }
+  return null;
+}
+
+function pickAiTarget(req: NextRequest): { mode: "local" | "online"; url: string; token: string } {
+  const forced = forceModeFromReq(req);
+  const wantLocal = forced ? forced === "local" : ENV.USE_LOCAL_AI;
+
+  if (wantLocal) {
+    if (!ENV.LOCAL_AI_SERVICE_URL) {
+      throw new Error("LOCAL_AI_SERVICE_URL is empty while USE_LOCAL_AI=true");
+    }
+    if (!ENV.LOCAL_AI_SERVICE_TOKEN) {
+      throw new Error("LOCAL_AI_SERVICE_TOKEN is empty while USE_LOCAL_AI=true");
+    }
+    return {
+      mode: "local",
+      url: ENV.LOCAL_AI_SERVICE_URL,
+      token: ENV.LOCAL_AI_SERVICE_TOKEN,
+    };
+  }
+
+  if (!ENV.AI_SERVICE_URL || !ENV.AI_SERVICE_TOKEN) {
+    throw new Error("Online AI service URL/TOKEN is not configured.");
+  }
+  return {
+    mode: "online",
+    url: ENV.AI_SERVICE_URL,
+    token: ENV.AI_SERVICE_TOKEN,
+  };
+}
+
+// 统一响应工具（保证每条返回都有指纹和调试头）
+const __ROUTE_FPRINT = "ask-route-fp-1762431422-10156";
+
+function respondJSON(body: any, debug: Record<string, string> = {}) {
+  return NextResponse.json(body, {
+    headers: {
+      "x-route-fingerprint": __ROUTE_FPRINT,
+      ...debug,
+    },
+  });
+}
+/* AI_ENV_BLOCK_END */
+
+// 显式加载环境变量（确保从项目根目录加载 .env.local）
+// 必须在模块加载时立即执行，确保环境变量在后续代码读取前已加载
+if (process.env.NODE_ENV !== "production") {
+  // Next.js 在开发模式下，process.cwd() 返回项目根目录
+  // 但为了确保，我们尝试多个可能的路径
+  const rootEnvLocal = resolve(process.cwd(), ".env.local");
+  const rootEnv = resolve(process.cwd(), ".env");
+  const webEnvLocal = resolve(__dirname, "../../../.env.local");
+  const webEnv = resolve(__dirname, "../../../.env");
+  
+  console.log("[ENV LOAD] 开始加载环境变量", {
+    rootEnvLocal,
+    rootEnv,
+    webEnvLocal,
+    webEnv,
+    cwd: process.cwd(),
+    __dirname,
+  });
+  
+  // 优先加载 apps/web/.env.local，然后加载项目根目录的 .env.local
+  // override: true 确保后加载的文件可以覆盖先加载的变量
+  const result1 = config({ path: webEnvLocal, override: true });
+  const result2 = config({ path: rootEnvLocal, override: true });
+  const result3 = config({ path: rootEnv, override: false });
+  const result4 = config({ path: webEnv, override: false });
+  
+  console.log("[ENV LOAD] 环境变量加载结果", {
+    webEnvLocal: result1?.parsed ? Object.keys(result1.parsed).length : 0,
+    rootEnvLocal: result2?.parsed ? Object.keys(result2.parsed).length : 0,
+    rootEnv: result3?.parsed ? Object.keys(result3.parsed).length : 0,
+    webEnv: result4?.parsed ? Object.keys(result4.parsed).length : 0,
+  });
+  
+  // 立即检查关键环境变量
+  console.log("[ENV LOAD] 加载后的环境变量值", {
+    USE_LOCAL_AI: process.env.USE_LOCAL_AI,
+    LOCAL_AI_SERVICE_URL: process.env.LOCAL_AI_SERVICE_URL,
+    LOCAL_AI_SERVICE_TOKEN: process.env.LOCAL_AI_SERVICE_TOKEN ? "***" : "",
+    AI_SERVICE_URL: process.env.AI_SERVICE_URL,
+    AI_SERVICE_TOKEN: process.env.AI_SERVICE_TOKEN ? "***" : "",
+  });
+}
 
 /**
  * 主站 API：转发用户问答到 AI-Service（含JWT校验、日配额限制、参数校验、统一响应）
@@ -41,9 +162,34 @@ type AskRequestBody = {
   locale?: string; // 前端可能传入的 BCP-47；将映射为 AI-Service 的 lang
 };
 
+// 获取环境变量的函数（在运行时读取，确保 dotenv 已加载）
+function getEnvVar(key: string, defaultValue = ""): string {
+  const value = process.env[key] ?? defaultValue;
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[ENV GET] ${key} = ${key.includes("TOKEN") ? (value ? "***" : "") : value}`);
+  }
+  return value;
+}
+
 // ---- 配置与内存状态（本地开发用；生产建议迁移至持久层/Redis） ----
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL ?? "";
-const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN ?? "";
+// AI服务选择：通过环境变量控制使用本地或在线AI服务
+// 注意：这些变量在函数中动态读取，确保 dotenv 已加载
+const getUseLocalAI = () => getEnvVar("USE_LOCAL_AI") === "true";
+const getLocalAIServiceUrl = () => getEnvVar("LOCAL_AI_SERVICE_URL");
+const getLocalAIServiceToken = () => getEnvVar("LOCAL_AI_SERVICE_TOKEN");
+const getAIServiceUrl = () => getEnvVar("AI_SERVICE_URL");
+const getAIServiceToken = () => getEnvVar("AI_SERVICE_TOKEN");
+
+// 调试日志（仅在开发环境）
+if (process.env.NODE_ENV !== "production") {
+  console.log("[AI Service Config]", {
+    USE_LOCAL_AI: getUseLocalAI(),
+    LOCAL_AI_SERVICE_URL: getLocalAIServiceUrl(),
+    LOCAL_AI_SERVICE_TOKEN: getLocalAIServiceToken() ? "***" : "",
+    AI_SERVICE_URL: getAIServiceUrl(),
+    AI_SERVICE_TOKEN: getAIServiceToken() ? "***" : "",
+  });
+}
 const DAILY_LIMIT = Number(process.env.AI_ASK_DAILY_LIMIT ?? "10");
 const ANSWER_CHAR_LIMIT = Number(process.env.AI_ANSWER_CHAR_LIMIT ?? "300");
 
@@ -231,7 +377,12 @@ export async function POST(req: NextRequest) {
   const quotaKey = isAnonymous ? `anon:${userId}` : `u:${userId}`;
   const limitRes = incrAndCheckDailyLimit(quotaKey);
   if (!limitRes.ok) {
-    return rateLimited({ limit: DAILY_LIMIT, resetAt: limitRes.resetAt });
+    return respondJSON({
+      ok: false,
+      errorCode: "RATE_LIMIT_EXCEEDED",
+      message: "Daily ask limit exceeded.",
+      details: { limit: DAILY_LIMIT, resetAt: limitRes.resetAt },
+    });
   }
 
   // 2) 校验请求体
@@ -239,20 +390,69 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as AskRequestBody;
   } catch {
-    return badRequest("Invalid JSON body.");
+    return respondJSON({
+      ok: false,
+      errorCode: "VALIDATION_FAILED",
+      message: "Invalid JSON body.",
+    });
   }
 
   const question = (body.question ?? "").trim();
   const locale = (body.locale ?? "").trim() || undefined;
 
-  if (!question) return badRequest("`question` is required.");
-  if (question.length > 1000) return badRequest("`question` exceeds 1000 characters.");
-  if (!isValidLocale(locale)) return badRequest("`locale` must follow BCP-47.");
-
-  // 3) 转发到 AI-Service（主站 -> 子服务）
-  if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
-    return internalError("AI service is not configured.");
+  if (!question) {
+    return respondJSON({
+      ok: false,
+      errorCode: "VALIDATION_FAILED",
+      message: "`question` is required.",
+    });
   }
+  if (question.length > 1000) {
+    return respondJSON({
+      ok: false,
+      errorCode: "VALIDATION_FAILED",
+      message: "`question` exceeds 1000 characters.",
+    });
+  }
+  if (!isValidLocale(locale)) {
+    return respondJSON({
+      ok: false,
+      errorCode: "VALIDATION_FAILED",
+      message: "`locale` must follow BCP-47.",
+    });
+  }
+
+  // 3) 选择AI服务（本地或在线）
+  console.log("[STEP 3] 开始选择AI服务");
+  
+  /* AI_PICK_START */
+  let __aiTarget: { mode: "local" | "online"; url: string; token: string };
+  let __requestUrl: string;
+  let __debugHeaders: Record<string, string> = {};
+  try {
+    __aiTarget = pickAiTarget(req);
+    __requestUrl = `${__aiTarget.url}/v1/ask`;
+    __debugHeaders = {
+      "x-ai-service-mode": __aiTarget.mode,
+      "x-ai-service-url": __aiTarget.url,
+    };
+  } catch (e: any) {
+    return respondJSON({
+      ok: false,
+      errorCode: "INTERNAL_ERROR",
+      message: e?.message || "AI service is not configured.",
+    });
+  }
+  /* AI_PICK_END */
+  
+  const aiServiceUrl = __aiTarget.url;
+  const aiServiceToken = __aiTarget.token;
+  
+  console.log("[STEP 3] AI服务选择结果", {
+    mode: __aiTarget.mode,
+    aiServiceUrl,
+    aiServiceToken: aiServiceToken ? "***" : "",
+  });
 
   const forwardPayload: Record<string, unknown> = {
     // 传递 userId（无论是否为 UUID）
@@ -274,21 +474,50 @@ export async function POST(req: NextRequest) {
   try {
     const headers: Record<string, string> = {
       "content-type": "application/json; charset=utf-8",
-      // 服务间鉴权走 Service Token
-      authorization: `Bearer ${AI_SERVICE_TOKEN}`,
     };
     // 透传用户信息（可选，用于日志或风控）
     if (jwt) {
       headers["x-user-jwt"] = jwt;
     }
     
-    aiResp = await fetch(`${AI_SERVICE_URL.replace(/\/$/, "")}/v1/ask`, {
+    console.log("[STEP 4] 准备转发请求到AI服务", {
+      url: __requestUrl,
       method: "POST",
-      headers,
+      headers: {
+        ...headers,
+        authorization: headers.authorization ? "Bearer ***" : "",
+      },
+      payload: {
+        ...forwardPayload,
+        userId: forwardPayload.userId ? "***" : null,
+      },
+    });
+    
+    // 转发到选择的AI服务（本地AI服务和在线AI服务使用相同的接口格式）
+    const startTime = Date.now();
+    aiResp = await fetch(__requestUrl, {
+      method: "POST",
+      headers: {
+        ...headers,
+        authorization: `Bearer ${__aiTarget.token}`,
+      },
       body: JSON.stringify(forwardPayload),
     });
+    const duration = Date.now() - startTime;
+    
+    console.log("[STEP 4] AI服务响应", {
+      status: aiResp.status,
+      statusText: aiResp.statusText,
+      headers: Object.fromEntries(aiResp.headers.entries()),
+      duration: `${duration}ms`,
+    });
   } catch (e: any) {
-    return json<Err>(502, {
+    console.error("[STEP 4] AI服务请求失败", {
+      error: e?.message,
+      stack: e?.stack,
+      url: __aiTarget.url,
+    });
+    return respondJSON({
       ok: false,
       errorCode: "PROVIDER_ERROR",
       message: "AI service is unreachable.",
@@ -298,9 +527,28 @@ export async function POST(req: NextRequest) {
 
   let aiJson: AiServiceResponse;
   try {
-    aiJson = (await aiResp.json()) as AiServiceResponse;
-  } catch {
-    return json<Err>(502, {
+    const responseText = await aiResp.text();
+    console.log("[STEP 5] AI服务响应内容（原始）", {
+      status: aiResp.status,
+      textLength: responseText.length,
+      textPreview: responseText.substring(0, 200),
+    });
+    
+    aiJson = JSON.parse(responseText) as AiServiceResponse;
+    console.log("[STEP 5] AI服务响应内容（解析后）", {
+      ok: aiJson.ok,
+      model: aiJson.ok ? aiJson.data?.model : undefined,
+      answerLength: aiJson.ok ? aiJson.data?.answer?.length : undefined,
+      errorCode: !aiJson.ok ? aiJson.errorCode : undefined,
+      message: !aiJson.ok ? aiJson.message : undefined,
+    });
+  } catch (e: any) {
+    console.error("[STEP 5] 解析AI服务响应失败", {
+      error: e?.message,
+      status: aiResp.status,
+      stack: e?.stack,
+    });
+    return respondJSON({
       ok: false,
       errorCode: "PROVIDER_ERROR",
       message: "Invalid response from AI service.",
@@ -313,10 +561,10 @@ export async function POST(req: NextRequest) {
       ...aiJson.data,
       answer: truncateAnswer(aiJson.data.answer, ANSWER_CHAR_LIMIT),
     };
-    return json<Ok<AiAskData>>(200, { ok: true, data: cut });
+    return respondJSON({ ok: true, data: cut }, __debugHeaders);
   }
 
   // 将子服务错误码原样透传（含429/400等），若上游返回200包错则此处归一为400
   const statusPassthrough = aiResp.status || 400;
-  return json<Err>(statusPassthrough, aiJson);
+  return respondJSON(aiJson);
 }
