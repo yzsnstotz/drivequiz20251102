@@ -24,14 +24,52 @@ type AskResult = {
   time?: string;
 };
 
+/**
+ * 检测用户输入问题的语言
+ * 返回: "zh" | "ja" | "en"
+ */
+function detectLanguageFromQuestion(question: string): "zh" | "ja" | "en" {
+  const text = question.trim();
+  if (!text) return "zh";
+
+  // 检测日文（平假名、片假名、汉字混合）
+  const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
+  if (japaneseRegex.test(text)) {
+    // 如果包含大量日文字符，判断为日文
+    const japaneseChars = text.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g) || [];
+    if (japaneseChars.length > text.length * 0.3) {
+      return "ja";
+    }
+  }
+
+  // 检测英文（主要是英文字母）
+  const englishRegex = /^[a-zA-Z\s.,!?'"-]+$/;
+  if (englishRegex.test(text) && text.length > 0) {
+    // 如果主要是英文字符，判断为英文
+    const englishChars = text.match(/[a-zA-Z]/g) || [];
+    if (englishChars.length > text.length * 0.5) {
+      return "en";
+    }
+  }
+
+  // 检测中文（中文字符）
+  const chineseRegex = /[\u4E00-\u9FAF]/;
+  if (chineseRegex.test(text)) {
+    return "zh";
+  }
+
+  // 默认返回中文
+  return "zh";
+}
+
 function buildSystemPrompt(lang: string): string {
   const base =
-    "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
+    "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。**重要：请务必用中文回答，不要使用其他语言。**";
   if (lang === "ja") {
-    return "あなたは ZALEM の運転免許学習アシスタントです。日本の交通法規と問題集の知識に基づいて、簡潔かつ正確に回答してください。推測や捏造は禁止し、関係のない内容は出力しないでください。";
+    return "あなたは ZALEM の運転免許学習アシスタントです。日本の交通法規と問題集の知識に基づいて、簡潔かつ正確に回答してください。推測や捏造は禁止し、関係のない内容は出力しないでください。**重要：必ず日本語で回答してください。他の言語は使用しないでください。**";
   }
   if (lang === "en") {
-    return "You are ZALEM's driving-test study assistant. Answer based on Japan's traffic laws and question bank. Be concise and accurate. Do not fabricate or include unrelated content.";
+    return "You are ZALEM's driving-test study assistant. Answer based on Japan's traffic laws and question bank. Be concise and accurate. Do not fabricate or include unrelated content. **IMPORTANT: You MUST respond in English only. Do not use any other language.**";
   }
   return base;
 }
@@ -48,7 +86,38 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 2) 校验请求体
         const body = request.body as AskBody;
         const question = (body.question || "").trim();
-        const lang = (body.lang || "zh").toLowerCase().trim();
+        
+        // 3) 语言检测：始终根据用户输入的问题自动检测语言，确保回复语言与问题语言一致
+        // 优先使用检测到的语言，而不是依赖传入的 lang 参数
+        const detectedLang = detectLanguageFromQuestion(question);
+        let lang: "zh" | "ja" | "en" = detectedLang;
+        
+        // 如果传入的 lang 参数与检测到的语言不一致，使用检测到的语言
+        // 这样可以确保回复语言与问题语言一致
+        if (body.lang && typeof body.lang === "string") {
+          const requestedLang = body.lang.toLowerCase().trim();
+          if (requestedLang === "ja" || requestedLang === "en" || requestedLang === "zh") {
+            // 如果传入的语言与检测到的语言一致，使用传入的语言
+            // 如果不一致，优先使用检测到的语言（确保回复语言与问题语言一致）
+            if (requestedLang === detectedLang) {
+              lang = requestedLang as "zh" | "ja" | "en";
+            } else {
+              // 语言不一致，使用检测到的语言
+              console.log("[LOCAL-AI] 语言不一致，使用检测到的语言", {
+                requestedLang,
+                detectedLang,
+                usingLang: detectedLang,
+              });
+            }
+          }
+        }
+        
+        console.log("[LOCAL-AI] 语言检测", {
+          requestedLang: body.lang,
+          detectedLang,
+          finalLang: lang,
+          questionPreview: question.substring(0, 50),
+        });
 
         if (!question || question.length === 0 || question.length > 2000) {
           reply.code(400).send({
