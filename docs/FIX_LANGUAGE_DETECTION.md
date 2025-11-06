@@ -53,34 +53,25 @@ function detectLanguageFromQuestion(question: string): "zh" | "ja" | "en" {
 }
 ```
 
-### 2. 优先使用检测到的语言
+### 2. 完全忽略传入的 lang 参数
 
-修改语言选择逻辑，优先使用检测到的语言：
+**关键修复**：完全忽略传入的 `lang` 参数，只根据问题内容自动检测语言。
+
+**原因**：
+- 前端传递的是 `navigator.language`（浏览器语言设置）
+- 浏览器语言可能与用户输入的问题语言不一致
+- 例如：浏览器是日文（ja-JP），但用户用中文问问题
+
+**修复后的逻辑**：
 
 ```typescript
-// 始终根据用户输入的问题自动检测语言
+// **重要：完全忽略传入的 lang 参数，只根据问题内容自动检测语言**
+// 这样可以确保回复语言与问题语言完全一致，避免语言错乱
 const detectedLang = detectLanguageFromQuestion(question);
-let lang: "zh" | "ja" | "en" = detectedLang;
-
-// 如果传入的 lang 参数与检测到的语言不一致，使用检测到的语言
-if (body.lang && typeof body.lang === "string") {
-  const requestedLang = body.lang.toLowerCase().trim();
-  if (requestedLang === "ja" || requestedLang === "en" || requestedLang === "zh") {
-    // 如果传入的语言与检测到的语言一致，使用传入的语言
-    // 如果不一致，优先使用检测到的语言（确保回复语言与问题语言一致）
-    if (requestedLang === detectedLang) {
-      lang = requestedLang as "zh" | "ja" | "en";
-    } else {
-      // 语言不一致，使用检测到的语言
-      console.log("[LOCAL-AI] 语言不一致，使用检测到的语言", {
-        requestedLang,
-        detectedLang,
-        usingLang: detectedLang,
-      });
-    }
-  }
-}
+const lang: "zh" | "ja" | "en" = detectedLang;
 ```
+
+**不再考虑传入的 lang 参数**，确保回复语言与问题语言完全一致。
 
 ### 3. 强化系统提示词
 
@@ -115,13 +106,18 @@ function buildSystemPrompt(lang: string): string {
 
 ## 语言检测规则
 
-1. **日文检测**：
-   - 检测平假名（\u3040-\u309F）、片假名（\u30A0-\u30FF）、汉字（\u4E00-\u9FAF）
-   - 如果日文字符占比 > 30%，判断为日文
+**检测优先级：英文 > 日文 > 中文**
 
-2. **英文检测**：
-   - 检测英文字母（a-zA-Z）
-   - 如果英文字符占比 > 50%，判断为英文
+这样可以避免将英文误判为中文。
+
+1. **英文检测（优先）**：
+   - 如果包含英文字母，且不包含中文或日文字符 → 判断为英文
+   - 如果包含英文但同时也包含中文或日文，且英文占比 > 60% → 判断为英文
+   - 至少需要 3 个英文字母
+
+2. **日文检测**：
+   - 检测平假名（\u3040-\u309F）、片假名（\u30A0-\u30FF）
+   - 如果日文字符占比 > 20%，判断为日文
 
 3. **中文检测**：
    - 检测中文字符（\u4E00-\u9FAF）
