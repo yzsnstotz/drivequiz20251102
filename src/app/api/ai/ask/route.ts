@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
     }
     
     // 从数据库读取 aiProvider 配置（如果 URL 参数没有强制指定）
-    let aiProviderFromDb: "online" | "local" = "online";
+    let aiProviderFromDb: "online" | "local" | null = null;
     if (!forceMode) {
       try {
         const configRow = await (aiDb as any)
@@ -285,9 +285,12 @@ export async function POST(req: NextRequest) {
     }
     
     // 优先级：URL 参数 > 数据库配置 > 环境变量
+    // 如果数据库配置存在，优先使用数据库配置；否则使用环境变量
     const wantLocal = forceMode 
       ? forceMode === "local" 
-      : (aiProviderFromDb === "local" || USE_LOCAL_AI);
+      : (aiProviderFromDb !== null 
+          ? aiProviderFromDb === "local" 
+          : USE_LOCAL_AI);
     
     if (wantLocal) {
       if (!LOCAL_AI_SERVICE_URL || !LOCAL_AI_SERVICE_TOKEN) {
