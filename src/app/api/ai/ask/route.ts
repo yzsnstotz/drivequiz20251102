@@ -55,17 +55,14 @@ const USE_LOCAL_AI = process.env.USE_LOCAL_AI === "true" || process.env.USE_LOCA
 const LOCAL_AI_SERVICE_URL = process.env.LOCAL_AI_SERVICE_URL;
 const LOCAL_AI_SERVICE_TOKEN = process.env.LOCAL_AI_SERVICE_TOKEN;
 
-// 在模块加载时记录环境变量
-console.log("[ENV MODULE] 模块加载时的环境变量配置", {
-  USE_LOCAL_AI,
-  USE_LOCAL_AI_RAW: process.env.USE_LOCAL_AI,
-  LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL || "(empty)",
-  LOCAL_AI_SERVICE_TOKEN: LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
-  AI_SERVICE_URL: AI_SERVICE_URL || "(empty)",
-  AI_SERVICE_TOKEN: AI_SERVICE_TOKEN ? "***" : "(empty)",
-  NODE_ENV: process.env.NODE_ENV,
-  VERCEL_ENV: process.env.VERCEL_ENV,
-});
+// 在模块加载时记录环境变量（仅在开发环境）
+if (process.env.NODE_ENV === "development") {
+  console.log("[ENV MODULE] 环境变量配置", {
+    USE_LOCAL_AI,
+    LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL || "(empty)",
+    AI_SERVICE_URL: AI_SERVICE_URL || "(empty)",
+  });
+}
 
 // ==== 环境检测 ====
 function isProduction(): boolean {
@@ -249,19 +246,6 @@ function normalizeQuestion(q: string) {
 
 // ==== 入口：POST /api/ai/ask ====
 export async function POST(req: NextRequest) {
-  // 记录请求开始时的环境变量（运行时读取）
-  console.log("[POST START] 请求开始时的环境变量", {
-    USE_LOCAL_AI: process.env.USE_LOCAL_AI,
-    USE_LOCAL_AI_BOOL: USE_LOCAL_AI,
-    LOCAL_AI_SERVICE_URL: process.env.LOCAL_AI_SERVICE_URL || "(empty)",
-    LOCAL_AI_SERVICE_TOKEN: process.env.LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
-    AI_SERVICE_URL: process.env.AI_SERVICE_URL || "(empty)",
-    AI_SERVICE_TOKEN: process.env.AI_SERVICE_TOKEN ? "***" : "(empty)",
-    NODE_ENV: process.env.NODE_ENV,
-    VERCEL_ENV: process.env.VERCEL_ENV,
-    VERCEL: process.env.VERCEL,
-  });
-  
   try {
     // 0) 选择 AI 服务（本地或在线）
     let selectedAiServiceUrl: string;
@@ -282,20 +266,8 @@ export async function POST(req: NextRequest) {
     
     const wantLocal = forceMode ? forceMode === "local" : USE_LOCAL_AI;
     
-    console.log("[AI SERVICE SELECT] 开始选择AI服务", {
-      forceMode,
-      USE_LOCAL_AI,
-      wantLocal,
-      reason: forceMode ? `URL参数强制: ${forceMode}` : `环境变量: USE_LOCAL_AI=${USE_LOCAL_AI}`,
-    });
-    
     if (wantLocal) {
-      console.log("[AI SERVICE SELECT] 尝试使用本地AI服务");
       if (!LOCAL_AI_SERVICE_URL || !LOCAL_AI_SERVICE_TOKEN) {
-        console.error("[AI SERVICE SELECT] 本地AI服务配置不完整", {
-          LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL || "(empty)",
-          LOCAL_AI_SERVICE_TOKEN: LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
-        });
         // 如果本地AI服务配置不完整，回退到在线服务
         if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
           return err(
@@ -307,7 +279,6 @@ export async function POST(req: NextRequest) {
             ) },
           );
         }
-        console.log("[AI SERVICE SELECT] 本地AI服务配置不完整，回退到在线服务");
         selectedAiServiceUrl = AI_SERVICE_URL;
         selectedAiServiceToken = AI_SERVICE_TOKEN;
         aiServiceMode = "online";
@@ -315,14 +286,8 @@ export async function POST(req: NextRequest) {
         selectedAiServiceUrl = LOCAL_AI_SERVICE_URL;
         selectedAiServiceToken = LOCAL_AI_SERVICE_TOKEN;
         aiServiceMode = "local";
-        console.log("[AI SERVICE SELECT] 选择本地AI服务", {
-          mode: aiServiceMode,
-          url: selectedAiServiceUrl,
-          token: "***",
-        });
       }
     } else {
-      console.log("[AI SERVICE SELECT] 使用在线AI服务");
       if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
         return err(
           "INTERNAL_ERROR",
@@ -336,11 +301,6 @@ export async function POST(req: NextRequest) {
       selectedAiServiceUrl = AI_SERVICE_URL;
       selectedAiServiceToken = AI_SERVICE_TOKEN;
       aiServiceMode = "online";
-      console.log("[AI SERVICE SELECT] 选择在线AI服务", {
-        mode: aiServiceMode,
-        url: selectedAiServiceUrl,
-        token: "***",
-      });
     }
 
     // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
@@ -521,13 +481,6 @@ export async function POST(req: NextRequest) {
     
     // 确保 selectedAiServiceUrl 不重复 /v1 路径
     const baseUrl = selectedAiServiceUrl.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
-    
-    console.log("[AI SERVICE CALL] 准备调用AI服务", {
-      mode: aiServiceMode,
-      baseUrl,
-      requestUrl: `${baseUrl}/v1/ask`,
-      token: "***",
-    });
     
     const upstream = await fetch(`${baseUrl}/v1/ask`, {
       method: "POST",
