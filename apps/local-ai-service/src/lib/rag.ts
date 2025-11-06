@@ -7,8 +7,11 @@ import { callOllamaEmbedding } from "./ollamaClient.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
-const DEFAULT_MATCH_COUNT = 5;
+// 优化参数：增加检索数量以获得更好的上下文关联
+const DEFAULT_MATCH_COUNT = 7; // 从5增加到7，获取更多相关上下文
 const CONTEXT_CHAR_LIMIT = 4000;
+// 相似度阈值：降低阈值以获取更多相关但相似度稍低的内容
+const DEFAULT_MATCH_THRESHOLD = 0.65; // 从0.75降低到0.65，平衡相关性和数量
 
 type RagHit = {
   content: string;
@@ -23,14 +26,15 @@ type RagHit = {
 async function callSupabaseMatch(
   queryEmbedding: number[],
   lang: string = "zh",
-  matchCount: number = DEFAULT_MATCH_COUNT
+  matchCount: number = DEFAULT_MATCH_COUNT,
+  matchThreshold: number = DEFAULT_MATCH_THRESHOLD
 ): Promise<RagHit[]> {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return [];
 
   const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/rpc/match_documents`;
   const body = {
     query_embedding: queryEmbedding,
-    match_threshold: 0.75,
+    match_threshold: matchThreshold,
     match_count: Math.max(1, Math.min(10, matchCount)),
   };
 
@@ -72,12 +76,20 @@ async function callSupabaseMatch(
 
 /**
  * 构建上下文字符串
+ * 优化：按相似度排序，优先使用高相关度的内容
  */
 function buildContext(hits: RagHit[]): string {
   if (!hits.length) return "";
 
+  // 按相似度降序排序（相似度高的在前）
+  const sortedHits = [...hits].sort((a, b) => {
+    const simA = a.similarity ?? 0;
+    const simB = b.similarity ?? 0;
+    return simB - simA;
+  });
+
   const parts: string[] = [];
-  for (const h of hits) {
+  for (const h of sortedHits) {
     const src = h.source_title ? `【来源:${h.source_title}】` : "";
     const sc = typeof h.similarity === "number" ? `（相关度:${h.similarity.toFixed(3)}）` : "";
     const chunk = `${src}${sc}\n${String(h.content || "").trim()}`;
@@ -95,6 +107,7 @@ function buildContext(hits: RagHit[]): string {
 
 /**
  * 获取 RAG 上下文
+ * 优化：根据问题长度动态调整检索参数
  */
 export async function getRagContext(
   question: string,
@@ -104,11 +117,34 @@ export async function getRagContext(
     // 1. 生成查询向量（768维）
     const embedding = await callOllamaEmbedding(question);
 
-    // 2. 调用 Supabase RPC 检索
-    const hits = await callSupabaseMatch(embedding, lang, DEFAULT_MATCH_COUNT);
+    // 2. 根据问题复杂度动态调整检索参数
+    // 问题越长或越复杂，检索更多相关内容
+    const questionLength = question.length;
+    let matchCount = DEFAULT_MATCH_COUNT;
+    let matchThreshold = DEFAULT_MATCH_THRESHOLD;
+    
+    if (questionLength > 100) {
+      // 长问题：增加检索数量，稍微降低阈值
+      matchCount = 8;
+      matchThreshold = 0.63;
+    } else if (questionLength < 20) {
+      // 短问题：减少检索数量，提高阈值（更精确）
+      matchCount = 5;
+      matchThreshold = 0.68;
+    }
 
-    // 3. 构建上下文
-    return buildContext(hits);
+    // 3. 调用 Supabase RPC 检索
+    const hits = await callSupabaseMatch(embedding, lang, matchCount, matchThreshold);
+
+    // 4. 过滤低质量结果（相似度太低的内容可能不相关）
+    const filteredHits = hits.filter((h) => {
+      const sim = h.similarity ?? 0;
+      // 只保留相似度 >= 0.6 的结果（确保基本相关性）
+      return sim >= 0.6;
+    });
+
+    // 5. 构建上下文
+    return buildContext(filteredHits);
   } catch (error) {
     // RAG 上下文获取失败不影响主流程，仅记录错误
     return "";
