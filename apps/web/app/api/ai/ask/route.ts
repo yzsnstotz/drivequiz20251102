@@ -28,43 +28,96 @@ const ENV = {
   AI_SERVICE_TOKEN: readRaw("AI_SERVICE_TOKEN"),
 };
 
+// 在模块加载时记录环境变量（生产环境也会记录）
+console.log("[ENV MODULE] 模块加载时的环境变量配置", {
+  USE_LOCAL_AI: ENV.USE_LOCAL_AI,
+  USE_LOCAL_AI_RAW: process.env.USE_LOCAL_AI,
+  LOCAL_AI_SERVICE_URL: ENV.LOCAL_AI_SERVICE_URL || "(empty)",
+  LOCAL_AI_SERVICE_TOKEN: ENV.LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+  AI_SERVICE_URL: ENV.AI_SERVICE_URL || "(empty)",
+  AI_SERVICE_TOKEN: ENV.AI_SERVICE_TOKEN ? "***" : "(empty)",
+  NODE_ENV: process.env.NODE_ENV,
+});
+
 function forceModeFromReq(req: NextRequest): "local" | "online" | null {
   try {
     const url = new URL(req.url);
     const m = url.searchParams.get("ai")?.toLowerCase();
+    console.log("[FORCE MODE] URL参数检查", {
+      url: req.url,
+      aiParam: m,
+      result: m === "local" || m === "online" ? m : null,
+    });
     if (m === "local" || m === "online") return m as "local" | "online";
-  } catch {
-    // Ignore URL parsing errors
+  } catch (e: any) {
+    console.error("[FORCE MODE] URL解析失败", {
+      error: e?.message,
+      url: req.url,
+    });
   }
   return null;
 }
 
 function pickAiTarget(req: NextRequest): { mode: "local" | "online"; url: string; token: string } {
+  console.log("[PICK AI TARGET] 开始选择AI服务", {
+    ENV_USE_LOCAL_AI: ENV.USE_LOCAL_AI,
+    ENV_LOCAL_AI_SERVICE_URL: ENV.LOCAL_AI_SERVICE_URL || "(empty)",
+    ENV_LOCAL_AI_SERVICE_TOKEN: ENV.LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+    ENV_AI_SERVICE_URL: ENV.AI_SERVICE_URL || "(empty)",
+    ENV_AI_SERVICE_TOKEN: ENV.AI_SERVICE_TOKEN ? "***" : "(empty)",
+  });
+  
   const forced = forceModeFromReq(req);
   const wantLocal = forced ? forced === "local" : ENV.USE_LOCAL_AI;
+  
+  console.log("[PICK AI TARGET] 选择逻辑", {
+    forced,
+    wantLocal,
+    reason: forced ? `URL参数强制: ${forced}` : `环境变量: USE_LOCAL_AI=${ENV.USE_LOCAL_AI}`,
+  });
 
   if (wantLocal) {
+    console.log("[PICK AI TARGET] 尝试使用本地AI服务");
     if (!ENV.LOCAL_AI_SERVICE_URL) {
+      console.error("[PICK AI TARGET] 本地AI服务URL为空");
       throw new Error("LOCAL_AI_SERVICE_URL is empty while USE_LOCAL_AI=true");
     }
     if (!ENV.LOCAL_AI_SERVICE_TOKEN) {
+      console.error("[PICK AI TARGET] 本地AI服务TOKEN为空");
       throw new Error("LOCAL_AI_SERVICE_TOKEN is empty while USE_LOCAL_AI=true");
     }
-    return {
-      mode: "local",
+    const result = {
+      mode: "local" as const,
       url: ENV.LOCAL_AI_SERVICE_URL,
       token: ENV.LOCAL_AI_SERVICE_TOKEN,
     };
+    console.log("[PICK AI TARGET] 选择本地AI服务", {
+      mode: result.mode,
+      url: result.url,
+      token: "***",
+    });
+    return result;
   }
 
+  console.log("[PICK AI TARGET] 使用在线AI服务");
   if (!ENV.AI_SERVICE_URL || !ENV.AI_SERVICE_TOKEN) {
+    console.error("[PICK AI TARGET] 在线AI服务配置不完整", {
+      AI_SERVICE_URL: ENV.AI_SERVICE_URL || "(empty)",
+      AI_SERVICE_TOKEN: ENV.AI_SERVICE_TOKEN ? "***" : "(empty)",
+    });
     throw new Error("Online AI service URL/TOKEN is not configured.");
   }
-  return {
-    mode: "online",
+  const result = {
+    mode: "online" as const,
     url: ENV.AI_SERVICE_URL,
     token: ENV.AI_SERVICE_TOKEN,
   };
+  console.log("[PICK AI TARGET] 选择在线AI服务", {
+    mode: result.mode,
+    url: result.url,
+    token: "***",
+  });
+  return result;
 }
 
 // 统一响应工具（保证每条返回都有指纹和调试头）
@@ -354,6 +407,19 @@ function truncateAnswer(ans: string, limit: number): string {
 
 // ---- 路由处理 ----
 export async function POST(req: NextRequest) {
+  // 记录请求开始时的环境变量（运行时读取）
+  console.log("[POST START] 请求开始时的环境变量", {
+    USE_LOCAL_AI: process.env.USE_LOCAL_AI,
+    USE_LOCAL_AI_BOOL: readBool("USE_LOCAL_AI", false),
+    LOCAL_AI_SERVICE_URL: process.env.LOCAL_AI_SERVICE_URL || "(empty)",
+    LOCAL_AI_SERVICE_TOKEN: process.env.LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+    AI_SERVICE_URL: process.env.AI_SERVICE_URL || "(empty)",
+    AI_SERVICE_TOKEN: process.env.AI_SERVICE_TOKEN ? "***" : "(empty)",
+    NODE_ENV: process.env.NODE_ENV,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL: process.env.VERCEL,
+  });
+  
   // 1) 鉴权：用户 JWT（前端 -> 主站）
   // 允许未登录用户匿名访问（使用匿名 ID）
   const jwt = readUserJwt(req);
@@ -424,6 +490,13 @@ export async function POST(req: NextRequest) {
 
   // 3) 选择AI服务（本地或在线）
   console.log("[STEP 3] 开始选择AI服务");
+  console.log("[STEP 3] 当前ENV对象状态", {
+    ENV_USE_LOCAL_AI: ENV.USE_LOCAL_AI,
+    ENV_LOCAL_AI_SERVICE_URL: ENV.LOCAL_AI_SERVICE_URL || "(empty)",
+    ENV_LOCAL_AI_SERVICE_TOKEN: ENV.LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+    ENV_AI_SERVICE_URL: ENV.AI_SERVICE_URL || "(empty)",
+    ENV_AI_SERVICE_TOKEN: ENV.AI_SERVICE_TOKEN ? "***" : "(empty)",
+  });
   
   /* AI_PICK_START */
   let __aiTarget: { mode: "local" | "online"; url: string; token: string };
@@ -436,7 +509,20 @@ export async function POST(req: NextRequest) {
       "x-ai-service-mode": __aiTarget.mode,
       "x-ai-service-url": __aiTarget.url,
     };
+    console.log("[STEP 3] AI服务选择成功", {
+      mode: __aiTarget.mode,
+      url: __aiTarget.url,
+      requestUrl: __requestUrl,
+      token: "***",
+    });
   } catch (e: any) {
+    console.error("[STEP 3] AI服务选择失败", {
+      error: e?.message,
+      stack: e?.stack,
+      ENV_USE_LOCAL_AI: ENV.USE_LOCAL_AI,
+      ENV_LOCAL_AI_SERVICE_URL: ENV.LOCAL_AI_SERVICE_URL || "(empty)",
+      ENV_LOCAL_AI_SERVICE_TOKEN: ENV.LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+    });
     return respondJSON({
       ok: false,
       errorCode: "INTERNAL_ERROR",
@@ -448,10 +534,11 @@ export async function POST(req: NextRequest) {
   const aiServiceUrl = __aiTarget.url;
   const aiServiceToken = __aiTarget.token;
   
-  console.log("[STEP 3] AI服务选择结果", {
+  console.log("[STEP 3] AI服务选择结果（最终）", {
     mode: __aiTarget.mode,
     aiServiceUrl,
     aiServiceToken: aiServiceToken ? "***" : "",
+    requestUrl: __requestUrl,
   });
 
   const forwardPayload: Record<string, unknown> = {
