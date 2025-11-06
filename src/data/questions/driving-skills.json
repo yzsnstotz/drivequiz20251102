@@ -1,0 +1,62 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "single",
+      "content": "在这种路况下转弯时，应该如何操作？",
+      "image": "/images/driving-skills/narrow-turn.png",
+      "options": [
+        "A. 快速转动方向盘",
+        "B. 提前减速，缓慢转向",
+        "C. 保持原速转弯",
+        "D. 加速通过转弯"
+      ],
+      "correctAnswer": "B"
+    },
+    {
+      "id": 2,
+      "type": "multiple",
+      "content": "以下哪些是正确的坡道起步方法？",
+      "image": "/images/driving-skills/hill-start.png",
+      "options": [
+        "A. 使用驻车制动",
+        "B. 控制离合器半联动",
+        "C. 迅速松开制动踏板",
+        "D. 适当加大油门"
+      ],
+      "correctAnswer": ["A", "B", "D"]
+    },
+    {
+      "id": 3,
+      "type": "single",
+      "content": "在这种积水路段行驶时，应该采取什么措施？",
+      "image": "/images/driving-skills/water-road.png",
+      "options": [
+        "A. 快速通过",
+        "B. 低速匀速通过",
+        "C. 临时换入低速档",
+        "D. 不踩离合器加速通过"
+      ],
+      "correctAnswer": "B"
+    },
+    {
+      "id": 4,
+      "type": "truefalse",
+      "content": "在狭窄路段会车时，应减速靠右行驶。",
+      "correctAnswer": "true"
+    },
+    {
+      "id": 5,
+      "type": "multiple",
+      "content": "在这种雾天驾驶时，以下哪些做法是正确的？",
+      "image": "/images/driving-skills/foggy-road.png",
+      "options": [
+        "A. 开启雾灯和示廓灯",
+        "B. 保持安全车距",
+        "C. 鸣喇叭提醒他车",
+        "D. 加速脱离雾区"
+      ],
+      "correctAnswer": ["A", "B", "C"]
+    }
+  ]
+}

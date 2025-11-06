@@ -1,0 +1,393 @@
+// ============================================================
+// 文件路径: src/lib/db.ts
+// 功能: 数据库连接配置 (PostgreSQL + Kysely)
+// 更新日期: 2025-11-01
+// 更新内容: 为 activation_codes 表增加后台管理字段
+// ============================================================
+
+import { Kysely, PostgresDialect, Generated } from "kysely";
+import { Pool } from "pg";
+
+// ------------------------------------------------------------
+// 1️⃣ activation_codes 表结构定义
+// ------------------------------------------------------------
+interface ActivationCodeTable {
+  id: Generated<number>;
+  code: string;
+  usage_limit: number;
+  used_count: number;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+
+  // ✅ 新增字段（后台管理所需）
+  status: "disabled" | "enabled" | "suspended" | "expired";
+  expires_at: Date | null; // 计算后的到期时间（用户激活后开始计算）
+  enabled_at: Date | null;
+  notes: string | null;
+
+  // ✅ 有效期字段（用户激活后开始倒计时）
+  validity_period: number | null; // 有效期周期（数字）
+  validity_unit: "day" | "month" | "year" | null; // 有效期单位
+  activation_started_at: Date | null; // 用户激活账户的时间（倒计时开始时间）
+}
+
+// ------------------------------------------------------------
+// 2️⃣ activations 表结构定义
+// ------------------------------------------------------------
+interface ActivationTable {
+  id: Generated<number>;
+  email: string;
+  activation_code: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  activated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 3️⃣ admins 表结构定义
+// ------------------------------------------------------------
+interface AdminTable {
+  id: Generated<number>;
+  username: string;
+  token: string;
+  is_active: boolean;
+  permissions: string[]; // JSONB数组，存储权限类别
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 4️⃣ operation_logs 表结构定义
+// ------------------------------------------------------------
+interface OperationLogTable {
+  id: Generated<number>;
+  admin_id: number;
+  admin_username: string;
+  action: "create" | "update" | "delete";
+  table_name: string;
+  record_id: number | null;
+  old_value: any | null; // JSONB
+  new_value: any | null; // JSONB
+  description: string | null;
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 5️⃣ merchant_categories 表结构定义
+// ------------------------------------------------------------
+interface MerchantCategoryTable {
+  id: Generated<number>;
+  name: string;
+  display_order: number;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 6️⃣ merchants 表结构定义
+// ------------------------------------------------------------
+interface MerchantTable {
+  id: Generated<number>;
+  name: string;
+  description: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  image_url: string | null;
+  category: string | null;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 7️⃣ videos 表结构定义
+// ------------------------------------------------------------
+interface VideoTable {
+  id: Generated<number>;
+  title: string;
+  description: string | null;
+  url: string;
+  thumbnail: string | null;
+  category: "basic" | "advanced";
+  display_order: number;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣ contact_info 表结构定义
+// ------------------------------------------------------------
+interface ContactInfoTable {
+  id: Generated<number>;
+  type: "business" | "purchase";
+  wechat: string | null;
+  email: string | null;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 9️⃣ terms_of_service 表结构定义
+// ------------------------------------------------------------
+interface TermsOfServiceTable {
+  id: Generated<number>;
+  title: string;
+  content: string;
+  version: string;
+  status: "active" | "inactive";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 🔟 ai_logs 表结构定义
+// ------------------------------------------------------------
+interface AiLogsTable {
+  id: Generated<number>;
+  user_id: string | null;
+  question: string;
+  answer: string | null;
+  language: string | null; // 注意：迁移脚本中为 locale，但代码中使用 language
+  model: string | null;
+  rag_hits: number | null;
+  cost_est: number | null; // NUMERIC(10,4)
+  safety_flag: string; // "ok" | "needs_human" | "blocked"
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣2️⃣ users 表结构定义
+// ------------------------------------------------------------
+interface UserTable {
+  id: Generated<number>;
+  userid: string | null; // 用户唯一标识符（区别于id，用于AI日志关联）
+  email: string;
+  name: string | null;
+  phone: string | null;
+  status: "active" | "inactive" | "suspended" | "pending";
+  activation_code_id: number | null;
+  registration_info: any | null; // JSONB
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+  last_login_at: Date | null;
+  notes: string | null;
+}
+
+// ------------------------------------------------------------
+// 1️⃣3️⃣ user_behaviors 表结构定义
+// ------------------------------------------------------------
+interface UserBehaviorTable {
+  id: Generated<number>;
+  user_id: number;
+  behavior_type: "login" | "logout" | "start_quiz" | "complete_quiz" | "pause_quiz" | "resume_quiz" | "view_page" | "ai_chat" | "other";
+  ip_address: string | null;
+  user_agent: string | null;
+  client_type: "web" | "mobile" | "api" | "desktop" | "other" | null;
+  client_version: string | null;
+  device_info: any | null; // JSONB
+  metadata: any | null; // JSONB
+  created_at: Generated<Date>;
+  notes: string | null;
+}
+
+// ------------------------------------------------------------
+// 1️⃣1️⃣ 数据库总接口定义
+// ------------------------------------------------------------
+interface Database {
+  activations: ActivationTable;
+  activation_codes: ActivationCodeTable;
+  admins: AdminTable;
+  operation_logs: OperationLogTable;
+  merchant_categories: MerchantCategoryTable;
+  merchants: MerchantTable;
+  videos: VideoTable;
+  contact_info: ContactInfoTable;
+  terms_of_service: TermsOfServiceTable;
+  ai_logs: AiLogsTable;
+  users: UserTable;
+  user_behaviors: UserBehaviorTable;
+}
+
+// ------------------------------------------------------------
+// 4️⃣ 数据库连接配置
+// 优先使用 DATABASE_URL (本地开发)，回退到 POSTGRES_URL (生产环境)
+// 延迟初始化以避免构建时检查
+// ------------------------------------------------------------
+
+let dbInstance: Kysely<Database> | null = null;
+
+// 检查是否在构建阶段（Next.js 在构建时会设置特定的环境变量）
+function isBuildTime(): boolean {
+  // Next.js 在构建时可能会设置这些环境变量
+  // 或者在构建时不会设置数据库连接字符串
+  // 在 Vercel 构建时，如果没有 DATABASE_URL/POSTGRES_URL，很可能是构建阶段
+  const hasDbUrl = !!(process.env.DATABASE_URL || process.env.POSTGRES_URL);
+  const isNextBuild = process.env.NEXT_PHASE === 'phase-production-build' || 
+                      process.env.NEXT_PHASE === 'phase-development-build';
+  
+  // 如果没有数据库连接字符串，很可能是在构建阶段（静态分析）
+  // 或者在 Vercel 构建时还没有设置环境变量
+  return isNextBuild || !hasDbUrl;
+}
+
+function getConnectionString(): string {
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  
+  // 如果没有连接字符串，返回占位符而不是抛出错误
+  // 这样可以避免构建时失败，运行时会在 Proxy 中检测到并返回占位符
+  if (!connectionString) {
+    return 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
+  }
+  
+  return connectionString;
+}
+
+function createDbInstance(): Kysely<Database> {
+  // 获取连接字符串（如果不存在会返回占位符）
+  const connectionString = getConnectionString();
+
+  // 检查是否是占位符连接字符串
+  const isPlaceholder = connectionString === 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
+  
+  // 如果是占位符，返回占位符数据库对象
+  if (isPlaceholder) {
+    return createPlaceholderDb();
+  }
+
+  // 检测是否需要SSL连接（Supabase必须使用SSL）
+  // 强制检测：如果包含 supabase.com，必须使用 SSL
+  const isSupabase = connectionString && (
+    connectionString.includes('supabase.com') || 
+    connectionString.includes('sslmode=require')
+  );
+
+  // 创建 Pool 配置对象
+  const poolConfig: {
+    connectionString: string;
+    ssl?: { rejectUnauthorized: boolean };
+  } = {
+    connectionString,
+  };
+
+  // Supabase 必须使用 SSL，但证书链可能有自签名证书
+  if (isSupabase) {
+    poolConfig.ssl = {
+      rejectUnauthorized: false,
+    };
+    // 调试：在开发环境打印配置信息
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[DB Config] ✅ SSL enabled for Supabase connection');
+      console.log('[DB Config] Connection string (first 50 chars):', connectionString.substring(0, 50) + '...');
+    }
+  } else if (process.env.NODE_ENV === 'development') {
+    console.log('[DB Config] ℹ️  SSL not enabled (not Supabase connection)');
+  }
+
+  // 创建 Pool 实例并传递给 PostgresDialect
+  // 注意：必须在传递给 PostgresDialect 之前创建 Pool 实例，以确保 SSL 配置正确应用
+  const pool = new Pool(poolConfig);
+
+  // 验证 Pool 配置（开发环境）
+  if (process.env.NODE_ENV === 'development' && isSupabase) {
+    // 检查 Pool 的配置是否正确
+    // pg Pool 的配置存储在内部，需要检查是否正确应用
+    console.log('[DB Config] Pool config applied:', {
+      hasSSL: !!poolConfig.ssl,
+      sslConfig: poolConfig.ssl,
+    });
+    
+    // 尝试通过测试连接验证 SSL 配置
+    // 注意：这只是用于调试，不会实际建立连接
+    try {
+      // 在开发环境中，我们可以设置 NODE_TLS_REJECT_UNAUTHORIZED 作为后备
+      if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        console.log('[DB Config] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL');
+      }
+    } catch (e) {
+      // 忽略错误
+    }
+  }
+
+  const dialect = new PostgresDialect({
+    pool,
+  });
+
+  return new Kysely<Database>({
+    dialect,
+  });
+}
+
+// 创建一个占位符对象，用于构建时
+function createPlaceholderDb(): Kysely<Database> {
+  // 在构建时，返回一个不会实际工作的对象
+  // 这只是一个占位符，不会被实际调用
+  const placeholder = {
+    selectFrom: () => ({
+      select: () => ({ execute: async () => [] }),
+      selectAll: () => ({ execute: async () => [] }),
+      where: () => ({ execute: async () => [] }),
+    }),
+    insertInto: () => ({
+      values: () => ({ returning: () => ({ execute: async () => [] }) }),
+    }),
+    updateTable: () => ({
+      set: () => ({ where: () => ({ execute: async () => [] }) }),
+    }),
+    deleteFrom: () => ({
+      where: () => ({ execute: async () => [] }),
+    }),
+    transaction: () => ({
+      execute: async (callback: any) => callback(placeholder),
+    }),
+  } as any;
+  
+  return placeholder;
+}
+
+// 延迟初始化：只在运行时访问时创建实例
+export const db = new Proxy({} as Kysely<Database>, {
+  get(_target, prop) {
+    // 检查是否在构建阶段或没有数据库连接字符串
+    // 如果是，返回占位符对象，避免抛出错误
+    const hasDbUrl = !!(process.env.DATABASE_URL || process.env.POSTGRES_URL);
+    const shouldUsePlaceholder = isBuildTime() || !hasDbUrl;
+    
+    if (shouldUsePlaceholder) {
+      const placeholder = createPlaceholderDb();
+      const value = placeholder[prop as keyof Kysely<Database>];
+      if (typeof value === 'function') {
+        return value.bind(placeholder);
+      }
+      return value;
+    }
+    
+    // 运行时且环境变量存在时，才真正创建数据库连接
+    if (!dbInstance) {
+      try {
+        dbInstance = createDbInstance();
+      } catch (error) {
+        // 如果创建连接失败（例如环境变量格式错误），返回占位符
+        // 这样构建不会失败，但运行时会有错误日志
+        console.error('[DB] Failed to create database instance, using placeholder:', error);
+        return createPlaceholderDb()[prop as keyof Kysely<Database>];
+      }
+    }
+    const value = dbInstance[prop as keyof Kysely<Database>];
+    if (typeof value === 'function') {
+      return value.bind(dbInstance);
+    }
+    return value;
+  }
+});
+
+// ------------------------------------------------------------
+// 💡 说明
+// - 所有时间字段均为 UTC 时间。
+// - 字段命名遵循 snake_case。
+// - API 输出时统一转换为 camelCase。
+// ------------------------------------------------------------

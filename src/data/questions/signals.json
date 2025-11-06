@@ -1,0 +1,41 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "single",
+      "content": "这个标志是何含义？",
+      "image": "/images/traffic-signs/no-parking.png",
+      "options": [
+        "A. 禁止停车",
+        "B. 禁止临时停车",
+        "C. 禁止长时停车",
+        "D. 禁止机动车停车"
+      ],
+      "correctAnswer": "A"
+    },
+    {
+      "id": 2,
+      "type": "single",
+      "content": "夜间通过有路灯的路段时，应当使用什么灯？",
+      "options": [
+        "A. 远光灯",
+        "B. 近光灯",
+        "C. 雾灯",
+        "D. 示廓灯"
+      ],
+      "correctAnswer": "B"
+    },
+    {
+      "id": 3,
+      "type": "multiple",
+      "content": "以下哪些是交通信号灯的基本颜色？",
+      "options": [
+        "A. 红色",
+        "B. 黄色",
+        "C. 绿色",
+        "D. 蓝色"
+      ],
+      "correctAnswer": ["A", "B", "C"]
+    }
+  ]
+}

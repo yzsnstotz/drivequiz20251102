@@ -1,0 +1,52 @@
+name: guard-dynamic-route-options
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Ensure all route.ts have segment options at top (within first 30 lines)
+        run: |
+          set -e
+          # Find all route.ts files
+          files=$(find src/app -name "route.ts" -type f | sort)
+          file_count=$(echo "$files" | grep -c . || echo "0")
+          echo "Found $file_count route.ts files"
+          
+          fail=0
+          for f in $files; do
+            if [ ! -f "$f" ]; then
+              echo "⚠️  File not found: $f"
+              continue
+            fi
+            
+            # Check if all four constants exist within first 30 lines
+            has_dynamic=$(head -n 30 "$f" | grep -c 'export const dynamic = "force-dynamic"' || echo "0")
+            has_revalidate=$(head -n 30 "$f" | grep -c 'export const revalidate = 0' || echo "0")
+            has_fetchCache=$(head -n 30 "$f" | grep -c 'export const fetchCache = "force-no-store"' || echo "0")
+            has_runtime=$(head -n 30 "$f" | grep -c 'export const runtime = "nodejs"' || echo "0")
+            
+            if [ "$has_dynamic" -eq 0 ] || [ "$has_revalidate" -eq 0 ] || [ "$has_fetchCache" -eq 0 ] || [ "$has_runtime" -eq 0 ]; then
+              echo "::error file=$f::Missing required route segment options at top of file"
+              echo "❌ $f: Missing required route segment options within first 30 lines"
+              echo "   dynamic=$has_dynamic revalidate=$has_revalidate fetchCache=$has_fetchCache runtime=$has_runtime"
+              fail=1
+            else
+              echo "✅ $f"
+            fi
+          done
+          
+          if [ $fail -eq 0 ]; then
+            echo "✅ All route.ts files have required segment options at top"
+          else
+            echo "❌ Some route.ts files are missing required segment options"
+          fi
+          
+          exit $fail
