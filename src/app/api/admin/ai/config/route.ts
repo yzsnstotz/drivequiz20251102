@@ -36,6 +36,7 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
         "model",
         "cacheTtl",
         "costAlertUsdThreshold",
+        "aiProvider",
       ])
       .execute() as ConfigRow[];
 
@@ -52,6 +53,7 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       model: config.model || "gpt-4o-mini",
       cacheTtl: config.cacheTtl || "86400",
       costAlertUsdThreshold: config.costAlertUsdThreshold || "10.00",
+      aiProvider: config.aiProvider || "online", // 默认使用在线AI
     };
 
     return success(result);
@@ -86,6 +88,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           model?: string;
           cacheTtl?: number;
           costAlertUsdThreshold?: number;
+          aiProvider?: "online" | "local";
         }
       | null;
 
@@ -133,6 +136,13 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         return badRequest("costAlertUsdThreshold must be a number between 0 and 100000.");
       }
       updates.push({ key: "costAlertUsdThreshold", value: threshold.toFixed(2) });
+    }
+
+    if (body.aiProvider !== undefined) {
+      if (body.aiProvider !== "online" && body.aiProvider !== "local") {
+        return badRequest("aiProvider must be either 'online' or 'local'.");
+      }
+      updates.push({ key: "aiProvider", value: body.aiProvider });
     }
 
     if (updates.length === 0) {
@@ -194,6 +204,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         "model",
         "cacheTtl",
         "costAlertUsdThreshold",
+        "aiProvider",
       ])
       .execute() as ConfigRow[];
 
@@ -208,6 +219,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       model: configMap.model || "gpt-4o-mini",
       cacheTtl: configMap.cacheTtl || "86400",
       costAlertUsdThreshold: configMap.costAlertUsdThreshold || "10.00",
+      aiProvider: configMap.aiProvider || "online",
     };
 
     return success(result);

@@ -11,6 +11,17 @@ interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number; // epoch ms
+  // AI回复的元数据（仅AI消息有）
+  metadata?: {
+    aiProvider?: "online" | "local"; // AI服务提供商
+    sources?: Array<{
+      title: string;
+      url: string;
+      snippet?: string;
+      score?: number;
+      version?: string;
+    }>; // RAG数据源
+  };
 }
 
 interface ApiSuccess<T = unknown> {
@@ -41,6 +52,7 @@ interface AiAskResponse {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
+    aiProvider?: "online" | "local"; // AI服务提供商
   };
   errorCode?: string;
   message?: string;
@@ -247,24 +259,23 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         return;
       }
 
-      // 处理响应数据：/api/ai/ask 返回 { ok, data: { answer, sources?, ... } }
+      // 处理响应数据：/api/ai/ask 返回 { ok, data: { answer, sources?, aiProvider?, ... } }
       const answer = payload.data?.answer ?? "";
       const sources = payload.data?.sources;
+      const aiProvider = payload.data?.aiProvider;
       
-      // 构建回复内容，如果有来源则附加
-      let content = answer || "（空响应）";
-      if (sources && sources.length > 0) {
-        content += "\n\n📚 参考来源：\n";
-        sources.forEach((source, idx) => {
-          content += `${idx + 1}. ${source.title || source.url}\n`;
-        });
-      }
+      // 构建回复内容（不再在内容中附加来源，而是在metadata中保存）
+      const content = answer || "（空响应）";
       
       pushMessage({
         id: uid(),
         role: "ai",
         content,
         createdAt: Date.now(),
+        metadata: {
+          aiProvider: aiProvider || "online", // 默认为online
+          sources: sources || [],
+        },
       });
     } catch (err) {
       const msg =
@@ -340,7 +351,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
           return (
             <div
               key={m.id}
-              className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+              className={`flex flex-col ${isUser ? "items-end" : "items-start"} space-y-1`}
             >
               <div
                 className={`max-w-[78%] rounded-lg p-3 text-sm leading-relaxed ${
@@ -351,6 +362,64 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
               >
                 {m.content}
               </div>
+              {/* AI回复的元数据信息 */}
+              {!isUser && m.metadata && (
+                <div className="max-w-[78%] px-2 py-1 text-xs text-gray-500 space-y-1">
+                  {/* AI服务提供商 */}
+                  {m.metadata.aiProvider && (
+                    <div className="flex items-center gap-1">
+                      <span className="inline-flex items-center gap-1">
+                        {m.metadata.aiProvider === "local" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                            <span>本地AI (Ollama)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span>在线AI (OpenAI)</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {/* RAG数据源 */}
+                  {m.metadata.sources && m.metadata.sources.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                      <span className="text-gray-400">📚 参考来源：</span>
+                      {m.metadata.sources.map((source, idx) => {
+                        const displayText = source.title || source.url || `来源 ${idx + 1}`;
+                        const hasUrl = source.url && source.url.trim() !== "";
+                        
+                        if (hasUrl) {
+                          return (
+                            <a
+                              key={idx}
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:text-blue-600 underline truncate max-w-[200px]"
+                              title={displayText}
+                            >
+                              {displayText}
+                            </a>
+                          );
+                        } else {
+                          return (
+                            <span
+                              key={idx}
+                              className="text-gray-500 truncate max-w-[200px]"
+                              title={displayText}
+                            >
+                              {displayText}
+                            </span>
+                          );
+                        }
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
