@@ -194,13 +194,36 @@ export default function AdminAiConfigPage() {
                 value={config.model}
                 onChange={(e) => setConfig({ ...config, model: e.target.value })}
                 className="w-full border rounded px-3 py-2"
+                disabled={config.aiProvider === "local"}
               >
-                <option value="gpt-4o-mini">gpt-4o-mini</option>
-                <option value="gpt-4o">gpt-4o</option>
-                <option value="gpt-4-turbo">gpt-4-turbo</option>
-                <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                {config.aiProvider === "online" ? (
+                  <>
+                    <option value="gpt-4o-mini">gpt-4o-mini</option>
+                    <option value="gpt-4o">gpt-4o</option>
+                    <option value="gpt-4-turbo">gpt-4-turbo</option>
+                    <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="llama3.2:3b">llama3.2:3b</option>
+                    <option value="llama3.2:1b">llama3.2:1b</option>
+                    <option value="llama3.1:8b">llama3.1:8b</option>
+                    <option value="llama3.1:70b">llama3.1:70b</option>
+                    <option value="mistral:7b">mistral:7b</option>
+                    <option value="qwen2.5:7b">qwen2.5:7b</option>
+                  </>
+                )}
               </select>
-              <p className="text-xs text-gray-500 mt-1">当前使用的 AI 模型</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {config.aiProvider === "online"
+                  ? "当前使用的在线AI模型（OpenAI）"
+                  : "本地AI模型由Ollama服务配置，此处仅显示（不可修改）"}
+              </p>
+              {config.aiProvider === "local" && (
+                <p className="text-xs text-amber-600 mt-1">
+                  ⚠️ 本地AI模型需要在Ollama服务中配置，此处显示为参考
+                </p>
+              )}
             </div>
 
             <div>
@@ -246,9 +269,12 @@ export default function AdminAiConfigPage() {
               </label>
               <select
                 value={config.aiProvider}
-                onChange={(e) =>
-                  setConfig({ ...config, aiProvider: e.target.value as "online" | "local" })
-                }
+                onChange={(e) => {
+                  const newProvider = e.target.value as "online" | "local";
+                  // 切换服务提供商时，自动设置对应的默认模型
+                  const defaultModel = newProvider === "online" ? "gpt-4o-mini" : "llama3.2:3b";
+                  setConfig({ ...config, aiProvider: newProvider, model: defaultModel });
+                }}
                 className="w-full border rounded px-3 py-2"
               >
                 <option value="online">在线AI（OpenAI）</option>
