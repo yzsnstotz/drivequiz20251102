@@ -269,8 +269,21 @@ function createDbInstance(): Kysely<Database> {
   const poolConfig: {
     connectionString: string;
     ssl?: { rejectUnauthorized: boolean };
+    max?: number; // 最大连接数
+    min?: number; // 最小连接数
+    idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
+    connectionTimeoutMillis?: number; // 连接超时时间（毫秒）
+    statement_timeout?: number; // 语句超时时间（毫秒）
+    query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
+    // 连接池配置
+    max: 20, // 最大连接数（适合大多数应用）
+    min: 2, // 最小连接数（保持一些连接活跃）
+    idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
+    connectionTimeoutMillis: 10000, // 连接超时10秒
+    statement_timeout: 30000, // 语句超时30秒
+    query_timeout: 30000, // 查询超时30秒
   };
 
   // Supabase 必须使用 SSL，但证书链可能有自签名证书
@@ -290,6 +303,21 @@ function createDbInstance(): Kysely<Database> {
   // 创建 Pool 实例并传递给 PostgresDialect
   // 注意：必须在传递给 PostgresDialect 之前创建 Pool 实例，以确保 SSL 配置正确应用
   const pool = new Pool(poolConfig);
+
+  // 添加连接池错误处理
+  pool.on('error', (err) => {
+    console.error('[DB Pool] Unexpected error on idle client:', err);
+  });
+
+  // 添加连接池连接事件监听（开发环境）
+  if (process.env.NODE_ENV === 'development') {
+    pool.on('connect', () => {
+      console.log('[DB Pool] New client connected');
+    });
+    pool.on('remove', () => {
+      console.log('[DB Pool] Client removed from pool');
+    });
+  }
 
   // 验证 Pool 配置（开发环境）
   if (process.env.NODE_ENV === 'development' && isSupabase) {

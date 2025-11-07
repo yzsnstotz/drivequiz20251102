@@ -1,0 +1,271 @@
+# ✅ 《DriveQuiz 三位一体工作核对清单（接口 × 数据库 × 服务）》v1.1
+
+**依据**：
+
+* 《📋 DriveQuiz API 产品需求清单 v1.1》
+* 《🛠️ DriveQuiz API 研发规范 v1.1》
+* 《📐 DriveQuiz API 参数与接口统一规范 v1.1》
+
+**目标**：用“一表打通”接口、数据库、服务实现与验收要点，交付给 Cursor 一步到位测试与对齐。
+
+---
+
+## 1. 目录与文件定位（必须存在）
+
+```
+apps/drivequiz-api/
+ ├─ src/
+ │   ├─ routes/
+ │   │   ├─ docs.ts              # POST /api/v1/rag/docs
+ │   │   ├─ docs-batch.ts        # POST /api/v1/rag/docs/batch
+ │   │   ├─ operations.ts        # GET /api/v1/rag/operations(+/{id})
+ │   │   └─ health.ts            # GET /api/v1/rag/health
+ │   ├─ services/
+ │   │   ├─ vectorizer.ts        # 异步向量化触发/重试
+ │   │   └─ operation-logger.ts  # 统一写 rag_operations/op_docs
+ │   ├─ utils/
+ │   │   ├─ validator.ts         # zod 校验 + 分片旁路判定
+ │   │   ├─ hasher.ts            # sha256
+ │   │   ├─ logger.ts            # 结构化日志
+ │   │   └─ auth.ts              # Bearer/JWT 校验
+ │   └─ types/
+ │       ├─ common.ts
+ │       ├─ document.ts
+ │       ├─ operation.ts
+ │       └─ vector.ts
+ ├─ migrations/
+ │   ├─ 2025xxxx_rag_documents.sql
+ │   ├─ 2025xxxx_rag_operations.sql
+ │   └─ 2025xxxx_rag_operation_documents.sql
+ ├─ .env.example
+ └─ docs/drivequiz-api-parameter-spec-v1.1.md
+```
+
+**检查点**
+
+* [ ] 所有文件路径与命名与上表一致
+* [ ] 路由聚合处已注册四个路由（health/docs/docs-batch/operations）
+* [ ] `RAG_ENABLE_SERVER_CHUNK` 默认 `false`
+
+---
+
+## 2. 接口 × 数据库 × 服务映射表
+
+| 接口                                | 路由文件                   | 关键服务/工具                                                | 写入/读取的表                                                      | 关键字段                                                                | 关键日志事件                                                 |
+| --------------------------------- | ---------------------- | ------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------ |
+| GET `/api/v1/rag/health`          | `routes/health.ts`     | —                                                      | —                                                            | `status, version, timestamp`                                        | `health.ok`                                            |
+| POST `/api/v1/rag/docs`           | `routes/docs.ts`       | `validator.ts`, `operation-logger.ts`, `vectorizer.ts` | `rag_documents`, `rag_operations`, `rag_operation_documents` | `url, content_hash, version, lang, source_id, vectorization_status` | `ingest.success`, `ingest.prechunk.detected`           |
+| POST `/api/v1/rag/docs/batch`     | `routes/docs-batch.ts` | `validator.ts`, `operation-logger.ts`, `vectorizer.ts` | 同上（批量写入）                                                     | 同上 + 批量 `operationId`                                               | `ingest.batch.start/completed`, `ingest.batch.partial` |
+| GET `/api/v1/rag/operations`      | `routes/operations.ts` | `operation-logger.ts`                                  | `rag_operations`（主）, `rag_operation_documents`（联）            | 过滤：`source_id/status/created_at`                                    | `operations.query`                                     |
+| GET `/api/v1/rag/operations/{id}` | `routes/operations.ts` | 同上                                                     | 同上                                                           | by `operation_id` 返回文档明细                                            | `operations.detail`                                    |
+
+---
+
+## 3. 数据库核对清单（结构、索引、约束）
+
+### 3.1 `rag_documents`
+
+* 字段：
+
+  * [ ] `id` (PK, varchar)
+  * [ ] `title` (varchar(500))
+  * [ ] `url` (varchar(1000))
+  * [ ] `content` (text)
+  * [ ] `content_hash` (varchar(64))
+  * [ ] `version` (varchar(50))
+  * [ ] `lang` (varchar(10))  — `ja|zh|en`
+  * [ ] `source_id` (varchar(100))
+  * [ ] `doc_type` (varchar(50)) — 可空
+  * [ ] `metadata` (jsonb) — 可空
+  * [ ] `vector_id` (varchar(255)) — 可空
+  * [ ] `vectorization_status` (`pending|processing|completed|failed`)
+  * [ ] `created_at`, `updated_at` (timestamp)
+* 约束与索引：
+
+  * [ ] 唯一约束：`UNIQUE (url, content_hash, version)`
+  * [ ] 索引：`idx_source_id`, `idx_version`, `idx_vector_status`, `idx_created_at`
+
+### 3.2 `rag_operations`
+
+* 字段：
+
+  * [ ] `id` (PK, varchar)  ← `operationId`
+  * [ ] `source_id` (varchar(100))
+  * [ ] `operation_type` (`single|batch|replace`)
+  * [ ] `status` (`pending|processing|success|failed`)
+  * [ ] `docs_count` (int), `success_count` (int), `failed_count` (int)
+  * [ ] `metadata` (jsonb)
+  * [ ] `created_at`, `started_at`, `completed_at`, `duration_ms` (int)
+  * [ ] `error_message` (text), `error_details` (jsonb)
+* 索引：
+
+  * [ ] `idx_source_id`, `idx_status`, `idx_created_at`, `idx_operation_type`
+
+### 3.3 `rag_operation_documents`
+
+* 字段：
+
+  * [ ] `id` (PK, varchar)
+  * [ ] `operation_id` (varchar) FK → `rag_operations.id`
+  * [ ] `document_id` (varchar) FK → `rag_documents.id`
+  * [ ] `status` (`success|failed|duplicate`)
+  * [ ] `error_message` (text), `error_details` (jsonb)
+  * [ ] `created_at` (timestamp)
+* 索引：
+
+  * [ ] `idx_operation_id`, `idx_document_id`
+* 外键：
+
+  * [ ] `ON DELETE CASCADE`（两侧）
+
+---
+
+## 4. 分片旁路与兼容策略（必测）
+
+| 检查项                                           | 期望行为                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------ |
+| 请求带 `meta.chunkIndex/totalChunks/contentHash` | 识别为 **Datapull 预分片**，**禁用服务端分片**，直接入库并触发向量化；日志 `ingest.prechunk.detected=true` |
+| 缺少上述 meta 且 `RAG_ENABLE_SERVER_CHUNK=false`   | 返回 400 `INVALID_REQUEST`（严格模式）                                                 |
+| 缺少上述 meta 且 `RAG_ENABLE_SERVER_CHUNK=true`    | 走旧分片逻辑（仅兼容期使用）；记录 `serverChunk.used=true`                                      |
+| 重复 `url+content_hash+version`                 | 返回 409 `DUPLICATE_DOCUMENT`（单）/ 批量条目标注 `duplicate`                             |
+
+---
+
+## 5. 路由入参/出参检查表
+
+### 5.1 `POST /docs`
+
+* 入参：
+
+  * [ ] `title/url/content/version/lang/meta.sourceId`
+  * [ ] `meta.chunkIndex/totalChunks/contentHash`（Datapull 场景必有）
+* 校验：
+
+  * [ ] `content.length` 在 **100–2000**
+  * [ ] `lang ∈ {ja,zh,en}`
+  * [ ] 分片序号关系：`totalChunks >= chunkIndex >= 1`
+* 出参：
+
+  * [ ] `{ success:true, docId, operationId }`
+  * [ ] 错误：400/401/409/500 统一格式
+
+### 5.2 `POST /docs/batch`
+
+* 入参：
+
+  * [ ] `docs[]`（≤100），`sourceId`
+  * [ ] `batchMetadata.totalDocs/crawledAt/crawlerVersion`
+* 出参：
+
+  * [ ] `{ success, processed, failed, operationId, results[] }`
+  * [ ] 部分成功用 207 或 200+条目标注 `failed`
+
+### 5.3 `GET /operations`
+
+* 入参（query）：
+
+  * [ ] `sourceId/status/startDate/endDate/page/limit`
+* 出参：
+
+  * [ ] `{ success, data: OperationRecord[], pagination }`
+
+### 5.4 `GET /operations/{id}`
+
+* 出参：
+
+  * [ ] `OperationRecord` + `documents[]` 明细
+
+### 5.5 `GET /health`
+
+* 出参：
+
+  * [ ] `{ status:"ok", version:"v1.1", timestamp:ISODate }`
+
+---
+
+## 6. 服务层校对清单
+
+### 6.1 `validator.ts`
+
+* [ ] 使用 zod 或自研校验器实现**强类型校验**
+* [ ] 错误统一 `{ success:false, error:{ code, message, details? } }`
+* [ ] 旁路判定函数：`isPreChunked(meta)`
+
+### 6.2 `operation-logger.ts`
+
+* [ ] `createOperation(type, sourceId, metadata)` → 返回 `operationId`
+* [ ] `appendDocResult(operationId, {docId|index, status, error?})`
+* [ ] `completeOperation(operationId, {successCount, failedCount})`
+
+### 6.3 `vectorizer.ts`
+
+* [ ] 入参：`docId/content/lang/meta.sourceId/contentHash`
+* [ ] 队列/并发：建议 p-limit(10) 或 BullMQ
+* [ ] 重试：指数退避 3 次；>3 次标记 `failed`
+* [ ] 写回 `rag_documents.vectorization_status` 与 `vector_id`（可选）
+
+### 6.4 `auth.ts`
+
+* [ ] 读取 Bearer/JWT
+* [ ] 校验有效期/撤销表（可选 Redis 缓存）
+* [ ] 401 统一返回
+
+### 6.5 `logger.ts`
+
+* [ ] JSON 结构化日志（pino/winston）
+* [ ] 通用字段：`timestamp, level, event, sourceId, operationId, preChunked, durationMs`
+* [ ] 禁止输出 Token
+
+---
+
+## 7. 环境变量核对（.env）
+
+* [ ] `DRIVEQUIZ_DB_URL`
+* [ ] `DRIVEQUIZ_API_TOKEN_SECRET`
+* [ ] `RAG_ENABLE_SERVER_CHUNK=false`
+* [ ] `AI_VECTORIZE_URL`
+* [ ] `MAX_BATCH_SIZE=100`
+* [ ] `LOG_LEVEL=info`
+* [ ] 速率限制：`RATE_LIMIT_WINDOW=60000`, `RATE_LIMIT_DOCS=100`, `RATE_LIMIT_BATCH=10`
+
+---
+
+## 8. 自动化测试与验收用例（要点）
+
+| 用例         | 步骤                           | 期望                                                        |
+| ---------- | ---------------------------- | --------------------------------------------------------- |
+| 单文档（预分片）成功 | POST /docs（含完整 meta）         | 200，返回 `docId/operationId`，`vectorization_status=pending` |
+| 单文档重复      | 同上再发一次                       | 409 `DUPLICATE_DOCUMENT`                                  |
+| 批量混合成功/失败  | 发送 3 条：1 正常、1 内容过短、1 重复      | `processed=1, failed=2`；207 或 200+两条失败明细                  |
+| 旁路判定       | 去掉 meta 三字段                  | 400（默认严格模式）或启用服务端分片后成功                                    |
+| 操作查询       | GET /operations?sourceId=xxx | 返回最近批次，分页正确                                               |
+| 操作详情       | GET /operations/{id}         | 返回文档列表/统计一致                                               |
+| 速率限制       | 对 `/docs` 连续 >100/min        | 429 `RATE_LIMIT_EXCEEDED`                                 |
+| 安全         | 无 Authorization 或过期          | 401 `UNAUTHORIZED`                                        |
+
+---
+
+## 9. 发布与回滚前置检查
+
+* [ ] 数据库迁移已执行且幂等
+* [ ] `RAG_ENABLE_SERVER_CHUNK` 按策略配置
+* [ ] Token 生效，过期/撤销策略可用
+* [ ] 观测：接入日志平台/Sentry，设阈值告警
+* [ ] 回滚预案：迁移脚本 down、旧镜像/版本可回切
+
+---
+
+## 10. 交付物清单（对 Cursor）
+
+* [ ] 四个路由文件完整实现与路由注册
+* [ ] 三个服务模块（auth/operation-logger/vectorizer）
+* [ ] 三张表迁移 SQL + 索引/约束
+* [ ] 单元/集成/压力测试脚本与报告
+* [ ] `.env.example` 完整字段
+* [ ] 本清单逐条勾选结果（提交 PR 时附在描述里）
+
+---
+
+**一句话标准**：
+
+> 提交时，以上每一项**都能被勾选为“已通过”**，并有对应的代码/日志/接口响应“可证伪”的证据。
