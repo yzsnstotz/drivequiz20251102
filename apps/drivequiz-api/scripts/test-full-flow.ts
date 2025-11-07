@@ -11,6 +11,7 @@
 import dotenv from "dotenv";
 import { getDb } from "../src/lib/db.js";
 import { randomUUID } from "crypto";
+import type { LangCode } from "../src/types/common.js";
 import {
   createOperation,
   logOperationDocument,
@@ -35,7 +36,7 @@ async function testFullFlow() {
       content: "这是一个测试文档的内容。用于验证完整的插入流程，包括操作记录、文档插入和操作文档映射。内容长度需要满足要求（100-2000字符）。" + " ".repeat(50),
       content_hash: "test_hash_" + randomUUID().substring(0, 32),
       version: "2025Q1",
-      lang: "ja",
+      lang: "ja" as LangCode,
       source_id: sourceId,
       doc_type: "test",
       vectorization_status: "pending" as const,
