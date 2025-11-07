@@ -210,9 +210,16 @@ type AiAskData = {
 
 type AiServiceResponse = Ok<AiAskData> | Err;
 
+type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
 type AskRequestBody = {
   question?: string;
   locale?: string; // 前端可能传入的 BCP-47；将映射为 AI-Service 的 lang
+  messages?: ChatMessage[]; // 对话历史（可选，用于上下文连贯）
+  maxHistory?: number; // 最大历史消息数（默认 10）
 };
 
 // 获取环境变量的函数（在运行时读取，确保 dotenv 已加载）
@@ -549,6 +556,10 @@ export async function POST(req: NextRequest) {
     // AI-Service 期望字段为 lang
     lang: mapLocaleToLang(locale),
     question,
+    // 传递对话历史（如果提供）
+    ...(body.messages && body.messages.length > 0 ? { messages: body.messages } : {}),
+    // 传递最大历史消息数（如果提供）
+    ...(body.maxHistory ? { maxHistory: body.maxHistory } : {}),
     metadata: { 
       channel: "web", 
       client: "zalem",

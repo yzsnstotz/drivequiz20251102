@@ -5,10 +5,19 @@ import { callOllamaChat } from "../lib/ollamaClient.js";
 import type { LocalAIConfig } from "../lib/config.js";
 import { logAiInteraction } from "../lib/dbLogger.js";
 
+type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
 type AskBody = {
   question?: string;
   userId?: string;
   lang?: string;
+  // 对话历史（可选，用于上下文连贯）
+  messages?: ChatMessage[];
+  // 最大历史消息数（默认 10）
+  maxHistory?: number;
 };
 
 type AskResult = {
@@ -36,6 +45,65 @@ function buildSystemPrompt(lang: string): string {
   return base;
 }
 
+/**
+ * 处理对话历史，限制长度并过滤无效消息
+ */
+function processHistory(
+  messages: ChatMessage[] | undefined,
+  maxHistory: number = 10
+): ChatMessage[] {
+  if (!messages || messages.length === 0) {
+    return [];
+  }
+
+  // 过滤无效消息
+  const validMessages = messages.filter(
+    (msg) =>
+      msg &&
+      msg.role &&
+      msg.content &&
+      typeof msg.content === "string" &&
+      msg.content.trim().length > 0 &&
+      (msg.role === "user" || msg.role === "assistant" || msg.role === "system")
+  );
+
+  // 只保留最近的 N 条消息（不包括 system）
+  const nonSystemMessages = validMessages.filter((msg) => msg.role !== "system");
+  const recentMessages = nonSystemMessages.slice(-maxHistory);
+
+  // 如果原始消息中有 system 消息，保留第一个
+  const systemMessages = validMessages.filter((msg) => msg.role === "system");
+  const systemMessage = systemMessages.length > 0 ? [systemMessages[0]] : [];
+
+  return [...systemMessage, ...recentMessages];
+}
+
+/**
+ * 从对话历史中提取上下文关键词，用于增强 RAG 检索
+ */
+function extractContextFromHistory(
+  messages: ChatMessage[],
+  currentQuestion: string
+): string {
+  // 提取最近 3 轮对话的关键内容
+  const recentMessages = messages.slice(-6); // 最近 3 轮（每轮 user + assistant）
+  
+  const contextParts: string[] = [];
+  
+  for (const msg of recentMessages) {
+    if (msg.role === "user" || msg.role === "assistant") {
+      const content = msg.content.trim();
+      // 只保留较短的摘要（避免过长）
+      if (content.length > 0 && content.length < 500) {
+        contextParts.push(content);
+      }
+    }
+  }
+  
+  // 结合当前问题
+  return [currentQuestion, ...contextParts].join(" ").slice(0, 1000);
+}
+
 export default async function askRoute(app: FastifyInstance): Promise<void> {
   app.post(
     "/v1/ask",
@@ -49,6 +117,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const body = request.body as AskBody;
         const question = (body.question || "").trim();
         const lang = (body.lang || "zh").toLowerCase().trim();
+        const maxHistory = body.maxHistory || 10;
 
         if (!question || question.length === 0 || question.length > 2000) {
           reply.code(400).send({
@@ -59,29 +128,53 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        // 3) RAG 检索（获取上下文）
-        const reference = await getRagContext(question, lang).catch((error) => {
+        // 3) 处理对话历史
+        const history = processHistory(body.messages, maxHistory);
+        
+        // 4) RAG 检索（结合对话历史增强上下文）
+        let ragQuery = question;
+        if (history.length > 0) {
+          // 从对话历史中提取上下文，增强 RAG 检索
+          ragQuery = extractContextFromHistory(history, question);
+        }
+        
+        const reference = await getRagContext(ragQuery, lang).catch((error) => {
           // RAG 检索失败不影响主流程，仅记录错误
           console.error("[LOCAL-AI] RAG检索失败:", error instanceof Error ? error.message : String(error));
           return "";
         });
 
-        // 4) 调用 Ollama Chat
+        // 5) 构建消息列表（包含对话历史）
         const sys = buildSystemPrompt(lang);
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
 
-        const answer = await callOllamaChat(
-          [
-            { role: "system", content: sys },
-            {
-              role: "user",
-              content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
-            },
-          ],
-          0.4
-        );
+        // 构建完整的消息列表
+        const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+          { role: "system", content: sys },
+        ];
+
+        // 添加历史消息（如果有）
+        if (history.length > 0) {
+          // 过滤掉 system 消息（已经在上面添加了）
+          const historyMessages = history
+            .filter((msg) => msg.role !== "system")
+            .map((msg) => ({
+              role: msg.role as "user" | "assistant",
+              content: msg.content,
+            }));
+          messages.push(...historyMessages);
+        }
+
+        // 添加当前问题和 RAG 上下文
+        messages.push({
+          role: "user",
+          content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
+        });
+
+        // 6) 调用 Ollama Chat（传递完整对话历史）
+        const answer = await callOllamaChat(messages, 0.4);
 
         if (!answer) {
           console.error("[LOCAL-AI] Ollama返回空响应");
