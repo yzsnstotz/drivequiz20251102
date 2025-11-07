@@ -247,11 +247,30 @@ function normalizeQuestion(q: string) {
 
 // ==== 入口：POST /api/ai/ask ====
 export async function POST(req: NextRequest) {
+  const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  console.log(`[${requestId}] [POST START] 请求开始`, {
+    url: req.url,
+    method: req.method,
+    timestamp: new Date().toISOString(),
+  });
+  
   try {
     // 0) 选择 AI 服务（本地或在线）
+    console.log(`[${requestId}] [STEP 0] 开始选择AI服务`);
     let selectedAiServiceUrl: string;
     let selectedAiServiceToken: string;
     let aiServiceMode: "local" | "online";
+    
+    // 记录环境变量状态
+    console.log(`[${requestId}] [ENV CHECK] 环境变量检查`, {
+      USE_LOCAL_AI: USE_LOCAL_AI,
+      LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL ? `${LOCAL_AI_SERVICE_URL.substring(0, 20)}...` : "(empty)",
+      LOCAL_AI_SERVICE_TOKEN: LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
+      AI_SERVICE_URL: AI_SERVICE_URL ? `${AI_SERVICE_URL.substring(0, 20)}...` : "(empty)",
+      AI_SERVICE_TOKEN: AI_SERVICE_TOKEN ? "***" : "(empty)",
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+    });
     
     // 检查 URL 参数是否强制选择模式
     let forceMode: "local" | "online" | null = null;
@@ -260,8 +279,10 @@ export async function POST(req: NextRequest) {
       const aiParam = url.searchParams.get("ai")?.toLowerCase();
       if (aiParam === "local" || aiParam === "online") {
         forceMode = aiParam as "local" | "online";
+        console.log(`[${requestId}] [STEP 0.1] URL参数强制模式: ${forceMode}`);
       }
     } catch (e) {
+      console.error(`[${requestId}] [STEP 0.1] URL解析错误:`, (e as Error).message);
       // Ignore URL parsing errors
     }
     
@@ -269,6 +290,7 @@ export async function POST(req: NextRequest) {
     let aiProviderFromDb: "online" | "local" | null = null;
     if (!forceMode) {
       try {
+        console.log(`[${requestId}] [STEP 0.2] 从数据库读取aiProvider配置`);
         const configRow = await (aiDb as any)
           .selectFrom("ai_config")
           .select(["value"])
@@ -277,10 +299,13 @@ export async function POST(req: NextRequest) {
         
         if (configRow && (configRow.value === "local" || configRow.value === "online")) {
           aiProviderFromDb = configRow.value as "online" | "local";
+          console.log(`[${requestId}] [STEP 0.2] 数据库配置: ${aiProviderFromDb}`);
+        } else {
+          console.log(`[${requestId}] [STEP 0.2] 数据库配置为空或无效`);
         }
       } catch (e) {
         // 如果读取配置失败，使用环境变量作为后备
-        console.error("[AI Config] Failed to read aiProvider from database:", e);
+        console.error(`[${requestId}] [STEP 0.2] 数据库读取失败:`, (e as Error).message);
       }
     }
     
@@ -292,10 +317,19 @@ export async function POST(req: NextRequest) {
           ? aiProviderFromDb === "local" 
           : USE_LOCAL_AI);
     
+    console.log(`[${requestId}] [STEP 0.3] AI服务选择决策`, {
+      forceMode,
+      aiProviderFromDb,
+      USE_LOCAL_AI,
+      wantLocal,
+    });
+    
     if (wantLocal) {
       if (!LOCAL_AI_SERVICE_URL || !LOCAL_AI_SERVICE_TOKEN) {
+        console.warn(`[${requestId}] [STEP 0.4] 本地AI服务配置不完整，回退到在线服务`);
         // 如果本地AI服务配置不完整，回退到在线服务
         if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
+          console.error(`[${requestId}] [STEP 0.4] 在线AI服务配置也不完整，返回错误`);
           return err(
             "INTERNAL_ERROR",
             "AI service is not configured.",
@@ -308,13 +342,16 @@ export async function POST(req: NextRequest) {
         selectedAiServiceUrl = AI_SERVICE_URL;
         selectedAiServiceToken = AI_SERVICE_TOKEN;
         aiServiceMode = "online";
+        console.log(`[${requestId}] [STEP 0.4] 已选择在线AI服务（回退）`);
       } else {
         selectedAiServiceUrl = LOCAL_AI_SERVICE_URL;
         selectedAiServiceToken = LOCAL_AI_SERVICE_TOKEN;
         aiServiceMode = "local";
+        console.log(`[${requestId}] [STEP 0.4] 已选择本地AI服务`);
       }
     } else {
       if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
+        console.error(`[${requestId}] [STEP 0.4] 在线AI服务配置不完整，返回错误`);
         return err(
           "INTERNAL_ERROR",
           "AI service is not configured.",
@@ -327,16 +364,25 @@ export async function POST(req: NextRequest) {
       selectedAiServiceUrl = AI_SERVICE_URL;
       selectedAiServiceToken = AI_SERVICE_TOKEN;
       aiServiceMode = "online";
+      console.log(`[${requestId}] [STEP 0.4] 已选择在线AI服务`);
     }
+    
+    console.log(`[${requestId}] [STEP 0.5] AI服务选择完成`, {
+      mode: aiServiceMode,
+      url: selectedAiServiceUrl ? `${selectedAiServiceUrl.substring(0, 30)}...` : "(empty)",
+      hasToken: !!selectedAiServiceToken,
+    });
 
     // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
     // 允许未登录用户匿名访问（使用匿名 ID）
+    console.log(`[${requestId}] [STEP 1] 开始JWT验证`);
     let jwt: string | null = null;
     
     // 1) Authorization: Bearer <jwt>
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       jwt = authHeader.slice("Bearer ".length).trim();
+      console.log(`[${requestId}] [STEP 1.1] 从Authorization header获取JWT`);
     }
     
     // 2) Cookie（优先检查 USER_TOKEN，兼容移动端）
@@ -351,9 +397,10 @@ export async function POST(req: NextRequest) {
         
         if (cookieJwt && cookieJwt.trim()) {
           jwt = cookieJwt.trim();
+          console.log(`[${requestId}] [STEP 1.2] 从Cookie获取JWT`);
         }
       } catch (e) {
-        console.error("[JWT] Cookie read error", (e as Error).message);
+        console.error(`[${requestId}] [STEP 1.2] Cookie读取错误:`, (e as Error).message);
       }
     }
     
@@ -364,10 +411,15 @@ export async function POST(req: NextRequest) {
         const token = url.searchParams.get("token");
         if (token && token.trim()) {
           jwt = token.trim();
+          console.log(`[${requestId}] [STEP 1.3] 从Query参数获取JWT`);
         }
       } catch (e) {
-        console.error("[JWT] URL parsing error", (e as Error).message);
+        console.error(`[${requestId}] [STEP 1.3] URL解析错误:`, (e as Error).message);
       }
+    }
+    
+    if (!jwt) {
+      console.log(`[${requestId}] [STEP 1.4] 未找到JWT，将使用匿名ID`);
     }
     
     // 验证 JWT（如果提供了 token，否则使用匿名 ID）
@@ -376,6 +428,7 @@ export async function POST(req: NextRequest) {
     if (jwt) {
       // 先检查是否是激活token格式，激活token不需要JWT验证
       if (jwt.startsWith("act-")) {
+        console.log(`[${requestId}] [STEP 1.5] 检测到激活token格式`);
         // 处理激活token（act-xxxxxxxx-xxxxxxxx格式）
         try {
           const parts = jwt.split("-");
@@ -386,18 +439,26 @@ export async function POST(req: NextRequest) {
               // 使用activationId作为用户ID（格式：act-{activationId}）
               const userId = `act-${activationId}`;
               session = { userId };
+              console.log(`[${requestId}] [STEP 1.5] 激活token解析成功: ${userId}`);
             }
           }
         } catch (e) {
-          console.error("[JWT] Failed to parse activation token", (e as Error).message);
+          console.error(`[${requestId}] [STEP 1.5] 激活token解析失败:`, (e as Error).message);
         }
       } else {
         // 标准JWT格式，需要验证
+        console.log(`[${requestId}] [STEP 1.6] 开始验证标准JWT`);
         session = await verifyJwt(`Bearer ${jwt}`);
+        
+        if (session) {
+          console.log(`[${requestId}] [STEP 1.6] JWT验证成功: ${session.userId}`);
+        } else {
+          console.warn(`[${requestId}] [STEP 1.6] JWT验证失败`);
+        }
         
         // 如果配置了密钥但验证失败，拒绝请求（生产环境）
         if (!session && USER_JWT_SECRET && isProduction()) {
-          console.error("[JWT] Production: JWT verification failed");
+          console.error(`[${requestId}] [STEP 1.6] 生产环境JWT验证失败，返回401`);
           return err("AUTH_REQUIRED", "Invalid or expired authentication token.", 401);
         }
       }
@@ -406,32 +467,75 @@ export async function POST(req: NextRequest) {
     // 如果没有session，使用匿名ID
     if (!session) {
       session = { userId: "anonymous" };
+      console.log(`[${requestId}] [STEP 1.7] 使用匿名ID`);
     }
+    
+    console.log(`[${requestId}] [STEP 1.8] 会话信息`, {
+      userId: session.userId,
+      isAnonymous: session.userId === "anonymous",
+    });
 
     // 2) 解析与参数校验
-    const body = (await req.json()) as AskRequest | null;
-    if (!body || typeof body.question !== "string")
+    console.log(`[${requestId}] [STEP 2] 开始解析请求体`);
+    let body: AskRequest | null = null;
+    try {
+      body = (await req.json()) as AskRequest | null;
+      console.log(`[${requestId}] [STEP 2.1] 请求体解析成功`, {
+        hasQuestion: !!body?.question,
+        questionLength: body?.question?.length || 0,
+        hasLocale: !!body?.locale,
+      });
+    } catch (e) {
+      console.error(`[${requestId}] [STEP 2.1] 请求体解析失败:`, (e as Error).message);
+      return err("VALIDATION_FAILED", "Invalid JSON body.", 400);
+    }
+    
+    if (!body || typeof body.question !== "string") {
+      console.error(`[${requestId}] [STEP 2.2] 请求体缺少question字段`);
       return err("VALIDATION_FAILED", "question is required.", 400);
+    }
 
     const question = normalizeQuestion(body.question);
-    if (question.length === 0)
+    if (question.length === 0) {
+      console.error(`[${requestId}] [STEP 2.3] question为空`);
       return err("VALIDATION_FAILED", "question is empty.", 400);
-    if (question.length > QUESTION_MAX)
+    }
+    if (question.length > QUESTION_MAX) {
+      console.error(`[${requestId}] [STEP 2.4] question过长: ${question.length} > ${QUESTION_MAX}`);
       return err("VALIDATION_FAILED", "question too long.", 400);
+    }
 
     const locale = body.locale?.trim();
-    if (locale && !BCP47.test(locale))
+    if (locale && !BCP47.test(locale)) {
+      console.error(`[${requestId}] [STEP 2.5] locale格式无效: ${locale}`);
       return err("VALIDATION_FAILED", "invalid locale.", 400);
+    }
+    
+    console.log(`[${requestId}] [STEP 2.6] 参数校验通过`, {
+      questionLength: question.length,
+      locale: locale || "(none)",
+    });
 
     // 3) 配额检查（用户维度 10次/日）
+    console.log(`[${requestId}] [STEP 3] 开始配额检查`);
     touchResetIfNeeded();
     const k = session.userId;
     const nowKey = lastDayKey;
     const c = counters.get(k);
     if (!c || c.dayKey !== nowKey) {
       counters.set(k, { count: 1, dayKey: nowKey });
+      console.log(`[${requestId}] [STEP 3.1] 配额检查通过（新用户/新日期）`, {
+        userId: k,
+        count: 1,
+        dayKey: nowKey,
+      });
     } else {
       if (c.count >= DAILY_LIMIT) {
+        console.warn(`[${requestId}] [STEP 3.2] 配额已超限`, {
+          userId: k,
+          count: c.count,
+          limit: DAILY_LIMIT,
+        });
         return err("RATE_LIMIT_EXCEEDED", "Daily ask limit exceeded.", 429, {
           limit: DAILY_LIMIT,
           resetAt: new Date(
@@ -449,14 +553,22 @@ export async function POST(req: NextRequest) {
       }
       c.count += 1;
       counters.set(k, c);
+      console.log(`[${requestId}] [STEP 3.3] 配额检查通过`, {
+        userId: k,
+        count: c.count,
+        limit: DAILY_LIMIT,
+      });
     }
 
     // 4) 从users表获取userid（如果session.userId是act-格式，则查询数据库获取对应的userid）
+    console.log(`[${requestId}] [STEP 4] 开始处理userId转发`);
     let forwardedUserId: string | null = null;
     
     if (session.userId === "anonymous") {
       forwardedUserId = null;
+      console.log(`[${requestId}] [STEP 4.1] 匿名用户，forwardedUserId = null`);
     } else if (session.userId.startsWith("act-")) {
+      console.log(`[${requestId}] [STEP 4.2] 检测到act-格式，查询数据库`);
       // 如果是act-格式，从users表查询对应的userid
       try {
         // 从act-{activationId}格式中提取activationId
@@ -464,6 +576,7 @@ export async function POST(req: NextRequest) {
         if (parts.length >= 2 && parts[0] === "act") {
           const activationId = parseInt(parts[parts.length - 1], 10);
           if (!isNaN(activationId) && activationId > 0) {
+            console.log(`[${requestId}] [STEP 4.2.1] 查询激活记录: activationId=${activationId}`);
             // 通过activationId查找激活记录，然后查找用户
             const activation = await db
               .selectFrom("activations")
@@ -472,6 +585,7 @@ export async function POST(req: NextRequest) {
               .executeTakeFirst();
             
             if (activation) {
+              console.log(`[${requestId}] [STEP 4.2.2] 激活记录找到，查询用户: email=${activation.email}`);
               // 通过邮箱查找用户，获取userid
               const user = await db
                 .selectFrom("users")
@@ -481,63 +595,137 @@ export async function POST(req: NextRequest) {
               
               if (user?.userid) {
                 forwardedUserId = user.userid;
+                console.log(`[${requestId}] [STEP 4.2.3] 用户找到: userid=${forwardedUserId}`);
               } else {
                 // 如果用户表中没有userid，使用原始的act-格式（向后兼容）
                 forwardedUserId = session.userId;
+                console.log(`[${requestId}] [STEP 4.2.3] 用户未找到，使用原始格式: ${forwardedUserId}`);
               }
             } else {
               // 激活记录不存在，使用原始格式
               forwardedUserId = session.userId;
+              console.log(`[${requestId}] [STEP 4.2.2] 激活记录未找到，使用原始格式: ${forwardedUserId}`);
             }
           } else {
             forwardedUserId = session.userId;
+            console.log(`[${requestId}] [STEP 4.2.1] activationId无效，使用原始格式: ${forwardedUserId}`);
           }
         } else {
           forwardedUserId = session.userId;
+          console.log(`[${requestId}] [STEP 4.2] act-格式解析失败，使用原始格式: ${forwardedUserId}`);
         }
       } catch (error) {
-        console.error("[JWT] Failed to fetch userid from database", (error as Error).message);
+        console.error(`[${requestId}] [STEP 4.2] 数据库查询失败:`, (error as Error).message);
         // 查询失败时，使用原始userId（向后兼容）
         forwardedUserId = session.userId;
       }
     } else {
       // UUID格式或其他格式，直接使用
       forwardedUserId = session.userId;
+      console.log(`[${requestId}] [STEP 4.3] 直接使用session.userId: ${forwardedUserId}`);
     }
+    
+    console.log(`[${requestId}] [STEP 4.4] userId转发完成`, {
+      originalUserId: session.userId,
+      forwardedUserId,
+    });
     
     // 确保 selectedAiServiceUrl 不重复 /v1 路径
     const baseUrl = selectedAiServiceUrl.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+    const upstreamUrl = `${baseUrl}/v1/ask`;
     
-    const upstream = await fetch(`${baseUrl}/v1/ask`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        authorization: `Bearer ${selectedAiServiceToken}`,
-        "x-zalem-client": "web",
-      },
-      body: JSON.stringify({
-        // 传递 userId（如果是有效 UUID）或 null（匿名用户）
-        // AI Service 的 normalizeUserId 会处理 "anonymous" 和非 UUID 格式
-        userId: forwardedUserId,
-        locale,
-        question,
-        metadata: {
-          channel: "web",
-          client: "zalem",
-          answerCharLimit: ANSWER_CHAR_LIMIT,
-          version: "v1.0.1",
-          isAnonymous: session.userId === "anonymous",
-          originalUserId: session.userId, // 原始 userId（用于日志追踪）
-        },
-      }),
-      // 如需：可在此增加超时与重试（指数退避）
+    console.log(`[${requestId}] [STEP 5] 开始向上游服务发送请求`, {
+      url: upstreamUrl,
+      mode: aiServiceMode,
     });
+    
+    const requestBody = {
+      // 传递 userId（如果是有效 UUID）或 null（匿名用户）
+      // AI Service 的 normalizeUserId 会处理 "anonymous" 和非 UUID 格式
+      userId: forwardedUserId,
+      locale,
+      question,
+      metadata: {
+        channel: "web",
+        client: "zalem",
+        answerCharLimit: ANSWER_CHAR_LIMIT,
+        version: "v1.0.1",
+        isAnonymous: session.userId === "anonymous",
+        originalUserId: session.userId, // 原始 userId（用于日志追踪）
+      },
+    };
+    
+    console.log(`[${requestId}] [STEP 5.1] 请求体准备完成`, {
+      userId: forwardedUserId,
+      questionLength: question.length,
+      locale: locale || "(none)",
+    });
+    
+    let upstream: Response;
+    let upstreamError: Error | null = null;
+    try {
+      upstream = await fetch(upstreamUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          authorization: `Bearer ${selectedAiServiceToken}`,
+          "x-zalem-client": "web",
+        },
+        body: JSON.stringify(requestBody),
+        // 如需：可在此增加超时与重试（指数退避）
+      });
+      
+      console.log(`[${requestId}] [STEP 5.2] 上游请求完成`, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        ok: upstream.ok,
+      });
+    } catch (error) {
+      upstreamError = error as Error;
+      console.error(`[${requestId}] [STEP 5.2] 上游请求失败:`, {
+        error: upstreamError.message,
+        stack: upstreamError.stack,
+      });
+      return err("PROVIDER_ERROR", `Failed to connect to AI service: ${upstreamError.message}`, 502);
+    }
 
-    const result = (await upstream.json()) as AiServiceResponse;
+    let result: AiServiceResponse;
+    try {
+      const responseText = await upstream.text();
+      console.log(`[${requestId}] [STEP 5.3] 上游响应文本长度: ${responseText.length}`);
+      
+      try {
+        result = JSON.parse(responseText) as AiServiceResponse;
+        console.log(`[${requestId}] [STEP 5.4] 上游响应解析成功`, {
+          ok: result.ok,
+          hasData: !!result.data,
+          errorCode: result.errorCode || "(none)",
+          message: result.message || "(none)",
+        });
+      } catch (parseError) {
+        console.error(`[${requestId}] [STEP 5.4] 上游响应JSON解析失败:`, {
+          error: (parseError as Error).message,
+          responsePreview: responseText.substring(0, 200),
+        });
+        return err("PROVIDER_ERROR", "Invalid response from AI service", 502);
+      }
+    } catch (error) {
+      console.error(`[${requestId}] [STEP 5.3] 读取上游响应失败:`, (error as Error).message);
+      return err("PROVIDER_ERROR", `Failed to read response from AI service: ${(error as Error).message}`, 502);
+    }
 
     // 5) 上游异常与统一透传
+    console.log(`[${requestId}] [STEP 6] 开始处理上游响应`);
     if (!upstream.ok || !result.ok) {
       const status = upstream.status || 502;
+      console.warn(`[${requestId}] [STEP 6.1] 上游返回错误`, {
+        upstreamOk: upstream.ok,
+        resultOk: result.ok,
+        status,
+        errorCode: result.errorCode,
+        message: result.message,
+      });
+      
       // 将上游错误码按标准映射；若缺失则归类 PROVIDER_ERROR
       const upstreamCode =
         result.errorCode as
@@ -563,8 +751,15 @@ export async function POST(req: NextRequest) {
       }
       
       const msg = result.message || `AI service error (${status}).`;
+      console.error(`[${requestId}] [STEP 6.2] 返回错误响应`, {
+        code,
+        message: msg,
+        status: mapStatus(status),
+      });
       return err(code, msg, mapStatus(status));
     }
+    
+    console.log(`[${requestId}] [STEP 6.3] 上游响应成功`);
 
     // 6) 成功：记录AI聊天行为到缓存（异步，不阻塞响应）
     if (result.ok && session.userId !== "anonymous" && forwardedUserId) {
@@ -662,18 +857,37 @@ export async function POST(req: NextRequest) {
     }
 
     // 7) 成功：返回结果，包含AI类型信息
+    console.log(`[${requestId}] [STEP 7] 准备返回成功响应`);
     if (result.ok && result.data) {
       // 在返回数据中添加AI类型信息
-      return ok({
+      const responseData = {
         ...result.data,
         aiProvider: aiServiceMode, // "online" 或 "local"
+      };
+      
+      console.log(`[${requestId}] [STEP 7.1] 返回成功响应`, {
+        hasAnswer: !!result.data.answer,
+        answerLength: result.data.answer?.length || 0,
+        hasSources: !!result.data.sources,
+        sourcesCount: result.data.sources?.length || 0,
+        model: result.data.model || "(none)",
+        aiProvider: aiServiceMode,
       });
+      
+      return ok(responseData);
     }
     
     // 如果result.ok为false，应该已经在上面处理了，这里作为后备
+    console.warn(`[${requestId}] [STEP 7.2] result.ok为false但未在上游处理，返回空数据`);
     return ok(result.data || {});
   } catch (e) {
-    return err("INTERNAL_ERROR", "Unexpected server error.", 500);
+    const error = e as Error;
+    console.error(`[${requestId}] [ERROR] 未捕获的异常`, {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+    return err("INTERNAL_ERROR", `Unexpected server error: ${error.message}`, 500);
   }
 }
 
