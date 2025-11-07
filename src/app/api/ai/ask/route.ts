@@ -726,11 +726,19 @@ export async function POST(req: NextRequest) {
         errorDetails.stack = upstreamError.stack;
         
         // 尝试解析URL以获取更多信息
+        let hostname: string | null = null;
         try {
           const urlObj = new URL(upstreamUrl);
-          errorDetails.hostname = urlObj.hostname;
+          hostname = urlObj.hostname;
+          errorDetails.hostname = hostname;
           errorDetails.port = urlObj.port || (urlObj.protocol === "https:" ? 443 : 80);
           errorDetails.protocol = urlObj.protocol;
+          
+          // 检查是否是DNS解析问题（快速失败通常意味着DNS解析失败）
+          if (fetchDuration < 1000) {
+            errorDetails.likelyCause = "DNS_RESOLUTION_FAILED";
+            errorDetails.suggestion = `The hostname "${hostname}" may not be resolvable. Please check: 1) DNS records are configured correctly, 2) Cloudflare Tunnel is running (if using tunnel), 3) The domain exists and is accessible.`;
+          }
         } catch (urlError) {
           errorDetails.urlParseError = (urlError as Error).message;
         }
@@ -739,7 +747,11 @@ export async function POST(req: NextRequest) {
         
         // 如果当前使用的是本地AI服务，尝试回退到在线AI服务
         if (aiServiceMode === "local" && AI_SERVICE_URL && AI_SERVICE_TOKEN) {
-          console.warn(`[${requestId}] [STEP 5.2.1] 本地AI服务失败，尝试回退到在线AI服务`);
+          console.warn(`[${requestId}] [STEP 5.2.1] 本地AI服务失败（可能是DNS解析问题），尝试回退到在线AI服务`, {
+            hostname: hostname || "(unknown)",
+            duration: `${fetchDuration}ms`,
+            note: "快速失败（<1s）通常表示DNS解析失败",
+          });
           const fallbackBaseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
           const fallbackUrl = `${fallbackBaseUrl}/v1/ask`;
           
