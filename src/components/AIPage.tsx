@@ -214,14 +214,29 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       }
 
       // 统一协议：{ question, locale?, messages? } → { ok, data: { answer, sources?, ... }, errorCode, message }
-      // 准备对话历史（只传递最近的 10 条消息，排除当前问题）
-      const historyMessages = messages
-        .slice(-10) // 只保留最近 10 条
+      // 准备对话历史（包含当前用户消息，因为状态更新是异步的）
+      // 构建包含当前用户消息的完整历史
+      const allMessages = [...messages, userMsg]; // 包含刚发送的用户消息
+      const historyMessages = allMessages
+        .slice(-12) // 保留最近 12 条（包含当前消息，实际会传递 10 条历史）
         .filter((msg) => msg.role === "user" || msg.role === "ai") // 只保留用户和AI消息
+        .slice(0, -1) // 排除当前用户消息（因为会单独传递 question）
         .map((msg) => ({
           role: msg.role === "ai" ? "assistant" : "user" as "user" | "assistant",
           content: msg.content,
         }));
+      
+      // 调试日志：验证对话历史
+      console.log("[Context Debug] 对话历史准备", {
+        totalMessages: allMessages.length,
+        historyCount: historyMessages.length,
+        historyPreview: historyMessages.slice(-3).map(m => ({
+          role: m.role,
+          contentLength: m.content.length,
+          contentPreview: m.content.substring(0, 50),
+        })),
+        currentQuestion: q.substring(0, 50),
+      });
       
       const requestBody: Record<string, unknown> = {
         question: q,
@@ -232,6 +247,11 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       if (historyMessages.length > 0) {
         requestBody.messages = historyMessages;
         requestBody.maxHistory = 10; // 限制最大历史消息数
+        console.log("[Context Debug] 已添加对话历史到请求", {
+          messageCount: historyMessages.length,
+        });
+      } else {
+        console.log("[Context Debug] 没有对话历史可传递");
       }
       
       const res = await fetch(endpoint, {
