@@ -45,5 +45,8 @@
   "overrides": {
     "rimraf": "^6.1.0",
     "glob": "^10.3.10"
+  },
+  "npmAuditConfig": {
+    "audit-level": "moderate"
   }
 }

@@ -51,6 +51,9 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
   try {
     const askModule = await import("./routes/ask.js");
     await askModule.default(app);
+    
+    const ragIngestModule = await import("./routes/ragIngest.js");
+    await ragIngestModule.default(app);
   } catch (err) {
     logger.error({ err }, "路由注册失败");
   }
