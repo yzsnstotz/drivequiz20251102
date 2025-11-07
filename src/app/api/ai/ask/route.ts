@@ -637,6 +637,8 @@ export async function POST(req: NextRequest) {
     console.log(`[${requestId}] [STEP 5] 开始向上游服务发送请求`, {
       url: upstreamUrl,
       mode: aiServiceMode,
+      baseUrl: baseUrl,
+      selectedAiServiceUrl: selectedAiServiceUrl,
     });
     
     const requestBody = {
@@ -663,7 +665,21 @@ export async function POST(req: NextRequest) {
     
     let upstream: Response;
     let upstreamError: Error | null = null;
+    const fetchStartTime = Date.now();
     try {
+      // 添加超时控制（30秒）
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 30000); // 30秒超时
+      
+      console.log(`[${requestId}] [STEP 5.2] 开始fetch请求`, {
+        url: upstreamUrl,
+        method: "POST",
+        hasBody: !!requestBody,
+        timeout: 30000,
+      });
+      
       upstream = await fetch(upstreamUrl, {
         method: "POST",
         headers: {
@@ -672,20 +688,61 @@ export async function POST(req: NextRequest) {
           "x-zalem-client": "web",
         },
         body: JSON.stringify(requestBody),
-        // 如需：可在此增加超时与重试（指数退避）
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
+      const fetchDuration = Date.now() - fetchStartTime;
       
       console.log(`[${requestId}] [STEP 5.2] 上游请求完成`, {
         status: upstream.status,
         statusText: upstream.statusText,
         ok: upstream.ok,
+        duration: `${fetchDuration}ms`,
       });
     } catch (error) {
+      const fetchDuration = Date.now() - fetchStartTime;
       upstreamError = error as Error;
-      console.error(`[${requestId}] [STEP 5.2] 上游请求失败:`, {
+      
+      // 提取更详细的错误信息
+      const errorDetails: Record<string, unknown> = {
         error: upstreamError.message,
-        stack: upstreamError.stack,
-      });
+        errorName: upstreamError.name,
+        duration: `${fetchDuration}ms`,
+        url: upstreamUrl,
+        mode: aiServiceMode,
+      };
+      
+      // 检查是否是超时错误
+      if (upstreamError.name === "AbortError" || upstreamError.message.includes("timeout")) {
+        errorDetails.errorType = "TIMEOUT";
+        console.error(`[${requestId}] [STEP 5.2] 上游请求超时:`, errorDetails);
+        return err("PROVIDER_ERROR", "AI service request timeout (30s)", 504);
+      }
+      
+      // 检查是否是网络连接错误
+      if (upstreamError.message.includes("fetch failed") || upstreamError.message.includes("ECONNREFUSED") || upstreamError.message.includes("ENOTFOUND")) {
+        errorDetails.errorType = "NETWORK_ERROR";
+        errorDetails.stack = upstreamError.stack;
+        
+        // 尝试解析URL以获取更多信息
+        try {
+          const urlObj = new URL(upstreamUrl);
+          errorDetails.hostname = urlObj.hostname;
+          errorDetails.port = urlObj.port || (urlObj.protocol === "https:" ? 443 : 80);
+          errorDetails.protocol = urlObj.protocol;
+        } catch (urlError) {
+          errorDetails.urlParseError = (urlError as Error).message;
+        }
+        
+        console.error(`[${requestId}] [STEP 5.2] 上游请求网络错误:`, errorDetails);
+        return err("PROVIDER_ERROR", `Failed to connect to AI service: ${upstreamError.message}. Please check if the service URL is correct and accessible.`, 502);
+      }
+      
+      // 其他错误
+      errorDetails.errorType = "UNKNOWN_ERROR";
+      errorDetails.stack = upstreamError.stack;
+      console.error(`[${requestId}] [STEP 5.2] 上游请求失败:`, errorDetails);
       return err("PROVIDER_ERROR", `Failed to connect to AI service: ${upstreamError.message}`, 502);
     }
 
