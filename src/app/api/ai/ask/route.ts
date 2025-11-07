@@ -751,9 +751,16 @@ export async function POST(req: NextRequest) {
           const fallbackStartTime = Date.now();
           try {
             const fallbackController = new AbortController();
+            // 回退请求使用更长的超时时间（90秒），因为AI服务可能需要更长时间生成回答
+            const fallbackTimeout = 90000; // 90秒
             const fallbackTimeoutId = setTimeout(() => {
               fallbackController.abort();
-            }, 30000);
+            }, fallbackTimeout);
+            
+            console.log(`[${requestId}] [STEP 5.2.2.1] 回退请求配置`, {
+              timeout: fallbackTimeout,
+              url: fallbackUrl,
+            });
             
             const fallbackResponse = await fetch(fallbackUrl, {
               method: "POST",
@@ -781,11 +788,26 @@ export async function POST(req: NextRequest) {
             aiServiceMode = "online"; // 更新模式标记
           } catch (fallbackError) {
             const fallbackDuration = Date.now() - fallbackStartTime;
+            const fallbackErr = fallbackError as Error;
+            
+            // 检查是否是超时错误
+            if (fallbackErr.name === "AbortError" || fallbackErr.message.includes("aborted")) {
+              console.error(`[${requestId}] [STEP 5.2.3] 回退请求超时:`, {
+                error: fallbackErr.message,
+                duration: `${fallbackDuration}ms`,
+                timeout: "90s",
+              });
+              return err("PROVIDER_ERROR", `Both local and online AI services failed. Local: ${upstreamError.message}. Fallback: Request timeout (90s). The AI service may be slow or unavailable.`, 504);
+            }
+            
+            // 其他错误
             console.error(`[${requestId}] [STEP 5.2.3] 回退请求也失败:`, {
-              error: (fallbackError as Error).message,
+              error: fallbackErr.message,
+              errorName: fallbackErr.name,
               duration: `${fallbackDuration}ms`,
+              stack: fallbackErr.stack,
             });
-            return err("PROVIDER_ERROR", `Both local and online AI services failed. Local: ${upstreamError.message}. Fallback: ${(fallbackError as Error).message}`, 502);
+            return err("PROVIDER_ERROR", `Both local and online AI services failed. Local: ${upstreamError.message}. Fallback: ${fallbackErr.message}`, 502);
           }
         } else {
           // 没有回退选项，直接返回错误
