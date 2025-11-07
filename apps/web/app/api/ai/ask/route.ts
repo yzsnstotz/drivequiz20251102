@@ -548,6 +548,18 @@ export async function POST(req: NextRequest) {
     requestUrl: __requestUrl,
   });
 
+  // 调试日志：验证对话历史传递
+  console.log("[Context Debug] API路由接收到的对话历史", {
+    hasMessages: !!body.messages,
+    messageCount: body.messages?.length || 0,
+    messagesPreview: body.messages?.slice(-3).map(m => ({
+      role: m.role,
+      contentLength: m.content?.length || 0,
+      contentPreview: m.content?.substring(0, 50) || "",
+    })) || [],
+    question: question.substring(0, 50),
+  });
+
   const forwardPayload: Record<string, unknown> = {
     // 传递 userId（无论是否为 UUID）
     // AI Service 的 normalizeUserId 会验证 UUID 格式，非 UUID 会转换为 null
@@ -567,6 +579,13 @@ export async function POST(req: NextRequest) {
       originalUserId: userId, // 原始 userId（用于日志追踪）
     },
   };
+
+  // 调试日志：验证转发负载
+  console.log("[Context Debug] API路由转发负载", {
+    hasMessages: !!forwardPayload.messages,
+    messageCount: Array.isArray(forwardPayload.messages) ? forwardPayload.messages.length : 0,
+    maxHistory: forwardPayload.maxHistory,
+  });
 
   let aiResp: Response;
   try {
