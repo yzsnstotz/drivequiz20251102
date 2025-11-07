@@ -213,6 +213,27 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         });
       }
 
+      // 统一协议：{ question, locale?, messages? } → { ok, data: { answer, sources?, ... }, errorCode, message }
+      // 准备对话历史（只传递最近的 10 条消息，排除当前问题）
+      const historyMessages = messages
+        .slice(-10) // 只保留最近 10 条
+        .filter((msg) => msg.role === "user" || msg.role === "ai") // 只保留用户和AI消息
+        .map((msg) => ({
+          role: msg.role === "ai" ? "assistant" : "user" as "user" | "assistant",
+          content: msg.content,
+        }));
+      
+      const requestBody: Record<string, unknown> = {
+        question: q,
+        locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
+      };
+      
+      // 传递对话历史（如果有）
+      if (historyMessages.length > 0) {
+        requestBody.messages = historyMessages;
+        requestBody.maxHistory = 10; // 限制最大历史消息数
+      }
+      
       const res = await fetch(endpoint, {
         method: "POST",
         signal: controller.signal,
@@ -220,35 +241,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        // 统一协议：{ question, locale?, messages? } → { ok, data: { answer, sources?, ... }, errorCode, message }
-        // 准备对话历史（只传递最近的 10 条消息，排除当前问题）
-        const historyMessages = messages
-          .slice(-10) // 只保留最近 10 条
-          .filter((msg) => msg.role === "user" || msg.role === "ai") // 只保留用户和AI消息
-          .map((msg) => ({
-            role: msg.role === "ai" ? "assistant" : "user" as "user" | "assistant",
-            content: msg.content,
-          }));
-        
-        const requestBody: Record<string, unknown> = {
-          question: q,
-          locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
-        };
-        
-        // 传递对话历史（如果有）
-        if (historyMessages.length > 0) {
-          requestBody.messages = historyMessages;
-          requestBody.maxHistory = 10; // 限制最大历史消息数
-        }
-        
-        const res = await fetch(endpoint, {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(requestBody),
+        body: JSON.stringify(requestBody),
       });
 
       let payload: AiAskResponse;
