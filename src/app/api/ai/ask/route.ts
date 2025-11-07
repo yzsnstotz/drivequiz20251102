@@ -736,7 +736,61 @@ export async function POST(req: NextRequest) {
         }
         
         console.error(`[${requestId}] [STEP 5.2] 上游请求网络错误:`, errorDetails);
-        return err("PROVIDER_ERROR", `Failed to connect to AI service: ${upstreamError.message}. Please check if the service URL is correct and accessible.`, 502);
+        
+        // 如果当前使用的是本地AI服务，尝试回退到在线AI服务
+        if (aiServiceMode === "local" && AI_SERVICE_URL && AI_SERVICE_TOKEN) {
+          console.warn(`[${requestId}] [STEP 5.2.1] 本地AI服务失败，尝试回退到在线AI服务`);
+          const fallbackBaseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+          const fallbackUrl = `${fallbackBaseUrl}/v1/ask`;
+          
+          console.log(`[${requestId}] [STEP 5.2.2] 开始回退请求`, {
+            url: fallbackUrl,
+            mode: "online",
+          });
+          
+          const fallbackStartTime = Date.now();
+          try {
+            const fallbackController = new AbortController();
+            const fallbackTimeoutId = setTimeout(() => {
+              fallbackController.abort();
+            }, 30000);
+            
+            const fallbackResponse = await fetch(fallbackUrl, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json; charset=utf-8",
+                authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+                "x-zalem-client": "web",
+              },
+              body: JSON.stringify(requestBody),
+              signal: fallbackController.signal,
+            });
+            
+            clearTimeout(fallbackTimeoutId);
+            const fallbackDuration = Date.now() - fallbackStartTime;
+            
+            console.log(`[${requestId}] [STEP 5.2.3] 回退请求成功`, {
+              status: fallbackResponse.status,
+              statusText: fallbackResponse.statusText,
+              ok: fallbackResponse.ok,
+              duration: `${fallbackDuration}ms`,
+            });
+            
+            // 使用回退响应继续处理
+            upstream = fallbackResponse;
+            aiServiceMode = "online"; // 更新模式标记
+          } catch (fallbackError) {
+            const fallbackDuration = Date.now() - fallbackStartTime;
+            console.error(`[${requestId}] [STEP 5.2.3] 回退请求也失败:`, {
+              error: (fallbackError as Error).message,
+              duration: `${fallbackDuration}ms`,
+            });
+            return err("PROVIDER_ERROR", `Both local and online AI services failed. Local: ${upstreamError.message}. Fallback: ${(fallbackError as Error).message}`, 502);
+          }
+        } else {
+          // 没有回退选项，直接返回错误
+          return err("PROVIDER_ERROR", `Failed to connect to AI service: ${upstreamError.message}. Please check if the service URL is correct and accessible.`, 502);
+        }
       }
       
       // 其他错误
