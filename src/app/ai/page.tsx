@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiPost } from "@/lib/apiClient.front";
 import Header from "@/components/common/Header";
@@ -21,7 +21,7 @@ interface ChatMessage {
   }>;
 }
 
-export default function AIPage() {
+function AIPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const contextParam = searchParams.get("context") as Context | null;
@@ -232,6 +232,14 @@ export default function AIPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AIPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">加载中...</div>}>
+      <AIPageContent />
+    </Suspense>
   );
 }
 
