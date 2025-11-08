@@ -42,7 +42,11 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type")?.trim();
     const minPrice = searchParams.get("minPrice") ? parseFloat(searchParams.get("minPrice")!) : null;
     const maxPrice = searchParams.get("maxPrice") ? parseFloat(searchParams.get("maxPrice")!) : null;
-    const status = searchParams.get("status") || "active";
+    type VehicleStatus = "active" | "inactive" | "archived";
+    const statusParam = (searchParams.get("status") || "active").trim();
+    const isVehicleStatus = (value: string): value is VehicleStatus =>
+      value === "active" || value === "inactive" || value === "archived";
+    const status: VehicleStatus = isVehicleStatus(statusParam) ? statusParam : "active";
 
     // 构建查询
     let query = db
