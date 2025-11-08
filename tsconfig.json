@@ -33,6 +33,7 @@
     "scripts",
     "apps/ai-service",
     "apps/local-ai-service",
-    "apps/web"
+    "apps/web",
+    "apps/drivequiz-api"
   ]
 }

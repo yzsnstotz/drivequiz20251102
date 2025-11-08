@@ -210,9 +210,16 @@ type AiAskData = {
 
 type AiServiceResponse = Ok<AiAskData> | Err;
 
+type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
 type AskRequestBody = {
   question?: string;
   locale?: string; // 前端可能传入的 BCP-47；将映射为 AI-Service 的 lang
+  messages?: ChatMessage[]; // 对话历史（可选，用于上下文连贯）
+  maxHistory?: number; // 最大历史消息数（默认 10）
 };
 
 // 获取环境变量的函数（在运行时读取，确保 dotenv 已加载）
@@ -549,6 +556,10 @@ export async function POST(req: NextRequest) {
     // AI-Service 期望字段为 lang
     lang: mapLocaleToLang(locale),
     question,
+    // 传递对话历史（如果提供）
+    ...(body.messages && body.messages.length > 0 ? { messages: body.messages } : {}),
+    // 传递最大历史消息数（如果提供）
+    ...(body.maxHistory ? { maxHistory: body.maxHistory } : {}),
     metadata: { 
       channel: "web", 
       client: "zalem",
@@ -567,19 +578,6 @@ export async function POST(req: NextRequest) {
       headers["x-user-jwt"] = jwt;
     }
     
-    console.log("[STEP 4] 准备转发请求到AI服务", {
-      url: __requestUrl,
-      method: "POST",
-      headers: {
-        ...headers,
-        authorization: headers.authorization ? "Bearer ***" : "",
-      },
-      payload: {
-        ...forwardPayload,
-        userId: forwardPayload.userId ? "***" : null,
-      },
-    });
-    
     // 转发到选择的AI服务（本地AI服务和在线AI服务使用相同的接口格式）
     const startTime = Date.now();
     aiResp = await fetch(__requestUrl, {
@@ -590,20 +588,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify(forwardPayload),
     });
-    const duration = Date.now() - startTime;
-    
-    console.log("[STEP 4] AI服务响应", {
-      status: aiResp.status,
-      statusText: aiResp.statusText,
-      headers: Object.fromEntries(aiResp.headers.entries()),
-      duration: `${duration}ms`,
-    });
   } catch (e: any) {
-    console.error("[STEP 4] AI服务请求失败", {
-      error: e?.message,
-      stack: e?.stack,
-      url: __aiTarget.url,
-    });
     return respondJSON({
       ok: false,
       errorCode: "PROVIDER_ERROR",

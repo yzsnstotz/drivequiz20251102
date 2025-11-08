@@ -5,10 +5,21 @@ import { callOllamaChat } from "../lib/ollamaClient.js";
 import type { LocalAIConfig } from "../lib/config.js";
 import { logAiInteraction } from "../lib/dbLogger.js";
 
+type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
 type AskBody = {
   question?: string;
   userId?: string;
   lang?: string;
+  // 对话历史（可选，用于上下文连贯）
+  messages?: ChatMessage[];
+  // 最大历史消息数（默认 10）
+  maxHistory?: number;
+  // 种子URL（可选，只返回该URL下的子页面）
+  seedUrl?: string;
 };
 
 type AskResult = {
@@ -24,78 +35,75 @@ type AskResult = {
   time?: string;
 };
 
-/**
- * 检测用户输入问题的语言
- * 返回: "zh" | "ja" | "en"
- * 
- * 检测优先级：英文 > 日文 > 中文
- * 这样可以避免将英文误判为中文
- */
-function detectLanguageFromQuestion(question: string): "zh" | "ja" | "en" {
-  const text = question.trim();
-  if (!text) return "zh";
-
-  // 1. 优先检测英文（主要是英文字母，不包含中文或日文字符）
-  const hasEnglish = /[a-zA-Z]/.test(text);
-  const hasChinese = /[\u4E00-\u9FAF]/.test(text);
-  const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF]/.test(text);
-  
-  if (hasEnglish && !hasChinese && !hasJapanese) {
-    // 纯英文（不包含中文或日文字符）
-    const englishChars = text.match(/[a-zA-Z]/g) || [];
-    if (englishChars.length >= 3) { // 至少3个英文字母
-      return "en";
-    }
-  }
-  
-  // 如果包含英文但同时也包含中文或日文，需要进一步判断
-  if (hasEnglish && (hasChinese || hasJapanese)) {
-    const englishChars = text.match(/[a-zA-Z]/g) || [];
-    const totalChars = text.replace(/\s/g, "").length;
-    if (englishChars.length > totalChars * 0.6) {
-      // 英文占比超过60%，判断为英文
-      return "en";
-    }
-  }
-
-  // 2. 检测日文（平假名、片假名）
-  if (hasJapanese) {
-    const japaneseChars = text.match(/[\u3040-\u309F\u30A0-\u30FF]/g) || [];
-    const totalChars = text.replace(/\s/g, "").length;
-    if (japaneseChars.length > totalChars * 0.2) {
-      // 日文字符占比超过20%，判断为日文
-      return "ja";
-    }
-  }
-
-  // 3. 检测中文（中文字符）
-  if (hasChinese) {
-    const chineseChars = text.match(/[\u4E00-\u9FAF]/g) || [];
-    if (chineseChars.length >= 1) {
-      // 包含中文字符，判断为中文
-      return "zh";
-    }
-  }
-
-  // 4. 如果包含英文但没有中文或日文，判断为英文
-  if (hasEnglish && !hasChinese && !hasJapanese) {
-    return "en";
-  }
-
-  // 默认返回中文
-  return "zh";
-}
-
 function buildSystemPrompt(lang: string): string {
   const base =
-    "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。\n\n**CRITICAL RULE: 你必须用中文回答。绝对不要使用日文、英文或其他语言。如果用户用其他语言提问，你仍然要用中文回答。**";
+    "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
   if (lang === "ja") {
-    return "あなたは ZALEM の運転免許学習アシスタントです。日本の交通法規と問題集の知識に基づいて、簡潔かつ正確に回答してください。推測や捏造は禁止し、関係のない内容は出力しないでください。\n\n**重要ルール: あなたは必ず日本語で回答しなければなりません。中国語、英語、その他の言語は一切使用しないでください。ユーザーが他の言語で質問しても、あなたは日本語で回答してください。**";
+    return "あなたは ZALEM の運転免許学習アシスタントです。日本の交通法規と問題集の知識に基づいて、簡潔かつ正確に回答してください。推測や捏造は禁止し、関係のない内容は出力しないでください。";
   }
   if (lang === "en") {
-    return "You are ZALEM's driving-test study assistant. Answer based on Japan's traffic laws and question bank. Be concise and accurate. Do not fabricate or include unrelated content.\n\n**CRITICAL RULE: You MUST respond in English only. Do NOT use Chinese, Japanese, or any other language. Even if the user asks in another language, you must respond in English.**";
+    return "You are ZALEM's driving-test study assistant. Answer based on Japan's traffic laws and question bank. Be concise and accurate. Do not fabricate or include unrelated content.";
   }
   return base;
+}
+
+/**
+ * 处理对话历史，限制长度并过滤无效消息
+ */
+function processHistory(
+  messages: ChatMessage[] | undefined,
+  maxHistory: number = 10
+): ChatMessage[] {
+  if (!messages || messages.length === 0) {
+    return [];
+  }
+
+  // 过滤无效消息
+  const validMessages = messages.filter(
+    (msg) =>
+      msg &&
+      msg.role &&
+      msg.content &&
+      typeof msg.content === "string" &&
+      msg.content.trim().length > 0 &&
+      (msg.role === "user" || msg.role === "assistant" || msg.role === "system")
+  );
+
+  // 只保留最近的 N 条消息（不包括 system）
+  const nonSystemMessages = validMessages.filter((msg) => msg.role !== "system");
+  const recentMessages = nonSystemMessages.slice(-maxHistory);
+
+  // 如果原始消息中有 system 消息，保留第一个
+  const systemMessages = validMessages.filter((msg) => msg.role === "system");
+  const systemMessage = systemMessages.length > 0 ? [systemMessages[0]] : [];
+
+  return [...systemMessage, ...recentMessages];
+}
+
+/**
+ * 从对话历史中提取上下文关键词，用于增强 RAG 检索
+ */
+function extractContextFromHistory(
+  messages: ChatMessage[],
+  currentQuestion: string
+): string {
+  // 提取最近 3 轮对话的关键内容
+  const recentMessages = messages.slice(-6); // 最近 3 轮（每轮 user + assistant）
+  
+  const contextParts: string[] = [];
+  
+  for (const msg of recentMessages) {
+    if (msg.role === "user" || msg.role === "assistant") {
+      const content = msg.content.trim();
+      // 只保留较短的摘要（避免过长）
+      if (content.length > 0 && content.length < 500) {
+        contextParts.push(content);
+      }
+    }
+  }
+  
+  // 结合当前问题
+  return [currentQuestion, ...contextParts].join(" ").slice(0, 1000);
 }
 
 export default async function askRoute(app: FastifyInstance): Promise<void> {
@@ -110,20 +118,9 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 2) 校验请求体
         const body = request.body as AskBody;
         const question = (body.question || "").trim();
-        
-        // 3) 语言检测：始终根据用户输入的问题自动检测语言，确保回复语言与问题语言一致
-        // **重要：完全忽略传入的 lang 参数，只根据问题内容自动检测语言**
-        // 这样可以确保回复语言与问题语言完全一致，避免语言错乱
-        const detectedLang = detectLanguageFromQuestion(question);
-        const lang: "zh" | "ja" | "en" = detectedLang;
-        
-        console.log("[LOCAL-AI] 语言检测", {
-          requestedLang: body.lang,
-          detectedLang,
-          finalLang: lang,
-          questionPreview: question.substring(0, 50),
-          note: "完全忽略传入的 lang 参数，只使用检测到的语言",
-        });
+        const lang = (body.lang || "zh").toLowerCase().trim();
+        const maxHistory = body.maxHistory || 10;
+        const seedUrl = body.seedUrl?.trim() || null;
 
         if (!question || question.length === 0 || question.length > 2000) {
           reply.code(400).send({
@@ -134,35 +131,54 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        // 3) RAG 检索（获取上下文）
-        const reference = await getRagContext(question, lang).catch((error) => {
+        // 3) 处理对话历史
+        const history = processHistory(body.messages, maxHistory);
+        
+        // 4) RAG 检索（结合对话历史增强上下文）
+        let ragQuery = question;
+        if (history.length > 0) {
+          // 从对话历史中提取上下文，增强 RAG 检索
+          ragQuery = extractContextFromHistory(history, question);
+        }
+        
+        // 使用种子URL过滤（如果提供）
+        const reference = await getRagContext(ragQuery, lang, seedUrl).catch((error) => {
           // RAG 检索失败不影响主流程，仅记录错误
           console.error("[LOCAL-AI] RAG检索失败:", error instanceof Error ? error.message : String(error));
           return "";
         });
 
-        // 4) 调用 Ollama Chat
+        // 5) 构建消息列表（包含对话历史）
         const sys = buildSystemPrompt(lang);
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
-        
-        // 在用户消息中明确要求用指定语言回复
-        const langInstruction = 
-          lang === "ja" ? "**重要：必ず日本語で回答してください。**\n\n" :
-          lang === "en" ? "**IMPORTANT: You MUST respond in English only.**\n\n" :
-          "**重要：请务必用中文回答。**\n\n";
 
-        const answer = await callOllamaChat(
-          [
-            { role: "system", content: sys },
-            {
-              role: "user",
-              content: `${langInstruction}${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
-            },
-          ],
-          0.4
-        );
+        // 构建完整的消息列表
+        const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+          { role: "system", content: sys },
+        ];
+
+        // 添加历史消息（如果有）
+        if (history.length > 0) {
+          // 过滤掉 system 消息（已经在上面添加了）
+          const historyMessages = history
+            .filter((msg) => msg.role !== "system")
+            .map((msg) => ({
+              role: msg.role as "user" | "assistant",
+              content: msg.content,
+            }));
+          messages.push(...historyMessages);
+        }
+
+        // 添加当前问题和 RAG 上下文
+        messages.push({
+          role: "user",
+          content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
+        });
+
+        // 6) 调用 Ollama Chat（传递完整对话历史）
+        const answer = await callOllamaChat(messages, 0.4);
 
         if (!answer) {
           console.error("[LOCAL-AI] Ollama返回空响应");

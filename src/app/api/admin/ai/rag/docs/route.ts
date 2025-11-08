@@ -4,7 +4,7 @@
 import { NextRequest } from "next/server";
 import { sql } from "kysely";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
-import { db } from "@/lib/db";
+import { aiDb } from "@/lib/aiDb";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
 
@@ -73,7 +73,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const { page, limit, offset } = parsePagination(searchParams);
 
     // 基础查询（由于 Database 未声明该表，使用 any）
-    let base = (db as any)
+    let base = (aiDb as any)
       .selectFrom("ai_rag_docs")
       .select([
         "id",
@@ -105,7 +105,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     }
 
     // 统计
-    let countQuery = (db as any)
+    let countQuery = (aiDb as any)
       .selectFrom("ai_rag_docs")
       .select((eb: any) => eb.fn.countAll().as("count")) as any;
 
@@ -116,10 +116,11 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     if (lang) countQuery = countQuery.where(sql`lang = ${lang}`);
     if (status) countQuery = countQuery.where(sql`status = ${status}`);
 
-    const [{ count }] = (await countQuery.execute()) as { count: string | number }[];
+    const countResult = (await countQuery.execute()) as { count: string | number }[];
+    const count = countResult?.[0]?.count ?? 0;
 
     // 排序
-    const { col } = mapSortColumn(sortByRaw || undefined);
+    const { col } = mapSortColumn(sortByRaw);
     base = base.orderBy(col, sortOrder);
 
     // 分页
@@ -142,8 +143,11 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       { items },
       getPaginationMeta(page, limit, typeof count === "string" ? parseInt(count, 10) : (count as number)),
     );
-  } catch {
-    return internalError("Unexpected server error.");
+  } catch (error) {
+    // 记录详细错误信息以便调试
+    console.error("[GET /api/admin/ai/rag/docs] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return internalError(`Database query failed: ${errorMessage}`);
   }
 });
 
@@ -199,7 +203,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       chunks: 0, // 初始为 0，向量化后更新
     };
 
-    const inserted = (await (db as any)
+    const inserted = (await (aiDb as any)
       .insertInto("ai_rag_docs")
       .values(payload)
       .returning([
@@ -261,8 +265,11 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         updatedAt: toIso(r.updated_at),
       },
     });
-  } catch {
-    return internalError("Unexpected server error.");
+  } catch (error) {
+    // 记录详细错误信息以便调试
+    console.error("[POST /api/admin/ai/rag/docs] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return internalError(`Database insert failed: ${errorMessage}`);
   }
 });
 
