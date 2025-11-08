@@ -194,7 +194,7 @@ function MistakeBookPage() {
           onClose={() => setShowAIDialog(false)}
         />
       )}
-    </div>
+      </div>
     );
   }
 
