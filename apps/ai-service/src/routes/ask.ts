@@ -200,8 +200,20 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         let openai;
         try {
           openai = getOpenAIClient(config);
+          console.log("[ASK ROUTE] AI client initialized successfully", {
+            baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
+            isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
+            hasOpenRouterKey: !!config.openrouterApiKey,
+            hasOpenAIKey: !!config.openaiApiKey,
+          });
         } catch (e) {
           const error = e as Error;
+          console.error("[ASK ROUTE] Failed to initialize AI client:", {
+            error: error.message,
+            stack: error.stack,
+            baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
+            isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
+          });
           reply.code(500).send({
             ok: false,
             errorCode: "CONFIG_ERROR",
@@ -217,6 +229,12 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
 
         let completion;
         try {
+          console.log("[ASK ROUTE] Calling AI API", {
+            model,
+            questionLength: question.length,
+            hasReference: !!reference,
+            referenceLength: reference?.length || 0,
+          });
           completion = await openai.chat.completions.create({
             model: model, // 使用从数据库读取的模型配置
             temperature: 0.4,
@@ -228,8 +246,24 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
               },
             ],
           });
+          console.log("[ASK ROUTE] AI API call successful", {
+            model,
+            hasAnswer: !!completion.choices?.[0]?.message?.content,
+            inputTokens: completion.usage?.prompt_tokens,
+            outputTokens: completion.usage?.completion_tokens,
+          });
         } catch (e) {
           const error = e as Error & { status?: number; code?: string };
+          console.error("[ASK ROUTE] AI API call failed:", {
+            error: error.message,
+            name: error.name,
+            status: error.status,
+            code: error.code,
+            stack: error.stack,
+            model,
+            baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
+            isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
+          });
           // 提取更详细的错误信息
           let errorMessage = error.message || "AI API call failed";
           let errorCode = "PROVIDER_ERROR";
