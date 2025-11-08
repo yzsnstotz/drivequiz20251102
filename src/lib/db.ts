@@ -105,7 +105,52 @@ interface MerchantTable {
 }
 
 // ------------------------------------------------------------
-// 7️⃣ services 表结构定义
+// 7️⃣ vehicle_types 表结构定义
+// ------------------------------------------------------------
+interface VehicleTypeTable {
+  id: Generated<number>;
+  name: string;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description: string | null;
+  icon: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣ vehicles 表结构定义
+// ------------------------------------------------------------
+interface VehicleTable {
+  id: Generated<number>;
+  vehicle_type_id: number | null;
+  brand: string;
+  model: string;
+  year: number | null;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description_ja: string | null;
+  description_zh: string | null;
+  description_en: string | null;
+  price_min: number | null;
+  price_max: number | null;
+  fuel_type: string | null;
+  transmission: string | null;
+  seats: number | null;
+  image_url: string | null;
+  official_url: string | null;
+  dealer_url: string | null;
+  specifications: Record<string, any> | null;
+  metadata: Record<string, any> | null;
+  status: "active" | "inactive" | "archived";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 9️⃣ services 表结构定义
 // ------------------------------------------------------------
 interface ServiceTable {
   id: Generated<number>;
@@ -380,6 +425,8 @@ interface Database {
   operation_logs: OperationLogTable;
   merchant_categories: MerchantCategoryTable;
   merchants: MerchantTable;
+  vehicle_types: VehicleTypeTable;
+  vehicles: VehicleTable;
   services: ServiceTable;
   service_categories: ServiceCategoryTable;
   service_reviews: ServiceReviewTable;
