@@ -58,7 +58,8 @@ export async function GET(request: NextRequest) {
     }
 
     // 查询该广告位下的有效广告内容
-    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const ads = await db
       .selectFrom("ad_contents")
       .select([
@@ -85,13 +86,13 @@ export async function GET(request: NextRequest) {
       .where((eb) =>
         eb.or([
           eb("start_date", "is", null),
-          eb("start_date", "<=", now.toISOString().split("T")[0]),
+          eb("start_date", "<=", today),
         ])
       )
       .where((eb) =>
         eb.or([
           eb("end_date", "is", null),
-          eb("end_date", ">=", now.toISOString().split("T")[0]),
+          eb("end_date", ">=", today),
         ])
       )
       .orderBy("priority", "desc")
