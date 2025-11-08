@@ -102,6 +102,9 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       imageUrl: row.image_url || null,
       category: row.category || null,
       status: row.status,
+      adStartDate: toISO(row.ad_start_date),
+      adEndDate: toISO(row.ad_end_date),
+      adSlot: row.ad_slot || null,
       createdAt: toISO(row.created_at) || "",
       updatedAt: toISO(row.updated_at) || "",
     }));
@@ -130,10 +133,25 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 export const POST = withAdminAuth(async (req: NextRequest) => {
   try {
     const body = await req.json().catch(() => ({}));
-    const { name, description, address, phone, email, imageUrl, category, status } = body;
+    const { name, description, address, phone, email, imageUrl, category, status, adStartDate, adEndDate, adSlot } = body;
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return badRequest("name is required");
+    }
+
+    // 验证广告位：如果设置了广告时间，则必须选择广告位
+    if ((adStartDate || adEndDate) && !adSlot) {
+      return badRequest("设置广告时间后，请选择广告位");
+    }
+
+    // 验证广告位：如果选择了广告位，则必须设置广告时间
+    if (adSlot && (!adStartDate || !adEndDate)) {
+      return badRequest("选择广告位后，必须设置广告开始时间和结束时间");
+    }
+
+    // 验证广告位值是否有效
+    if (adSlot && !["home_first_column", "home_second_column", "splash_screen", "popup_ad"].includes(adSlot)) {
+      return badRequest("无效的广告位");
     }
 
     const now = new Date().toISOString();
@@ -148,6 +166,9 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         image_url: imageUrl?.trim() || null,
         category: category?.trim() || null,
         status: status === "inactive" ? "inactive" : "active",
+        ad_start_date: adStartDate ? sql`${adStartDate}::timestamp` : null,
+        ad_end_date: adEndDate ? sql`${adEndDate}::timestamp` : null,
+        ad_slot: adSlot?.trim() || null,
         created_at: sql`${now}::timestamp`,
         updated_at: sql`${now}::timestamp`,
       })
@@ -170,6 +191,9 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       imageUrl: inserted.image_url || null,
       category: inserted.category || null,
       status: inserted.status,
+      adStartDate: toISO(inserted.ad_start_date),
+      adEndDate: toISO(inserted.ad_end_date),
+      adSlot: inserted.ad_slot || null,
       createdAt: toISO(inserted.created_at) || "",
       updatedAt: toISO(inserted.updated_at) || "",
     });
