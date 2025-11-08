@@ -3,9 +3,15 @@
 -- 文件名: 20251108_add_seed_url_filter.sql
 -- 说明: 为 match_documents 函数添加可选的种子URL过滤参数
 -- 日期: 2025-11-08
+-- 数据库: AI 数据库（使用 AI_DATABASE_URL 连接）
 -- ============================================================
 -- 问题: 当前 match_documents 函数只根据向量相似度检索，没有基于URL的过滤
 -- 修复: 添加可选的 seed_url 参数，支持基于种子URL过滤子页面
+-- 
+-- 执行方式:
+--   psql $AI_DATABASE_URL -f src/migrations/20251108_add_seed_url_filter.sql
+-- 
+-- 注意: 此脚本必须在 AI 数据库中执行（包含 ai_vectors 表的数据库）
 -- ============================================================
 
 BEGIN;
