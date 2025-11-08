@@ -23,12 +23,18 @@ type ConfigCache = {
 
 // 配置缓存（5分钟过期）
 const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5分钟
+type ConfigCache = {
+  model?: string;
+  cacheTtl?: number;
+  aiProvider?: string;
+  lastUpdated: number;
+};
 let configCache: ConfigCache | null = null;
 
 /**
  * 从 Supabase 数据库读取 ai_config 配置
  */
-async function fetchConfigFromDb(): Promise<{ model?: string; cacheTtl?: number } | null> {
+async function fetchConfigFromDb(): Promise<{ model?: string; cacheTtl?: number; aiProvider?: string } | null> {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -37,9 +43,9 @@ async function fetchConfigFromDb(): Promise<{ model?: string; cacheTtl?: number 
   }
 
   try {
-    // 使用 Supabase REST API 读取配置
+    // 使用 Supabase REST API 读取配置（包括 aiProvider）
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/ai_config?key=in.(model,cacheTtl)&select=key,value`,
+      `${SUPABASE_URL}/rest/v1/ai_config?key=in.(model,cacheTtl,aiProvider)&select=key,value`,
       {
         method: "GET",
         headers: {
@@ -56,13 +62,15 @@ async function fetchConfigFromDb(): Promise<{ model?: string; cacheTtl?: number 
     }
 
     const rows = (await res.json()) as Array<{ key: string; value: string }>;
-    const config: { model?: string; cacheTtl?: number } = {};
+    const config: { model?: string; cacheTtl?: number; aiProvider?: string } = {};
 
     for (const row of rows) {
       if (row.key === "model") {
         config.model = row.value;
       } else if (row.key === "cacheTtl") {
         config.cacheTtl = Number(row.value) || undefined;
+      } else if (row.key === "aiProvider") {
+        config.aiProvider = row.value;
       }
     }
 
@@ -92,6 +100,7 @@ export async function getModelFromConfig(): Promise<string> {
     configCache = {
       model: dbConfig.model,
       cacheTtl: dbConfig.cacheTtl,
+      aiProvider: dbConfig.aiProvider,
       lastUpdated: now,
     };
     return dbConfig.model;
@@ -107,6 +116,51 @@ export async function getModelFromConfig(): Promise<string> {
   };
 
   return envModel;
+}
+
+/**
+ * 获取当前配置的 AI 提供商
+ * 优先从数据库读取，如果失败则使用环境变量判断
+ */
+export async function getAiProviderFromConfig(): Promise<"openai" | "openrouter" | null> {
+  // 检查缓存是否有效
+  const now = Date.now();
+  if (configCache && now - configCache.lastUpdated < CONFIG_CACHE_TTL) {
+    if (configCache.aiProvider) {
+      // 数据库配置：online = OpenAI, openrouter = OpenRouter
+      if (configCache.aiProvider === "online") {
+        return "openai";
+      } else if (configCache.aiProvider === "openrouter" || configCache.aiProvider === "openrouter-direct") {
+        return "openrouter";
+      }
+    }
+  }
+
+  // 从数据库读取配置
+  const dbConfig = await fetchConfigFromDb();
+  if (dbConfig?.aiProvider) {
+    // 更新缓存
+    if (!configCache) {
+      configCache = { lastUpdated: now };
+    }
+    configCache.aiProvider = dbConfig.aiProvider;
+    configCache.lastUpdated = now;
+    
+    // 数据库配置：online = OpenAI, openrouter = OpenRouter
+    if (dbConfig.aiProvider === "online") {
+      return "openai";
+    } else if (dbConfig.aiProvider === "openrouter" || dbConfig.aiProvider === "openrouter-direct") {
+      return "openrouter";
+    }
+  }
+
+  // 如果数据库读取失败，使用环境变量判断
+  const baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
+  if (baseUrl.includes("openrouter.ai")) {
+    return "openrouter";
+  }
+  
+  return "openai"; // 默认使用 OpenAI
 }
 
 /**

@@ -23,35 +23,37 @@ export function clearOpenAIClient(): void {
 /**
  * 获取或创建 OpenAI 客户端实例
  * @param config 服务配置
+ * @param aiProvider 从数据库读取的 AI 提供商配置（可选）
  * @returns OpenAI 客户端实例
  */
-export function getOpenAIClient(config: ServiceConfig): OpenAI {
-  let baseUrl =
-    process.env.OPENAI_BASE_URL?.trim() ||
-    process.env.OLLAMA_BASE_URL?.trim() ||
-    "https://api.openai.com/v1";
-
-  // 修复常见的 OpenRouter URL 错误（api/vi -> api/v1）
-  if (baseUrl.includes("openrouter.ai")) {
-    // 确保使用正确的 OpenRouter API 路径
-    if (baseUrl.includes("/api/vi") && !baseUrl.includes("/api/v1")) {
-      baseUrl = baseUrl.replace("/api/vi", "/api/v1");
-      console.warn("[OpenAI Client] 检测到错误的 OpenRouter URL，已自动修复:", {
-        original: process.env.OPENAI_BASE_URL,
-        fixed: baseUrl,
-      });
-    }
-    // 如果 URL 不包含 /api/v1，自动添加
-    if (!baseUrl.includes("/api/v1") && !baseUrl.includes("/api/vi")) {
-      baseUrl = "https://openrouter.ai/api/v1";
-      console.warn("[OpenAI Client] OpenRouter URL 格式不正确，已自动修复为:", baseUrl);
-    }
-  }
-
-  // 检查是否是 OpenRouter
-  const isOpenRouter = baseUrl.includes("openrouter.ai");
+export function getOpenAIClient(config: ServiceConfig, aiProvider?: "openai" | "openrouter" | null): OpenAI {
+  // 优先使用传入的 aiProvider 配置（从数据库读取）
+  // 如果没有传入，则根据环境变量判断
+  let isOpenRouter: boolean;
+  let baseUrl: string;
   
-  // 根据 base URL 选择 API key
+  if (aiProvider === "openrouter") {
+    // 明确使用 OpenRouter
+    isOpenRouter = true;
+    baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://openrouter.ai/api/v1";
+  } else if (aiProvider === "openai") {
+    // 明确使用 OpenAI
+    isOpenRouter = false;
+    baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
+    // 如果环境变量设置为 OpenRouter，但配置要求使用 OpenAI，则强制使用 OpenAI
+    if (baseUrl.includes("openrouter.ai")) {
+      baseUrl = "https://api.openai.com/v1";
+    }
+  } else {
+    // 没有传入配置，使用环境变量判断（向后兼容）
+    baseUrl =
+      process.env.OPENAI_BASE_URL?.trim() ||
+      process.env.OLLAMA_BASE_URL?.trim() ||
+      "https://api.openai.com/v1";
+    isOpenRouter = baseUrl.includes("openrouter.ai");
+  }
+  
+  // 根据提供商选择 API key
   const apiKey = isOpenRouter && config.openrouterApiKey 
     ? config.openrouterApiKey 
     : config.openaiApiKey;
