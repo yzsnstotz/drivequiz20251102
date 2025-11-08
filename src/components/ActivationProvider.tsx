@@ -23,6 +23,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
   const lastCheckTimeRef = useRef<number>(0); // 记录上次检查时间
   const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5分钟
   const isCheckingRef = useRef<boolean>(false); // 防止并发检查
+  const abortControllerRef = useRef<AbortController | null>(null); // 用于取消正在进行的请求
 
   // 检查是否是前台互动页面（需要禁用定期检查的页面）
   const isInteractivePage = useCallback((path: string | null): boolean => {
@@ -102,15 +103,35 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       // 注意：如果请求失败或超时，不会清除激活状态
       // 创建超时控制器，避免长时间等待
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+      abortControllerRef.current = controller;
+      const timeoutId = setTimeout(() => {
+        if (!controller.signal.aborted) {
+          controller.abort();
+        }
+      }, 10000); // 10秒超时
       
-      const response = await fetch(`/api/activation/check?email=${encodeURIComponent(email)}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
+      let response: Response;
+      try {
+        response = await fetch(`/api/activation/check?email=${encodeURIComponent(email)}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+        });
+      } catch (fetchError: any) {
+        // 如果是 abort 错误，静默处理，不清除激活状态
+        if (fetchError.name === 'AbortError' || fetchError.message?.includes('aborted')) {
+          console.log('[ActivationProvider] Request aborted (timeout or component unmount), keeping activation state');
+          clearTimeout(timeoutId);
+          abortControllerRef.current = null;
+          isCheckingRef.current = false;
+          return;
+        }
+        // 其他错误继续抛出
+        throw fetchError;
+      } finally {
+        clearTimeout(timeoutId);
+        abortControllerRef.current = null;
+      }
 
       // 如果HTTP响应状态不是成功状态（200-299），视为API错误，保持当前激活状态
       if (!response.ok) {
@@ -225,7 +246,12 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       }
     } catch (error: any) {
       // 网络错误、超时或其他异常，保持现有激活状态
-      console.error('[ActivationProvider] Failed to check activation status:', error);
+      // 如果是 AbortError，静默处理，不记录错误日志
+      if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+        console.log('[ActivationProvider] Request aborted, keeping activation state');
+      } else {
+        console.error('[ActivationProvider] Failed to check activation status:', error);
+      }
       // 重要：出错时不清除激活状态，避免误判导致用户被强制激活
       // 如果有本地激活状态，继续信任本地状态
       const currentActivated = localStorage.getItem(ACTIVATION_KEY);
@@ -238,8 +264,11 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       }
       isCheckingRef.current = false;
     } finally {
-      // 确保无论如何都释放检查锁
+      // 确保无论如何都释放检查锁和清理超时
       isCheckingRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current = null;
+      }
     }
   }, []);
 
@@ -353,6 +382,11 @@ export default function ActivationProvider({ children }: ActivationProviderProps
 
     // 清理函数
     return () => {
+      // 组件卸载时，取消正在进行的请求
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
       // 不清除定时器，让它在整个应用生命周期运行
     };
   }, []); // 只在组件挂载时执行一次

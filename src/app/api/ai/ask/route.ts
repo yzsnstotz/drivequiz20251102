@@ -869,39 +869,92 @@ export async function POST(req: NextRequest) {
         status,
         errorCode: result.errorCode,
         message: result.message,
+        mode: aiServiceMode,
       });
       
-      // 将上游错误码按标准映射；若缺失则归类 PROVIDER_ERROR
-      const upstreamCode =
-        result.errorCode as
-          | "VALIDATION_FAILED"
-          | "NOT_RELEVANT"
-          | "SAFETY_BLOCKED"
-          | "RATE_LIMIT_EXCEEDED"
-          | "PROVIDER_ERROR"
-          | undefined;
-      
-      // 映射上游错误码到主站标准错误码
-      let code: "VALIDATION_FAILED" | "RATE_LIMIT_EXCEEDED" | "PROVIDER_ERROR" | "AUTH_REQUIRED" | "FORBIDDEN" | "INTERNAL_ERROR";
-      if (upstreamCode === "VALIDATION_FAILED") {
-        code = "VALIDATION_FAILED";
-      } else if (upstreamCode === "RATE_LIMIT_EXCEEDED") {
-        code = "RATE_LIMIT_EXCEEDED";
-      } else if (upstreamCode === "SAFETY_BLOCKED") {
-        code = "FORBIDDEN";
-      } else if (upstreamCode === "NOT_RELEVANT") {
-        code = "PROVIDER_ERROR";
-      } else {
-        code = "PROVIDER_ERROR";
+      // 如果当前使用的是本地AI服务且返回502/503/504错误，尝试回退到在线AI服务
+      if (aiServiceMode === "local" && (status === 502 || status === 503 || status === 504) && AI_SERVICE_URL && AI_SERVICE_TOKEN) {
+        console.warn(`[${requestId}] [STEP 6.1.1] 本地AI服务返回${status}错误，尝试回退到在线AI服务`);
+        const fallbackBaseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+        const fallbackUrl = `${fallbackBaseUrl}/v1/ask`;
+        
+        try {
+          const fallbackController = new AbortController();
+          const fallbackTimeout = 90000; // 90秒
+          const fallbackTimeoutId = setTimeout(() => {
+            fallbackController.abort();
+          }, fallbackTimeout);
+          
+          const fallbackResponse = await fetch(fallbackUrl, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+              "x-zalem-client": "web",
+            },
+            body: JSON.stringify(requestBody),
+            signal: fallbackController.signal,
+          });
+          
+          clearTimeout(fallbackTimeoutId);
+          
+          if (fallbackResponse.ok) {
+            const fallbackText = await fallbackResponse.text();
+            const fallbackResult = JSON.parse(fallbackText) as AiServiceResponse;
+            
+            if (fallbackResult.ok) {
+              console.log(`[${requestId}] [STEP 6.1.2] 回退到在线AI服务成功`);
+              // 使用回退响应继续处理
+              result = fallbackResult;
+              aiServiceMode = "online";
+            } else {
+              // 回退服务也返回错误，继续使用原始错误
+              console.error(`[${requestId}] [STEP 6.1.2] 回退服务也返回错误:`, fallbackResult);
+            }
+          } else {
+            // 回退服务返回非2xx状态码，继续使用原始错误
+            console.error(`[${requestId}] [STEP 6.1.2] 回退服务返回${fallbackResponse.status}错误`);
+          }
+        } catch (fallbackError) {
+          console.error(`[${requestId}] [STEP 6.1.2] 回退请求失败:`, (fallbackError as Error).message);
+          // 回退失败，继续使用原始错误
+        }
       }
       
-      const msg = result.message || `AI service error (${status}).`;
-      console.error(`[${requestId}] [STEP 6.2] 返回错误响应`, {
-        code,
-        message: msg,
-        status: mapStatus(status),
-      });
-      return err(code, msg, mapStatus(status));
+      // 如果回退后仍然失败，返回错误
+      if (!result.ok) {
+        // 将上游错误码按标准映射；若缺失则归类 PROVIDER_ERROR
+        const upstreamCode =
+          result.errorCode as
+            | "VALIDATION_FAILED"
+            | "NOT_RELEVANT"
+            | "SAFETY_BLOCKED"
+            | "RATE_LIMIT_EXCEEDED"
+            | "PROVIDER_ERROR"
+            | undefined;
+        
+        // 映射上游错误码到主站标准错误码
+        let code: "VALIDATION_FAILED" | "RATE_LIMIT_EXCEEDED" | "PROVIDER_ERROR" | "AUTH_REQUIRED" | "FORBIDDEN" | "INTERNAL_ERROR";
+        if (upstreamCode === "VALIDATION_FAILED") {
+          code = "VALIDATION_FAILED";
+        } else if (upstreamCode === "RATE_LIMIT_EXCEEDED") {
+          code = "RATE_LIMIT_EXCEEDED";
+        } else if (upstreamCode === "SAFETY_BLOCKED") {
+          code = "FORBIDDEN";
+        } else if (upstreamCode === "NOT_RELEVANT") {
+          code = "PROVIDER_ERROR";
+        } else {
+          code = "PROVIDER_ERROR";
+        }
+        
+        const msg = result.message || `AI service error (${status}).`;
+        console.error(`[${requestId}] [STEP 6.2] 返回错误响应`, {
+          code,
+          message: msg,
+          status: mapStatus(status),
+        });
+        return err(code, msg, mapStatus(status));
+      }
     }
     
     console.log(`[${requestId}] [STEP 6.3] 上游响应成功`);

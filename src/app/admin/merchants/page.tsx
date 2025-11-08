@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import apiClient from "@/lib/apiClient";
 import { useLanguage } from "@/contexts/LanguageContext";
-import Link from "next/link";
 
 type Merchant = {
   id: number;
@@ -16,6 +15,9 @@ type Merchant = {
   imageUrl: string | null;
   category: string | null;
   status: "active" | "inactive";
+  adStartDate: string | null;
+  adEndDate: string | null;
+  adSlot: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -60,7 +62,18 @@ export default function MerchantsPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
+  const [adStartDate, setAdStartDate] = useState("");
+  const [adEndDate, setAdEndDate] = useState("");
+  const [adSlot, setAdSlot] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // 广告位选项
+  const adSlotOptions = [
+    { value: "home_first_column", label: "首页第一栏" },
+    { value: "home_second_column", label: "首页第二栏" },
+    { value: "splash_screen", label: "启动页广告" },
+    { value: "popup_ad", label: "启动弹窗广告" },
+  ];
 
   const loadData = async () => {
     setLoading(true);
@@ -73,7 +86,20 @@ export default function MerchantsPage() {
         throw new Error(err.message || "加载失败");
       }
       const ok = res as ApiOk<ListResponse>;
-      setItems(ok.data.items || []);
+      // 排序：有广告的商家排在最前面
+      const sortedItems = (ok.data.items || []).sort((a, b) => {
+        const aHasAd = a.adStartDate && a.adEndDate;
+        const bHasAd = b.adStartDate && b.adEndDate;
+        if (aHasAd && !bHasAd) return -1;
+        if (!aHasAd && bHasAd) return 1;
+        // 如果都有广告，按开始时间倒序（最新的在前）
+        if (aHasAd && bHasAd) {
+          return new Date(b.adStartDate!).getTime() - new Date(a.adStartDate!).getTime();
+        }
+        // 都没有广告，按创建时间倒序
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+      setItems(sortedItems);
       setPagination(ok.data.pagination || null);
 
       // 加载商户类型
@@ -96,6 +122,19 @@ export default function MerchantsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 验证广告位：如果设置了广告时间，则必须选择广告位
+    if ((adStartDate || adEndDate) && !adSlot) {
+      alert("设置广告时间后，请选择广告位");
+      return;
+    }
+    
+    // 验证广告位：如果选择了广告位，则必须设置广告时间
+    if (adSlot && (!adStartDate || !adEndDate)) {
+      alert("选择广告位后，必须设置广告开始时间和结束时间");
+      return;
+    }
+    
     setSaving(true);
     try {
       if (editingMerchant) {
@@ -108,6 +147,9 @@ export default function MerchantsPage() {
           imageUrl,
           category,
           status,
+          adStartDate: adStartDate || null,
+          adEndDate: adEndDate || null,
+          adSlot: adSlot || null,
         });
         if (!res.ok) {
           const err = res as ApiErr;
@@ -123,6 +165,9 @@ export default function MerchantsPage() {
           imageUrl,
           category,
           status,
+          adStartDate: adStartDate || null,
+          adEndDate: adEndDate || null,
+          adSlot: adSlot || null,
         });
         if (!res.ok) {
           const err = res as ApiErr;
@@ -149,6 +194,9 @@ export default function MerchantsPage() {
     setImageUrl("");
     setCategory("");
     setStatus("active");
+    setAdStartDate("");
+    setAdEndDate("");
+    setAdSlot("");
   };
 
   const handleEdit = (merchant: Merchant) => {
@@ -161,6 +209,10 @@ export default function MerchantsPage() {
     setImageUrl(merchant.imageUrl || "");
     setCategory(merchant.category || "");
     setStatus(merchant.status);
+    // 将ISO日期时间转换为datetime-local格式 (YYYY-MM-DDTHH:mm)
+    setAdStartDate(merchant.adStartDate ? merchant.adStartDate.slice(0, 16) : "");
+    setAdEndDate(merchant.adEndDate ? merchant.adEndDate.slice(0, 16) : "");
+    setAdSlot(merchant.adSlot || "");
     setShowCreateForm(true);
   };
 
@@ -290,6 +342,52 @@ export default function MerchantsPage() {
               <option value="inactive">{t("merchants.inactive")}</option>
             </select>
           </div>
+          <div className="border-t pt-4 mt-4 bg-blue-50 p-4 rounded-lg">
+            <h3 className="text-sm font-semibold mb-3 text-gray-800 flex items-center gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+              广告设置
+            </h3>
+            <p className="text-xs text-gray-600 mb-3">设置广告时间后，商家将出现在首页对应的广告位中</p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1 text-gray-700">广告位 *</label>
+              <select
+                value={adSlot}
+                onChange={(e) => setAdSlot(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              >
+                <option value="">请选择广告位</option>
+                {adSlotOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">选择广告在首页显示的位置</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700">广告开始时间 *</label>
+                <input
+                  type="datetime-local"
+                  value={adStartDate}
+                  onChange={(e) => setAdStartDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">广告开始显示的时间</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700">广告结束时间 *</label>
+                <input
+                  type="datetime-local"
+                  value={adEndDate}
+                  onChange={(e) => setAdEndDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">广告停止显示的时间</p>
+              </div>
+            </div>
+          </div>
           <div className="flex gap-2">
             <button
               type="submit"
@@ -323,6 +421,7 @@ export default function MerchantsPage() {
               <th className="px-4 py-2 text-left text-sm font-medium">{t("merchants.phone")}</th>
               <th className="px-4 py-2 text-left text-sm font-medium">{t("merchants.email")}</th>
               <th className="px-4 py-2 text-left text-sm font-medium">{t("merchants.status")}</th>
+              <th className="px-4 py-2 text-left text-sm font-medium">广告状态</th>
               <th className="px-4 py-2 text-left text-sm font-medium">{t("common.actions")}</th>
             </tr>
           </thead>
@@ -352,6 +451,64 @@ export default function MerchantsPage() {
                   </span>
                 </td>
                 <td className="px-4 py-2">
+                  {item.adStartDate && item.adEndDate ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                          广告中
+                        </span>
+                        {item.adSlot && (
+                          <span className="text-xs text-gray-600 font-medium">
+                            {adSlotOptions.find(opt => opt.value === item.adSlot)?.label || item.adSlot}
+                          </span>
+                        )}
+                      </div>
+                      {/* 广告进度条 */}
+                      {(() => {
+                        const now = new Date().getTime();
+                        const start = new Date(item.adStartDate).getTime();
+                        const end = new Date(item.adEndDate).getTime();
+                        const total = end - start;
+                        const elapsed = now - start;
+                        const progress = Math.max(0, Math.min(100, (elapsed / total) * 100));
+                        const remaining = 100 - progress;
+                        // 计算剩余板块数（总共10个板块）
+                        const totalBlocks = 10;
+                        const remainingBlocks = Math.ceil((remaining / 100) * totalBlocks);
+                        const filledBlocks = totalBlocks - remainingBlocks;
+                        
+                        return (
+                          <div className="flex gap-0.5 mt-1">
+                            {Array.from({ length: totalBlocks }).map((_, i) => (
+                              <div
+                                key={i}
+                                className={`h-2 w-2 rounded ${
+                                  i < filledBlocks
+                                    ? progress < 30
+                                      ? "bg-green-500"
+                                      : progress < 70
+                                      ? "bg-yellow-500"
+                                      : "bg-red-500"
+                                    : "bg-gray-200"
+                                }`}
+                                title={`进度: ${progress.toFixed(1)}%`}
+                              />
+                            ))}
+                          </div>
+                        );
+                      })()}
+                      <div className="text-xs text-gray-500">
+                        <div>开始: {new Date(item.adStartDate).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                        <div>结束: {new Date(item.adEndDate).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-500">
+                      无广告
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-2">
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleEdit(item)}
@@ -376,27 +533,6 @@ export default function MerchantsPage() {
         )}
       </div>
 
-      {/* 商户类型管理 */}
-      <div className="mt-6 bg-white rounded-lg shadow-sm p-4">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-medium">商户类型管理</h3>
-          <Link href="/admin/merchant-categories" className="text-blue-600 hover:text-blue-800">
-            管理类型
-          </Link>
-        </div>
-        <div className="space-y-2">
-          {categories.length === 0 ? (
-            <div className="text-gray-500 text-sm">暂无类型，请先创建类型</div>
-          ) : (
-            categories.map((cat) => (
-              <div key={cat.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                <span>{cat.name}</span>
-                <span className="text-xs text-gray-500">排序: {cat.displayOrder}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }

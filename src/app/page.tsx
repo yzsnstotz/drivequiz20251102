@@ -19,6 +19,9 @@ import {
   Swords,
 } from "lucide-react";
 import AIPage from "@/components/AIPage";
+import MerchantAdCarousel from "@/components/MerchantAdCarousel";
+import SplashScreenAd from "@/components/SplashScreenAd";
+import PopupAd from "@/components/PopupAd";
 
 const welcomeData = [
   {
@@ -55,108 +58,11 @@ const welcomeData = [
   },
 ];
 
-type Video = {
-  id: number;
+type AdSlotConfig = {
+  slotKey: string;
   title: string;
   description: string | null;
-  url: string;
-  thumbnail: string | null;
-  category: "basic" | "advanced";
-  displayOrder: number;
 };
-
-function VideosSection() {
-  const [loading, setLoading] = useState(true);
-  const [basicVideos, setBasicVideos] = useState<Video[]>([]);
-  const [advancedVideos, setAdvancedVideos] = useState<Video[]>([]);
-
-  useEffect(() => {
-    loadVideos();
-  }, []);
-
-  const loadVideos = async () => {
-    try {
-      setLoading(true);
-      
-      // 加载基础视频
-      const basicRes = await fetch('/api/videos?category=basic');
-      if (basicRes.ok) {
-        const basicData = await basicRes.json();
-        if (basicData.ok) {
-          setBasicVideos(basicData.data.items || []);
-        }
-      }
-
-      // 加载进阶视频
-      const advancedRes = await fetch('/api/videos?category=advanced');
-      if (advancedRes.ok) {
-        const advancedData = await advancedRes.json();
-        if (advancedData.ok) {
-          setAdvancedVideos(advancedData.data.items || []);
-        }
-      }
-    } catch (error) {
-      console.error('加载视频失败:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const renderVideoCard = (video: Video) => (
-    <div key={video.id} className="flex-none w-[280px]">
-      <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden mb-2">
-        <iframe
-          className="w-full h-full"
-          src={video.url}
-          title={video.title}
-          frameBorder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        ></iframe>
-      </div>
-      <h3 className="font-medium text-gray-900">{video.title}</h3>
-      {video.description && (
-        <p className="text-sm text-gray-600 mt-1">{video.description}</p>
-      )}
-    </div>
-  );
-
-  return (
-    <>
-      {/* 本免许学试 Videos */}
-      {basicVideos.length > 0 && (
-        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-900">本免许学试</h2>
-            <p className="text-gray-600 text-sm mt-1">精选视频教程</p>
-          </div>
-          <div className="flex overflow-x-auto space-x-4 pb-4">
-            {basicVideos.map(renderVideoCard)}
-          </div>
-        </div>
-      )}
-
-      {/* 二种免许学试 Videos */}
-      {advancedVideos.length > 0 && (
-        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-900">二种免许学试</h2>
-            <p className="text-gray-600 text-sm mt-1">进阶视频教程</p>
-          </div>
-          <div className="flex overflow-x-auto space-x-4 pb-4">
-            {advancedVideos.map(renderVideoCard)}
-          </div>
-        </div>
-      )}
-
-      {!loading && basicVideos.length === 0 && advancedVideos.length === 0 && (
-        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm text-center text-gray-500">
-          暂无视频
-        </div>
-      )}
-    </>
-  );
-}
 
 export default function HomePage() {
   const [showAI, setShowAI] = useState(false);
@@ -164,6 +70,114 @@ export default function HomePage() {
   const [currentWelcomeIndex, setCurrentWelcomeIndex] = useState(0);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
   const welcomeScrollRef = useRef<HTMLDivElement>(null);
+  const [adSlots, setAdSlots] = useState<AdSlotConfig[]>([]);
+  const [showSplash, setShowSplash] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const [splashDuration, setSplashDuration] = useState(3);
+
+  useEffect(() => {
+    // 加载广告栏配置
+    const loadAdSlots = async () => {
+      try {
+        console.log("[广告加载] 开始加载广告栏配置...");
+        const res = await fetch("/api/ad-slots");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok) {
+            const items = data.data.items || [];
+            console.log("[广告加载] 广告栏配置加载成功:", items);
+            setAdSlots(items);
+            
+            // 检查启动页广告 - 只在首次访问时显示
+            const checkSplashAd = async () => {
+              // 检查是否已经显示过启动页广告
+              const hasShownSplash = localStorage.getItem("splash_ad_shown");
+              if (hasShownSplash === "true") {
+                console.log("[广告加载] 启动页广告已显示过，跳过");
+                return false; // 已显示过，不需要检查弹窗
+              }
+
+              const splashConfig = items.find((item: AdSlotConfig & { splashDuration?: number }) => item.slotKey === "splash_screen");
+              console.log("[广告加载] 启动页广告配置:", splashConfig);
+              if (splashConfig) {
+                if (splashConfig.splashDuration) {
+                  setSplashDuration(splashConfig.splashDuration);
+                }
+                try {
+                  console.log("[广告加载] 检查启动页广告数据...");
+                  const res = await fetch("/api/merchant-ads?adSlot=splash_screen");
+                  if (res.ok) {
+                    const data = await res.json();
+                    console.log("[广告加载] 启动页广告数据响应:", data);
+                    if (data.ok && data.data.items && data.data.items.length > 0) {
+                      console.log("[广告加载] 找到启动页广告，数量:", data.data.items.length);
+                      setShowSplash(true);
+                      // 标记为已显示
+                      localStorage.setItem("splash_ad_shown", "true");
+                      return true; // 有启动页广告，不需要检查弹窗
+                    } else {
+                      console.log("[广告加载] 没有启动页广告数据");
+                    }
+                  } else {
+                    console.error("[广告加载] 启动页广告请求失败:", res.status);
+                  }
+                } catch (error) {
+                  console.error("[广告加载] 检查启动页广告失败:", error);
+                }
+              } else {
+                console.log("[广告加载] 没有找到启动页广告配置");
+              }
+              return false; // 没有启动页广告，需要检查弹窗
+            };
+            
+            // 检查弹窗广告
+            const checkPopupAd = async () => {
+              const popupConfig = items.find((item: AdSlotConfig) => item.slotKey === "popup_ad");
+              console.log("[广告加载] 弹窗广告配置:", popupConfig);
+              if (popupConfig) {
+                try {
+                  console.log("[广告加载] 检查弹窗广告数据...");
+                  const res = await fetch("/api/merchant-ads?adSlot=popup_ad");
+                  if (res.ok) {
+                    const data = await res.json();
+                    console.log("[广告加载] 弹窗广告数据响应:", data);
+                    if (data.ok && data.data.items && data.data.items.length > 0) {
+                      console.log("[广告加载] 找到弹窗广告，数量:", data.data.items.length);
+                      // 延迟显示弹窗
+                      setTimeout(() => {
+                        setShowPopup(true);
+                      }, 500);
+                    } else {
+                      console.log("[广告加载] 没有弹窗广告数据");
+                    }
+                  } else {
+                    console.error("[广告加载] 弹窗广告请求失败:", res.status);
+                  }
+                } catch (error) {
+                  console.error("[广告加载] 检查弹窗广告失败:", error);
+                }
+              } else {
+                console.log("[广告加载] 没有找到弹窗广告配置");
+              }
+            };
+            
+            // 先检查启动页广告，如果没有再检查弹窗广告
+            const hasSplash = await checkSplashAd();
+            if (!hasSplash) {
+              checkPopupAd();
+            }
+          } else {
+            console.error("[广告加载] 广告栏配置响应格式错误:", data);
+          }
+        } else {
+          console.error("[广告加载] 广告栏配置请求失败:", res.status);
+        }
+      } catch (error) {
+        console.error("[广告加载] 加载广告栏配置失败:", error);
+      }
+    };
+    loadAdSlots();
+  }, []);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
@@ -213,8 +227,44 @@ export default function HomePage() {
     return <AIPage onBack={() => setShowAI(false)} />;
   }
 
+  // 如果显示启动页广告，只渲染启动页广告
+  if (showSplash) {
+    return (
+      <SplashScreenAd
+        duration={splashDuration}
+        onClose={() => {
+          setShowSplash(false);
+          // 启动页关闭后，检查是否需要显示弹窗
+          const checkPopupAd = async () => {
+            const popupConfig = adSlots.find((item: AdSlotConfig) => item.slotKey === "popup_ad");
+            if (popupConfig) {
+              try {
+                const res = await fetch("/api/merchant-ads?adSlot=popup_ad");
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.ok && data.data.items && data.data.items.length > 0) {
+                    setTimeout(() => {
+                      setShowPopup(true);
+                    }, 500);
+                  }
+                }
+              } catch (error) {
+                console.error("检查弹窗广告失败:", error);
+              }
+            }
+          };
+          checkPopupAd();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* 启动弹窗广告 */}
+      {showPopup && (
+        <PopupAd onClose={() => setShowPopup(false)} />
+      )}
       {/* Navigation Bar */}
       <nav className="bg-white border-b">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
@@ -369,7 +419,20 @@ export default function HomePage() {
           </button>
         </div>
 
-        <VideosSection />
+        {/* 动态加载广告栏 - 只显示首页banner广告位，排除启动页和弹窗广告 */}
+        {adSlots
+          .filter((slot) => 
+            slot.slotKey === "home_first_column" || 
+            slot.slotKey === "home_second_column"
+          )
+          .map((slot) => (
+            <MerchantAdCarousel
+              key={slot.slotKey}
+              adSlot={slot.slotKey}
+              title={slot.title}
+              description={slot.description || undefined}
+            />
+          ))}
       </main>
     </div>
   );
