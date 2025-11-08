@@ -110,11 +110,89 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
       return handler(req, ...rest);
     } catch (error) {
       console.error("[AdminAuth] Database error:", error);
+      
+      // 提供更详细的错误信息
+      let errorCode = "DATABASE_ERROR";
+      let message = "Failed to verify admin token";
+      let details: Record<string, unknown> = {};
+
+      if (error instanceof Error) {
+        const errorMessage = error.message;
+        const errorStack = error.stack;
+
+        // 检查是否是表不存在错误
+        if (errorMessage.includes("relation") && errorMessage.includes("does not exist")) {
+          errorCode = "DATABASE_TABLE_NOT_FOUND";
+          message = "admins 表不存在，请运行数据库迁移脚本";
+          details = {
+            hint: "运行迁移脚本: npm run db:migrate 或 tsx scripts/init-cloud-database.ts",
+            table: "admins",
+          };
+        }
+        // 检查是否是连接错误
+        else if (errorMessage.includes("connection") || errorMessage.includes("Connection") || 
+                 errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND")) {
+          errorCode = "DATABASE_CONNECTION_ERROR";
+          message = "数据库连接失败，请检查数据库配置";
+          details = {
+            hint: "检查 DATABASE_URL 环境变量是否正确配置",
+            hasDatabaseUrl: !!process.env.DATABASE_URL,
+            hasPostgresUrl: !!process.env.POSTGRES_URL,
+          };
+        }
+        // 检查是否是认证错误
+        else if (errorMessage.includes("password") || errorMessage.includes("authentication")) {
+          errorCode = "DATABASE_AUTH_ERROR";
+          message = "数据库认证失败，请检查密码";
+          details = {
+            hint: "检查 DATABASE_URL 中的密码是否正确",
+          };
+        }
+        // 检查是否是SSL错误
+        else if (errorMessage.includes("SSL") || errorMessage.includes("ssl")) {
+          errorCode = "DATABASE_SSL_ERROR";
+          message = "数据库 SSL 连接错误";
+          details = {
+            hint: "Supabase 数据库需要使用 SSL 连接，请检查连接字符串是否包含 sslmode=require",
+          };
+        }
+        // 检查是否是超时错误
+        else if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
+          errorCode = "DATABASE_TIMEOUT";
+          message = "数据库查询超时";
+          details = {
+            hint: "数据库可能负载过高或网络连接不稳定",
+          };
+        }
+        // 其他数据库错误
+        else {
+          details = {
+            errorMessage,
+            errorStack: process.env.NODE_ENV === "development" ? errorStack : undefined,
+          };
+        }
+      } else {
+        details = {
+          error: String(error),
+        };
+      }
+
+      // 在生产环境记录详细错误（但不返回给客户端）
+      if (process.env.NODE_ENV === "production") {
+        console.error("[AdminAuth] Full error details:", {
+          errorCode,
+          message,
+          details,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       return NextResponse.json(
         { 
           ok: false, 
-          errorCode: "DATABASE_ERROR", 
-          message: "Failed to verify admin token" 
+          errorCode, 
+          message,
+          ...(process.env.NODE_ENV === "development" ? { details } : {}),
         },
         { status: 500 }
       );
