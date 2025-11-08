@@ -246,27 +246,32 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try {
       const askModule = await import("./routes/ask.js");
       await app.register(askModule.default, { prefix: "/v1" });
+      console.log("[ROUTE] Registered /v1/ask route");
     } catch (err) {
-      // Silent failure
+      console.error("[ROUTE] Failed to register /v1/ask route:", err);
+      throw err;
     }
 
     // 路由注册：/v1/admin/daily-summary（管理摘要）
     try {
       const dailySummaryModule = await import("./routes/admin/daily-summary.js");
       await app.register(dailySummaryModule.default);
+      console.log("[ROUTE] Registered /v1/admin/daily-summary route");
     } catch (err) {
-      // Silent failure
+      console.error("[ROUTE] Failed to register /v1/admin/daily-summary route:", err);
     }
 
     // 路由注册：/v1/admin/rag/ingest（RAG 向量化）
     try {
       const ragIngestModule = await import("./routes/admin/ragIngest.js");
       await app.register(ragIngestModule.default);
+      console.log("[ROUTE] Registered /v1/admin/rag/ingest route");
     } catch (err) {
-      // Silent failure
+      console.error("[ROUTE] Failed to register /v1/admin/rag/ingest route:", err);
     }
   } catch (e) {
-    // Silent failure
+    console.error("[ROUTE] Failed to register routes:", e);
+    throw e;
   }
 }
 
@@ -294,8 +299,10 @@ async function start() {
   // --- 注册主路由（必须在 listen 之前） ---
   try {
     await registerRoutes(app);
+    console.log("[STARTUP] All routes registered successfully");
   } catch (e) {
-    // Silent failure
+    console.error("[STARTUP] Failed to register routes:", e);
+    process.exit(1);
   }
 
   // --- 启动 ---
