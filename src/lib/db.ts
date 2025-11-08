@@ -97,6 +97,9 @@ interface MerchantTable {
   image_url: string | null;
   category: string | null;
   status: "active" | "inactive";
+  ad_start_date: Date | null;
+  ad_end_date: Date | null;
+  ad_slot: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -118,7 +121,21 @@ interface VideoTable {
 }
 
 // ------------------------------------------------------------
-// 8️⃣ contact_info 表结构定义
+// 8️⃣ ad_slots_config 表结构定义
+// ------------------------------------------------------------
+interface AdSlotsConfigTable {
+  id: Generated<number>;
+  slot_key: string;
+  title: string;
+  description: string | null;
+  splash_duration: number;
+  is_enabled: boolean;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 9️⃣ contact_info 表结构定义
 // ------------------------------------------------------------
 interface ContactInfoTable {
   id: Generated<number>;

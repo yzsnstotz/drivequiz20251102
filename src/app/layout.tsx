@@ -1,17 +1,18 @@
 import React from "react";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import BottomNavigation from "./BottomNavigation";
 
 export const metadata: Metadata = {
   title: "ZALEM - 驾照考试学习平台",
   description: "一个帮助您准备驾照考试的学习平台",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 import ActivationProvider from "../components/ActivationProvider";
