@@ -351,6 +351,8 @@ export async function POST(request: NextRequest) {
       const userToken = `act-${Math.abs(tokenHash).toString(16).padStart(8, "0")}-${inserted.id.toString(16).padStart(8, "0")}`;
 
       // 创建响应，同时设置HTTP cookie（确保移动端也能获取token）
+      const userIdValue = userRecord.userid || null;
+
       const response = NextResponse.json(
         {
           ok: true,
@@ -360,6 +362,7 @@ export async function POST(request: NextRequest) {
             email,
             expiresAt,
             userToken, // 返回用户token，前端存储用于后续请求
+            userid: userIdValue,
           },
         },
         { status: 200 }
@@ -380,6 +383,18 @@ export async function POST(request: NextRequest) {
         httpOnly: false, // 设置为false，允许前端JavaScript读取（兼容移动端）
         secure: isSecure, // 只在HTTPS环境下启用secure
       });
+
+      if (userIdValue) {
+        response.cookies.set("USER_ID", userIdValue, {
+          expires: cookieExpires,
+          path: "/",
+          sameSite: "lax",
+          httpOnly: false,
+          secure: isSecure,
+        });
+      } else {
+        response.cookies.delete("USER_ID");
+      }
       
       // 调试日志
       console.log("[Activate API] Cookie set", {

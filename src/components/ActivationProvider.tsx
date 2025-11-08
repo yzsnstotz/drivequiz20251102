@@ -8,6 +8,7 @@ import SuccessModal from './SuccessModal';
 // 激活成功后保存到 localStorage 的 key
 const ACTIVATION_KEY = 'drive-quiz-activated';
 const ACTIVATION_EMAIL_KEY = 'drive-quiz-email'; // 保存用户邮箱用于验证
+const USER_ID_KEY = 'drive-quiz-user-id';
 
 interface ActivationProviderProps {
   children: ReactNode;
@@ -24,6 +25,58 @@ export default function ActivationProvider({ children }: ActivationProviderProps
   const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5分钟
   const isCheckingRef = useRef<boolean>(false); // 防止并发检查
   const abortControllerRef = useRef<AbortController | null>(null); // 用于取消正在进行的请求
+
+  const storeUserId = useCallback((userId: string | null) => {
+    if (typeof window === 'undefined') return;
+    if (userId && userId.trim()) {
+      localStorage.setItem(USER_ID_KEY, userId);
+      try {
+        const expires = new Date();
+        expires.setTime(expires.getTime() + 30 * 24 * 60 * 60 * 1000);
+        document.cookie = `USER_ID=${encodeURIComponent(userId)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
+      } catch (error) {
+        console.warn('[ActivationProvider] Failed to set USER_ID cookie:', error);
+      }
+    } else {
+      localStorage.removeItem(USER_ID_KEY);
+      try {
+        document.cookie = `USER_ID=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+      } catch (error) {
+        console.warn('[ActivationProvider] Failed to clear USER_ID cookie:', error);
+      }
+    }
+  }, []);
+
+  const ensureUserId = useCallback(async () => {
+    if (typeof window === 'undefined') return null;
+    const existing = localStorage.getItem(USER_ID_KEY);
+    if (existing && existing.trim()) {
+      return existing;
+    }
+    const token = localStorage.getItem('USER_TOKEN');
+    if (!token) return null;
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        return null;
+      }
+      const result = await res.json();
+      const userId = result?.data?.userid;
+      if (userId && typeof userId === 'string') {
+        storeUserId(userId);
+        return userId;
+      }
+    } catch (error) {
+      console.warn('[ActivationProvider] Failed to ensure USER_ID:', error);
+    }
+    return null;
+  }, [storeUserId]);
 
   // 检查是否是前台互动页面（需要禁用定期检查的页面）
   const isInteractivePage = useCallback((path: string | null): boolean => {
@@ -95,6 +148,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       if (!email) {
         setIsActivated(false);
         setShowModal(true);
+        storeUserId(null);
         isCheckingRef.current = false;
         return;
       }
@@ -216,6 +270,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
             });
             localStorage.removeItem(ACTIVATION_KEY);
             localStorage.removeItem(ACTIVATION_EMAIL_KEY);
+            storeUserId(null);
             setIsActivated(false);
             setShowModal(true);
           } else {
@@ -425,6 +480,12 @@ export default function ActivationProvider({ children }: ActivationProviderProps
     }
   }, [pathname]);
 
+  useEffect(() => {
+    if (isActivated) {
+      ensureUserId().catch(() => {});
+    }
+  }, [isActivated, ensureUserId]);
+
   const handleActivationSubmit = async (email: string, activationCode: string) => {
     try {
       const userAgent = navigator.userAgent;
@@ -452,6 +513,10 @@ export default function ActivationProvider({ children }: ActivationProviderProps
           const expires = new Date();
           expires.setTime(expires.getTime() + 30 * 24 * 60 * 60 * 1000);
           document.cookie = `USER_TOKEN=${encodeURIComponent(token)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
+        }
+
+        if (result.data?.userid) {
+          storeUserId(result.data.userid);
         }
         
         // 保存有效期信息用于显示

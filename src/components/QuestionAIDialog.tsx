@@ -5,6 +5,30 @@ import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { apiFetch } from "@/lib/apiClient.front";
 
+const getStoredUserId = (): string | null => {
+  if (typeof window === "undefined") return null;
+  const cached = localStorage.getItem("USER_ID");
+  if (cached && cached.trim()) {
+    return cached.trim();
+  }
+  try {
+    const cookies = document.cookie.split(";");
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split("=");
+      if (name === "USER_ID" && value) {
+        const decoded = decodeURIComponent(value);
+        if (decoded.trim()) {
+          localStorage.setItem("USER_ID", decoded.trim());
+          return decoded.trim();
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[QuestionAIDialog] Failed to read USER_ID from cookies:", error);
+  }
+  return null;
+};
+
 interface Question {
   id: number;
   type: "single" | "multiple" | "truefalse";
