@@ -607,6 +607,15 @@ export async function POST(req: NextRequest) {
       payload: {
         ...forwardPayload,
         userId: forwardPayload.userId ? "***" : null,
+        // 详细记录 messages 字段
+        hasMessages: !!forwardPayload.messages,
+        messageCount: Array.isArray(forwardPayload.messages) ? forwardPayload.messages.length : 0,
+        messagesPreview: Array.isArray(forwardPayload.messages) 
+          ? forwardPayload.messages.slice(-2).map(m => ({
+              role: (m as any)?.role,
+              contentLength: (m as any)?.content?.length || 0,
+            }))
+          : [],
       },
     });
     
