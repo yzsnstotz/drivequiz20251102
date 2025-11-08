@@ -135,6 +135,69 @@ interface AdSlotsConfigTable {
 }
 
 // ------------------------------------------------------------
+// 8️⃣1️⃣ ad_slots 表结构定义
+// ------------------------------------------------------------
+interface AdSlotsTable {
+  id: Generated<number>;
+  position: string;
+  name: string;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description: string | null;
+  width: number | null;
+  height: number | null;
+  format: string | null;
+  status: "active" | "inactive" | "archived";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣2️⃣ ad_contents 表结构定义
+// ------------------------------------------------------------
+interface AdContentsTable {
+  id: Generated<number>;
+  slot_id: number;
+  title: string;
+  title_ja: string | null;
+  title_zh: string | null;
+  title_en: string | null;
+  description: string | null;
+  description_ja: string | null;
+  description_zh: string | null;
+  description_en: string | null;
+  image_url: string | null;
+  video_url: string | null;
+  link_url: string | null;
+  start_date: Date | null;
+  end_date: Date | null;
+  priority: number | null;
+  weight: number | null;
+  impression_count: number | null;
+  click_count: number | null;
+  metadata: any | null; // JSONB
+  status: "draft" | "active" | "paused" | "archived";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣3️⃣ ad_logs 表结构定义
+// ------------------------------------------------------------
+interface AdLogsTable {
+  id: Generated<number>;
+  ad_content_id: number;
+  user_id: number | null;
+  log_type: "impression" | "click" | "conversion";
+  ip_address: string | null;
+  user_agent: string | null;
+  client_type: "web" | "mobile" | "api" | "desktop" | "other" | null;
+  metadata: any | null; // JSONB
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
 // 9️⃣ contact_info 表结构定义
 // ------------------------------------------------------------
 interface ContactInfoTable {
@@ -223,6 +286,9 @@ interface Database {
   merchants: MerchantTable;
   videos: VideoTable;
   ad_slots_config: AdSlotsConfigTable;
+  ad_slots: AdSlotsTable;
+  ad_contents: AdContentsTable;
+  ad_logs: AdLogsTable;
   contact_info: ContactInfoTable;
   terms_of_service: TermsOfServiceTable;
   ai_logs: AiLogsTable;
