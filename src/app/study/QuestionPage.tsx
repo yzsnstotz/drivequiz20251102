@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Bot } from 'lucide-react';
+import QuestionAIDialog from '@/components/QuestionAIDialog';
 
 interface Question {
   id: number;
@@ -31,6 +32,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set());
+  const [showAIDialog, setShowAIDialog] = useState(false);
 
   useEffect(() => {
     const loadQuestions = async () => {
@@ -247,10 +249,20 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
           <span className="text-sm text-gray-600">
             题目 {currentQuestionIndex + 1}/{questions.length}
           </span>
-          <span className="text-sm font-medium text-blue-600">
-            {currentQuestion.type === 'single' ? '单选题' : 
-             currentQuestion.type === 'multiple' ? '多选题' : '判断题'}
-          </span>
+          <div className="flex items-center space-x-3">
+            <span className="text-sm font-medium text-blue-600">
+              {currentQuestion.type === 'single' ? '单选题' : 
+               currentQuestion.type === 'multiple' ? '多选题' : '判断题'}
+            </span>
+            <button
+              onClick={() => setShowAIDialog(true)}
+              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+              aria-label="打开AI助手"
+            >
+              <Bot className="h-4 w-4" />
+              <span>AI助手</span>
+            </button>
+          </div>
         </div>
 
         <div className="mb-6">
@@ -353,8 +365,17 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
             )}
           </div>
         )}
-        </div>
       </div>
+
+      {/* AI助手对话框 */}
+      {currentQuestion && (
+        <QuestionAIDialog
+          question={currentQuestion}
+          isOpen={showAIDialog}
+          onClose={() => setShowAIDialog(false)}
+        />
+      )}
+    </div>
   );
 }
 
