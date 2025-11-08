@@ -384,8 +384,8 @@ export async function POST(req: NextRequest) {
   try {
     // 0) 选择 AI 服务（本地或在线）
     console.log(`[${requestId}] [STEP 0] 开始选择AI服务`);
-    let selectedAiServiceUrl: string;
-    let selectedAiServiceToken: string;
+    let selectedAiServiceUrl: string | undefined;
+    let selectedAiServiceToken: string | undefined;
     let aiServiceMode: "local" | "online" | "openrouter" | "openrouter-direct";
     
     // 记录环境变量状态
@@ -926,22 +926,23 @@ export async function POST(req: NextRequest) {
           aiProvider: "openrouter-direct",
         });
       } catch (error) {
-        const err = error as Error;
+        const errorObj = error as Error;
         console.error(`[${requestId}] [STEP 5.9] OpenRouter API 调用失败:`, {
-          error: err.message,
-          name: err.name,
-          stack: err.stack,
+          error: errorObj.message,
+          name: errorObj.name,
+          stack: errorObj.stack,
         });
         
-        if (err.name === "AbortError" || err.message.includes("timeout")) {
+        if (errorObj.name === "AbortError" || errorObj.message.includes("timeout")) {
           return err("PROVIDER_ERROR", "OpenRouter API request timeout (30s)", 504);
         }
         
-        return err("PROVIDER_ERROR", `Failed to call OpenRouter API: ${err.message}`, 502);
+        return err("PROVIDER_ERROR", `Failed to call OpenRouter API: ${errorObj.message}`, 502);
       }
     }
     
     // 确保 selectedAiServiceUrl 不重复 /v1 路径（仅在非直连模式下）
+    // 注意：openrouter-direct 模式已经在上面处理并返回了，不会到达这里
     if (!selectedAiServiceUrl || !selectedAiServiceToken) {
       console.error(`[${requestId}] [STEP 5] AI服务配置不完整`, {
         hasUrl: !!selectedAiServiceUrl,
@@ -1388,20 +1389,24 @@ export async function POST(req: NextRequest) {
       const costEstUsd = result.data.costEstimate?.approxUsd ?? null;
       
       // 异步写入 ai_logs 表（不阻塞响应）
-      void writeAiLogToDatabase({
-        userId: forwardedUserId,
-        question,
-        answer: result.data.answer,
-        locale,
-        model: result.data.model || "unknown",
-        ragHits,
-        safetyFlag: result.data.safetyFlag || "ok",
-        costEstUsd,
-        sources: result.data.sources,
-        createdAtIso: new Date().toISOString(),
-      }).catch((error) => {
-        console.error(`[${requestId}] [STEP 7.1] 写入 ai_logs 失败:`, (error as Error).message);
-      });
+      // 类型断言：已经检查了 result.data.answer 存在
+      const answer = result.data.answer;
+      if (answer) {
+        void writeAiLogToDatabase({
+          userId: forwardedUserId,
+          question,
+          answer: answer,
+          locale,
+          model: result.data.model || "unknown",
+          ragHits,
+          safetyFlag: result.data.safetyFlag || "ok",
+          costEstUsd,
+          sources: result.data.sources,
+          createdAtIso: new Date().toISOString(),
+        }).catch((error) => {
+          console.error(`[${requestId}] [STEP 7.1] 写入 ai_logs 失败:`, (error as Error).message);
+        });
+      }
     }
     
     // 8) 成功：返回结果，包含AI类型信息

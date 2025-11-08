@@ -156,9 +156,11 @@ export default function QuestionAIDialog({
       });
 
       if (result.ok && result.data?.answer) {
+        // TypeScript 类型守卫：确保 answer 存在
+        const answer = result.data.answer;
         const newMessage: Message = {
           role: "assistant",
-          content: result.data.answer,
+          content: answer,
           metadata: {
             aiProvider: result.data.cached ? "cached" : (result.data.aiProvider || "online"),
             model: result.data.model,
