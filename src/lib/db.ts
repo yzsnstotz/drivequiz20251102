@@ -222,6 +222,7 @@ interface Database {
   merchant_categories: MerchantCategoryTable;
   merchants: MerchantTable;
   videos: VideoTable;
+  ad_slots_config: AdSlotsConfigTable;
   contact_info: ContactInfoTable;
   terms_of_service: TermsOfServiceTable;
   ai_logs: AiLogsTable;
