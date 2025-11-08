@@ -13,7 +13,8 @@ interface ChatMessage {
   createdAt: number; // epoch ms
   // AI回复的元数据（仅AI消息有）
   metadata?: {
-    aiProvider?: "online" | "local" | "openrouter"; // AI服务提供商
+    aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct"; // AI服务提供商
+    model?: string; // 模型名称
     sources?: Array<{
       title: string;
       url: string;
@@ -52,7 +53,7 @@ interface AiAskResponse {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
-    aiProvider?: "online" | "local" | "openrouter"; // AI服务提供商
+    aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct"; // AI服务提供商
   };
   errorCode?: string;
   message?: string;
@@ -281,10 +282,11 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         return;
       }
 
-      // 处理响应数据：/api/ai/ask 返回 { ok, data: { answer, sources?, aiProvider?, ... } }
+      // 处理响应数据：/api/ai/ask 返回 { ok, data: { answer, sources?, aiProvider?, model?, ... } }
       const answer = payload.data?.answer ?? "";
       const sources = payload.data?.sources;
       const aiProvider = payload.data?.aiProvider;
+      const model = payload.data?.model;
       
       // 构建回复内容（不再在内容中附加来源，而是在metadata中保存）
       const content = answer || "（空响应）";
@@ -297,6 +299,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         metadata: {
           aiProvider: aiProvider || "online", // 默认为online
           sources: sources || [],
+          model: model, // 保存模型名称
         },
       });
     } catch (err) {
@@ -395,16 +398,33 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                           <>
                             <span className="w-2 h-2 rounded-full bg-green-500"></span>
                             <span>本地AI (Ollama)</span>
+                            {m.metadata.model && (
+                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            )}
                           </>
                         ) : m.metadata.aiProvider === "openrouter" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                            <span>OpenRouter</span>
+                            <span>OpenRouter（通过Render）</span>
+                            {m.metadata.model && (
+                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            )}
+                          </>
+                        ) : m.metadata.aiProvider === "openrouter-direct" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                            <span>直连OpenRouter</span>
+                            {m.metadata.model && (
+                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            )}
                           </>
                         ) : (
                           <>
                             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                            <span>在线AI (OpenAI)</span>
+                            <span>OpenAI（通过Render）</span>
+                            {m.metadata.model && (
+                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            )}
                           </>
                         )}
                       </span>

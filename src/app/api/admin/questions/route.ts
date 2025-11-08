@@ -122,7 +122,7 @@ async function getAIAnswersForQuestions(
     
     // 先处理精确匹配
     for (const log of exactMatches) {
-      if (!answerMap.has(log.question) && log.answer) {
+      if (!answerMap.has(log.question)) {
         answerMap.set(log.question, log.answer);
         matchedQuestions.add(log.question);
       }
@@ -150,7 +150,7 @@ async function getAIAnswersForQuestions(
           .limit(1)
           .executeTakeFirst();
 
-        if (result && result.answer) {
+        if (result) {
           answerMap.set(questionContent, result.answer);
         }
       }
