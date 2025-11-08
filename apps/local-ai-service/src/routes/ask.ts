@@ -115,6 +115,18 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
 
         // 2) 校验请求体
         const body = request.body as AskBody;
+        
+        // 调试日志：记录原始请求体
+        console.error("[Context Debug] Local-AI原始请求体", {
+          bodyKeys: Object.keys(body),
+          hasQuestion: !!body.question,
+          hasMessages: !!body.messages,
+          messagesType: typeof body.messages,
+          messagesIsArray: Array.isArray(body.messages),
+          messagesValue: body.messages,
+          rawBody: JSON.stringify(body).substring(0, 500),
+        });
+        
         const question = (body.question || "").trim();
         const lang = (body.lang || "zh").toLowerCase().trim();
         const maxHistory = body.maxHistory || 10;
