@@ -197,23 +197,73 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const reference = await getRagContext(question, lang, config);
 
         // 6) 调用 OpenAI
-        const openai = getOpenAIClient(config);
+        let openai;
+        try {
+          openai = getOpenAIClient(config);
+        } catch (e) {
+          const error = e as Error;
+          reply.code(500).send({
+            ok: false,
+            errorCode: "CONFIG_ERROR",
+            message: error.message || "Failed to initialize AI client",
+          });
+          return;
+        }
+
         const sys = buildSystemPrompt(lang);
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
 
-        const completion = await openai.chat.completions.create({
-          model: model, // 使用从数据库读取的模型配置
-          temperature: 0.4,
-          messages: [
-            { role: "system", content: sys },
-            {
-              role: "user",
-              content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
+        let completion;
+        try {
+          completion = await openai.chat.completions.create({
+            model: model, // 使用从数据库读取的模型配置
+            temperature: 0.4,
+            messages: [
+              { role: "system", content: sys },
+              {
+                role: "user",
+                content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
+              },
+            ],
+          });
+        } catch (e) {
+          const error = e as Error & { status?: number; code?: string };
+          // 提取更详细的错误信息
+          let errorMessage = error.message || "AI API call failed";
+          let errorCode = "PROVIDER_ERROR";
+          let statusCode = 502;
+
+          // 处理常见的 OpenRouter/OpenAI 错误
+          if (error.status === 401 || error.code === "invalid_api_key") {
+            errorCode = "AUTH_REQUIRED";
+            errorMessage = "Invalid API key. Please check your OPENROUTER_API_KEY or OPENAI_API_KEY.";
+            statusCode = 401;
+          } else if (error.status === 429 || error.code === "rate_limit_exceeded") {
+            errorCode = "RATE_LIMIT_EXCEEDED";
+            errorMessage = "Rate limit exceeded. Please try again later.";
+            statusCode = 429;
+          } else if (error.status === 400 || error.code === "invalid_request_error") {
+            errorCode = "VALIDATION_FAILED";
+            errorMessage = `Invalid request: ${errorMessage}`;
+            statusCode = 400;
+          } else if (error.message?.includes("model")) {
+            errorMessage = `Model '${model}' not found or unavailable. Please check the model name.`;
+          }
+
+          reply.code(statusCode).send({
+            ok: false,
+            errorCode,
+            message: errorMessage,
+            details: {
+              model,
+              baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
+              isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
             },
-          ],
-        });
+          });
+          return;
+        }
 
         const answer = completion.choices?.[0]?.message?.content?.trim() ?? "";
         if (!answer) {
@@ -297,22 +347,62 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           },
         });
       } catch (e) {
-        const err = e as Error & { statusCode?: number };
-        const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
-        const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";
+        const err = e as Error & { statusCode?: number; code?: string; status?: number };
+        console.error("[ASK ROUTE] Error caught:", {
+          message: err.message,
+          name: err.name,
+          stack: err.stack,
+          statusCode: err.statusCode,
+          code: err.code,
+          status: err.status,
+        });
+
+        // 根据错误类型确定状态码和错误码
+        let status = 500;
+        let errorCode = "INTERNAL_ERROR";
+        let message = "Internal Server Error";
+
+        if (err.statusCode && err.statusCode >= 400) {
+          status = err.statusCode;
+        } else if (err.status && err.status >= 400) {
+          status = err.status;
+        }
+
+        // 根据状态码设置错误码
+        if (status === 400) {
+          errorCode = "VALIDATION_FAILED";
+          message = err.message || "Bad Request";
+        } else if (status === 401) {
+          errorCode = "AUTH_REQUIRED";
+          message = err.message || "Authentication required";
+        } else if (status === 403) {
+          errorCode = "FORBIDDEN";
+          message = err.message || "Forbidden";
+        } else if (status === 429) {
+          errorCode = "RATE_LIMIT_EXCEEDED";
+          message = err.message || "Rate limit exceeded";
+        } else if (status >= 500) {
+          errorCode = "INTERNAL_ERROR";
+          // 在开发环境中返回详细错误信息，生产环境返回通用错误
+          message = process.env.NODE_ENV === "development" 
+            ? err.message || "Internal Server Error"
+            : "Internal Server Error";
+        } else {
+          message = err.message || "Bad Request";
+        }
+
         reply.code(status).send({
           ok: false,
-          errorCode:
-            status === 400
-              ? "VALIDATION_FAILED"
-              : status === 401
-              ? "AUTH_REQUIRED"
-              : status === 403
-              ? "FORBIDDEN"
-              : status === 429
-              ? "RATE_LIMIT_EXCEEDED"
-              : "INTERNAL_ERROR",
+          errorCode,
           message,
+          // 在开发环境中包含详细错误信息
+          ...(process.env.NODE_ENV === "development" && {
+            details: {
+              errorName: err.name,
+              errorMessage: err.message,
+              stack: err.stack,
+            },
+          }),
         });
       }
     },

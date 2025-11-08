@@ -259,7 +259,7 @@ export async function POST(req: NextRequest) {
     console.log(`[${requestId}] [STEP 0] 开始选择AI服务`);
     let selectedAiServiceUrl: string;
     let selectedAiServiceToken: string;
-    let aiServiceMode: "local" | "online";
+    let aiServiceMode: "local" | "online" | "openrouter";
     
     // 记录环境变量状态
     console.log(`[${requestId}] [ENV CHECK] 环境变量检查`, {
@@ -287,7 +287,7 @@ export async function POST(req: NextRequest) {
     }
     
     // 从数据库读取 aiProvider 配置（如果 URL 参数没有强制指定）
-    let aiProviderFromDb: "online" | "local" | null = null;
+    let aiProviderFromDb: "online" | "local" | "openrouter" | null = null;
     if (!forceMode) {
       try {
         console.log(`[${requestId}] [STEP 0.2] 从数据库读取aiProvider配置`);
@@ -297,8 +297,8 @@ export async function POST(req: NextRequest) {
           .where("key", "=", "aiProvider")
           .executeTakeFirst();
         
-        if (configRow && (configRow.value === "local" || configRow.value === "online")) {
-          aiProviderFromDb = configRow.value as "online" | "local";
+        if (configRow && (configRow.value === "local" || configRow.value === "online" || configRow.value === "openrouter")) {
+          aiProviderFromDb = configRow.value as "online" | "local" | "openrouter";
           console.log(`[${requestId}] [STEP 0.2] 数据库配置: ${aiProviderFromDb}`);
         } else {
           console.log(`[${requestId}] [STEP 0.2] 数据库配置为空或无效`);
@@ -311,6 +311,7 @@ export async function POST(req: NextRequest) {
     
     // 优先级：URL 参数 > 数据库配置 > 环境变量
     // 如果数据库配置存在，优先使用数据库配置；否则使用环境变量
+    // openrouter 和 online 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
     const wantLocal = forceMode 
       ? forceMode === "local" 
       : (aiProviderFromDb !== null 
@@ -363,8 +364,9 @@ export async function POST(req: NextRequest) {
       }
       selectedAiServiceUrl = AI_SERVICE_URL;
       selectedAiServiceToken = AI_SERVICE_TOKEN;
-      aiServiceMode = "online";
-      console.log(`[${requestId}] [STEP 0.4] 已选择在线AI服务`);
+      // openrouter 和 online 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
+      aiServiceMode = aiProviderFromDb === "openrouter" ? "openrouter" : "online";
+      console.log(`[${requestId}] [STEP 0.4] 已选择${aiServiceMode === "openrouter" ? "OpenRouter" : "在线"}AI服务`);
     }
     
     console.log(`[${requestId}] [STEP 0.5] AI服务选择完成`, {
