@@ -99,7 +99,11 @@ export default function VehiclesPage() {
 
       <div className="container mx-auto px-4 py-6">
         {/* 筛选栏 */}
-        <FilterBar filters={filters} onChange={handleFilterChange} type="vehicle" />
+        <FilterBar
+          filters={filters}
+          onChange={(nextFilters) => handleFilterChange(nextFilters as VehicleFilters)}
+          type="vehicle"
+        />
 
         {/* AI推荐按钮 */}
         <div className="mb-6 flex justify-end">
