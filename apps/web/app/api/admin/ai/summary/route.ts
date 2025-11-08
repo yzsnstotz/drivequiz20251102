@@ -1,6 +1,7 @@
 // apps/web/app/api/admin/ai/summary/route.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
+import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 
 // 运行时配置（保持与项目其他路由一致）
 export const runtime = "nodejs";
@@ -65,7 +66,6 @@ const AI_SERVICE_SUMMARY_URL =
  *
  * 约定：withAdminAuth(handler) -> (req) => NextResponse
  */
-import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 
 /**
  * GET /api/admin/ai/summary

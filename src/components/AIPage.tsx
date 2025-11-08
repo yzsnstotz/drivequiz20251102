@@ -213,6 +213,32 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         });
       }
 
+      // 统一协议：{ question, locale?, messages? } → { ok, data: { answer, sources?, ... }, errorCode, message }
+      // 准备对话历史（包含当前用户消息，因为状态更新是异步的）
+      // 构建包含当前用户消息的完整历史
+      const allMessages = [...messages, userMsg]; // 包含刚发送的用户消息
+      
+      const historyMessages = allMessages
+        .slice(-12) // 保留最近 12 条（包含当前消息，实际会传递 10 条历史）
+        .filter((msg) => msg.role === "user" || msg.role === "ai") // 只保留用户和AI消息
+        .slice(0, -1) // 排除当前用户消息（因为会单独传递 question）
+        .map((msg) => ({
+          role: msg.role === "ai" ? "assistant" : "user" as "user" | "assistant",
+          content: msg.content,
+        }));
+      
+      const requestBody: Record<string, unknown> = {
+        question: q,
+        locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
+      };
+      
+      // 传递对话历史（如果有）
+      // 注意：即使只有欢迎消息（AI消息），也应该传递，因为这是对话历史的一部分
+      if (historyMessages.length > 0) {
+        requestBody.messages = historyMessages;
+        requestBody.maxHistory = 10; // 限制最大历史消息数
+      }
+      
       const res = await fetch(endpoint, {
         method: "POST",
         signal: controller.signal,
@@ -220,11 +246,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        // 统一协议：{ question, locale? } → { ok, data: { answer, sources?, ... }, errorCode, message }
-        body: JSON.stringify({
-          question: q,
-          locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       let payload: AiAskResponse;
