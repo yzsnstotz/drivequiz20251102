@@ -38,16 +38,14 @@ export interface VehicleCardProps {
  * 车辆卡片组件
  */
 export default function VehicleCard({ vehicle, className = "" }: VehicleCardProps) {
-  const { t, language } = useLanguage();
+  const { language } = useLanguage();
 
   const displayName = vehicle.name.zh || vehicle.name.ja || `${vehicle.brand} ${vehicle.model}`;
   const displayType = vehicle.type
-    ? t({
-        ja: vehicle.type.name_ja,
-        zh: vehicle.type.name_zh,
-        en: vehicle.type.name_en,
-        default: vehicle.type.name,
-      })
+    ? vehicle.type.name_zh ??
+      vehicle.type.name_ja ??
+      vehicle.type.name_en ??
+      vehicle.type.name
     : null;
 
   const formatPrice = (amount: number) => {
