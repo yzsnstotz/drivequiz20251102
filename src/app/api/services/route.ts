@@ -42,7 +42,11 @@ export async function GET(request: NextRequest) {
     const location = searchParams.get("location")?.trim();
     const prefecture = searchParams.get("prefecture")?.trim();
     const city = searchParams.get("city")?.trim();
-    const status = searchParams.get("status") || "active";
+    type ServiceStatus = "active" | "inactive" | "archived";
+    const statusParam = (searchParams.get("status") || "active").trim();
+    const isServiceStatus = (value: string): value is ServiceStatus =>
+      value === "active" || value === "inactive" || value === "archived";
+    const status: ServiceStatus = isServiceStatus(statusParam) ? statusParam : "active";
 
     // 构建查询
     let query = db
