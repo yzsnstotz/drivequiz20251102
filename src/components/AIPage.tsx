@@ -13,7 +13,7 @@ interface ChatMessage {
   createdAt: number; // epoch ms
   // AI回复的元数据（仅AI消息有）
   metadata?: {
-    aiProvider?: "online" | "local"; // AI服务提供商
+    aiProvider?: "online" | "local" | "openrouter"; // AI服务提供商
     sources?: Array<{
       title: string;
       url: string;
@@ -52,7 +52,7 @@ interface AiAskResponse {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
-    aiProvider?: "online" | "local"; // AI服务提供商
+    aiProvider?: "online" | "local" | "openrouter"; // AI服务提供商
   };
   errorCode?: string;
   message?: string;
@@ -395,6 +395,11 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                           <>
                             <span className="w-2 h-2 rounded-full bg-green-500"></span>
                             <span>本地AI (Ollama)</span>
+                          </>
+                        ) : m.metadata.aiProvider === "openrouter" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                            <span>OpenRouter</span>
                           </>
                         ) : (
                           <>
