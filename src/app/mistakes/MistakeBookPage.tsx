@@ -195,7 +195,7 @@ function MistakeBookPage() {
         />
       )}
     </div>
-  );
+    );
   }
 
   return (
