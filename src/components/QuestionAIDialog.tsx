@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { apiFetch } from "@/lib/apiClient.front";
 
 interface Question {
   id: number;
@@ -107,18 +108,20 @@ export default function QuestionAIDialog({
       
       const questionText = userQuestion || formatQuestionForAI();
       
-      const response = await fetch("/api/ai/ask", {
+      const result = await apiFetch<{
+        answer: string;
+        sources?: Array<{
+          title: string;
+          url: string;
+          snippet?: string;
+        }>;
+      }>("/api/ai/ask", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           question: questionText,
           locale: "zh-CN",
-        }),
+        },
       });
-
-      const result = await response.json();
 
       if (result.ok && result.data?.answer) {
         const newMessage: Message = {
