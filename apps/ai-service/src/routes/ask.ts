@@ -161,7 +161,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             createdAtIso: cached.time || new Date().toISOString(),
           }).catch(() => {});
 
-          // 返回标准响应结构
+          // 返回标准响应结构（标记为缓存答案）
           reply.send({
             ok: true,
             data: {
@@ -170,6 +170,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
               model: cached.model,
               safetyFlag: cached.safetyFlag || "ok",
               costEstimate: cached.costEstimate,
+              cached: true, // 标记为缓存答案
             },
           });
           return;

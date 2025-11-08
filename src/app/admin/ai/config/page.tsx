@@ -8,7 +8,7 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
-  aiProvider: "online" | "local" | "openrouter";
+  aiProvider: "online" | "local" | "openrouter" | "openrouter-direct";
 };
 
 type ConfigResp = {
@@ -98,7 +98,7 @@ export default function AdminAiConfigPage() {
           model: data.model ?? "gpt-4o-mini",
           cacheTtl: typeof data.cacheTtl === "string" ? Number(data.cacheTtl) : (data.cacheTtl ?? 86400),
           costAlertUsdThreshold: typeof data.costAlertUsdThreshold === "string" ? Number(data.costAlertUsdThreshold) : (data.costAlertUsdThreshold ?? 10.0),
-          aiProvider: (data.aiProvider === "local" || data.aiProvider === "online" || data.aiProvider === "openrouter") ? data.aiProvider : "online",
+          aiProvider: (data.aiProvider === "local" || data.aiProvider === "online" || data.aiProvider === "openrouter" || data.aiProvider === "openrouter-direct") ? data.aiProvider : "online",
         });
       }
     } catch (err) {
@@ -203,7 +203,7 @@ export default function AdminAiConfigPage() {
                     <option value="gpt-4-turbo">gpt-4-turbo</option>
                     <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                   </>
-                ) : config.aiProvider === "openrouter" ? (
+                ) : (config.aiProvider === "openrouter" || config.aiProvider === "openrouter-direct") ? (
                   <>
                     <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>
                     <option value="openai/gpt-4o">OpenAI GPT-4o</option>
@@ -234,9 +234,11 @@ export default function AdminAiConfigPage() {
               </select>
               <p className="text-xs text-gray-500 mt-1">
                 {config.aiProvider === "online"
-                  ? "当前使用的在线AI模型（OpenAI）"
+                  ? "当前使用的OpenAI模型（通过Render）"
                   : config.aiProvider === "openrouter"
-                  ? "当前使用的OpenRouter模型（支持多种AI提供商）"
+                  ? "当前使用的OpenRouter模型（通过Render，支持多种AI提供商）"
+                  : config.aiProvider === "openrouter-direct"
+                  ? "当前使用的OpenRouter模型（直连，不通过Render，支持多种AI提供商）"
                   : "本地AI模型由Ollama服务配置，此处仅显示（不可修改）"}
               </p>
               {config.aiProvider === "local" && (
@@ -290,25 +292,28 @@ export default function AdminAiConfigPage() {
               <select
                 value={config.aiProvider}
                 onChange={(e) => {
-                  const newProvider = e.target.value as "online" | "local" | "openrouter";
+                  const newProvider = e.target.value as "online" | "local" | "openrouter" | "openrouter-direct";
                   // 切换服务提供商时，自动设置对应的默认模型
                   const defaultModel = 
                     newProvider === "online" ? "gpt-4o-mini" 
-                    : newProvider === "openrouter" ? "openai/gpt-4o-mini"
+                    : (newProvider === "openrouter" || newProvider === "openrouter-direct") ? "openai/gpt-4o-mini"
                     : "llama3.2:3b";
                   setConfig({ ...config, aiProvider: newProvider, model: defaultModel });
                 }}
                 className="w-full border rounded px-3 py-2"
               >
-                <option value="online">在线AI（OpenAI）</option>
-                <option value="openrouter">OpenRouter</option>
+                <option value="online">OpenAI（通过Render）</option>
+                <option value="openrouter">OpenRouter（通过Render）</option>
+                <option value="openrouter-direct">直连OpenRouter</option>
                 <option value="local">本地AI（Ollama）</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
                 {config.aiProvider === "online"
-                  ? "使用在线AI服务（OpenAI API），需要网络连接"
+                  ? "使用OpenAI服务（通过Render），需要配置AI_SERVICE_URL和AI_SERVICE_TOKEN"
                   : config.aiProvider === "openrouter"
-                  ? "使用OpenRouter服务（支持多种AI提供商），需要配置OPENROUTER_API_KEY和OPENAI_BASE_URL"
+                  ? "使用OpenRouter服务（通过Render，支持多种AI提供商），需要配置OPENROUTER_API_KEY和OPENAI_BASE_URL"
+                  : config.aiProvider === "openrouter-direct"
+                  ? "使用OpenRouter服务（直连，不通过Render），需要配置OPENROUTER_API_KEY和OPENAI_BASE_URL环境变量"
                   : "使用本地AI服务（Ollama），需要本地Ollama服务运行"}
               </p>
             </div>
