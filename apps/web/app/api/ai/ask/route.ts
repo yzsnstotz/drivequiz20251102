@@ -579,15 +579,37 @@ export async function POST(req: NextRequest) {
     }
     
     // 转发到选择的AI服务（本地AI服务和在线AI服务使用相同的接口格式）
+    // 添加超时控制（120秒，与前端保持一致）
+    const AI_SERVICE_TIMEOUT_MS = 120_000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, AI_SERVICE_TIMEOUT_MS);
+    
     const startTime = Date.now();
-    aiResp = await fetch(__requestUrl, {
-      method: "POST",
-      headers: {
-        ...headers,
-        authorization: `Bearer ${__aiTarget.token}`,
-      },
-      body: JSON.stringify(forwardPayload),
-    });
+    try {
+      aiResp = await fetch(__requestUrl, {
+        method: "POST",
+        headers: {
+          ...headers,
+          authorization: `Bearer ${__aiTarget.token}`,
+        },
+        body: JSON.stringify(forwardPayload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === "AbortError") {
+        return respondJSON({
+          ok: false,
+          errorCode: "PROVIDER_ERROR",
+          message: "AI service request timeout (120s). The AI service may be slow or unavailable.",
+          details: { reason: "timeout", timeout: AI_SERVICE_TIMEOUT_MS },
+        });
+      }
+      throw fetchError;
+    }
   } catch (e: any) {
     return respondJSON({
       ok: false,

@@ -24,7 +24,7 @@ function NearbyPage() {
   const [loading, setLoading] = useState(true);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [categories, setCategories] = useState<MerchantCategory[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('全部');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -39,7 +39,12 @@ function NearbyPage() {
       if (categoryRes.ok) {
         const categoryData = await categoryRes.json();
         if (categoryData.ok) {
-          setCategories(categoryData.data.items || []);
+          const loadedCategories = categoryData.data.items || [];
+          setCategories(loadedCategories);
+          // 如果有分类，默认选择第一个
+          if (loadedCategories.length > 0) {
+            setSelectedCategory(loadedCategories[0].name);
+          }
         }
       }
 
@@ -54,7 +59,7 @@ function NearbyPage() {
 
   const loadMerchants = async (category?: string) => {
     try {
-      const url = category && category !== '全部' 
+      const url = category 
         ? `/api/merchants?category=${encodeURIComponent(category)}`
         : '/api/merchants';
       
@@ -72,10 +77,10 @@ function NearbyPage() {
 
   const handleCategoryChange = (category: string) => {
     setSelectedCategory(category);
-    loadMerchants(category === '全部' ? undefined : category);
+    loadMerchants(category);
   };
 
-  const allCategories = ['全部', ...categories.map(cat => cat.name)];
+  const allCategories = categories.map(cat => cat.name);
 
   const filteredMerchants = merchants;
 

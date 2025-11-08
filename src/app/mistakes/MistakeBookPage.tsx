@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, Trash2, BookOpen, Car, Shield, CheckSquare, XSquare } from 'lucide-react';
+import { ChevronLeft, Trash2, BookOpen, Car, Shield, CheckSquare, XSquare, Bot } from 'lucide-react';
+import QuestionAIDialog from '@/components/QuestionAIDialog';
 
 interface Question {
   id: number;
@@ -23,6 +24,7 @@ interface Question {
 function MistakeBookPage() {
   const [mistakeQuestions, setMistakeQuestions] = useState<Question[]>([]);
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
+  const [showAIDialog, setShowAIDialog] = useState(false);
 
   useEffect(() => {
     loadMistakeQuestions();
@@ -88,17 +90,27 @@ function MistakeBookPage() {
               <span className="text-sm font-medium text-blue-600">
                 {getQuestionTypeText(selectedQuestion.type)}
               </span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              removeMistakeQuestion(selectedQuestion.id);
-              setSelectedQuestion(null); // 返回到错题列表页面
-            }}
-            className="flex items-center space-x-1 text-red-600 hover:text-red-700"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="text-sm">移出错题本</span>
-          </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setShowAIDialog(true)}
+                  className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                  aria-label="打开AI助手"
+                >
+                  <Bot className="h-4 w-4" />
+                  <span>AI助手</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeMistakeQuestion(selectedQuestion.id);
+                    setSelectedQuestion(null); // 返回到错题列表页面
+                  }}
+                  className="flex items-center space-x-1 text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span className="text-sm">移出错题本</span>
+                </button>
+              </div>
             </div>
             
             <p className="text-gray-900 text-lg mb-4">{selectedQuestion.content}</p>
@@ -172,7 +184,16 @@ function MistakeBookPage() {
             </div>
           )}
         </div>
-      </div>
+
+      {/* AI助手对话框 */}
+      {selectedQuestion && (
+        <QuestionAIDialog
+          question={selectedQuestion}
+          isOpen={showAIDialog}
+          onClose={() => setShowAIDialog(false)}
+        />
+      )}
+    </div>
     );
   }
 

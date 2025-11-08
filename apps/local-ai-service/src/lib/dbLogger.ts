@@ -43,11 +43,23 @@ function isValidUuid(str: string | null | undefined): boolean {
 /**
  * 规范化 user_id（只保存有效的 UUID 或激活用户ID）
  * - 如果是有效的 UUID，直接返回
- * - 如果是 act- 格式的激活用户ID，转换为对应的 userid（UUID）
+ * - 如果是 act- 格式的激活用户ID，直接返回（数据库已支持 TEXT 类型）
  * - 其他格式返回 null（匿名用户）
+ * 
+ * 注意：数据库表 user_id 字段已改为 TEXT 类型，支持多种格式
  */
 function normalizeUserId(userId: string | null | undefined): string | null {
   if (!userId || typeof userId !== "string") {
+    return null;
+  }
+
+  // 如果是 "anonymous" 字符串，直接返回 null
+  if (userId === "anonymous") {
+    return null;
+  }
+
+  // 如果是匿名 ID 格式（以 "anon-" 开头），返回 null
+  if (userId.startsWith("anon-")) {
     return null;
   }
 
@@ -56,15 +68,25 @@ function normalizeUserId(userId: string | null | undefined): string | null {
     return userId;
   }
 
-  // 如果是 act- 格式，尝试从数据库查询对应的 userid
-  // 注意：本地AI服务可能没有直接访问users表的权限
-  // 这里先返回null，如果需要可以后续添加数据库查询逻辑
+  // 如果是 act- 格式，验证格式后直接返回（数据库已支持 TEXT 类型）
   if (userId.startsWith("act-")) {
-    // 暂时返回null，如果需要可以添加数据库查询
+    // 验证格式：act-{数字}
+    const parts = userId.split("-");
+    if (parts.length >= 2 && parts[0] === "act") {
+      // 取最后一部分作为 activationId
+      const activationIdStr = parts[parts.length - 1];
+      const activationId = parseInt(activationIdStr, 10);
+      if (!isNaN(activationId) && activationId > 0) {
+        // 有效的激活用户ID，统一格式为 act-{activationId}
+        const normalizedActUserId = `act-${activationId}`;
+        return normalizedActUserId;
+      }
+    }
+    // 如果格式不正确，返回 null
     return null;
   }
 
-  // 其他格式返回null
+  // 其他格式返回null（匿名用户）
   return null;
 }
 

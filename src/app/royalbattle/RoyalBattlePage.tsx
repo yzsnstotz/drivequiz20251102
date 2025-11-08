@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, Heart, Timer, Trophy } from 'lucide-react';
+import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
+import QuestionAIDialog from '@/components/QuestionAIDialog';
 
 interface Question {
   id: number;
@@ -29,6 +30,7 @@ function RoyalBattlePage() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [gameOver, setGameOver] = useState(false);
+  const [showAIDialog, setShowAIDialog] = useState(false);
 
   // 计算当前题目的时间限制
   const calculateTimeLimit = (currentScore: number) => {
@@ -286,7 +288,17 @@ function RoyalBattlePage() {
           </div>
         </div>
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-gray-900 text-lg">{currentQuestion.content}</p>
+            <button
+              onClick={() => setShowAIDialog(true)}
+              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+              aria-label="打开AI助手"
+            >
+              <Bot className="h-4 w-4" />
+              <span>AI助手</span>
+            </button>
+          </div>
           {currentQuestion.image && (
             <div className="mb-4">
               <Image
@@ -354,6 +366,15 @@ function RoyalBattlePage() {
           </div>
         )}
       </div>
+
+      {/* AI助手对话框 */}
+      {currentQuestion && (
+        <QuestionAIDialog
+          question={currentQuestion}
+          isOpen={showAIDialog}
+          onClose={() => setShowAIDialog(false)}
+        />
+      )}
     </div>
   );
 }
