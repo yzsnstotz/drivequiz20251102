@@ -110,17 +110,17 @@ export async function PUT(request: NextRequest) {
     let profile;
     if (existing) {
       // 更新现有资料
-      const updateData: {
-        language?: string;
-        goals?: string[];
-        level?: string;
-        metadata?: object;
-      } = {};
+      const updateData: Partial<{
+        language: string;
+        goals: string[];
+        level: "beginner" | "intermediate" | "advanced" | "expert";
+        metadata: Record<string, any>;
+      }> = {};
 
       if (language !== undefined) updateData.language = language;
       if (goals !== undefined) updateData.goals = goals;
       if (level !== undefined) updateData.level = level;
-      if (metadata !== undefined) updateData.metadata = metadata as object;
+      if (metadata !== undefined) updateData.metadata = metadata as Record<string, any>;
 
       profile = await db
         .updateTable("user_profiles")
