@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { apiGet } from "@/lib/apiClient.front";
+import { getCachedImage, cacheImage } from "@/lib/imageCache";
 
 interface AdContent {
   id: number;
@@ -38,6 +39,8 @@ export default function AdSlot({ position, className = "", onAdClick }: AdSlotPr
   const [ad, setAd] = useState<AdContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cachedImageUrl, setCachedImageUrl] = useState<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +57,36 @@ export default function AdSlot({ position, className = "", onAdClick }: AdSlotPr
         if (cancelled) return;
         
         setAd(adContent);
+        
+        // 如果有图片，预加载并缓存
+        if (adContent?.image_url) {
+          try {
+            // 先检查缓存
+            const cachedUrl = await getCachedImage(adContent.image_url);
+            if (cachedUrl) {
+              // 使用缓存的图片
+              if (cancelled) {
+                URL.revokeObjectURL(cachedUrl);
+                return;
+              }
+              setCachedImageUrl(cachedUrl);
+              blobUrlRef.current = cachedUrl;
+            } else {
+              // 缓存中没有，加载并缓存
+              await cacheImage(adContent.image_url);
+              // 重新获取缓存（刚刚存储的）
+              const newCachedUrl = await getCachedImage(adContent.image_url);
+              if (newCachedUrl && !cancelled) {
+                setCachedImageUrl(newCachedUrl);
+                blobUrlRef.current = newCachedUrl;
+              }
+            }
+          } catch (err) {
+            console.warn("[AdSlot] Failed to cache image:", err);
+            // 缓存失败不影响图片显示，使用原始 URL
+            setCachedImageUrl(null);
+          }
+        }
       } catch (err: any) {
         // 如果请求被取消，不显示错误
         if (cancelled || err?.errorCode === "REQUEST_ABORTED") {
@@ -72,9 +105,13 @@ export default function AdSlot({ position, className = "", onAdClick }: AdSlotPr
 
     loadAd();
     
-    // 清理函数：标记为已取消
+    // 清理函数：标记为已取消，清理 Blob URL
     return () => {
       cancelled = true;
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
     };
   }, [position]);
 
@@ -134,9 +171,23 @@ export default function AdSlot({ position, className = "", onAdClick }: AdSlotPr
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- 广告图片可能来自动态第三方域名，未知尺寸 */}
           <img
-            src={ad.image_url}
+            src={cachedImageUrl || ad.image_url}
             alt={ad.title.default || ad.title.ja || "Advertisement"}
             className="w-full h-auto rounded"
+            onLoad={() => {
+              // 图片加载成功后，如果还没有缓存，异步缓存
+              if (!cachedImageUrl && ad.image_url) {
+                cacheImage(ad.image_url).catch((err) => {
+                  console.warn("[AdSlot] Failed to cache image on load:", err);
+                });
+              }
+            }}
+            onError={() => {
+              // 如果缓存的图片加载失败，回退到原始 URL
+              if (cachedImageUrl) {
+                setCachedImageUrl(null);
+              }
+            }}
           />
         </div>
       )}
