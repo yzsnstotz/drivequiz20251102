@@ -351,7 +351,7 @@ export async function POST(request: NextRequest) {
       const userToken = `act-${Math.abs(tokenHash).toString(16).padStart(8, "0")}-${inserted.id.toString(16).padStart(8, "0")}`;
 
       // 创建响应，同时设置HTTP cookie（确保移动端也能获取token）
-      const userIdValue = userRecord.userid || null;
+      const userIdValue = userRecord?.userid || null;
 
       const response = NextResponse.json(
         {
