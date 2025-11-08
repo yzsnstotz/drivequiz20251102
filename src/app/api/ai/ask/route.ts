@@ -560,7 +560,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 4) 从users表获取userid（如果session.userId是act-格式，则查询数据库获取对应的userid）
+    // 4) 处理userId转发（act-格式直接使用，因为userid字段本身就是act-{activationId}格式）
     console.log(`[${requestId}] [STEP 4] 开始处理userId转发`);
     let forwardedUserId: string | null = null;
     
@@ -568,57 +568,10 @@ export async function POST(req: NextRequest) {
       forwardedUserId = null;
       console.log(`[${requestId}] [STEP 4.1] 匿名用户，forwardedUserId = null`);
     } else if (session.userId.startsWith("act-")) {
-      console.log(`[${requestId}] [STEP 4.2] 检测到act-格式，查询数据库`);
-      // 如果是act-格式，从users表查询对应的userid
-      try {
-        // 从act-{activationId}格式中提取activationId
-        const parts = session.userId.split("-");
-        if (parts.length >= 2 && parts[0] === "act") {
-          const activationId = parseInt(parts[parts.length - 1], 10);
-          if (!isNaN(activationId) && activationId > 0) {
-            console.log(`[${requestId}] [STEP 4.2.1] 查询激活记录: activationId=${activationId}`);
-            // 通过activationId查找激活记录，然后查找用户
-            const activation = await db
-              .selectFrom("activations")
-              .select(["email"])
-              .where("id", "=", activationId)
-              .executeTakeFirst();
-            
-            if (activation) {
-              console.log(`[${requestId}] [STEP 4.2.2] 激活记录找到，查询用户: email=${activation.email}`);
-              // 通过邮箱查找用户，获取userid
-              const user = await db
-                .selectFrom("users")
-                .select(["userid"])
-                .where("email", "=", activation.email)
-                .executeTakeFirst();
-              
-              if (user?.userid) {
-                forwardedUserId = user.userid;
-                console.log(`[${requestId}] [STEP 4.2.3] 用户找到: userid=${forwardedUserId}`);
-              } else {
-                // 如果用户表中没有userid，使用原始的act-格式（向后兼容）
-                forwardedUserId = session.userId;
-                console.log(`[${requestId}] [STEP 4.2.3] 用户未找到，使用原始格式: ${forwardedUserId}`);
-              }
-            } else {
-              // 激活记录不存在，使用原始格式
-              forwardedUserId = session.userId;
-              console.log(`[${requestId}] [STEP 4.2.2] 激活记录未找到，使用原始格式: ${forwardedUserId}`);
-            }
-          } else {
-            forwardedUserId = session.userId;
-            console.log(`[${requestId}] [STEP 4.2.1] activationId无效，使用原始格式: ${forwardedUserId}`);
-          }
-        } else {
-          forwardedUserId = session.userId;
-          console.log(`[${requestId}] [STEP 4.2] act-格式解析失败，使用原始格式: ${forwardedUserId}`);
-        }
-      } catch (error) {
-        console.error(`[${requestId}] [STEP 4.2] 数据库查询失败:`, (error as Error).message);
-        // 查询失败时，使用原始userId（向后兼容）
-        forwardedUserId = session.userId;
-      }
+      // act-格式的userId直接使用，因为userid字段本身就是act-{activationId}格式
+      // 不需要查询数据库，直接使用session.userId作为forwardedUserId
+      forwardedUserId = session.userId;
+      console.log(`[${requestId}] [STEP 4.2] 检测到act-格式，直接使用: ${forwardedUserId}`);
     } else {
       // UUID格式或其他格式，直接使用
       forwardedUserId = session.userId;
