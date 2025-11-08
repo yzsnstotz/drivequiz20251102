@@ -184,7 +184,6 @@ function MistakeBookPage() {
             </div>
           )}
         </div>
-      </div>
 
       {/* AI助手对话框 */}
       {selectedQuestion && (
@@ -194,7 +193,7 @@ function MistakeBookPage() {
           onClose={() => setShowAIDialog(false)}
         />
       )}
-      </div>
+    </div>
     );
   }
 
