@@ -152,9 +152,9 @@ async function request<T>(
   clearTimeout(timeout);
 
   // 解析返回（期望为 JSON）
-  let payload: ApiResponse<T> | unknown;
+  let payload: ApiResponse<T>;
   try {
-    payload = await resp.json();
+    payload = await resp.json() as ApiResponse<T>;
   } catch {
     throw new ApiError(
       resp.status,
@@ -164,7 +164,7 @@ async function request<T>(
     );
   }
 
-  if (!resp.ok || !isApiSuccess(payload)) {
+  if (!resp.ok || !isApiSuccess<T>(payload)) {
     const error = isApiErrorBody(payload) ? payload : {
       ok: false as const,
       errorCode: "HTTP_ERROR",
