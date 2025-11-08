@@ -50,7 +50,11 @@ export default function VehiclesPage() {
       const fullUrl = queryString ? `/api/vehicles?${queryString}` : "/api/vehicles";
       const response = await apiFetch<Vehicle[]>(fullUrl);
 
-      setVehicles(response.data || []);
+      if (!response.ok) {
+        throw new Error(response.message || "加载车辆列表失败");
+      }
+
+      setVehicles(response.data ?? []);
       if (response.pagination) {
         setPagination({
           page: response.pagination.page,
