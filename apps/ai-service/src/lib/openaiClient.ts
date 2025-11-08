@@ -8,6 +8,17 @@ import OpenAI from "openai";
 import type { ServiceConfig } from "../index.js";
 
 let clientInstance: OpenAI | null = null;
+let lastBaseUrl: string | null = null;
+let lastApiKey: string | null = null;
+
+/**
+ * 清除客户端实例（用于重新创建）
+ */
+export function clearOpenAIClient(): void {
+  clientInstance = null;
+  lastBaseUrl = null;
+  lastApiKey = null;
+}
 
 /**
  * 获取或创建 OpenAI 客户端实例
@@ -15,20 +26,53 @@ let clientInstance: OpenAI | null = null;
  * @returns OpenAI 客户端实例
  */
 export function getOpenAIClient(config: ServiceConfig): OpenAI {
-  if (clientInstance) return clientInstance;
-
   const baseUrl =
     process.env.OPENAI_BASE_URL?.trim() ||
     process.env.OLLAMA_BASE_URL?.trim() ||
     "https://api.openai.com/v1";
 
-  clientInstance = new OpenAI({
-    apiKey: config.openaiApiKey,
-    baseURL: baseUrl,
-    defaultHeaders: {
+  // 检查是否是 OpenRouter
+  const isOpenRouter = baseUrl.includes("openrouter.ai");
+  
+  // 根据 base URL 选择 API key
+  const apiKey = isOpenRouter && config.openrouterApiKey 
+    ? config.openrouterApiKey 
+    : config.openaiApiKey;
+
+  // 如果配置改变，重新创建客户端实例
+  if (clientInstance && (lastBaseUrl !== baseUrl || lastApiKey !== apiKey)) {
+    clearOpenAIClient();
+  }
+
+  // 如果客户端实例不存在，创建新的
+  if (!clientInstance) {
+    // 验证 API key
+    if (!apiKey) {
+      const errorMsg = isOpenRouter 
+        ? "OPENROUTER_API_KEY is not set. Please set OPENROUTER_API_KEY environment variable."
+        : "OPENAI_API_KEY is not set. Please set OPENAI_API_KEY environment variable.";
+      throw new Error(errorMsg);
+    }
+
+    const defaultHeaders: Record<string, string> = {
       "User-Agent": `ZalemAI/${config.version}`,
-    },
-  });
+    };
+
+    // OpenRouter 需要额外的 headers
+    if (isOpenRouter) {
+      defaultHeaders["HTTP-Referer"] = process.env.OPENROUTER_REFERER_URL || "https://zalem.app";
+      defaultHeaders["X-Title"] = process.env.OPENROUTER_APP_NAME || "ZALEM";
+    }
+
+    clientInstance = new OpenAI({
+      apiKey: apiKey,
+      baseURL: baseUrl,
+      defaultHeaders,
+    });
+
+    lastBaseUrl = baseUrl;
+    lastApiKey = apiKey;
+  }
 
   return clientInstance;
 }
