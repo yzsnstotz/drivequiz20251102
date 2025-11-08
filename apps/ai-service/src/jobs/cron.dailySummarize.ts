@@ -75,7 +75,7 @@ function yesterdayUtcDate(): string {
  * 返回一个取消函数，可在应用关闭时调用以清理定时器。
  */
 export function registerCronDailySummarize(
-  app: FastifyInstance,
+  _app: FastifyInstance,
   config: ServiceConfig,
 ): () => void {
   const enabled = getEnvBoolean("CRON_DAILY_SUMMARY_ENABLED", true);
@@ -98,9 +98,9 @@ export function registerCronDailySummarize(
   let timer: NodeJS.Timeout | null = null;
 
   /** 实际执行一次任务（默认 dateUtc=昨天），独立函数便于复用与错误捕获 */
-  const runOnce = async (tag: string, dateUtc = yesterdayUtcDate()) => {
+  const runOnce = async (_tag: string, dateUtc = yesterdayUtcDate()) => {
     try {
-      const result = await runDailySummarize(config, {
+      await runDailySummarize(config, {
         dateUtc,
         fetchLogs: async (fromIso, toIso) => {
           try {
@@ -152,7 +152,7 @@ export function registerCronDailySummarize(
  * - 若未传 dateUtc，则使用昨天（UTC）
  */
 export async function triggerDailySummarizeOnce(
-  app: FastifyInstance,
+  _app: FastifyInstance,
   config: ServiceConfig,
   opts?: { dateUtc?: string; maxRecords?: number },
 ): Promise<void> {
@@ -164,7 +164,7 @@ export async function triggerDailySummarizeOnce(
   const maxRecords = typeof opts?.maxRecords === "number" ? opts!.maxRecords : getEnvInt("CRON_DAILY_SUMMARY_MAX_RECORDS", 1000);
 
   try {
-    const result = await runDailySummarize(config, {
+    await runDailySummarize(config, {
       dateUtc,
       fetchLogs: async (fromIso, toIso) => {
         try {
