@@ -15,6 +15,8 @@ type Question = {
   image?: string;
   explanation?: string;
   category?: string;
+  hash?: string;
+  aiAnswer?: string;
 };
 
 type ListResponse = {
@@ -88,6 +90,20 @@ export default function QuestionsPage() {
     failed: number;
     errors: string[];
   } | null>(null);
+  const [updatingHashes, setUpdatingHashes] = useState(false);
+  const [updatingPackage, setUpdatingPackage] = useState(false);
+  const [versions, setVersions] = useState<Array<{
+    category: string;
+    version: string | null;
+    totalQuestions: number;
+    updatedAt?: string;
+  }>>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [updateResult, setUpdateResult] = useState<{
+    type: "hashes" | "package";
+    message: string;
+    data?: any;
+  } | null>(null);
 
   // 加载卷类列表
   useEffect(() => {
@@ -109,6 +125,31 @@ export default function QuestionsPage() {
       mounted = false;
     };
   }, []);
+
+  // 加载版本号列表
+  const loadVersions = useCallback(async () => {
+    setLoadingVersions(true);
+    try {
+      const response = await apiFetch<Array<{
+        category: string;
+        version: string | null;
+        totalQuestions: number;
+        updatedAt?: string;
+      }>>("/api/admin/questions/versions", {
+        method: "GET",
+      });
+      setVersions(response.data || []);
+    } catch (e) {
+      console.error("Failed to load versions:", e);
+    } finally {
+      setLoadingVersions(false);
+    }
+  }, []);
+
+  // 初始加载版本号
+  useEffect(() => {
+    loadVersions();
+  }, [loadVersions]);
 
   // 同步 filters 到 URL
   useEffect(() => {
@@ -593,6 +634,125 @@ export default function QuestionsPage() {
     }
   };
 
+  // 批量更新题目 hash
+  const handleUpdateHashes = async () => {
+    if (!confirm("确认要批量更新所有题目的 Hash 吗？这将重新计算所有题目的 Hash 值。")) {
+      return;
+    }
+
+    setUpdatingHashes(true);
+    setUpdateResult(null);
+    setFormError(null);
+
+    try {
+      const data = await apiPost<{
+        totalProcessed: number;
+        totalUpdated: number;
+        totalErrors: number;
+        totalCategories: number;
+        errors: string[];
+      }>("/api/admin/questions/update-hashes", {});
+
+      setUpdateResult({
+        type: "hashes",
+        message: `Hash 更新完成：处理了 ${data.totalProcessed} 个题目，更新了 ${data.totalUpdated} 个 Hash，${data.totalErrors} 个错误`,
+        data,
+      });
+      // 重新加载数据以显示新的 hash
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "更新 Hash 失败");
+    } finally {
+      setUpdatingHashes(false);
+    }
+  };
+
+  // 手动更新 JSON 包
+  const handleUpdatePackage = async () => {
+    if (!confirm("确认要更新所有题目 JSON 包吗？这将重新计算所有题目的 Hash 并更新版本号。")) {
+      return;
+    }
+
+    setUpdatingPackage(true);
+    setUpdateResult(null);
+    setFormError(null);
+
+    try {
+      const data = await apiPost<{
+        totalProcessed: number;
+        totalHashUpdated: number;
+        totalVersionUpdated: number;
+        totalErrors: number;
+        totalCategories: number;
+        results: Array<{
+          category: string;
+          version: string;
+          hashUpdated: number;
+          success: boolean;
+        }>;
+        errors: string[];
+      }>("/api/admin/questions/update-package", {});
+
+      setUpdateResult({
+        type: "package",
+        message: `JSON 包更新完成：处理了 ${data.totalProcessed} 个题目，更新了 ${data.totalHashUpdated} 个 Hash，刷新了 ${data.totalVersionUpdated} 个版本号，${data.totalErrors} 个错误`,
+        data,
+      });
+      // 重新加载版本号列表
+      loadVersions();
+      // 重新加载数据以显示新的 hash
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "更新 JSON 包失败");
+    } finally {
+      setUpdatingPackage(false);
+    }
+  };
+
+  // 下载 JSON 包
+  const handleDownloadPackage = async (packageName: string) => {
+    try {
+      const token = localStorage.getItem("ADMIN_TOKEN");
+      if (!token) {
+        alert("请先登录");
+        return;
+      }
+
+      const response = await fetch(`/api/admin/questions/download?packageName=${encodeURIComponent(packageName)}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "下载失败");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${packageName}.json`;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        if (document.body.contains(a)) {
+          document.body.removeChild(a);
+        }
+      }, 100);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "下载失败");
+    }
+  };
+
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* 顶部操作区 */}
@@ -616,6 +776,22 @@ export default function QuestionsPage() {
             />
           </label>
           <button
+            className="inline-flex items-center rounded-xl bg-purple-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-purple-600 active:bg-purple-700 touch-manipulation transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleUpdateHashes}
+            disabled={updatingHashes || updatingPackage}
+            title="批量更新所有题目的 Hash（无论有没有都重新计算）"
+          >
+            {updatingHashes ? "更新中..." : "更新Hash"}
+          </button>
+          <button
+            className="inline-flex items-center rounded-xl bg-orange-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-orange-600 active:bg-orange-700 touch-manipulation transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleUpdatePackage}
+            disabled={updatingHashes || updatingPackage}
+            title="更新所有题目 JSON 包（重新计算 hash 并更新版本号）"
+          >
+            {updatingPackage ? "更新中..." : "更新JSON包"}
+          </button>
+          <button
             className="inline-flex items-center rounded-xl bg-blue-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
             onClick={() => {
               setShowCreateForm(!showCreateForm);
@@ -631,12 +807,79 @@ export default function QuestionsPage() {
               setItems([]);
               setHasMore(true);
               loadData(1, false);
+              loadVersions();
             }}
           >
             刷新
           </button>
         </div>
       </div>
+
+      {/* 版本号列表 */}
+      {versions.length > 0 && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+          <div className="text-sm font-medium mb-2">题目包版本号</div>
+          <div className="flex flex-wrap gap-2">
+            {versions.map((v) => (
+              <button
+                key={v.category}
+                onClick={() => handleDownloadPackage(v.category)}
+                className="inline-flex items-center gap-1 rounded-md bg-white border border-gray-300 text-xs px-2 py-1 hover:bg-gray-100 active:bg-gray-200 touch-manipulation transition-colors"
+                title={`点击下载 ${v.category}.json`}
+              >
+                <span className="font-medium">{v.category}:</span>
+                <span className={v.version ? "text-blue-600" : "text-gray-400"}>
+                  {v.version || "无版本"}
+                </span>
+                {v.version && (
+                  <span className="text-gray-400">({v.totalQuestions}题)</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 更新结果 */}
+      {updateResult && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-blue-50">
+          <div className="text-sm font-medium mb-2">
+            {updateResult.type === "hashes" && "Hash 更新结果"}
+            {updateResult.type === "package" && "JSON 包更新结果"}
+          </div>
+          <div className="text-xs space-y-1">
+            <div className="text-green-600">{updateResult.message}</div>
+            {updateResult.data?.errors && updateResult.data.errors.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-red-600">查看错误详情</summary>
+                <ul className="mt-2 space-y-1 pl-4 list-disc">
+                  {updateResult.data.errors.map((err: string, idx: number) => (
+                    <li key={idx} className="text-xs">{err}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {updateResult.data?.results && updateResult.data.results.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-blue-600">查看详细结果</summary>
+                <ul className="mt-2 space-y-1 pl-4 list-disc">
+                  {updateResult.data.results.map((r: any, idx: number) => (
+                    <li key={idx} className="text-xs">
+                      {r.category}: {r.success ? `✅ ${r.version || "已更新"} (${r.hashUpdated || 0}个Hash)` : "❌ 失败"}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+          <button
+            className="mt-2 text-xs text-blue-600 hover:underline"
+            onClick={() => setUpdateResult(null)}
+          >
+            关闭
+          </button>
+        </div>
+      )}
 
       {/* 导入结果 */}
       {importResult && (
@@ -774,6 +1017,7 @@ export default function QuestionsPage() {
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">类型</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">题目内容</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">Hash / AI回答</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">操作</th>
                 </tr>
               </thead>
@@ -792,6 +1036,23 @@ export default function QuestionsPage() {
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
                         : item.correctAnswer}
+                    </td>
+                    <td className="py-2 px-3 text-xs max-w-xs">
+                      <div className="flex flex-col gap-0.5">
+                        {item.hash && (
+                          <div className="text-gray-600 font-mono text-[10px] truncate" title={item.hash}>
+                            <span className="text-gray-500">H:</span> {item.hash.substring(0, 12)}...
+                          </div>
+                        )}
+                        {item.aiAnswer && (
+                          <div className="text-gray-700 text-[10px] truncate leading-tight" title={item.aiAnswer}>
+                            <span className="text-gray-500">AI:</span> {item.aiAnswer.substring(0, 50)}...
+                          </div>
+                        )}
+                        {!item.hash && !item.aiAnswer && (
+                          <span className="text-gray-400 text-[10px]">—</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 px-3 text-xs">
                       <button
@@ -839,6 +1100,23 @@ export default function QuestionsPage() {
                       : item.correctAnswer}
                   </div>
                 </div>
+                {(item.hash || item.aiAnswer) && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Hash / AI回答</div>
+                    <div className="text-xs space-y-1">
+                      {item.hash && (
+                        <div className="text-gray-600 font-mono truncate" title={item.hash}>
+                          Hash: {item.hash.substring(0, 16)}...
+                        </div>
+                      )}
+                      {item.aiAnswer && (
+                        <div className="text-gray-700 truncate" title={item.aiAnswer}>
+                          AI: {item.aiAnswer.substring(0, 50)}...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {item.options && item.options.length > 0 && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">选项</div>

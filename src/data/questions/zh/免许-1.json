@@ -5,14 +5,16 @@
       "type": "truefalse",
       "content": "1.集团性地驾车行驶时，不得七转八弯，横冲直独地驾驶车辆，否则会给其它车辆带来麻烦。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "dec3fa37aa00d3e033e15c1fd86df1597d7c16b759e5871606390b79f0a56879"
     },
     {
       "id": 2,
       "type": "truefalse",
       "content": "2.在高速车辆国道上行驶时，有装载的物品翻滑了下来，为不致使后面驶来的车辆撞上这些掉落的物体，已采取了防危措施。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "229c05075db7a15742355cb1e870216f77d81c881a639e271a84a054a99b4b63"
     },
     {
       "id": 3,
@@ -20,21 +22,24 @@
       "content": "3.在有如有图标志的车辆专用道路上，卡车原则上在主干道最左侧的车道上行驶。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.32.51.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "6cc773bb22ec3feee78f1938c8bc03d1a982f3ea0165ed01f1fca490f0b622df"
     },
     {
       "id": 4,
       "type": "truefalse",
       "content": "4.速度越快，或者转弯半径越小，离心力也就越小。",
       "correctAnswer": "false",
-      "explanation": "速度越快弯道半径越小，离心力也就越大"
+      "explanation": "速度越快弯道半径越小，离心力也就越大",
+      "hash": "9720d80f0990078eb19d3785b99378ec5145e6e5b7570978df820d0c8ac2bfa1"
     },
     {
       "id": 5,
       "type": "truefalse",
       "content": "5.在夜间与反方向车辆交错开过时，自己的车与反方向车之间的灯光照射，往往看不清道路中央附近在行走的行人，所以应该放慢速度来得安全。",
       "correctAnswer": "true",
-      "explanation": "如题所述，减速行驶"
+      "explanation": "如题所述，减速行驶",
+      "hash": "38849f4cbbf1977b1ef07f7736966c14c2d628d7a8275ae8b8731e3c893b09b7"
     },
     {
       "id": 6,
@@ -42,28 +47,32 @@
       "content": "6.在右示标志的地方，把车停放在B车位置上。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.05.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "该标志是表示禁止停放车辆的开始，所以B车不属违章。"
+      "explanation": "该标志是表示禁止停放车辆的开始，所以B车不属违章。",
+      "hash": "ac698e8aadbaf9075295f99e88eca6908c8a9c7ce6479066bdc1ec227f4ea92f"
     },
     {
       "id": 7,
       "type": "truefalse",
       "content": "7.在上坡的顶部附近不得超车。",
       "correctAnswer": "true",
-      "explanation": "上坡的顶部附近时禁止超车的场所。"
+      "explanation": "上坡的顶部附近时禁止超车的场所。",
+      "hash": "6a020613793885017a1d1f0d80640916e8db0dc477bf93cff00d908c423d92e2"
     },
     {
       "id": 8,
       "type": "truefalse",
       "content": "8.在雾天为预防发生危险，根据需要鸣笛。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "0f64a353ed93a27cc5fe2b58728b0e9d538772b5a3cfd0a0ecb8812437a012e6"
     },
     {
       "id": 9,
       "type": "truefalse",
       "content": "9.在行驶到交叉路附近时有紧急车辆驶近，所以就车停交叉路内让道。",
       "correctAnswer": "false",
-      "explanation": "要避开交叉路口，朝道路的左侧靠边暂时停车"
+      "explanation": "要避开交叉路口，朝道路的左侧靠边暂时停车",
+      "hash": "b1a745811f6995a2b2f1c865c0ff1f358c821301f937735644644469958562a6"
     },
     {
       "id": 10,
@@ -71,28 +80,32 @@
       "content": "10.在右示标志的地方，二轮机动车不得通过，但轻便机动车可以通行。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.11.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "题中的标志表示大型、普通机动二轮车和轻便机动车停止通行。"
+      "explanation": "题中的标志表示大型、普通机动二轮车和轻便机动车停止通行。",
+      "hash": "44341a648ebee9b463f6641bcea99008ea65d2da6aefe0812ca2e338f80e7491"
     },
     {
       "id": 11,
       "type": "truefalse",
       "content": "11.所谓空走距离，是指刹车开始制动到车辆停止为止的距离。",
       "correctAnswer": "false",
-      "explanation": "从感到危险而踩刹车到刹车实际上开始起效果为止的距离"
+      "explanation": "从感到危险而踩刹车到刹车实际上开始起效果为止的距离",
+      "hash": "054ad00eb356dc7d255ed06fb366a966a89ae93e72848386961f9f8aeb744fbb"
     },
     {
       "id": 12,
       "type": "truefalse",
       "content": "12.车辆所有者不得把车辆借用给在饮酒的人或无驾照者。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "7861bd5918eecaaaaaf22493fc2d00ca5d9e830911e804e995a83608046f18c6"
     },
     {
       "id": 13,
       "type": "truefalse",
       "content": "13.标志分有四个种类，即规制标志、辅助标志，警或标志和导向标志。",
       "correctAnswer": "false",
-      "explanation": "标志有主要标志（规制、指示、警戒和导向四种）与辅助标志之分。"
+      "explanation": "标志有主要标志（规制、指示、警戒和导向四种）与辅助标志之分。",
+      "hash": "b1e2755d4cc626fc99ff24fb2983081a88e82071db3aa942297a5400549315e8"
     },
     {
       "id": 14,
@@ -100,49 +113,56 @@
       "content": "14.如有图箭头所示方向，把车驶人沿街的自家车库。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.18.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "车辆入库时，以倒车置入。"
+      "explanation": "车辆入库时，以倒车置入。",
+      "hash": "af2da3d1560a9409235b06492673c88365ec7217ff0754a0c1b8f1da76410798"
     },
     {
       "id": 15,
       "type": "truefalse",
       "content": "15.在驶过学校或幼儿园的附近时，一定要放慢速度。",
       "correctAnswer": "false",
-      "explanation": "并不一定要放慢速度，而是要提高注意意识行驶通过。"
+      "explanation": "并不一定要放慢速度，而是要提高注意意识行驶通过。",
+      "hash": "11b0f2ebd5f976a4a0846f4f8a9ea033724d4e8e4cf5b53b0be4cde7eeb350a2"
     },
     {
       "id": 16,
       "type": "truefalse",
       "content": "16.在平地或下坡上停放四轮车时，变速档挂人倒档(AT(自动控制式)车则把变速杆置人(驻车)的位置上)。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "cbb147bfb82226e0742e58ae1cd3bac31590c0f6aaf380d8b81ed88c9a9ed801"
     },
     {
       "id": 17,
       "type": "truefalse",
       "content": "17.推着大型，普通机动二轮车行走时，被认作是行人的行为，因此可以推着运转着的发动机行走在人行道上。",
       "correctAnswer": "false",
-      "explanation": "发动机在运转状态时，即便是推着走也不被视作行人"
+      "explanation": "发动机在运转状态时，即便是推着走也不被视作行人",
+      "hash": "df947884f92763eb56d7e0414d2806a192a75fc57c0e1dbaa376532daa0c83be"
     },
     {
       "id": 18,
       "type": "truefalse",
       "content": "18.要超越其它车辆时，为了避免与反方向驶来的车正面相撞，尽量与要超的车之间的侧面间隔距离隔得小。",
       "correctAnswer": "false",
-      "explanation": "与被超车辆之间的侧面间距小会出危险"
+      "explanation": "与被超车辆之间的侧面间距小会出危险",
+      "hash": "202416a0544bfe55cc2e91799c9edf1590d6758a1681a7778adddf4c0a83399e"
     },
     {
       "id": 19,
       "type": "truefalse",
       "content": "19.车辆越是高速，其燃料消耗量也越大。",
       "correctAnswer": "true",
-      "explanation": "车辆过快或过慢，燃料的消耗都会大。"
+      "explanation": "车辆过快或过慢，燃料的消耗都会大。",
+      "hash": "7a8554fdaaa9c32d66951fc06fc7679af2a23d44d8ba2539fe81092be416751b"
     },
     {
       "id": 20,
       "type": "truefalse",
       "content": "20.即使持有大型驾照的，也不可驾驶大型机动二轮车。",
       "correctAnswer": "true",
-      "explanation": "持有大型驾照的，可驾驶大型车辆、重型车辆、普通车辆、肖特和轻便机动车。"
+      "explanation": "持有大型驾照的，可驾驶大型车辆、重型车辆、普通车辆、肖特和轻便机动车。",
+      "hash": "a2d66986d58c109be3cc30a18f9963d1d368ab74b9636386bad0688951b2916b"
     },
     {
       "id": 21,
@@ -150,63 +170,72 @@
       "content": "21.在右示的道路上，表示在此区间内不可转向,",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.24.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "题中的标志是表示禁止转向的地段或禁止转向的场所。"
+      "explanation": "题中的标志是表示禁止转向的地段或禁止转向的场所。",
+      "hash": "26c438db40a95d40c462c59c646412a4449f664274c1bbf1f842f5d1faaab7ff"
     },
     {
       "id": 22,
       "type": "truefalse",
       "content": "22.获得驾照未满一年者在驾驶普通车辆时，必须要标贴实习驾驶标志，但在驾驶普通货车时可以不必。",
       "correctAnswer": "false",
-      "explanation": "普通货车也就是普通车辆要标贴实习驾驶标志。"
+      "explanation": "普通货车也就是普通车辆要标贴实习驾驶标志。",
+      "hash": "d364f384e650995924432967bdf0dfe26cde96f6f8760582208d95f57072f442"
     },
     {
       "id": 23,
       "type": "truefalse",
       "content": "23.二轮车的结构性能使得人体要保持稳定才能行驶，一旦停车就失去了平衡，所以需要有与四轮车的驾驶有所不同的驾驶技术。",
       "correctAnswer": "true",
-      "explanation": "二轮车的特性如题所述"
+      "explanation": "二轮车的特性如题所述",
+      "hash": "63fc32ea7afe8a6a5d8b9071faef52b0842ca5f551eeb2f9ae834e2db11eaa47"
     },
     {
       "id": 24,
       "type": "truefalse",
       "content": "24.前方行驶车辆常有让刹车灯点灯的现象，这明显是对周围地理的不熟，预测其会紧急变道的可能，所以加快速度驶离通过。",
       "correctAnswer": "false",
-      "explanation": "驾驶时的预测是需要的，然而快速通过会出危险。"
+      "explanation": "驾驶时的预测是需要的，然而快速通过会出危险。",
+      "hash": "3f89fc87de14bcf040f3ef88d03522796b8e28bf2ea18a7bc5c50f7f8105be86"
     },
     {
       "id": 25,
       "type": "truefalse",
       "content": "25.在距车库等车辆专用出人3米以内不得停放车辆，但是与车库等有关的内部人员可以停放。",
       "correctAnswer": "false",
-      "explanation": "即使是内部人员的车辆，在机动车专用出入口起算的3米之内也是禁止停放车辆的。"
+      "explanation": "即使是内部人员的车辆，在机动车专用出入口起算的3米之内也是禁止停放车辆的。",
+      "hash": "23299cc432fccf791b08fc77017b4579cf5161560a3dfb44614ceba049af12d6"
     },
     {
       "id": 26,
       "type": "truefalse",
       "content": "26.违章停放的车辆妨碍交通，造成事故原因、阻碍紧急车辆的行进等，在交通上、社会的生活上带来很大的危害。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "6070b55c9c302ec4eff8e4280f437c6d5a22e14be7a82163b9235df123cf6e06"
     },
     {
       "id": 27,
       "type": "truefalse",
       "content": "27.在上坡要与反方向的车辆交错开过时，前方虽有避让的地方，但是上坡优先，所以保持原来的速度行进。",
       "correctAnswer": "false",
-      "explanation": "附近有避让的行所时，上坡的车辆也要进入其中让道。"
+      "explanation": "附近有避让的行所时，上坡的车辆也要进入其中让道。",
+      "hash": "7bae25926b15f71acf9b564e193f13d74c00a3bfdfcd3adb27d7875aef643aa7"
     },
     {
       "id": 28,
       "type": "truefalse",
       "content": "28.四轮车发生了故障，白天停放在一般的道路上时，在车的后部放置停车的表示器材或打开后箱盖为妥。",
       "correctAnswer": "true",
-      "explanation": "停放车辆的状态要让其他车辆知晓。"
+      "explanation": "停放车辆的状态要让其他车辆知晓。",
+      "hash": "f35fff44b1f05b9765c23efef1b1ff9442351f4ff0896d5481f68e13ee11b591"
     },
     {
       "id": 29,
       "type": "truefalse",
       "content": "29.不得超越标贴有「高龄驾驶者标志)的车辆。",
       "correctAnswer": "false",
-      "explanation": "侧面通过或超车不被禁止。"
+      "explanation": "侧面通过或超车不被禁止。",
+      "hash": "0093ece9e02b35ed166bf09918de826f36dee7770a6457eb1b6029f58b88ffdf"
     },
     {
       "id": 30,
@@ -214,42 +243,48 @@
       "content": "30.虽有右示标志，但此时没有其它行驶着的车辆，所以鸣笛并保持原来速度驶过。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.31.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "有题中所述标志的地方，必须要放慢速度。"
+      "explanation": "有题中所述标志的地方，必须要放慢速度。",
+      "hash": "b835373bcbda95dd62a43c3854c8d074ac8277ef967ee3e6f6687e6b7746e7b6"
     },
     {
       "id": 31,
       "type": "truefalse",
       "content": "31.从发动机等处发现有漏水或油，即便是少量的，也可以认为是不正常的.",
       "correctAnswer": "true",
-      "explanation": "发动机等部位有水或油外漏是一种异常现象。"
+      "explanation": "发动机等部位有水或油外漏是一种异常现象。",
+      "hash": "c52565244d402a40b91890bdfbde87e9aaef33b600e5a6b0976db63eb6e619f2"
     },
     {
       "id": 32,
       "type": "truefalse",
       "content": "32.拄着拐杖行走等在行动上有所不便的老年人在行走，所以车辆少许往线路的右侧行驶，迅速通过。",
       "correctAnswer": "false",
-      "explanation": "要暂时停车或放慢速度。"
+      "explanation": "要暂时停车或放慢速度。",
+      "hash": "ef6be1863683fee75003a957a677c9407c6da5b80b4198ef1ac39f4d365a96e6"
     },
     {
       "id": 33,
       "type": "truefalse",
       "content": "33.在驾驶时，视线不要停留在一个点上，注视前方视野要宽阔。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "e5265f2f889554f49f7fe6f32ee4f4183b7d86dfff91ab31491af8e249ef3728"
     },
     {
       "id": 34,
       "type": "truefalse",
       "content": "34.驾驶到了按法令规定正在停车或者正在缓慢行驶的车辆附近时，不得插入前方，但可以朝前方横向穿过。",
       "correctAnswer": "false",
-      "explanation": "也不能朝其前方横向穿过。"
+      "explanation": "也不能朝其前方横向穿过。",
+      "hash": "442df7dbeacd2763ba967995858f6289163ca59e9bb4d693ebd40ffa18671dc9"
     },
     {
       "id": 35,
       "type": "truefalse",
       "content": "35.在没有人行道或道路边缘地段的道路上停车时也应该留出行人可以行走通过的间距。",
       "correctAnswer": "false",
-      "explanation": "在没有人行道或道路边缘地段的道路上，沿着道路的左端停放车辆。"
+      "explanation": "在没有人行道或道路边缘地段的道路上，沿着道路的左端停放车辆。",
+      "hash": "483743909624aabc43d165085d4bc99c2c97ab5a70ddb7686c82e8e6ee666b41"
     },
     {
       "id": 36,
@@ -257,63 +292,72 @@
       "content": "36.高速公路的主干道和主干道之间合流之处有右示的道路标志时，B车不可妨碍A车的行进。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.37.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "2fa00308a72b34efe8687e3818f58d07bd68c09e1e8844e57d889fe2aff50928"
     },
     {
       "id": 37,
       "type": "truefalse",
       "content": "37.平时进行日常的检查，打开发动机开关察看显示装置的灯光情况，方向指示器的闪烁作动状况是否良好。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "a480f5ce48a5b8b26dc5e19febfed53f2d2c58773b3f71d54108fea5a802570e"
     },
     {
       "id": 38,
       "type": "truefalse",
       "content": "38.四轮车的驾驶员往往有轻视二轮车的倾向，常常不注意或者说忽视了二轮车的动向。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "f1a77a17644d4227111b677c3a15b0d80967f06a20ea6b2e838ea51bc77ee8b6"
     },
     {
       "id": 39,
       "type": "truefalse",
       "content": "39.交警把灯光指示装置举到头顶上时，这与交叉路的信号全部是红灯的意思相同。",
       "correctAnswer": "false",
-      "explanation": "平行于身体正面的交通处于与黄灯信号相同的状态。"
+      "explanation": "平行于身体正面的交通处于与黄灯信号相同的状态。",
+      "hash": "0c31c6ebbf74abc0960e8a5cb9f60374e1c2d6fada3e83e9c6df89388545a326"
     },
     {
       "id": 40,
       "type": "truefalse",
       "content": "40.只要不是禁止停放车辆的地方，道路可以作为汽车的车库来利用。",
       "correctAnswer": "false",
-      "explanation": "要确保车辆（二轮车除外）的保管场所。"
+      "explanation": "要确保车辆（二轮车除外）的保管场所。",
+      "hash": "950202d1f924322ca720353429a1042b0563112f419eb78912fa7d0a5ea3d6c1"
     },
     {
       "id": 41,
       "type": "truefalse",
       "content": "41.二轮机动车在装载货物时可取较货架宽幅左右各宽出至多为0.3米的幅度。",
       "correctAnswer": "false",
-      "explanation": "宽出货架右面是0.15米，左面也是0.15米。"
+      "explanation": "宽出货架右面是0.15米，左面也是0.15米。",
+      "hash": "4fbb6f6de53e0c382cbfef2e0e2acfa49838149fe92ba686b1e56088bada4818"
     },
     {
       "id": 42,
       "type": "truefalse",
       "content": "42.轻便机动车的最高速度为每小时30公里，但是在没有标志标记的场合或者在道路上车辆少的时候，可以超速。",
       "correctAnswer": "false",
-      "explanation": "驾驶轻便机动车每小时不得超过30公里。"
+      "explanation": "驾驶轻便机动车每小时不得超过30公里。",
+      "hash": "32df948d60a26167fe6abbfb2ae755f8cfe5a936598d7380a0d74bb25366bc69"
     },
     {
       "id": 43,
       "type": "truefalse",
       "content": "43.行驶中发动机保持高速运转时，在四轮车的场合应该立即把变速档挂人中间的空档。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "a1619c96a4aec951c460f205bc07584f465a5efbc54ab3b42f4b5ffaa84ad9e2"
     },
     {
       "id": 44,
       "type": "truefalse",
       "content": "44.在驾驶MT(手动)二轮车时，突然网把变速档从高速调到低速，这样会造成发动机的损耗大或车辆翻例，所以减速时应该有良好的顺序由高及低慢慢降下来。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "77b389e13bee02ce1b2be150f5ecf3e02c15b1680b9bd8804e05f6e3b7dbdeef"
     },
     {
       "id": 45,
@@ -321,56 +365,64 @@
       "content": "45.右示标志表示 [横道线自行车横向过道]",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.43.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "题中所述的标志是表示油横道线和自行车横向过道。"
+      "explanation": "题中所述的标志是表示油横道线和自行车横向过道。",
+      "hash": "16fcde9eb9c6795937cad30b1275b20641e2950d76919882d4be97b7e5a888a1"
     },
     {
       "id": 46,
       "type": "truefalse",
       "content": "46.单向通行的道路上可以在其右侧停放车辆。",
       "correctAnswer": "false",
-      "explanation": "单向通行的道路上也要停放在左侧。"
+      "explanation": "单向通行的道路上也要停放在左侧。",
+      "hash": "2d3f851a2b09a693cd76c139c4b605933c8032ab973e5779e4573afac25f8c27"
     },
     {
       "id": 47,
       "type": "truefalse",
       "content": "47.四轮车在下坡等处行驶突然之间刹车失灵时，可采取迅速减速、拉紧驻车制动器手柄的方法。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "24d45bde2a1f33b0f64af85edad036a8dba61e4dc3328aa5283b82935efaa369"
     },
     {
       "id": 48,
       "type": "truefalse",
       "content": "48.车道交界线伸向交叉路中央处的道路，相对于其它的交叉道路而言，它表示优先道路。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "afd0f0c7026b30a93a514bb27fe39c7345602f914e606c76bbeeac77c343657d"
     },
     {
       "id": 49,
       "type": "truefalse",
       "content": "49.有转弯或左转弯等的信号要持续到其动作的完了。",
       "correctAnswer": "true",
-      "explanation": "动作完了后要尽快收回打出的信号。"
+      "explanation": "动作完了后要尽快收回打出的信号。",
+      "hash": "090210594b81c9e58bc49ca24103e6758a329b91263593327f6279d098976047"
     },
     {
       "id": 50,
       "type": "truefalse",
       "content": "50.前方左侧停着的车辆打出右侧方向的信号时，可理解为该车辆正要发车。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "4876ead4fa9ade5f9ab664bfcca81e62e8a10ce89e8a26c0195ddf77ecc28a05"
     },
     {
       "id": 51,
       "type": "truefalse",
       "content": "51.交通线路巴士等的优先车道上，无论在何种场合，普通车辆都不得通行。",
       "correctAnswer": "false",
-      "explanation": "可以通行，但是交通线路巴士等驶近时，要迅速驶离。"
+      "explanation": "可以通行，但是交通线路巴士等驶近时，要迅速驶离。",
+      "hash": "83ccdfe904c44d14d5b18826a7ace4f474507f1ce98e4eda1989ec8a92715e06"
     },
     {
       "id": 52,
       "type": "truefalse",
       "content": "52.二轮车驶过泥泞的或者有沙砾的路段时，要先加快速度一下子通过。",
       "correctAnswer": "false",
-      "explanation": "降低速度，MT二轮车使用低速挡，保持一定的速度通过。"
+      "explanation": "降低速度，MT二轮车使用低速挡，保持一定的速度通过。",
+      "hash": "015c7e0dbd69d6790f49b78a376e39306fd5c998ce31c6559215c668b780788d"
     },
     {
       "id": 53,
@@ -378,70 +430,80 @@
       "content": "53.在右示标志的道路上，车辆的驾驶必须以每小时50公里的速度才可通行。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.52.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "车辆每小时不得超过50公里。"
+      "explanation": "车辆每小时不得超过50公里。",
+      "hash": "a18d7a444d7d3e8d82961605ea6fb1d881ef5631abb4b5a896237737aa6bf97b"
     },
     {
       "id": 54,
       "type": "truefalse",
       "content": "54.二轮车可按照驾驶人员的最为舒适的姿势坐骑。",
       "correctAnswer": "false",
-      "explanation": "要保持正确的坐骑姿势。"
+      "explanation": "要保持正确的坐骑姿势。",
+      "hash": "63bf8a4b1b3bc25614eb1270a40679cd512b993e464b5da2cf1f0a0329148840"
     },
     {
       "id": 55,
       "type": "truefalse",
       "content": "55.一旦违章停车(驾驶人员离开座位不能马上驾驶的状态)，不仅是驾驶人员，使用者也要被追究其责任。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "5aa3019848aa415564b733723fd7b2a99d4ff1125280f0399f239c89e80638f7"
     },
     {
       "id": 56,
       "type": "truefalse",
       "content": "56.前方的车辆为要变道面打出了方向指示信号等的时候，后方的车辆无论是何种场合都不得妨碍其线路的变更。",
       "correctAnswer": "false",
-      "explanation": "如果会致使紧急刹车、急打方向盘的，则可以由此行进。"
+      "explanation": "如果会致使紧急刹车、急打方向盘的，则可以由此行进。",
+      "hash": "884995579f1ff555bb09aab934bb5e2a93129b2fb818c45be3185dc564e0abd9"
     },
     {
       "id": 57,
       "type": "truefalse",
       "content": "57.从高公路进入一般道路时，不要凭感觉而是要观察速度表确实无误地把速度减下来。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "d759996222064ac1d1150e2c76b17a6b66cbf4b1b3d1b5ef832317f14e385a96"
     },
     {
       "id": 58,
       "type": "truefalse",
       "content": "58.左右转弯的信号在准备要左右转弯的地点起算的30米之前发出。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "4bec9f382d57af3b8039d0bc733a91feb9a5e926668930186992e557bc22d398"
     },
     {
       "id": 59,
       "type": "truefalse",
       "content": "59.前方交通拥堵有可能在交叉路内卡住动不了，但是前方是绿灯所以就驶入了交叉路内。",
       "correctAnswer": "false",
-      "explanation": "有可能会在交叉路口内停止不前时，即便是绿灯也不得驶入。"
+      "explanation": "有可能会在交叉路口内停止不前时，即便是绿灯也不得驶入。",
+      "hash": "9b8f81b14a29442c4b6ad8a0cba3fcd38144960d753d1d0ded0c97cd64537d48"
     },
     {
       "id": 60,
       "type": "truefalse",
       "content": "60.长距离驾驶时，要制定适合于自己的驾驶计划，事先要把所要花费的时间、休息的场所纳人计划中。",
       "correctAnswer": "true",
-      "explanation": "长距离驾驶时，要有个计划，做到两小时休息一次。"
+      "explanation": "长距离驾驶时，要有个计划，做到两小时休息一次。",
+      "hash": "5e244998a9040e36e63728f6cbd9dcea212f194e5941f80462b380c6db67e7c3"
     },
     {
       "id": 61,
       "type": "truefalse",
       "content": "61.在夜间，不得已而在一般道路上停放车辆时，要开启紧急闪烁灯或者尾灯。",
       "correctAnswer": "true",
-      "explanation": "在夜间停车于道路上时，如题所述。"
+      "explanation": "在夜间停车于道路上时，如题所述。",
+      "hash": "f4a9f1bbd64cd6ad105a65a0835bdd4745c6f43f076c70d5ae54f4530928e14b"
     },
     {
       "id": 62,
       "type": "truefalse",
       "content": "62.MT(手动排档式)四轮车或者MT(手动排档式)二轮车在通过轨道岔时，为了尽快通过，发车启动后立即挂人高速档。",
       "correctAnswer": "false",
-      "explanation": "不要变速，保持发车时低档上的速度顺势通过。"
+      "explanation": "不要变速，保持发车时低档上的速度顺势通过。",
+      "hash": "8fa54f96a2f0e1b49ec605422bc7e61e29c2e17281b3e1c6c6bdc1b7c4c86c8a"
     },
     {
       "id": 63,
@@ -449,21 +511,24 @@
       "content": "63.右示标志的车道是交通线路巴士的专用通行道，所以普通车辆除了在左右转弯或施工而不得已的情况以外，一般都不可通行。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.33.58.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "c763706d3ec69e87b7c87b0a335cb1217a0753a83fbbb40678ca34b94c31e417"
     },
     {
       "id": 64,
       "type": "truefalse",
       "content": "64.二轮车在驾驶到道路有弯道的地方时，速度要注意调制好。",
       "correctAnswer": "true",
-      "explanation": "二轮车在过弯道时，如题所述"
+      "explanation": "二轮车在过弯道时，如题所述",
+      "hash": "55937ff2b3540e229c7f8e9291e15f2b539f6d1073476676e9061cd590280449"
     },
     {
       "id": 65,
       "type": "truefalse",
       "content": "65.在高速公路的主干道上行驶时，开过了要进入的立体交叉出，在注意着路况的同时倒车，驶人预定要开出去的出口。",
       "correctAnswer": "false",
-      "explanation": "在高速道路的主干道上，禁止倒车。"
+      "explanation": "在高速道路的主干道上，禁止倒车。",
+      "hash": "226796bd68cbc451719eeba8f54412b240f5e3cfd87463c57afe38fafea26f05"
     },
     {
       "id": 66,
@@ -471,28 +536,32 @@
       "content": "66.右示标记表示 [不得驾车驶入] 之意。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.04.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "题中的标记是表示禁止进入的区域。"
+      "explanation": "题中的标记是表示禁止进入的区域。",
+      "hash": "ca3ae9707846be143a8f45fe75cf1f3b60ac65d7e800402b3c1f58f659061ee2"
     },
     {
       "id": 67,
       "type": "truefalse",
       "content": "67.即便是为了防止出危险，在禁止停放车辆或停车的地方车辆也不得停下来,",
       "correctAnswer": "false",
-      "explanation": "为了要防止出危险，需要时在禁止停放车辆或停车的场所也可以停车。"
+      "explanation": "为了要防止出危险，需要时在禁止停放车辆或停车的场所也可以停车。",
+      "hash": "ed55157bde7e2e3e904d3a10a932e6a0fead5b7738de0489a9145e91657bed2a"
     },
     {
       "id": 68,
       "type": "truefalse",
       "content": "68.有宽幅在0.75米以下的道路边缘地段的道路上停车时，要沿着车道的左端侧停放车辆。",
       "correctAnswer": "true",
-      "explanation": "沿着车道的左端侧停车。"
+      "explanation": "沿着车道的左端侧停车。",
+      "hash": "e33024e24c391dc0878659d9f7b14685fa7c4ff8e656e197e862f83c79f1a06a"
     },
     {
       "id": 69,
       "type": "truefalse",
       "content": "69.如果是妨码了其它车辆的通行，那么即使是法令没有禁止的地方也不得横穿或转向调头。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "8d7962d83dc6b3064047ffc2ae1196d99f63bbe354a32e8460be53b0148ce2e4"
     },
     {
       "id": 70,
@@ -500,14 +569,16 @@
       "content": "70.对于标贴有右示标志的车辆，插人前方虽被禁止，逼近借道并没有被禁止。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.11.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "逼近借道也被禁止。"
+      "explanation": "逼近借道也被禁止。",
+      "hash": "a98043e49f10b371aa373e36c47b26176997ec4554ff4bbdaa692f6af12c0a03"
     },
     {
       "id": 71,
       "type": "truefalse",
       "content": "71.同一方向有三条以上车的道路，如果没有通行划分指示的标志等时，按照该车的速度行驶在除最右侧以外的其它两条车道上。",
       "correctAnswer": "true",
-      "explanation": "空开最右侧的车道以作为超车用，其它两条车道上慢车朝左、快车行右驾驶。"
+      "explanation": "空开最右侧的车道以作为超车用，其它两条车道上慢车朝左、快车行右驾驶。",
+      "hash": "1d084a3536b8cc159ee7eb76e5805f7ea9593b1d9273dcc041cbcdce464c5ad0"
     },
     {
       "id": 72,
@@ -515,35 +586,40 @@
       "content": "72.在交警使用的手势信号中, 具有相同的含义。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.22.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "687cd6d15702fd21d87c164e1ecdb3f619cca97082e5bc635ba20334ef79baa6"
     },
     {
       "id": 73,
       "type": "truefalse",
       "content": "73.二轮车往往不易被其它车辆看到，所以在有车道划分的道路上可以跨于两条车道的中间边改道边行进。",
       "correctAnswer": "false",
-      "explanation": "二轮车也一样，不能跨于两条车道上行驶。"
+      "explanation": "二轮车也一样，不能跨于两条车道上行驶。",
+      "hash": "df55a28a281de0aebecacd812f5b9645ce10f630942ee53e412a8fa2054843b1"
     },
     {
       "id": 74,
       "type": "truefalse",
       "content": "74.高速车辆国道上的车间距离，在路面干燥轮胎是新的时候，车辆每小时以100公里的速度行驶，其间隔要留出约100米。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "0f8bb5a9f1dedbeef78a85f91d5e90bbd16772f495b92822e327bc53519f16c1"
     },
     {
       "id": 75,
       "type": "truefalse",
       "content": "75.交叉前有通行方向划分指定的同时还有黄线的标记的地方，即便是为了左右转弯，也不得变道。",
       "correctAnswer": "true",
-      "explanation": "即便是为了有转弯或左转弯，不能跨出黄线变道。"
+      "explanation": "即便是为了有转弯或左转弯，不能跨出黄线变道。",
+      "hash": "0639c74c52d53135661e26e57d7102f61d0bf4b61d7bc4cd5bee9b16c53fd212"
     },
     {
       "id": 76,
       "type": "truefalse",
       "content": "76.自动控制式四轮车在构造上就设计为:如果变速杆不在(P;(驻车)域(N)(中间空档)的位置上时，发动机就不会启动、一般把变速杆挂人(P)档启动，是基本的操作顺序。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "14a41525d9cd5a5f7621bf1de1adf4db53078033880ddeec666d7c87179763af"
     },
     {
       "id": 77,
@@ -551,42 +627,48 @@
       "content": "77.车辆要右转弯时以右图所示的箭头方向行驶右转弯。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.29.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "右转弯时，车辆首先靠道路中央行驶，然后在最近与交叉路口中心的内侧慢行转弯。"
+      "explanation": "右转弯时，车辆首先靠道路中央行驶，然后在最近与交叉路口中心的内侧慢行转弯。",
+      "hash": "b6917e704c60ef557e7d761b97b072b00d9635ab47dd265f248b95d9fe0c3dc8"
     },
     {
       "id": 78,
       "type": "truefalse",
       "content": "78.车辆上装载货物时，装得越高其重心就越低，有稳定感。",
       "correctAnswer": "false",
-      "explanation": "货物装得越高重心也就高，不稳定，会出危险。"
+      "explanation": "货物装得越高重心也就高，不稳定，会出危险。",
+      "hash": "6a4e5db2b25b7469a78cd39c5322db1cb3c82d2a9b7861025063bb052381f319"
     },
     {
       "id": 79,
       "type": "truefalse",
       "content": "79.轻便机动车如果一起乘坐的人员也戴上安全帽，则两个人也可同时乘坐。",
       "correctAnswer": "false",
-      "explanation": "即使都戴安全帽，也不允许两个人乘坐。"
+      "explanation": "即使都戴安全帽，也不允许两个人乘坐。",
+      "hash": "cef7a1f44f80982d447356c3fcb4374de52edded4132c50be0df333b36b353c9"
     },
     {
       "id": 80,
       "type": "truefalse",
       "content": "80.左转弯时，后轮是从前轮的外侧通过的，左侧前轮向左靠足为妥。",
       "correctAnswer": "false",
-      "explanation": "左转弯时，左侧前轮过于朝左靠足，左后轮会脱落。"
+      "explanation": "左转弯时，左侧前轮过于朝左靠足，左后轮会脱落。",
+      "hash": "4160b9adbd64de599efccb702ff5de50059b493ce32ec0a8a4c5c20824bb5747"
     },
     {
       "id": 81,
       "type": "truefalse",
       "content": "81.在要进交叉路时，虽有慢行的标志，但交差道路上的车辆还在远处，所以没有放慢速度就通过了。",
       "correctAnswer": "false",
-      "explanation": "交叉道路上的车辆尽管还在远处，有慢行标志的地方就应该放慢速度。"
+      "explanation": "交叉道路上的车辆尽管还在远处，有慢行标志的地方就应该放慢速度。",
+      "hash": "d1f10000a066eda2c8fc0dac5b3ea2fe9d61306ab764389e7a5f4e2b25778c63"
     },
     {
       "id": 82,
       "type": "truefalse",
       "content": "82.未满20岁，二轮驾照获得期间未满3年的，不得在高速公路上驾驶两人乘坐的大型，普通机动二轮车。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "a8ee8462e5159e900258f450b15a52c28edcfe09fdea86bf6a6debf380c23147"
     },
     {
       "id": 83,
@@ -594,56 +676,64 @@
       "content": "83.如右图所示的道路标志的场合,车辆不得按照箭头所示的方向变道。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.36.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "车辆行进的一侧没有黄线，就可以变道。"
+      "explanation": "车辆行进的一侧没有黄线，就可以变道。",
+      "hash": "f51c9c7c05ee37143227cd665e70000e6b759fc839275e8785852d502a9907e5"
     },
     {
       "id": 84,
       "type": "truefalse",
       "content": "84.车辆在迫不得已的情况下，可以进入安全地段。",
       "correctAnswer": "false",
-      "explanation": "安全地段是保障行人安全的地方，任何时候都不可通行。"
+      "explanation": "安全地段是保障行人安全的地方，任何时候都不可通行。",
+      "hash": "c498eac228e6ab76d4fa8a4fa9c13c9f4c8e2b93e8e9f736181aac840b29b427"
     },
     {
       "id": 85,
       "type": "truefalse",
       "content": "85.进入了交叉路时可以先于直行车、左转弯的车辆右转弯。",
       "correctAnswer": "false",
-      "explanation": "即使是先驶入交叉路口的，也不得妨碍直行车或左转弯车的行进。"
+      "explanation": "即使是先驶入交叉路口的，也不得妨碍直行车或左转弯车的行进。",
+      "hash": "177ddc2586c8d03b8e8c71b15890f2c730a306a2afd8a89a19f26f58cc6df45b"
     },
     {
       "id": 86,
       "type": "truefalse",
       "content": "86.前面的车辆要超越轻使机动车时，我方车不得超越。",
       "correctAnswer": "false",
-      "explanation": "要超越轻便机动车时，不在禁止超车范围之内。"
+      "explanation": "要超越轻便机动车时，不在禁止超车范围之内。",
+      "hash": "0c793cf02784805e16c9c9a04e952298c687f485b10f90a02b745e645452144a"
     },
     {
       "id": 87,
       "type": "truefalse",
       "content": "87.只要自己没有驾驶车辆，即便是鼓动驾驶人员违反了其同危险行为等的人,也不至于被吊销驾照。",
       "correctAnswer": "false",
-      "explanation": "尽管没有在驾车，但也要被吊销驾照。"
+      "explanation": "尽管没有在驾车，但也要被吊销驾照。",
+      "hash": "c74403be8d5bec6b2ac43185d509d89be437f8f508401ba510283bbeb8e7f080"
     },
     {
       "id": 88,
       "type": "truefalse",
       "content": "88.实习驾驶的期间中，违反了交通规则以致触及并达到了一定的规制的人，在没有正当理由未参加实习驾驶员的讲座的，要再次接受考试。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "704c7b570c04d58a5749571c6921d5808c6db53b2953e6608df34e49455672f8"
     },
     {
       "id": 89,
       "type": "truefalse",
       "content": "89.在驾驶车辆时,要遵守驾驶执照上所记载的条件(戴眼镜等)。",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "7ea021f9f5ceb738702722aa8fd6239d5c12164457a308eb08fecbcb674d51a1"
     },
     {
       "id": 90,
       "type": "truefalse",
       "content": "90.在闪烁着红灯信号的交叉路上向左或右转弯时,要在进入交叉路之前(停车线)暂时停车,确认了安全以后放慢速度行进。",
       "correctAnswer": "true",
-      "explanation": "如题所述，暂时停一下车，待确认了安全以后再缓速行进。"
+      "explanation": "如题所述，暂时停一下车，待确认了安全以后再缓速行进。",
+      "hash": "7149e8fcbb8d37cef3ae8b9ce62eeb83ae68e9299fc9c523386f3b835748a842"
     },
     {
       "id": 91,
@@ -651,7 +741,8 @@
       "content": "91.车转弯时,要注意哪些问题?(1)在反方向道上的大型右转弯车辆的后部,有可能出现其它的直行驶来的车辆,所以在与大型车辆交错通过以后,待确认了前方路况后再右转弯。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.47.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "9c3059fd0fb9db4ae2e31269241f1fa16e4f34bf6ef9e975969baa86a54c17d3"
     },
     {
       "id": 92,
@@ -659,7 +750,8 @@
       "content": "91.车转弯时,要注意哪些问题?(2)后面有车跟着驶来,或者驾驶到右转弯方向的横道线跟前停车会给直行车带来妨碍,所以就迅速右转弯。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.47.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "有可能会与有转弯车的后面驶来的直行车或正在过横道线的行人等相碰撞。"
+      "explanation": "有可能会与有转弯车的后面驶来的直行车或正在过横道线的行人等相碰撞。",
+      "hash": "774666715b446d1f4743058980741610cd01375a0ca82a063885296674f57935"
     },
     {
       "id": 93,
@@ -667,7 +759,8 @@
       "content": "91.车转弯时,要注意哪些问题?(3)右转弯时不影响右转弯方向的横道线上行人的过路。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.47.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "0a0ffb7515f516d4456b9dd9a46bcbbc6205a762dea9c808fadadb801f514ba1"
     },
     {
       "id": 94,
@@ -675,7 +768,8 @@
       "content": "92.以40km/h的速度行驶时，要注意哪些问题? (1)上坡时往往会加大油门,在通过这样的弯道时为了要确认前方的交通",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.54.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "4f98e4a7ba0cf62079cc2976d94b48b5a04f87db86d452d817fd0151fbc509c8"
     },
     {
       "id": 95,
@@ -683,7 +777,8 @@
       "content": "92.以40km/h的速度行驶时，要注意哪些问题? (2)反方向的车辆有可能会超过中央线驶来,注意着其动向行进。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.54.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "a19799fdfd7e2e33e668cccab0bd2edc375d79965f846db7e1b1037af4aeeb90"
     },
     {
       "id": 96,
@@ -691,7 +786,8 @@
       "content": "92.以40km/h的速度行驶时，要注意哪些问题? (3)反方向的大型卡车不可能会超过中央线朝这儿驶来,所以就加速行进。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.34.54.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "反方向的车辆有可能会偏出中央线驶来。"
+      "explanation": "反方向的车辆有可能会偏出中央线驶来。",
+      "hash": "75b45d3d0fbc587ba133d295a30aeba9fde33f6fc5a239e9cf0a738e6e13b159"
     },
     {
       "id": 97,
@@ -699,7 +795,8 @@
       "content": "93.以30km/h的速度行驶时，要注意哪些问题?(1)反方向的车辆看不见,所以就偏出到道路的右侧部分驾驶,快速地从巴士车的边上驶过。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.35.48.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "巴士的后面有可能会有行人飞奔出来。"
+      "explanation": "巴士的后面有可能会有行人飞奔出来。",
+      "hash": "d53669d721d4d646788c91030006a6fe7d0918e194be95b8f1a760dbed81cd52"
     },
     {
       "id": 98,
@@ -707,7 +804,8 @@
       "content": "93.以30km/h的速度行驶时，要注意哪些问题?(2)在停车中的巴士车的后面会有行人飞奔出来,所以在巴士车开往前方之前以能够就地停车的速度行进。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.35.48.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "9a23176e59db04320ce9d26662ff5e1e544e57b512f019ceb539ec1b1cb114e9"
     },
     {
       "id": 99,
@@ -715,7 +813,8 @@
       "content": "93.以30km/h的速度行驶时，要注意哪些问题?(3)如果在停车中的巴士车的后面有行人飞奔出来就很危险,所以就鸣笛行进",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.35.48.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "这属于乱用鸣笛行为，把行进路线稍早地靠中央线一侧，确认前方情况。"
+      "explanation": "这属于乱用鸣笛行为，把行进路线稍早地靠中央线一侧，确认前方情况。",
+      "hash": "6ed1b87c495af2c45626a2dc87c2a08235dca56ccfbfbacade3f9b7c5d09233b"
     },
     {
       "id": 100,
@@ -723,7 +822,8 @@
       "content": "94.以80km/h的速度在高速公路上行驶，进入隧道时,要注意哪些问题?(1)在前面行驶的车辆有可能会减速,保持足够的车距。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.36.13.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "8eb65901b743652ccc0f6557a23006e4b5e82acd5e664e621b44b69d87488759"
     },
     {
       "id": 101,
@@ -731,7 +831,8 @@
       "content": "94.以80km/h的速度在高速公路上行驶，进入隧道时,要注意哪些问题?(2)保持高速进入隧道时,眼睛的视力会急剧下降,所以在进入之前就要减速行进。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.36.13.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "1dd0bc56005492c266bb86e17ab2960fbca6d4ee065c4947f63d9829108fe10d"
     },
     {
       "id": 102,
@@ -739,7 +840,8 @@
       "content": "94.以80km/h的速度在高速公路上行驶，进入隧道时,要注意哪些问题?(3)保持高速进入隧道时,眼睛的视力会急剧下降,于是就加快速度缩短与前车辆的车距。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.36.13.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "缩短车距会有与前车相撞的危险。"
+      "explanation": "缩短车距会有与前车相撞的危险。",
+      "hash": "e0ce8e6a79c0a3c9a9e26e6aefa1771ae252c493aefbbfd3da0f931400f34229"
     },
     {
       "id": 103,
@@ -747,7 +849,8 @@
       "content": "95.通过轨道岔口时要注意哪些问题?(1)后面的车辆驶来,所以停车时与前面的车辆之间不留车距。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.36.32.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "前面的车辆发车时会有一时倒退的可能，留足车距停下来。"
+      "explanation": "前面的车辆发车时会有一时倒退的可能，留足车距停下来。",
+      "hash": "0793ef3857609051c5d6227c14db5d23b7a3ea83eee399d79b053bc5833c1dd7"
     },
     {
       "id": 104,
@@ -755,7 +858,8 @@
       "content": "95.通过轨道岔口时要注意哪些问题?(2)要起动发车时会有倒退的现象,所以就使用驻车制动器手柄发车。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.36.32.png?raw=true",
       "correctAnswer": "true",
-      "explanation": "如题所述"
+      "explanation": "如题所述",
+      "hash": "75967ca51c96b4ac1719cb9cbe4d2fbdc225dd92b93b50ae2a304507e567543e"
     },
     {
       "id": 105,
@@ -763,7 +867,9 @@
       "content": "95.通过轨道岔口时要注意哪些问题?(3)前面的车辆在确认安全,所以就不停车低速驶过。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-18%20at%2021.36.32.png?raw=true",
       "correctAnswer": "false",
-      "explanation": "在轨道岔口前暂时停一下车，用自己的眼睛、耳朵确认左右两侧的安全。"
+      "explanation": "在轨道岔口前暂时停一下车，用自己的眼睛、耳朵确认左右两侧的安全。",
+      "hash": "192b8b34c46235bc41392873b82a99ca8d932e1e62ecee490d640a282a6debfa"
     }
-  ]
+  ],
+  "version": "20251108-141041-001"
 }
