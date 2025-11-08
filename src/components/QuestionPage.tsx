@@ -321,7 +321,6 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
             )}
           </div>
         )}
-        </div>
       </div>
 
       {/* AI助手对话框 */}
