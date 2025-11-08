@@ -26,10 +26,27 @@ export function clearOpenAIClient(): void {
  * @returns OpenAI 客户端实例
  */
 export function getOpenAIClient(config: ServiceConfig): OpenAI {
-  const baseUrl =
+  let baseUrl =
     process.env.OPENAI_BASE_URL?.trim() ||
     process.env.OLLAMA_BASE_URL?.trim() ||
     "https://api.openai.com/v1";
+
+  // 修复常见的 OpenRouter URL 错误（api/vi -> api/v1）
+  if (baseUrl.includes("openrouter.ai")) {
+    // 确保使用正确的 OpenRouter API 路径
+    if (baseUrl.includes("/api/vi") && !baseUrl.includes("/api/v1")) {
+      baseUrl = baseUrl.replace("/api/vi", "/api/v1");
+      console.warn("[OpenAI Client] 检测到错误的 OpenRouter URL，已自动修复:", {
+        original: process.env.OPENAI_BASE_URL,
+        fixed: baseUrl,
+      });
+    }
+    // 如果 URL 不包含 /api/v1，自动添加
+    if (!baseUrl.includes("/api/v1") && !baseUrl.includes("/api/vi")) {
+      baseUrl = "https://openrouter.ai/api/v1";
+      console.warn("[OpenAI Client] OpenRouter URL 格式不正确，已自动修复为:", baseUrl);
+    }
+  }
 
   // 检查是否是 OpenRouter
   const isOpenRouter = baseUrl.includes("openrouter.ai");
