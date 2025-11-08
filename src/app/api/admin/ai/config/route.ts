@@ -88,7 +88,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           model?: string;
           cacheTtl?: number;
           costAlertUsdThreshold?: number;
-          aiProvider?: "online" | "local" | "openrouter";
+          aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct";
         }
       | null;
 
@@ -139,8 +139,8 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
     }
 
     if (body.aiProvider !== undefined) {
-      if (body.aiProvider !== "online" && body.aiProvider !== "local" && body.aiProvider !== "openrouter") {
-        return badRequest("aiProvider must be either 'online', 'local', or 'openrouter'.");
+      if (body.aiProvider !== "online" && body.aiProvider !== "local" && body.aiProvider !== "openrouter" && body.aiProvider !== "openrouter-direct") {
+        return badRequest("aiProvider must be either 'online', 'local', 'openrouter', or 'openrouter-direct'.");
       }
       updates.push({ key: "aiProvider", value: body.aiProvider });
     }

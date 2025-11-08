@@ -34,6 +34,7 @@ type AiServiceResponse = {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
+    cached?: boolean; // 缓存标识
   };
   errorCode?: string;
   message?: string;
@@ -55,6 +56,12 @@ const USER_JWT_SECRET = process.env.USER_JWT_SECRET; // HMAC 密钥（用户端 
 const USE_LOCAL_AI = process.env.USE_LOCAL_AI === "true" || process.env.USE_LOCAL_AI === "1";
 const LOCAL_AI_SERVICE_URL = process.env.LOCAL_AI_SERVICE_URL;
 const LOCAL_AI_SERVICE_TOKEN = process.env.LOCAL_AI_SERVICE_TOKEN;
+
+// 直连 OpenRouter 配置
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+const OPENROUTER_REFERER_URL = process.env.OPENROUTER_REFERER_URL || "https://zalem.app";
+const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME || "ZALEM";
 
 // 在模块加载时记录环境变量（仅在开发环境）
 if (process.env.NODE_ENV === "development") {
@@ -245,6 +252,126 @@ function normalizeQuestion(q: string) {
   return q.trim().replace(/\s+/g, " ");
 }
 
+// ==== 辅助函数：构建系统提示 ====
+function buildSystemPrompt(lang: string): string {
+  const base =
+    "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
+  if (lang === "ja") {
+    return "あなたは ZALEM の運転免許学習アシスタントです。日本の交通法規と問題集の知識に基づいて、簡潔かつ正確に回答してください。推測や捏造は禁止し、関係のない内容は出力しないでください。";
+  }
+  if (lang === "en") {
+    return "You are ZALEM's driving-test study assistant. Answer based on Japan's traffic laws and question bank. Be concise and accurate. Do not fabricate or include unrelated content.";
+  }
+  return base;
+}
+
+// ==== 辅助函数：简化版安全审查 ====
+function checkSafetySimple(text: string): { pass: boolean; reason?: string } {
+  const normalized = (text || "").toLowerCase().trim();
+  
+  // 高风险关键词
+  const hardBlocks = [
+    { pattern: /自杀|轻生|suicide|kill myself/, reason: "内容涉及自残/自杀等高风险内容，建议寻求专业帮助。" },
+    { pattern: /制造爆炸物|bomb making|homemade explosive/, reason: "涉及违法犯罪的方法或操作，无法提供帮助。" },
+    { pattern: /毒品制作|cook meth|制造毒品/, reason: "涉及违法犯罪的方法或操作，无法提供帮助。" },
+    { pattern: /信用卡盗刷|刷卡器|skimmer/, reason: "涉及违法犯罪的方法或操作，无法提供帮助。" },
+    { pattern: /性爱|色情|裸照|av |成人片|约炮|口交|肛交|强奸|乱伦/, reason: "涉及成人/性相关内容，无法提供帮助。" },
+    { pattern: /杀人|自制爆炸物|爆炸物|砍杀|恐袭|恐怖袭击|血腥|处决|制炸弹/, reason: "涉及暴力与极端伤害内容，无法提供帮助。" },
+  ];
+  
+  for (const block of hardBlocks) {
+    if (block.pattern.test(normalized)) {
+      return { pass: false, reason: block.reason };
+    }
+  }
+  
+  return { pass: true };
+}
+
+// ==== 辅助函数：写入 ai_logs 表 ====
+/**
+ * 将AI回答写入 ai_logs 表（异步，不阻塞响应）
+ * 作为AI服务写入的备份，确保所有AI回答都被保存
+ */
+async function writeAiLogToDatabase(params: {
+  userId: string | null;
+  question: string;
+  answer: string;
+  locale: string | undefined;
+  model: string;
+  ragHits: number;
+  safetyFlag: "ok" | "needs_human" | "blocked";
+  costEstUsd: number | null;
+  sources?: Array<{ title: string; url: string; snippet?: string }>;
+  createdAtIso?: string;
+}): Promise<void> {
+  try {
+    // 规范化 userId：如果是 act- 格式，直接使用；如果是 anonymous，设为 null
+    let normalizedUserId: string | null = null;
+    if (params.userId && params.userId !== "anonymous") {
+      // 如果是 act- 格式，直接使用
+      if (params.userId.startsWith("act-")) {
+        normalizedUserId = params.userId;
+      } else {
+        // 尝试验证是否为有效的 UUID 格式
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(params.userId)) {
+          normalizedUserId = params.userId;
+        }
+      }
+    }
+
+    // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh
+    let normalizedLocale: string | null = null;
+    if (params.locale) {
+      const localeLower = params.locale.toLowerCase();
+      if (localeLower.startsWith("zh")) {
+        normalizedLocale = "zh";
+      } else if (localeLower.startsWith("ja")) {
+        normalizedLocale = "ja";
+      } else if (localeLower.startsWith("en")) {
+        normalizedLocale = "en";
+      } else {
+        normalizedLocale = params.locale;
+      }
+    }
+
+    // 准备 sources JSONB 数据
+    const sourcesJson = params.sources && params.sources.length > 0 
+      ? JSON.stringify(params.sources) 
+      : null;
+
+    // 写入数据库
+    await aiDb
+      .insertInto("ai_logs")
+      .values({
+        user_id: normalizedUserId,
+        question: params.question,
+        answer: params.answer,
+        locale: normalizedLocale,
+        model: params.model,
+        rag_hits: params.ragHits,
+        safety_flag: params.safetyFlag,
+        cost_est: params.costEstUsd,
+        sources: sourcesJson as any, // JSONB 字段
+        created_at: params.createdAtIso ? new Date(params.createdAtIso) : new Date(),
+      })
+      .execute();
+  } catch (error) {
+    // 写入失败不影响主流程，仅记录日志
+    const errorMessage = (error as Error).message || String(error);
+    // 过滤掉常见的连接错误，避免日志过多
+    if (
+      !errorMessage.includes("Connection terminated") &&
+      !errorMessage.includes("timeout") &&
+      !errorMessage.includes("pool") &&
+      !errorMessage.includes("shutdown")
+    ) {
+      console.error("[AI Ask] Failed to write ai_logs:", errorMessage);
+    }
+  }
+}
+
 // ==== 入口：POST /api/ai/ask ====
 export async function POST(req: NextRequest) {
   const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -259,7 +386,7 @@ export async function POST(req: NextRequest) {
     console.log(`[${requestId}] [STEP 0] 开始选择AI服务`);
     let selectedAiServiceUrl: string;
     let selectedAiServiceToken: string;
-    let aiServiceMode: "local" | "online" | "openrouter";
+    let aiServiceMode: "local" | "online" | "openrouter" | "openrouter-direct";
     
     // 记录环境变量状态
     console.log(`[${requestId}] [ENV CHECK] 环境变量检查`, {
@@ -287,7 +414,7 @@ export async function POST(req: NextRequest) {
     }
     
     // 从数据库读取 aiProvider 配置（如果 URL 参数没有强制指定）
-    let aiProviderFromDb: "online" | "local" | "openrouter" | null = null;
+    let aiProviderFromDb: "online" | "local" | "openrouter" | "openrouter-direct" | null = null;
     if (!forceMode) {
       try {
         console.log(`[${requestId}] [STEP 0.2] 从数据库读取aiProvider配置`);
@@ -297,8 +424,8 @@ export async function POST(req: NextRequest) {
           .where("key", "=", "aiProvider")
           .executeTakeFirst();
         
-        if (configRow && (configRow.value === "local" || configRow.value === "online" || configRow.value === "openrouter")) {
-          aiProviderFromDb = configRow.value as "online" | "local" | "openrouter";
+        if (configRow && (configRow.value === "local" || configRow.value === "online" || configRow.value === "openrouter" || configRow.value === "openrouter-direct")) {
+          aiProviderFromDb = configRow.value as "online" | "local" | "openrouter" | "openrouter-direct";
           console.log(`[${requestId}] [STEP 0.2] 数据库配置: ${aiProviderFromDb}`);
         } else {
           console.log(`[${requestId}] [STEP 0.2] 数据库配置为空或无效`);
@@ -362,17 +489,23 @@ export async function POST(req: NextRequest) {
           ) },
         );
       }
+      // 如果是 openrouter-direct，不通过 AI Service，直接调用 OpenRouter API
+      if (aiProviderFromDb === "openrouter-direct") {
+        aiServiceMode = "openrouter-direct";
+        console.log(`[${requestId}] [STEP 0.4] 已选择直连OpenRouter模式（不通过AI Service）`);
+      } else {
       selectedAiServiceUrl = AI_SERVICE_URL;
       selectedAiServiceToken = AI_SERVICE_TOKEN;
       // openrouter 和 online 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
       aiServiceMode = aiProviderFromDb === "openrouter" ? "openrouter" : "online";
       console.log(`[${requestId}] [STEP 0.4] 已选择${aiServiceMode === "openrouter" ? "OpenRouter" : "在线"}AI服务`);
+      }
     }
     
     console.log(`[${requestId}] [STEP 0.5] AI服务选择完成`, {
       mode: aiServiceMode,
-      url: selectedAiServiceUrl ? `${selectedAiServiceUrl.substring(0, 30)}...` : "(empty)",
-      hasToken: !!selectedAiServiceToken,
+      url: aiServiceMode === "openrouter-direct" ? "直连OpenRouter" : (selectedAiServiceUrl ? `${selectedAiServiceUrl.substring(0, 30)}...` : "(empty)"),
+      hasToken: aiServiceMode === "openrouter-direct" ? "N/A" : !!selectedAiServiceToken,
     });
 
     // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
@@ -585,7 +718,239 @@ export async function POST(req: NextRequest) {
       forwardedUserId,
     });
     
-    // 确保 selectedAiServiceUrl 不重复 /v1 路径
+    // 如果是直连 OpenRouter 模式，直接调用 OpenRouter API，不通过 AI Service
+    if (aiServiceMode === "openrouter-direct") {
+      console.log(`[${requestId}] [STEP 5] 开始直连OpenRouter处理`);
+      
+      // 检查环境变量
+      if (!OPENROUTER_API_KEY) {
+        console.error(`[${requestId}] [STEP 5.1] OPENROUTER_API_KEY 未设置`);
+        return err("INTERNAL_ERROR", "OPENROUTER_API_KEY is not set. Please set OPENROUTER_API_KEY environment variable.", 500);
+      }
+      
+      // 调试：检查 API Key 格式（不打印完整内容）
+      const apiKeyPrefix = OPENROUTER_API_KEY.substring(0, 10);
+      const apiKeyLength = OPENROUTER_API_KEY.length;
+      console.log(`[${requestId}] [STEP 5.1.1] API Key 检查`, {
+        prefix: apiKeyPrefix,
+        length: apiKeyLength,
+        startsWithSkOr: OPENROUTER_API_KEY.startsWith("sk-or-v1-"),
+        hasValue: !!OPENROUTER_API_KEY,
+      });
+      
+      const openRouterBaseUrl = OPENAI_BASE_URL.includes("openrouter.ai") 
+        ? OPENAI_BASE_URL 
+        : "https://openrouter.ai/api/v1";
+      
+      // 从数据库读取模型配置
+      let model = "openai/gpt-4o-mini"; // 默认模型
+      try {
+        const modelRow = await (aiDb as any)
+          .selectFrom("ai_config")
+          .select(["value"])
+          .where("key", "=", "model")
+          .executeTakeFirst();
+        if (modelRow && modelRow.value) {
+          model = modelRow.value;
+        }
+      } catch (e) {
+        console.warn(`[${requestId}] [STEP 5.2] 读取模型配置失败，使用默认模型:`, (e as Error).message);
+      }
+      
+      // 安全审查（简化版，使用本地规则）
+      const safetyCheck = checkSafetySimple(question);
+      if (!safetyCheck.pass) {
+        console.warn(`[${requestId}] [STEP 5.3] 安全审查未通过:`, safetyCheck.reason);
+        return err("FORBIDDEN", safetyCheck.reason || "Content blocked by safety policy", 403);
+      }
+      
+      // RAG 检索（简化版，如果配置了 Supabase 则使用）
+      let ragContext = "";
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (supabaseUrl && supabaseServiceKey) {
+          // 这里可以调用 RAG 检索，但为了简化，暂时跳过
+          // 如果需要完整的 RAG 功能，可以复用 apps/ai-service/src/lib/rag.ts 的逻辑
+          console.log(`[${requestId}] [STEP 5.4] RAG 检索已配置，但直连模式下暂时跳过`);
+        }
+      } catch (e) {
+        console.warn(`[${requestId}] [STEP 5.4] RAG 检索失败:`, (e as Error).message);
+      }
+      
+      // 构建系统提示
+      const lang = locale || "zh";
+      const sysPrompt = buildSystemPrompt(lang);
+      const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
+      const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
+      
+      // 调用 OpenRouter API
+      console.log(`[${requestId}] [STEP 5.5] 开始调用OpenRouter API`, {
+        model,
+        baseUrl: openRouterBaseUrl,
+        questionLength: question.length,
+        hasRagContext: !!ragContext,
+      });
+      
+      const openRouterUrl = `${openRouterBaseUrl}/chat/completions`;
+      const openRouterBody = {
+        model: model,
+        temperature: 0.4,
+        messages: [
+          { role: "system", content: sysPrompt },
+          {
+            role: "user",
+            content: `${userPrefix} ${question}\n\n${refPrefix}\n${ragContext || "（無/None）"}`,
+          },
+        ],
+      };
+      
+      const openRouterHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": OPENROUTER_REFERER_URL,
+        "X-Title": OPENROUTER_APP_NAME,
+      };
+      
+      // 调试：检查 headers（不打印完整 API Key）
+      console.log(`[${requestId}] [STEP 5.5.1] OpenRouter Headers 检查`, {
+        hasAuthorization: !!openRouterHeaders["Authorization"],
+        authorizationPrefix: openRouterHeaders["Authorization"]?.substring(0, 20) + "...",
+        httpReferer: openRouterHeaders["HTTP-Referer"],
+        xTitle: openRouterHeaders["X-Title"],
+        contentType: openRouterHeaders["Content-Type"],
+      });
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+        
+        const openRouterResponse = await fetch(openRouterUrl, {
+          method: "POST",
+          headers: openRouterHeaders,
+          body: JSON.stringify(openRouterBody),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!openRouterResponse.ok) {
+          const errorText = await openRouterResponse.text().catch(() => "");
+          let errorDetails: any = {};
+          try {
+            errorDetails = JSON.parse(errorText);
+          } catch {
+            errorDetails = { raw: errorText };
+          }
+          
+          console.error(`[${requestId}] [STEP 5.6] OpenRouter API 错误:`, {
+            status: openRouterResponse.status,
+            statusText: openRouterResponse.statusText,
+            error: errorText,
+            errorDetails,
+            apiKeyPrefix: OPENROUTER_API_KEY.substring(0, 10),
+            apiKeyLength: OPENROUTER_API_KEY.length,
+            apiKeyStartsWithSkOr: OPENROUTER_API_KEY.startsWith("sk-or-v1-"),
+            url: openRouterUrl,
+            headers: {
+              hasAuthorization: !!openRouterHeaders["Authorization"],
+              httpReferer: openRouterHeaders["HTTP-Referer"],
+              xTitle: openRouterHeaders["X-Title"],
+            },
+          });
+          
+          // 如果是 401 错误，提供更详细的错误信息
+          if (openRouterResponse.status === 401) {
+            return err("AUTH_REQUIRED", `OpenRouter API authentication failed. Please check your OPENROUTER_API_KEY. Error: ${errorDetails.error?.message || errorText}`, 401);
+          }
+          
+          return err("PROVIDER_ERROR", `OpenRouter API error: ${openRouterResponse.status} ${openRouterResponse.statusText}`, openRouterResponse.status >= 500 ? 502 : openRouterResponse.status);
+        }
+        
+        const openRouterData = await openRouterResponse.json() as {
+          choices?: Array<{ message?: { content?: string } }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
+          model?: string;
+        };
+        
+        const answer = openRouterData.choices?.[0]?.message?.content?.trim() || "";
+        if (!answer) {
+          console.error(`[${requestId}] [STEP 5.7] OpenRouter API 返回空答案`);
+          return err("PROVIDER_ERROR", "OpenRouter API returned empty answer", 502);
+        }
+        
+        // 截断答案（如果超过限制）
+        const truncatedAnswer = answer.length > ANSWER_CHAR_LIMIT 
+          ? answer.substring(0, ANSWER_CHAR_LIMIT) + "..."
+          : answer;
+        
+        // 计算成本估算（简化版）
+        const inputTokens = openRouterData.usage?.prompt_tokens || 0;
+        const outputTokens = openRouterData.usage?.completion_tokens || 0;
+        const costEstimate = {
+          inputTokens,
+          outputTokens,
+          approxUsd: 0, // 简化版，不计算具体成本
+        };
+        
+        console.log(`[${requestId}] [STEP 5.8] OpenRouter API 调用成功`, {
+          model: openRouterData.model || model,
+          answerLength: truncatedAnswer.length,
+          inputTokens,
+          outputTokens,
+        });
+        
+        // 写入 ai_logs 表（异步，不阻塞响应）
+        void writeAiLogToDatabase({
+          userId: forwardedUserId,
+          question,
+          answer: truncatedAnswer,
+          locale,
+          model: openRouterData.model || model,
+          ragHits: 0, // 直连模式下暂时没有 RAG
+          safetyFlag: "ok",
+          costEstUsd: costEstimate.approxUsd,
+          sources: [], // 直连模式下暂时不返回 RAG 来源
+          createdAtIso: new Date().toISOString(),
+        }).catch((error) => {
+          console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
+        });
+        
+        // 返回结果
+        return ok({
+          answer: truncatedAnswer,
+          sources: [], // 直连模式下暂时不返回 RAG 来源
+          model: openRouterData.model || model,
+          safetyFlag: "ok" as const,
+          costEstimate,
+          aiProvider: "openrouter-direct",
+        });
+      } catch (error) {
+        const err = error as Error;
+        console.error(`[${requestId}] [STEP 5.9] OpenRouter API 调用失败:`, {
+          error: err.message,
+          name: err.name,
+          stack: err.stack,
+        });
+        
+        if (err.name === "AbortError" || err.message.includes("timeout")) {
+          return err("PROVIDER_ERROR", "OpenRouter API request timeout (30s)", 504);
+        }
+        
+        return err("PROVIDER_ERROR", `Failed to call OpenRouter API: ${err.message}`, 502);
+      }
+    }
+    
+    // 确保 selectedAiServiceUrl 不重复 /v1 路径（仅在非直连模式下）
+    if (!selectedAiServiceUrl || !selectedAiServiceToken) {
+      console.error(`[${requestId}] [STEP 5] AI服务配置不完整`, {
+        hasUrl: !!selectedAiServiceUrl,
+        hasToken: !!selectedAiServiceToken,
+        mode: aiServiceMode,
+      });
+      return err("INTERNAL_ERROR", "AI service is not configured.", 500);
+    }
+    
     const baseUrl = selectedAiServiceUrl.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
     const upstreamUrl = `${baseUrl}/v1/ask`;
     
@@ -1009,22 +1374,54 @@ export async function POST(req: NextRequest) {
       })();
     }
 
-    // 7) 成功：返回结果，包含AI类型信息
-    console.log(`[${requestId}] [STEP 7] 准备返回成功响应`);
+    // 7) 成功：写入 ai_logs 表（作为备份，确保所有AI回答都被保存）
+    // 注意：AI服务也会写入 ai_logs 表，但这里作为备份确保写入成功
+    if (result.ok && result.data && result.data.answer) {
+      console.log(`[${requestId}] [STEP 7] 开始写入 ai_logs 表（备份）`);
+      
+      // 计算 RAG 命中数
+      const ragHits = Array.isArray(result.data.sources) 
+        ? result.data.sources.length 
+        : 0;
+      
+      // 获取成本估算
+      const costEstUsd = result.data.costEstimate?.approxUsd ?? null;
+      
+      // 异步写入 ai_logs 表（不阻塞响应）
+      void writeAiLogToDatabase({
+        userId: forwardedUserId,
+        question,
+        answer: result.data.answer,
+        locale,
+        model: result.data.model || "unknown",
+        ragHits,
+        safetyFlag: result.data.safetyFlag || "ok",
+        costEstUsd,
+        sources: result.data.sources,
+        createdAtIso: new Date().toISOString(),
+      }).catch((error) => {
+        console.error(`[${requestId}] [STEP 7.1] 写入 ai_logs 失败:`, (error as Error).message);
+      });
+    }
+    
+    // 8) 成功：返回结果，包含AI类型信息
+    console.log(`[${requestId}] [STEP 8] 准备返回成功响应`);
     if (result.ok && result.data) {
       // 在返回数据中添加AI类型信息
       const responseData = {
         ...result.data,
-        aiProvider: aiServiceMode, // "online" 或 "local"
+        aiProvider: aiServiceMode, // "online" 或 "local" 或 "openrouter" 或 "openrouter-direct"
+        cached: result.data.cached || false, // 透传缓存标识
       };
       
-      console.log(`[${requestId}] [STEP 7.1] 返回成功响应`, {
+      console.log(`[${requestId}] [STEP 8.1] 返回成功响应`, {
         hasAnswer: !!result.data.answer,
         answerLength: result.data.answer?.length || 0,
         hasSources: !!result.data.sources,
         sourcesCount: result.data.sources?.length || 0,
         model: result.data.model || "(none)",
         aiProvider: aiServiceMode,
+        cached: result.data.cached || false,
       });
       
       return ok(responseData);

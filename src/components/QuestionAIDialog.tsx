@@ -48,6 +48,11 @@ interface QuestionAIDialogProps {
 interface Message {
   role: "user" | "assistant";
   content: string;
+  metadata?: {
+    aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct" | "cached";
+    model?: string;
+    sourceType?: "ai-generated" | "cached" | "knowledge-base";
+  };
 }
 
 export default function QuestionAIDialog({
@@ -139,6 +144,9 @@ export default function QuestionAIDialog({
           url: string;
           snippet?: string;
         }>;
+        aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct";
+        model?: string;
+        cached?: boolean;
       }>("/api/ai/ask", {
         method: "POST",
         body: {
@@ -151,6 +159,11 @@ export default function QuestionAIDialog({
         const newMessage: Message = {
           role: "assistant",
           content: result.data.answer,
+          metadata: {
+            aiProvider: result.data.cached ? "cached" : (result.data.aiProvider || "online"),
+            model: result.data.model,
+            sourceType: result.data.cached ? "cached" : "ai-generated",
+          },
         };
         setMessages((prev) => [...prev, newMessage]);
       } else {
@@ -255,8 +268,8 @@ export default function QuestionAIDialog({
               {messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
+                  className={`flex flex-col ${
+                    message.role === "user" ? "items-end" : "items-start"
                   }`}
                 >
                   <div
@@ -270,6 +283,59 @@ export default function QuestionAIDialog({
                       {message.content}
                     </div>
                   </div>
+                  {/* AI回复的元数据信息 */}
+                  {message.role === "assistant" && message.metadata && (
+                    <div className="max-w-[80%] px-2 py-1 text-xs text-gray-500 space-y-1 mt-1">
+                      {/* AI服务提供商和模型 */}
+                      {(message.metadata.aiProvider || message.metadata.model) && (
+                        <div className="flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1">
+                            {message.metadata.aiProvider === "local" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                <span>本地AI (Ollama)</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "openrouter" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                <span>OpenRouter（通过Render）</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "openrouter-direct" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                <span>直连OpenRouter</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "cached" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                <span>知识库答案</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                <span>OpenAI（通过Render）</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
               {isLoading && (
