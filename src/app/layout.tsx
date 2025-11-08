@@ -16,6 +16,7 @@ export const viewport: Viewport = {
 };
 
 import ActivationProvider from "../components/ActivationProvider";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 export default function RootLayout({
   children,
@@ -25,10 +26,12 @@ export default function RootLayout({
   return (
     <html lang="zh">
       <body className="pb-20">
-        <ActivationProvider>
-          {children}
-          <BottomNavigation />
-        </ActivationProvider>
+        <LanguageProvider>
+          <ActivationProvider>
+            {children}
+            <BottomNavigation />
+          </ActivationProvider>
+        </LanguageProvider>
       </body>
     </html>
   );
