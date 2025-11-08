@@ -224,7 +224,34 @@ interface TermsOfServiceTable {
 }
 
 // ------------------------------------------------------------
-// 🔟 ai_logs 表结构定义
+// 🔟 user_profiles 表结构定义
+// ------------------------------------------------------------
+interface UserProfileTable {
+  id: Generated<number>;
+  user_id: number;
+  language: string | null;
+  goals: string[] | null;
+  level: "beginner" | "intermediate" | "advanced" | "expert";
+  metadata: Record<string, any> | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣1️⃣ user_interests 表结构定义
+// ------------------------------------------------------------
+interface UserInterestsTable {
+  id: Generated<number>;
+  user_id: number;
+  vehicle_brands: string[] | null;
+  service_types: string[] | null;
+  other_interests: Record<string, any> | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣2️⃣ ai_logs 表结构定义
 // ------------------------------------------------------------
 interface AiLogsTable {
   id: Generated<number>;
@@ -291,6 +318,8 @@ interface Database {
   ad_logs: AdLogsTable;
   contact_info: ContactInfoTable;
   terms_of_service: TermsOfServiceTable;
+  user_profiles: UserProfileTable;
+  user_interests: UserInterestsTable;
   ai_logs: AiLogsTable;
   users: UserTable;
   user_behaviors: UserBehaviorTable;
