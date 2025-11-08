@@ -23,6 +23,13 @@ export default function AdminLoginPage() {
         // token 失效则退出检查，停留在登录表单
         if (err?.errorCode === 'AUTH_REQUIRED' || err?.errorCode === 'UNAUTHORIZED' || err?.status === 401 || err?.status === 403) {
           setError('Token 无效或已过期，请重新输入');
+        } else if (err?.errorCode === 'DATABASE_ERROR' || err?.errorCode === 'DATABASE_CONNECTION_ERROR' || 
+                   err?.errorCode === 'DATABASE_TABLE_NOT_FOUND' || err?.errorCode === 'DATABASE_AUTH_ERROR' ||
+                   err?.errorCode === 'DATABASE_SSL_ERROR' || err?.errorCode === 'DATABASE_TIMEOUT') {
+          // 数据库相关错误，显示详细错误信息
+          const errorMessage = err?.message || '数据库连接失败';
+          const hint = err?.details?.hint || '';
+          setError(`${errorMessage}${hint ? `\n提示: ${hint}` : ''}`);
         }
         setChecking(false);
       });
@@ -44,6 +51,13 @@ export default function AdminLoginPage() {
         setError('Token 无效或未配置，请检查口令');
       } else if (err?.errorCode === 'MISSING_ADMIN_TOKEN' || err?.errorCode === 'MISSING_TOKEN') {
         setError('未配置管理员口令');
+      } else if (err?.errorCode === 'DATABASE_ERROR' || err?.errorCode === 'DATABASE_CONNECTION_ERROR' || 
+                 err?.errorCode === 'DATABASE_TABLE_NOT_FOUND' || err?.errorCode === 'DATABASE_AUTH_ERROR' ||
+                 err?.errorCode === 'DATABASE_SSL_ERROR' || err?.errorCode === 'DATABASE_TIMEOUT') {
+        // 数据库相关错误，显示详细错误信息
+        const errorMessage = err?.message || '数据库连接失败';
+        const hint = err?.details?.hint || '';
+        setError(`${errorMessage}${hint ? `\n提示: ${hint}` : ''}`);
       } else {
         setError(err?.message || '登录失败，请检查口令');
       }
@@ -76,7 +90,11 @@ export default function AdminLoginPage() {
                 autoFocus
               />
             </div>
-            {error && <p className="text-red-600 text-sm bg-red-50 p-3 rounded-xl">{error}</p>}
+            {error && (
+              <div className="text-red-600 text-sm bg-red-50 p-3 rounded-xl whitespace-pre-line">
+                {error}
+              </div>
+            )}
             <button
               type="submit"
               className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] touch-manipulation transition-all shadow-sm font-medium text-base"

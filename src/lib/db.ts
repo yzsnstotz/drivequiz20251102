@@ -97,12 +97,129 @@ interface MerchantTable {
   image_url: string | null;
   category: string | null;
   status: "active" | "inactive";
+  ad_start_date: Date | null;
+  ad_end_date: Date | null;
+  ad_slot: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
 
 // ------------------------------------------------------------
-// 7️⃣ videos 表结构定义
+// 7️⃣ vehicle_types 表结构定义
+// ------------------------------------------------------------
+interface VehicleTypeTable {
+  id: Generated<number>;
+  name: string;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description: string | null;
+  icon: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣ vehicles 表结构定义
+// ------------------------------------------------------------
+interface VehicleTable {
+  id: Generated<number>;
+  vehicle_type_id: number | null;
+  brand: string;
+  model: string;
+  year: number | null;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description_ja: string | null;
+  description_zh: string | null;
+  description_en: string | null;
+  price_min: number | null;
+  price_max: number | null;
+  fuel_type: string | null;
+  transmission: string | null;
+  seats: number | null;
+  image_url: string | null;
+  official_url: string | null;
+  dealer_url: string | null;
+  specifications: Record<string, any> | null;
+  metadata: Record<string, any> | null;
+  status: "active" | "inactive" | "archived";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 9️⃣ services 表结构定义
+// ------------------------------------------------------------
+interface ServiceTable {
+  id: Generated<number>;
+  name: string;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description: string | null;
+  description_ja: string | null;
+  description_zh: string | null;
+  description_en: string | null;
+  location: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  prefecture: string | null;
+  city: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  price_min: number | null;
+  price_max: number | null;
+  price_unit: string | null;
+  rating_avg: number | null;
+  rating_count: number | null;
+  image_url: string | null;
+  official_url: string | null;
+  business_hours: Record<string, any> | null;
+  features: Record<string, any> | null;
+  metadata: Record<string, any> | null;
+  status: "active" | "inactive" | "archived";
+  category_id: number | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣ service_categories 表结构定义
+// ------------------------------------------------------------
+interface ServiceCategoryTable {
+  id: Generated<number>;
+  name: string;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description: string | null;
+  icon: string | null;
+  parent_id: number | null;
+  sort_order: number | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 9️⃣ service_reviews 表结构定义
+// ------------------------------------------------------------
+interface ServiceReviewTable {
+  id: Generated<number>;
+  service_id: number;
+  rating: number;
+  comment: string | null;
+  metadata: Record<string, any> | null;
+  status: "active" | "hidden" | "deleted";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 🔟 videos 表结构定义
 // ------------------------------------------------------------
 interface VideoTable {
   id: Generated<number>;
@@ -118,7 +235,84 @@ interface VideoTable {
 }
 
 // ------------------------------------------------------------
-// 8️⃣ contact_info 表结构定义
+// 8️⃣ ad_slots_config 表结构定义
+// ------------------------------------------------------------
+interface AdSlotsConfigTable {
+  id: Generated<number>;
+  slot_key: string;
+  title: string;
+  description: string | null;
+  splash_duration: number;
+  is_enabled: boolean;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣1️⃣ ad_slots 表结构定义
+// ------------------------------------------------------------
+interface AdSlotsTable {
+  id: Generated<number>;
+  position: string;
+  name: string;
+  name_ja: string | null;
+  name_zh: string | null;
+  name_en: string | null;
+  description: string | null;
+  width: number | null;
+  height: number | null;
+  format: string | null;
+  status: "active" | "inactive" | "archived";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣2️⃣ ad_contents 表结构定义
+// ------------------------------------------------------------
+interface AdContentsTable {
+  id: Generated<number>;
+  slot_id: number;
+  title: string;
+  title_ja: string | null;
+  title_zh: string | null;
+  title_en: string | null;
+  description: string | null;
+  description_ja: string | null;
+  description_zh: string | null;
+  description_en: string | null;
+  image_url: string | null;
+  video_url: string | null;
+  link_url: string | null;
+  start_date: Date | null;
+  end_date: Date | null;
+  priority: number | null;
+  weight: number | null;
+  impression_count: number | null;
+  click_count: number | null;
+  metadata: any | null; // JSONB
+  status: "draft" | "active" | "paused" | "archived";
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 8️⃣3️⃣ ad_logs 表结构定义
+// ------------------------------------------------------------
+interface AdLogsTable {
+  id: Generated<number>;
+  ad_content_id: number;
+  user_id: number | null;
+  log_type: "impression" | "click" | "conversion";
+  ip_address: string | null;
+  user_agent: string | null;
+  client_type: "web" | "mobile" | "api" | "desktop" | "other" | null;
+  metadata: any | null; // JSONB
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 9️⃣ contact_info 表结构定义
 // ------------------------------------------------------------
 interface ContactInfoTable {
   id: Generated<number>;
@@ -144,7 +338,34 @@ interface TermsOfServiceTable {
 }
 
 // ------------------------------------------------------------
-// 🔟 ai_logs 表结构定义
+// 🔟 user_profiles 表结构定义
+// ------------------------------------------------------------
+interface UserProfileTable {
+  id: Generated<number>;
+  user_id: number;
+  language: string | null;
+  goals: string[] | null;
+  level: "beginner" | "intermediate" | "advanced" | "expert";
+  metadata: Record<string, any> | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣1️⃣ user_interests 表结构定义
+// ------------------------------------------------------------
+interface UserInterestsTable {
+  id: Generated<number>;
+  user_id: number;
+  vehicle_brands: string[] | null;
+  service_types: string[] | null;
+  other_interests: Record<string, any> | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣2️⃣ ai_logs 表结构定义
 // ------------------------------------------------------------
 interface AiLogsTable {
   id: Generated<number>;
@@ -204,9 +425,20 @@ interface Database {
   operation_logs: OperationLogTable;
   merchant_categories: MerchantCategoryTable;
   merchants: MerchantTable;
+  vehicle_types: VehicleTypeTable;
+  vehicles: VehicleTable;
+  services: ServiceTable;
+  service_categories: ServiceCategoryTable;
+  service_reviews: ServiceReviewTable;
   videos: VideoTable;
+  ad_slots_config: AdSlotsConfigTable;
+  ad_slots: AdSlotsTable;
+  ad_contents: AdContentsTable;
+  ad_logs: AdLogsTable;
   contact_info: ContactInfoTable;
   terms_of_service: TermsOfServiceTable;
+  user_profiles: UserProfileTable;
+  user_interests: UserInterestsTable;
   ai_logs: AiLogsTable;
   users: UserTable;
   user_behaviors: UserBehaviorTable;

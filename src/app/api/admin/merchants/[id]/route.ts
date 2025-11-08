@@ -43,6 +43,9 @@ export const GET = withAdminAuth(
         imageUrl: merchant.image_url || null,
         category: merchant.category || null,
         status: merchant.status,
+        adStartDate: toISO(merchant.ad_start_date),
+        adEndDate: toISO(merchant.ad_end_date),
+        adSlot: merchant.ad_slot || null,
         createdAt: toISO(merchant.created_at) || "",
         updatedAt: toISO(merchant.updated_at) || "",
       });
@@ -65,7 +68,7 @@ export const PUT = withAdminAuth(
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
       const body = await req.json().catch(() => ({}));
-      const { name, description, address, phone, email, imageUrl, category, status } = body;
+      const { name, description, address, phone, email, imageUrl, category, status, adStartDate, adEndDate, adSlot } = body;
 
       const merchant = await db.selectFrom("merchants").selectAll().where("id", "=", id).executeTakeFirst();
 
@@ -102,6 +105,38 @@ export const PUT = withAdminAuth(
       if (status !== undefined && (status === "active" || status === "inactive")) {
         updateData.status = status;
       }
+      if (adStartDate !== undefined) {
+        updateData.ad_start_date = adStartDate ? sql`${adStartDate}::timestamp` : null;
+      }
+      if (adEndDate !== undefined) {
+        updateData.ad_end_date = adEndDate ? sql`${adEndDate}::timestamp` : null;
+      }
+      // 验证广告位和广告时间的逻辑（仅在更新时验证）
+      if (adSlot !== undefined || adStartDate !== undefined || adEndDate !== undefined) {
+        // 获取最终的广告时间值（可能是新设置的，也可能是原有的）
+        const finalAdStartDate = adStartDate !== undefined ? adStartDate : (merchant.ad_start_date ? merchant.ad_start_date.toISOString() : null);
+        const finalAdEndDate = adEndDate !== undefined ? adEndDate : (merchant.ad_end_date ? merchant.ad_end_date.toISOString() : null);
+        const finalAdSlot = adSlot !== undefined ? adSlot : (merchant.ad_slot || null);
+
+        // 如果设置了广告时间，则必须选择广告位
+        if ((finalAdStartDate || finalAdEndDate) && !finalAdSlot) {
+          return badRequest("设置广告时间后，请选择广告位");
+        }
+
+        // 如果选择了广告位，则必须设置广告时间
+        if (finalAdSlot && (!finalAdStartDate || !finalAdEndDate)) {
+          return badRequest("选择广告位后，必须设置广告开始时间和结束时间");
+        }
+
+        // 验证广告位值是否有效
+        if (finalAdSlot && !["home_first_column", "home_second_column", "splash_screen", "popup_ad"].includes(finalAdSlot)) {
+          return badRequest("无效的广告位");
+        }
+      }
+
+      if (adSlot !== undefined) {
+        updateData.ad_slot = adSlot?.trim() || null;
+      }
 
       const updated = await db.updateTable("merchants").set(updateData).where("id", "=", id).returningAll().executeTakeFirst();
 
@@ -121,6 +156,9 @@ export const PUT = withAdminAuth(
         imageUrl: updated.image_url || null,
         category: updated.category || null,
         status: updated.status,
+        adStartDate: toISO(updated.ad_start_date),
+        adEndDate: toISO(updated.ad_end_date),
+        adSlot: updated.ad_slot || null,
         createdAt: toISO(updated.created_at) || "",
         updatedAt: toISO(updated.updated_at) || "",
       });

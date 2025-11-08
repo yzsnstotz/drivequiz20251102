@@ -24,20 +24,14 @@ export default function BottomNavigation() {
     { 
       href: '/study', 
       icon: Book, 
-      label: '学习',
+      label: '驾照',
       active: pathname === '/study'
     },
     { 
       href: '/nearby', 
       icon: UtensilsCrossed, 
-      label: '食宿',
+      label: '服务',
       active: pathname === '/nearby'
-    },
-    { 
-      href: '/cars', 
-      icon: Truck, 
-      label: '汽车',
-      active: pathname === '/cars'
     },
     { 
       href: '/profile', 
