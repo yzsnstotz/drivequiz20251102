@@ -197,13 +197,24 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 5) RAG 检索（可能为空）
         const reference = await getRagContext(question, lang, config);
 
-        // 6) 调用 OpenAI
+        // 6) 从数据库读取 AI 提供商配置
+        const { getAiProviderFromConfig } = await import("../lib/configLoader.js");
+        const aiProvider = await getAiProviderFromConfig();
+        console.log("[ASK ROUTE] AI provider from config", {
+          aiProvider,
+          note: aiProvider === "openai" ? "使用 OpenAI" : aiProvider === "openrouter" ? "使用 OpenRouter" : "使用环境变量判断",
+        });
+
+        // 7) 调用 OpenAI
         let openai;
         try {
-          openai = getOpenAIClient(config);
+          openai = getOpenAIClient(config, aiProvider);
+          const baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
+          const isOpenRouter = aiProvider === "openrouter" || (aiProvider === null && baseUrl.includes("openrouter.ai"));
           console.log("[ASK ROUTE] AI client initialized successfully", {
-            baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
-            isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
+            aiProvider,
+            baseUrl: openai.baseURL || baseUrl,
+            isOpenRouter,
             hasOpenRouterKey: !!config.openrouterApiKey,
             hasOpenAIKey: !!config.openaiApiKey,
           });
@@ -283,16 +294,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             errorCode = "VALIDATION_FAILED";
             errorMessage = `Invalid request: ${errorMessage}`;
             statusCode = 400;
-          } else if (error.status === 405) {
-            // 405 Method Not Allowed 通常表示 URL 不正确
-            errorCode = "PROVIDER_ERROR";
-            const currentBaseUrl = process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1";
-            if (currentBaseUrl.includes("openrouter.ai") && currentBaseUrl.includes("/api/vi")) {
-              errorMessage = "OpenRouter URL configuration error: '/api/vi' should be '/api/v1'. Please check OPENAI_BASE_URL environment variable.";
-            } else {
-              errorMessage = `Method not allowed (405). This usually indicates an incorrect API URL. Current baseUrl: ${currentBaseUrl}`;
-            }
-            statusCode = 502;
           } else if (error.message?.includes("model")) {
             errorMessage = `Model '${model}' not found or unavailable. Please check the model name.`;
           }
