@@ -99,7 +99,11 @@ export default function ServicesPage() {
 
       <div className="container mx-auto px-4 py-6">
         {/* 筛选栏 */}
-        <FilterBar filters={filters} onChange={handleFilterChange} type="service" />
+        <FilterBar
+          filters={filters}
+          onChange={(newFilters) => handleFilterChange(newFilters as ServiceFilters)}
+          type="service"
+        />
 
         {/* AI推荐按钮 */}
         <div className="mb-6 flex justify-end">
