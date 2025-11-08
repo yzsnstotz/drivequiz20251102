@@ -47,16 +47,14 @@ export interface ServiceCardProps {
  * 服务卡片组件
  */
 export default function ServiceCard({ service, className = "" }: ServiceCardProps) {
-  const { t, language } = useLanguage();
+  const { language } = useLanguage();
 
   const displayName = service.name.zh || service.name.ja || service.name.default || "服务";
   const displayCategory = service.category
-    ? t({
-        ja: service.category.name_ja,
-        zh: service.category.name_zh,
-        en: service.category.name_en,
-        default: service.category.name,
-      })
+    ? service.category.name_zh ??
+      service.category.name_ja ??
+      service.category.name_en ??
+      service.category.name
     : null;
 
   const formatPrice = (amount: number) => {
