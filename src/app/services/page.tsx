@@ -50,7 +50,11 @@ export default function ServicesPage() {
       const fullUrl = queryString ? `/api/services?${queryString}` : "/api/services";
       const response = await apiFetch<Service[]>(fullUrl);
 
-      setServices(response.data || []);
+      if (!response.ok) {
+        throw new Error(response.message || "加载服务列表失败");
+      }
+
+      setServices(response.data ?? []);
       if (response.pagination) {
         setPagination({
           page: response.pagination.page,
