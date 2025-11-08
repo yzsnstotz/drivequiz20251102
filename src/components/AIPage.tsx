@@ -255,15 +255,34 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       };
       
       // 传递对话历史（如果有）
+      // 注意：即使只有欢迎消息（AI消息），也应该传递，因为这是对话历史的一部分
       if (historyMessages.length > 0) {
         requestBody.messages = historyMessages;
         requestBody.maxHistory = 10; // 限制最大历史消息数
         console.log("[Context Debug] 已添加对话历史到请求", {
           messageCount: historyMessages.length,
+          messages: historyMessages.map(m => ({
+            role: m.role,
+            contentLength: m.content.length,
+            contentPreview: m.content.substring(0, 50),
+          })),
         });
       } else {
-        console.log("[Context Debug] 没有对话历史可传递");
+        console.log("[Context Debug] 没有对话历史可传递", {
+          allMessagesLength: allMessages.length,
+          filteredCount: allMessages.filter((msg) => msg.role === "user" || msg.role === "ai").length,
+          reason: "historyMessages.length === 0",
+        });
       }
+      
+      // 调试日志：验证请求体
+      console.log("[Context Debug] 最终请求体", {
+        hasQuestion: !!requestBody.question,
+        hasMessages: !!requestBody.messages,
+        messageCount: Array.isArray(requestBody.messages) ? requestBody.messages.length : 0,
+        hasMaxHistory: !!requestBody.maxHistory,
+        requestBodyKeys: Object.keys(requestBody),
+      });
       
       const res = await fetch(endpoint, {
         method: "POST",
