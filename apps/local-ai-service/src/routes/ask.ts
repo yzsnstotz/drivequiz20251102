@@ -18,6 +18,8 @@ type AskBody = {
   messages?: ChatMessage[];
   // 最大历史消息数（默认 10）
   maxHistory?: number;
+  // 种子URL（可选，只返回该URL下的子页面）
+  seedUrl?: string;
 };
 
 type AskResult = {
@@ -130,6 +132,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const question = (body.question || "").trim();
         const lang = (body.lang || "zh").toLowerCase().trim();
         const maxHistory = body.maxHistory || 10;
+        const seedUrl = body.seedUrl?.trim() || null;
 
         if (!question || question.length === 0 || question.length > 2000) {
           reply.code(400).send({
@@ -175,11 +178,20 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           });
         }
         
-        const reference = await getRagContext(ragQuery, lang).catch((error) => {
+        // 使用种子URL过滤（如果提供）
+        const reference = await getRagContext(ragQuery, lang, seedUrl).catch((error) => {
           // RAG 检索失败不影响主流程，仅记录错误
           console.error("[LOCAL-AI] RAG检索失败:", error instanceof Error ? error.message : String(error));
           return "";
         });
+        
+        // 调试日志：记录种子URL过滤
+        if (seedUrl) {
+          console.log("[Context Debug] 使用种子URL过滤]", {
+          seedUrl,
+          referenceLength: reference.length,
+        });
+        }
 
         // 5) 构建消息列表（包含对话历史）
         const sys = buildSystemPrompt(lang);

@@ -22,21 +22,28 @@ type RagHit = {
 
 /**
  * 调用 Supabase RPC：match_documents（768维）
+ * @param seedUrl 可选的种子URL，只返回该URL下的子页面
  */
 async function callSupabaseMatch(
   queryEmbedding: number[],
   lang: string = "zh",
   matchCount: number = DEFAULT_MATCH_COUNT,
-  matchThreshold: number = DEFAULT_MATCH_THRESHOLD
+  matchThreshold: number = DEFAULT_MATCH_THRESHOLD,
+  seedUrl?: string | null
 ): Promise<RagHit[]> {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return [];
 
   const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/rpc/match_documents`;
-  const body = {
+  const body: Record<string, unknown> = {
     query_embedding: queryEmbedding,
     match_threshold: matchThreshold,
     match_count: Math.max(1, Math.min(10, matchCount)),
   };
+  
+  // 如果提供了种子URL，添加到请求体中
+  if (seedUrl && seedUrl.trim().length > 0) {
+    body.seed_url = seedUrl.trim();
+  }
 
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -108,10 +115,12 @@ function buildContext(hits: RagHit[]): string {
 /**
  * 获取 RAG 上下文
  * 优化：根据问题长度动态调整检索参数
+ * @param seedUrl 可选的种子URL，只返回该URL下的子页面
  */
 export async function getRagContext(
   question: string,
-  lang: string = "zh"
+  lang: string = "zh",
+  seedUrl?: string | null
 ): Promise<string> {
   try {
     // 1. 生成查询向量（768维）
@@ -133,8 +142,8 @@ export async function getRagContext(
       matchThreshold = 0.68;
     }
 
-    // 3. 调用 Supabase RPC 检索
-    const hits = await callSupabaseMatch(embedding, lang, matchCount, matchThreshold);
+    // 3. 调用 Supabase RPC 检索（支持种子URL过滤）
+    const hits = await callSupabaseMatch(embedding, lang, matchCount, matchThreshold, seedUrl);
 
     // 4. 过滤低质量结果（相似度太低的内容可能不相关）
     const filteredHits = hits.filter((h) => {
