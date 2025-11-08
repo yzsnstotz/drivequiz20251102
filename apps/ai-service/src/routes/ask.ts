@@ -283,6 +283,16 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             errorCode = "VALIDATION_FAILED";
             errorMessage = `Invalid request: ${errorMessage}`;
             statusCode = 400;
+          } else if (error.status === 405) {
+            // 405 Method Not Allowed 通常表示 URL 不正确
+            errorCode = "PROVIDER_ERROR";
+            const currentBaseUrl = process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1";
+            if (currentBaseUrl.includes("openrouter.ai") && currentBaseUrl.includes("/api/vi")) {
+              errorMessage = "OpenRouter URL configuration error: '/api/vi' should be '/api/v1'. Please check OPENAI_BASE_URL environment variable.";
+            } else {
+              errorMessage = `Method not allowed (405). This usually indicates an incorrect API URL. Current baseUrl: ${currentBaseUrl}`;
+            }
+            statusCode = 502;
           } else if (error.message?.includes("model")) {
             errorMessage = `Model '${model}' not found or unavailable. Please check the model name.`;
           }
