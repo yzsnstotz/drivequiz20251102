@@ -21,7 +21,7 @@ export interface StatusBadgeProps {
  * 语义色：info/success/warn/error；多语言文本
  */
 export default function StatusBadge({ variant, text, children, className = "" }: StatusBadgeProps) {
-  const { t } = useLanguage();
+  const { language } = useLanguage();
 
   const variantStyles = {
     info: "bg-blue-100 text-blue-800 border-blue-200",
@@ -30,7 +30,9 @@ export default function StatusBadge({ variant, text, children, className = "" }:
     error: "bg-red-100 text-red-800 border-red-200",
   };
 
-  const displayText = text ? t(text) : children;
+  const displayText = text
+    ? text[language] ?? text.default ?? text.zh ?? text.en ?? text.ja ?? children
+    : children;
 
   return (
     <span
