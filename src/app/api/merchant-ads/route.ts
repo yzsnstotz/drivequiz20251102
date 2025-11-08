@@ -7,7 +7,6 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 import { NextRequest } from "next/server";
-import { sql } from "kysely";
 import { db } from "@/lib/db";
 
 function ok<T>(data: T, status = 200) {
@@ -37,8 +36,8 @@ export async function GET(request: NextRequest) {
       .where("status", "=", "active")
       .where("ad_start_date", "is not", null)
       .where("ad_end_date", "is not", null)
-      .where("ad_start_date", "<=", sql`${now}::timestamp`)
-      .where("ad_end_date", ">=", sql`${now}::timestamp`);
+      .where("ad_start_date", "<=", now)
+      .where("ad_end_date", ">=", now);
 
     // 优先使用广告位筛选
     if (adSlot) {
