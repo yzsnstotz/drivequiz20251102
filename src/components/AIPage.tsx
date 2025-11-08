@@ -66,7 +66,7 @@ interface AIPageProps {
 const API_BASE =
   (process.env.NEXT_PUBLIC_AI_API_BASE as string | undefined) ?? "";
 const CHAT_PATH = "/api/ai/ask"; // 使用 /api/ai/ask 路由，转发到 AI-Service (Render)
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 120_000; // 120秒超时（AI处理可能需要较长时间，特别是本地Ollama）
 const LOCAL_STORAGE_KEY = "AI_CHAT_HISTORY";
 const MAX_HISTORY_MESSAGES = 100;
 
