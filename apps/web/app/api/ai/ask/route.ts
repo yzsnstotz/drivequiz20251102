@@ -548,21 +548,6 @@ export async function POST(req: NextRequest) {
     requestUrl: __requestUrl,
   });
 
-  // 调试日志：验证对话历史传递（使用 console.error 确保日志可见）
-  console.error("[Context Debug] API路由接收到的对话历史", {
-    hasMessages: !!body.messages,
-    messageCount: body.messages?.length || 0,
-    messagesPreview: body.messages?.slice(-3).map(m => ({
-      role: m.role,
-      contentLength: m.content?.length || 0,
-      contentPreview: m.content?.substring(0, 50) || "",
-    })) || [],
-    question: question.substring(0, 50),
-    bodyKeys: Object.keys(body),
-    bodyMessagesType: typeof body.messages,
-    bodyMessagesIsArray: Array.isArray(body.messages),
-  });
-
   const forwardPayload: Record<string, unknown> = {
     // 传递 userId（无论是否为 UUID）
     // AI Service 的 normalizeUserId 会验证 UUID 格式，非 UUID 会转换为 null
@@ -583,16 +568,6 @@ export async function POST(req: NextRequest) {
     },
   };
 
-  // 调试日志：验证转发负载（使用 console.error 确保日志可见）
-  console.error("[Context Debug] API路由转发负载", {
-    hasMessages: !!forwardPayload.messages,
-    messageCount: Array.isArray(forwardPayload.messages) ? forwardPayload.messages.length : 0,
-    maxHistory: forwardPayload.maxHistory,
-    forwardPayloadKeys: Object.keys(forwardPayload),
-    forwardPayloadMessagesType: typeof forwardPayload.messages,
-    forwardPayloadMessagesIsArray: Array.isArray(forwardPayload.messages),
-  });
-
   let aiResp: Response;
   try {
     const headers: Record<string, string> = {
@@ -602,35 +577,6 @@ export async function POST(req: NextRequest) {
     if (jwt) {
       headers["x-user-jwt"] = jwt;
     }
-    
-    console.error("[STEP 4] 准备转发请求到AI服务", {
-      url: __requestUrl,
-      method: "POST",
-      headers: {
-        ...headers,
-        authorization: headers.authorization ? "Bearer ***" : "",
-      },
-      payload: {
-        ...forwardPayload,
-        userId: forwardPayload.userId ? "***" : null,
-        // 详细记录 messages 字段
-        hasMessages: !!forwardPayload.messages,
-        messageCount: Array.isArray(forwardPayload.messages) ? forwardPayload.messages.length : 0,
-        messagesPreview: Array.isArray(forwardPayload.messages) 
-          ? forwardPayload.messages.slice(-2).map(m => ({
-              role: (m as any)?.role,
-              contentLength: (m as any)?.content?.length || 0,
-            }))
-          : [],
-        // 完整记录 messages（用于调试）
-        messagesFull: Array.isArray(forwardPayload.messages) 
-          ? forwardPayload.messages.map(m => ({
-              role: (m as any)?.role,
-              content: (m as any)?.content?.substring(0, 100) || "",
-            }))
-          : null,
-      },
-    });
     
     // 转发到选择的AI服务（本地AI服务和在线AI服务使用相同的接口格式）
     const startTime = Date.now();
@@ -642,20 +588,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify(forwardPayload),
     });
-    const duration = Date.now() - startTime;
-    
-    console.log("[STEP 4] AI服务响应", {
-      status: aiResp.status,
-      statusText: aiResp.statusText,
-      headers: Object.fromEntries(aiResp.headers.entries()),
-      duration: `${duration}ms`,
-    });
   } catch (e: any) {
-    console.error("[STEP 4] AI服务请求失败", {
-      error: e?.message,
-      stack: e?.stack,
-      url: __aiTarget.url,
-    });
     return respondJSON({
       ok: false,
       errorCode: "PROVIDER_ERROR",
