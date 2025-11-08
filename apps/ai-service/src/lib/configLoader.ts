@@ -15,20 +15,16 @@
 
 // Logger import removed for performance
 
-type ConfigCache = {
-  model?: string;
-  cacheTtl?: number;
-  lastUpdated: number;
-};
-
 // 配置缓存（5分钟过期）
 const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5分钟
+
 type ConfigCache = {
   model?: string;
   cacheTtl?: number;
   aiProvider?: string;
   lastUpdated: number;
 };
+
 let configCache: ConfigCache | null = null;
 
 /**
