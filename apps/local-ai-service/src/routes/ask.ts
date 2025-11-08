@@ -117,18 +117,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
 
         // 2) 校验请求体
         const body = request.body as AskBody;
-        
-        // 调试日志：记录原始请求体
-        console.error("[Context Debug] Local-AI原始请求体", {
-          bodyKeys: Object.keys(body),
-          hasQuestion: !!body.question,
-          hasMessages: !!body.messages,
-          messagesType: typeof body.messages,
-          messagesIsArray: Array.isArray(body.messages),
-          messagesValue: body.messages,
-          rawBody: JSON.stringify(body).substring(0, 500),
-        });
-        
         const question = (body.question || "").trim();
         const lang = (body.lang || "zh").toLowerCase().trim();
         const maxHistory = body.maxHistory || 10;
@@ -144,38 +132,13 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         }
 
         // 3) 处理对话历史
-        console.log("[Context Debug] Local-AI接收到的对话历史", {
-          hasMessages: !!body.messages,
-          rawMessageCount: body.messages?.length || 0,
-          maxHistory,
-          messagesPreview: body.messages?.slice(-3).map(m => ({
-            role: m.role,
-            contentLength: m.content?.length || 0,
-            contentPreview: m.content?.substring(0, 50) || "",
-          })) || [],
-        });
-        
         const history = processHistory(body.messages, maxHistory);
-        
-        console.log("[Context Debug] Local-AI处理后的对话历史", {
-          processedCount: history.length,
-          historyPreview: history.slice(-3).map(m => ({
-            role: m.role,
-            contentLength: m.content?.length || 0,
-            contentPreview: m.content?.substring(0, 50) || "",
-          })),
-        });
         
         // 4) RAG 检索（结合对话历史增强上下文）
         let ragQuery = question;
         if (history.length > 0) {
           // 从对话历史中提取上下文，增强 RAG 检索
           ragQuery = extractContextFromHistory(history, question);
-          console.log("[Context Debug] RAG查询增强", {
-            originalQuestion: question.substring(0, 100),
-            enhancedQuery: ragQuery.substring(0, 200),
-            queryLength: ragQuery.length,
-          });
         }
         
         // 使用种子URL过滤（如果提供）
@@ -184,14 +147,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           console.error("[LOCAL-AI] RAG检索失败:", error instanceof Error ? error.message : String(error));
           return "";
         });
-        
-        // 调试日志：记录种子URL过滤
-        if (seedUrl) {
-          console.log("[Context Debug] 使用种子URL过滤]", {
-          seedUrl,
-          referenceLength: reference.length,
-        });
-        }
 
         // 5) 构建消息列表（包含对话历史）
         const sys = buildSystemPrompt(lang);
@@ -214,24 +169,12 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
               content: msg.content,
             }));
           messages.push(...historyMessages);
-          console.log("[Context Debug] 已添加历史消息到Ollama", {
-            historyMessageCount: historyMessages.length,
-            totalMessagesBeforeCurrent: messages.length,
-          });
         }
 
         // 添加当前问题和 RAG 上下文
         messages.push({
           role: "user",
           content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
-        });
-
-        // 调试日志：验证最终消息列表
-        console.log("[Context Debug] 发送给Ollama的完整消息列表", {
-          totalMessages: messages.length,
-          messageRoles: messages.map(m => m.role),
-          messageLengths: messages.map(m => m.content.length),
-          hasHistory: messages.length > 2, // system + current + history
         });
 
         // 6) 调用 Ollama Chat（传递完整对话历史）

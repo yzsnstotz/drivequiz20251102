@@ -218,15 +218,6 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       // 构建包含当前用户消息的完整历史
       const allMessages = [...messages, userMsg]; // 包含刚发送的用户消息
       
-      // 调试日志：验证消息状态
-      console.log("[Context Debug] 消息状态检查", {
-        messagesStateLength: messages.length,
-        messagesStateRoles: messages.map(m => m.role),
-        userMsgRole: userMsg.role,
-        userMsgContent: userMsg.content.substring(0, 50),
-        allMessagesLength: allMessages.length,
-      });
-      
       const historyMessages = allMessages
         .slice(-12) // 保留最近 12 条（包含当前消息，实际会传递 10 条历史）
         .filter((msg) => msg.role === "user" || msg.role === "ai") // 只保留用户和AI消息
@@ -235,19 +226,6 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
           role: msg.role === "ai" ? "assistant" : "user" as "user" | "assistant",
           content: msg.content,
         }));
-      
-      // 调试日志：验证对话历史
-      console.log("[Context Debug] 对话历史准备", {
-        totalMessages: allMessages.length,
-        filteredMessages: allMessages.filter((msg) => msg.role === "user" || msg.role === "ai").length,
-        historyCount: historyMessages.length,
-        historyPreview: historyMessages.slice(-3).map(m => ({
-          role: m.role,
-          contentLength: m.content.length,
-          contentPreview: m.content.substring(0, 50),
-        })),
-        currentQuestion: q.substring(0, 50),
-      });
       
       const requestBody: Record<string, unknown> = {
         question: q,
@@ -259,30 +237,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       if (historyMessages.length > 0) {
         requestBody.messages = historyMessages;
         requestBody.maxHistory = 10; // 限制最大历史消息数
-        console.log("[Context Debug] 已添加对话历史到请求", {
-          messageCount: historyMessages.length,
-          messages: historyMessages.map(m => ({
-            role: m.role,
-            contentLength: m.content.length,
-            contentPreview: m.content.substring(0, 50),
-          })),
-        });
-      } else {
-        console.log("[Context Debug] 没有对话历史可传递", {
-          allMessagesLength: allMessages.length,
-          filteredCount: allMessages.filter((msg) => msg.role === "user" || msg.role === "ai").length,
-          reason: "historyMessages.length === 0",
-        });
       }
-      
-      // 调试日志：验证请求体
-      console.log("[Context Debug] 最终请求体", {
-        hasQuestion: !!requestBody.question,
-        hasMessages: !!requestBody.messages,
-        messageCount: Array.isArray(requestBody.messages) ? requestBody.messages.length : 0,
-        hasMaxHistory: !!requestBody.maxHistory,
-        requestBodyKeys: Object.keys(requestBody),
-      });
       
       const res = await fetch(endpoint, {
         method: "POST",
