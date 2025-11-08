@@ -548,8 +548,8 @@ export async function POST(req: NextRequest) {
     requestUrl: __requestUrl,
   });
 
-  // 调试日志：验证对话历史传递
-  console.log("[Context Debug] API路由接收到的对话历史", {
+  // 调试日志：验证对话历史传递（使用 console.error 确保日志可见）
+  console.error("[Context Debug] API路由接收到的对话历史", {
     hasMessages: !!body.messages,
     messageCount: body.messages?.length || 0,
     messagesPreview: body.messages?.slice(-3).map(m => ({
@@ -558,6 +558,9 @@ export async function POST(req: NextRequest) {
       contentPreview: m.content?.substring(0, 50) || "",
     })) || [],
     question: question.substring(0, 50),
+    bodyKeys: Object.keys(body),
+    bodyMessagesType: typeof body.messages,
+    bodyMessagesIsArray: Array.isArray(body.messages),
   });
 
   const forwardPayload: Record<string, unknown> = {
@@ -580,11 +583,14 @@ export async function POST(req: NextRequest) {
     },
   };
 
-  // 调试日志：验证转发负载
-  console.log("[Context Debug] API路由转发负载", {
+  // 调试日志：验证转发负载（使用 console.error 确保日志可见）
+  console.error("[Context Debug] API路由转发负载", {
     hasMessages: !!forwardPayload.messages,
     messageCount: Array.isArray(forwardPayload.messages) ? forwardPayload.messages.length : 0,
     maxHistory: forwardPayload.maxHistory,
+    forwardPayloadKeys: Object.keys(forwardPayload),
+    forwardPayloadMessagesType: typeof forwardPayload.messages,
+    forwardPayloadMessagesIsArray: Array.isArray(forwardPayload.messages),
   });
 
   let aiResp: Response;
@@ -597,7 +603,7 @@ export async function POST(req: NextRequest) {
       headers["x-user-jwt"] = jwt;
     }
     
-    console.log("[STEP 4] 准备转发请求到AI服务", {
+    console.error("[STEP 4] 准备转发请求到AI服务", {
       url: __requestUrl,
       method: "POST",
       headers: {
@@ -616,6 +622,13 @@ export async function POST(req: NextRequest) {
               contentLength: (m as any)?.content?.length || 0,
             }))
           : [],
+        // 完整记录 messages（用于调试）
+        messagesFull: Array.isArray(forwardPayload.messages) 
+          ? forwardPayload.messages.map(m => ({
+              role: (m as any)?.role,
+              content: (m as any)?.content?.substring(0, 100) || "",
+            }))
+          : null,
       },
     });
     
