@@ -431,3 +431,50 @@ export function getTranslation(key: string, lang: Language): string {
   const translations = adminTranslations[lang];
   return translations[key] || adminTranslations.zh[key] || key;
 }
+
+// 语言存储键名
+const LANGUAGE_STORAGE_KEY = 'user-language';
+
+/**
+ * 检测用户语言
+ * 优先级：localStorage > 浏览器语言 > 默认中文
+ */
+export function detectLanguage(): Language {
+  if (typeof window === 'undefined') {
+    return 'zh'; // SSR 默认返回中文
+  }
+
+  // 1. 从 localStorage 读取
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language | null;
+  if (saved && ['zh', 'en', 'ja'].includes(saved)) {
+    return saved;
+  }
+
+  // 2. 从浏览器语言检测
+  const browserLang = navigator.language || navigator.languages?.[0] || 'zh';
+  if (browserLang.startsWith('ja')) {
+    return 'ja';
+  }
+  if (browserLang.startsWith('en')) {
+    return 'en';
+  }
+  if (browserLang.startsWith('zh')) {
+    return 'zh';
+  }
+
+  // 3. 默认返回中文
+  return 'zh';
+}
+
+/**
+ * 保存用户语言到 localStorage
+ */
+export function saveLanguage(lang: Language): void {
+  if (typeof window === 'undefined') {
+    return; // SSR 环境不执行
+  }
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+}
+
+// 重新导出 useLanguage hook
+export { useLanguage } from '@/contexts/LanguageContext';
