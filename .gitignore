@@ -1,3 +1,10 @@
+# 环境变量文件（不提交到 Git）
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
 # Logs
 logs
 !src/app/api/admin/ai/logs/

@@ -5,7 +5,8 @@
       "type": "truefalse",
       "content": "1. 由于安全带在发生交通事故时可以大大地减少伤害，驾驶后排座位有安全带的车的驾驶员让后排的同乘者也系上了安全带。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "2f40f6d2a6b83dbd55f9c9ce3a342bdb45dd844b168e25926d20b48bf0f79777"
     },
     {
       "id": 2,
@@ -13,42 +14,48 @@
       "content": "2. 该标志指不仅是车辆，有轨电车和行人等都禁止通行。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-15%20at%2021.18.18.png?raw=true",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "0b1542f165a30790e5c72043a2eae1ccd9b58b1a8cd3919fb40dfff49ff8b587"
     },
     {
       "id": 3,
       "type": "truefalse",
       "content": "3. 在交叉路附近通行时，因为紧急车辆接近，所以靠左侧放慢了速度。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "3b5ec6f85c93559976788b6b0a095773b97ae5b36c044600f2ac260cb461f640"
     },
     {
       "id": 4,
       "type": "truefalse",
       "content": "4. 刹车时，一开始就要尽量用力踩下去为好。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "bb261f29159b0b8ef8fdbd1e73d1c842d26a1d5e8abf45fef80fb858d112c492"
     },
     {
       "id": 5,
       "type": "truefalse",
       "content": "5. 准备掉头或向右转弯时，必须在到达距其行为开始的地点的30米之前的地点时发出信号。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "9625e55c8b4d3ab7e1f5e6363214c2a29a20b65320dcb271e51f6461f9551354"
     },
     {
       "id": 6,
       "type": "truefalse",
       "content": "6. 取得第一种普通驾驶执照的人，即便是为了将出租车送回修理工场，也不可以驾驶。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "ee38fe791c34f36fc446c651a5c0061eae6f4ded1d71ab11a73dd610bc8319ba"
     },
     {
       "id": 7,
       "type": "truefalse",
       "content": "7. 驾驶执照的条款栏上所记载的「眼镜等」含使用隐形眼镜。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "7d82056d90101befa6a17e67d88240da55938bdc79a4c7f0eafeac676869ac44"
     },
     {
       "id": 8,
@@ -56,35 +63,40 @@
       "content": "8. 该标示表示禁止进入其内停车。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-15%20at%2021.19.13.png?raw=true",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "54b0e953c419dfb3c8eb7cfe3105f50a5a468784b72c38f110be6c2d18bb4cfc"
     },
     {
       "id": 9,
       "type": "truefalse",
       "content": "9. 由于交叉路及其附近是交通事故的多发场所，因此应该提速迅速地通过。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "eb9cd15019ffec7bafd89b62f3c57061babb13ed87b84f5cc4d1d082e81cb252"
     },
     {
       "id": 10,
       "type": "truefalse",
       "content": "10. 只要取得普通驾驶执照，就可以驾驶最大载重量为4,000kg的货车和乘车定员为11大的乘用汽车。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "8824523208ce0d56b4baafa08980da4ed8fc44d87de8b4d3fc233740b9f23d3c"
     },
     {
       "id": 11,
       "type": "truefalse",
       "content": "11. 因为前方车辆发出了右转弯信号准备向右侧改变车道，所以鸣笛提醒其注意后，从右侧超了过去。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "6e8cb911ba632487bd7fbe37055d36df4499a57e4639a5866fb9fc58a9c997e6"
     },
     {
       "id": 12,
       "type": "truefalse",
       "content": "12. 驾驶员不仅需要掌握驾驶技术及知识，作为社会一员，对其他的道路利用者还需要有体谅的心态。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "577add63060ac6559c52f7ff2ca7d6d37a4c0ad54ccc556d2695dbc7ed447f62"
     },
     {
       "id": 13,
@@ -92,42 +104,48 @@
       "content": "13. 该标志表示车辆可以直行及左转弯，但不能右转弯。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2010.35.08.png?raw=true",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "af474ab7dd63c7261240552883eb368f74f7cb023de1908e46065ecace5f9d4a"
     },
     {
       "id": 14,
       "type": "truefalse",
       "content": "14. 车辆不能在轨道线内通行，但右转弯、左转弯、横过、掉头等时可以在轨道线内横过。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "f8bc6031914a768720b8ca7298b4d858a1e1ea135e995bf66d49f4ffe0ff3ee2"
     },
     {
       "id": 15,
       "type": "truefalse",
       "content": "15. 驾驶员感觉到危险踩刹车时，从制动开始起作用到车辆停止的距离称为停车距离。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "86ddf0b71cde57dcbf71994456303fc21546e8b362d1897857159b056ba2d831"
     },
     {
       "id": 16,
       "type": "truefalse",
       "content": "16. 在后方视野不好的场所或从狭窄的道路驶到宽阔道路等不得已倒车起动时，最好让同乘者帮助确认后方。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "b6b8508c4cf3e19318388a9c56fd51a1442e62452d3031849ec09eb7beab048f"
     },
     {
       "id": 17,
       "type": "truefalse",
       "content": "17. 在有障碍物的场所错车时，向有障碍物方向行驶的车辆可以优先通行。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "2e12982c113d5f89b062c83d58eab395ad3e577f9dc6c92a3590b62407f9c2a0"
     },
     {
       "id": 18,
       "type": "truefalse",
       "content": "18. 由于气温下降，如果在家前面的道路上泼水的话有可能使道路结冰，但为了防止起灰泼了水。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "d7ef26fc9c71c6d2615a0f141bb866065e3700bbf005c1967539b8b58c9971d0"
     },
     {
       "id": 19,
@@ -135,35 +153,40 @@
       "content": "19. 在有该标志的地方，因为有交叉路，所以必须鸣笛通行。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2010.35.48.png?raw=true",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "7ff841ad40732012f479ccbc83b76f1380df5c4901fe645097976943548865e3"
     },
     {
       "id": 20,
       "type": "truefalse",
       "content": "20. 在单行路上给紧急车辆让路时，有时要靠向道路的右侧。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "27c4d99473dad41bd1be820b05ed761f4ed36f25e084013b4e281110b605c75d"
     },
     {
       "id": 21,
       "type": "truefalse",
       "content": "21. 即使是在没有交通指示而且视野不好的交叉路，只要没有其它车辆就可以不用缓行通过。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "df85a7d468dd95cbcf7ed2a7bde165942860f5c8dd0a9c6f5d92bbc94fa10be0"
     },
     {
       "id": 22,
       "type": "truefalse",
       "content": "22. 过度地鸣笛不仅产生噪音还刺激对方的情绪，是引起麻烦的原因。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "66eef3dc2071388a8df20d6a87c9516b49b4035c89502f3fc28c13eaa12f5b60"
     },
     {
       "id": 23,
       "type": "truefalse",
       "content": "23. 取得临时驾驶执照的人如果在汽车所规定的位置上贴上临时驾驶执照练习标记，就可以为了练习而一个人驾驶。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "03766a11e053d1c3505745d47b6722b31d4220b19643be35d87b1e10f1e66aa7"
     },
     {
       "id": 24,
@@ -171,35 +194,40 @@
       "content": "24. 面对该信号的车辆及有轨电车，不能越过停车位置前行。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2010.36.38.png?raw=true",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "51319f175bc42b3c259f43e112b4995d243da6015e1f50348ea4e097cb05af6d"
     },
     {
       "id": 25,
       "type": "truefalse",
       "content": "25. 原则上，车辆应该在道路中心（有中心线时，为中心线）以左的部分通行。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "c2dcea88cadac4e5c7c7cb931e9be7c1c4a6913b8a211cd424b1eb207b80e54a"
     },
     {
       "id": 26,
       "type": "truefalse",
       "content": "26. 通过自行车的侧面在交叉路左转弯时，因为有将自行车卷入的危险，所以鸣笛提醒自行车注意后先向左转弯了。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "3ca453bfd72d022233df393541ca1d5e3ba6fc2a3733096aeaebd10a144f0526"
     },
     {
       "id": 27,
       "type": "truefalse",
       "content": "27. 在牵着导盲犬步行的人旁边通过时，必须暂时停车或缓行。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "f719d1eb48a9320ee208a93822c3881e3f6e154c8e1ef82c15e99ed7101d1ed7"
     },
     {
       "id": 28,
       "type": "truefalse",
       "content": "28. 在交叉路及其近前30米以内的场所，除了在优先道路通行时以外，不得为了超越其它汽车或轻型摩托车而改变车道或在其车辆旁边通过。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "482c1d772be551ce2f8e0a1ded629c04853aee46c1ad9f8cc6cb2c786c058146"
     },
     {
       "id": 29,
@@ -207,42 +235,48 @@
       "content": "29. 在有该标志的地方，无论前方信号如何都可以向左转弯。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2010.46.04.png?raw=true",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "4e268451b2537cb73e8ce749203dd74205cc638e1e069fc19d05398065cf6567"
     },
     {
       "id": 30,
       "type": "truefalse",
       "content": "30. 在同一方向有三条车辆通行带的道路上，驾驶普通汽车一直在左数第三条通行带上行驶了。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "56f9af1f423442da8542f8578915a31b4c754112475e7d04b6446eb4e4eb998f"
     },
     {
       "id": 31,
       "type": "truefalse",
       "content": "31. 普通汽车在没有用标志或标示指定的普通公路上的最高限速是时速60公里。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "09bc7b2322810782b1a35b6b61f67bf84585f499ea4481fa89b45054498d7f0d"
     },
     {
       "id": 32,
       "type": "truefalse",
       "content": "32. 上车后关车门时，为了防止车门没关紧，最好用力一下关好。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "f08aa06f20a80d1041ddb50d8ccca9f93d3f1abdc6b44d0031b1050d7ed2f7e6"
     },
     {
       "id": 33,
       "type": "truefalse",
       "content": "33. 取得中型驾驶执照的人可以驾驶乘车定员为30人的巴士。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "da73c4dc536b5dcd7d9e1b5f8bdf510de4f5b6be16d26e61f26ac3d02750b469"
     },
     {
       "id": 34,
       "type": "truefalse",
       "content": "34. 驾驶座席靠背的位置应调整到双手握方向盘时，肘部微曲的状态相一致。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "31a71de647ba5ee7850ba98bf3cd3d1217c684c8f870f25ba35222c6aaec48dc"
     },
     {
       "id": 35,
@@ -250,77 +284,88 @@
       "content": "35. 该标志下的辅助标牌表示上述主标志的交通限制地段。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2010.47.09.png?raw=true",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "28c574c115deac998139be2c283d296d4a91ccd23c5a76344bc8a2611ec9ae79"
     },
     {
       "id": 36,
       "type": "truefalse",
       "content": "36. 在道路左侧被指定为公共汽车专用通行带的地方，即使是左转弯时，也不能在该车道通行。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "498f761b635f69c7ade2a29a2376f866f3a3370d07c2550e692c9646401cc0e5"
     },
     {
       "id": 37,
       "type": "truefalse",
       "content": "37. 要改变车道时，因后方有车辆已接近，所以没有改变车道让了路。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "23697d56f9e1fe8e00e37d76c7dfd4c7eeeb96d4b5756a71c4561b6009dcc089"
     },
     {
       "id": 38,
       "type": "truefalse",
       "content": "38. 在自动变速车使用发动机制动时，最好将变速杆切入2档或L档(或1档)。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "bfcd9b1488de68460f1610dd53175aa207bb7e70ddfe4de4c5d51e0b620da080"
     },
     {
       "id": 39,
       "type": "truefalse",
       "content": "39. 在行人旁边通过时必须与行人之间留出充分的间隔或缓行，但行人在路侧带时则没有必要。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "d3e4c8eef81c4912ab1c0a6f7f79f25ecc43e43c1163820935b16fc7594c7b3e"
     },
     {
       "id": 40,
       "type": "truefalse",
       "content": "40. 即使前方信号灯的信号是红色，也必须听从正在指挥交通的警察的右转弯或左转弯的指示。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "3a37303b85b574ec734b4e4a7634f630ee79f2ad86dbe30b736b0c5fa6159047"
     },
     {
       "id": 41,
       "type": "truefalse",
       "content": "41. 道路中心线的左侧部分正在施工不能通行时，可以越入右侧部分通行。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "23292c5ce9f87cc78a983da07d9fc2145a56a13b17e2ab7adef319c752c8dca5"
     },
     {
       "id": 42,
       "type": "truefalse",
       "content": "42. 由于铁路道对面交通拥挤，若照常行驶有可能在铁路道内停滞不动时，不得进入铁路道。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "2dde6956f0547566e3f8076431b42490e1a0f51090831c7ee403ebbb7cbb6c74"
     },
     {
       "id": 43,
       "type": "truefalse",
       "content": "43. 因贴有初学者标记的汽车以最高限速以下的速度行驶，所以鸣笛让对方避到道路左侧后驶了过去。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "3ac5878de4d9051e26af4b775edef8ffe8eab5c8e150ed2180a1b68b0cc6eb4c"
     },
     {
       "id": 44,
       "type": "truefalse",
       "content": "44. 超车时，如果急加速或急打方向盘改变车道，就有可能导致方向盘失控或发生侧滑，所以必须充分注意。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "a93d2a5c34eabf499ebd788f3e1d0b20490662bf70c16b1907fd1aabf7002593"
     },
     {
       "id": 45,
       "type": "truefalse",
       "content": "45. 让儿童坐在前面的座席不仅对儿童非常危险，也影响驾驶操作。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "5337237ebcf84b24b1c8981ecac1305ac997a2cf43ff224a1a0aae37cb4e1ea9"
     },
     {
       "id": 46,
@@ -328,35 +373,41 @@
       "content": "46. 该标志表示前方道路是上陡坡。",
       "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-16%20at%2010.48.01.png?raw=true",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "4fb80441b4bdadbe585f89f455752e15a113d89047be7c28ad1a3305fc513fcd"
     },
     {
       "id": 47,
       "type": "truefalse",
       "content": "47. 右转弯时，必须尽量提前靠近道路的中心，紧贴交叉路中心的内侧（根据标志指定有通行场所时，在其指定的场所）缓行。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "4f4e40972b3b5761b1cb0bbc2af2ae3d2bdc9960a325daff38c7ce31e478f4dd"
     },
     {
       "id": 48,
       "type": "truefalse",
       "content": "48. 在为起动自动变速车而操作变速杆时，只要不松开加速踏板，就不用拉手刹或踩刹车踏板。",
       "correctAnswer": "false",
-      "explanation": ""
+      "explanation": "",
+      "hash": "2e19f4bc2bdd50b0ee24dc3d028456a5010dd9cfedfed44b4595e101eb86b466"
     },
     {
       "id": 49,
       "type": "truefalse",
       "content": "49. 因为在没有人行横道的交叉路有行人横过，为不妨碍其通行，暂时停了下来等待行人横过结束。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "eb30bfcab2646dfdfe53834ff06b57d8a12e2c84449df62c54f1f9793c3ad221"
     },
     {
       "id": 50,
       "type": "truefalse",
       "content": "50. 在根据标志或标示禁止横穿或掉头的地点，即使没有行人或其它车辆也不得横穿或掉头。",
       "correctAnswer": "true",
-      "explanation": ""
+      "explanation": "",
+      "hash": "1cc441f83df77918326cdb692c62340955ddbf532632a7c0b11a8425f4920f22"
     }
-  ]
+  ],
+  "version": "20251108-141041-001"
 }
