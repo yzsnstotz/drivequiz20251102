@@ -75,8 +75,8 @@ BEGIN
     $body$;
     $func$;
     
-    -- 添加函数注释
-    EXECUTE 'COMMENT ON FUNCTION match_documents IS ''根据查询向量检索最相似的文档片段，返回相似度大于阈值的记录。支持可选的种子URL过滤，只返回该URL下的子页面。''';
+    -- 添加函数注释（指定完整的函数签名，避免歧义）
+    EXECUTE 'COMMENT ON FUNCTION match_documents(vector, float, int, text) IS ''根据查询向量检索最相似的文档片段，返回相似度大于阈值的记录。支持可选的种子URL过滤，只返回该URL下的子页面。''';
     
     RAISE NOTICE '✅ match_documents 函数已更新，支持种子URL过滤';
   ELSE
