@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
         goals: [],
         level: "beginner",
         metadata: {},
+        userid: userInfo.userId ?? null,
       });
     }
 
@@ -62,6 +63,7 @@ export async function GET(request: NextRequest) {
       metadata: profile.metadata || {},
       created_at: profile.created_at,
       updated_at: profile.updated_at,
+      userid: userInfo.userId ?? null,
     });
   } catch (error) {
     console.error("[Profile API] GET error:", error);
@@ -154,6 +156,7 @@ export async function PUT(request: NextRequest) {
       metadata: profile.metadata || {},
       created_at: profile.created_at,
       updated_at: profile.updated_at,
+      userid: userInfo.userId ?? null,
     });
   } catch (error) {
     console.error("[Profile API] PUT error:", error);
