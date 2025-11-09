@@ -37,8 +37,28 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const response = await import(`../../data/questions/zh/${questionSet.title}.json`);
-        setQuestions(response.questions);
+        // 优先从统一的questions.json读取，根据category字段筛选
+        try {
+          const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
+          const allQuestions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
+          
+          // 根据questionSet.title（对应category字段）筛选题目
+          const filteredQuestions = allQuestions.filter((q: any) => {
+            return q.category === questionSet.title;
+          });
+          
+          if (filteredQuestions.length > 0) {
+            setQuestions(filteredQuestions);
+          } else {
+            // 如果统一文件中没有，尝试从指定文件读取（兼容旧逻辑）
+            const response = await import(`../../data/questions/zh/${questionSet.title}.json`);
+            setQuestions(response.questions || response.default?.questions || []);
+          }
+        } catch (unifiedError) {
+          // 如果统一的questions.json不存在，尝试从指定文件读取（兼容旧逻辑）
+          const response = await import(`../../data/questions/zh/${questionSet.title}.json`);
+          setQuestions(response.questions || response.default?.questions || []);
+        }
       } catch (error) {
         console.error('加载题目失败:', error);
       } finally {
@@ -141,11 +161,24 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
     
     // 检查答案是否正确，如果不正确则添加到错题本
     const currentQuestion = questions[currentQuestionIndex];
-    const isCorrectResult = Array.isArray(currentQuestion.correctAnswer)
-      ? Array.isArray(answer) &&
+    let isCorrectResult: boolean;
+    
+    if (Array.isArray(currentQuestion.correctAnswer)) {
+      // 多选题：比较数组
+      isCorrectResult = Array.isArray(answer) &&
         answer.length === currentQuestion.correctAnswer.length &&
-        answer.every(a => currentQuestion.correctAnswer.includes(a))
-      : answer === currentQuestion.correctAnswer;
+        answer.every(a => currentQuestion.correctAnswer.includes(a));
+    } else if (currentQuestion.type === 'truefalse') {
+      // 判断题：需要统一类型比较（correctAnswer可能是布尔值，answer是字符串）
+      const correctAnswerValue = typeof currentQuestion.correctAnswer === 'boolean' 
+        ? String(currentQuestion.correctAnswer) 
+        : currentQuestion.correctAnswer;
+      const answerValue = typeof answer === 'string' ? answer : String(answer);
+      isCorrectResult = correctAnswerValue === answerValue;
+    } else {
+      // 单选题：直接比较
+      isCorrectResult = answer === currentQuestion.correctAnswer;
+    }
 
     if (!isCorrectResult) {
       // 添加到本地存储的错题本
@@ -270,7 +303,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
           {currentQuestion.image && (
             <div className="mb-4">
               <Image
-                src={currentQuestion.image}
+                src={currentQuestion.image.trim()}
                 alt="题目图片"
                 width={800}
                 height={600}

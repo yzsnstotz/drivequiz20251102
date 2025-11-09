@@ -14,6 +14,19 @@ import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
 import { logCreate, logUpdate, logDelete } from "@/app/api/_lib/operationLog";
 import { calculateQuestionHash } from "@/lib/questionHash";
 import { aiDb } from "@/lib/aiDb";
+import { db } from "@/lib/db";
+import {
+  getQuestionsFromDb,
+  saveQuestionToDb,
+  getAIAnswerFromDb,
+  getAIAnswerFromJson,
+  loadQuestionFile,
+  saveQuestionFile,
+  updateJsonPackage,
+  shouldTriggerBatchUpdate,
+  batchUpdateJsonPackages,
+  normalizeCorrectAnswer,
+} from "@/lib/questionDb";
 import fs from "fs/promises";
 import path from "path";
 
@@ -51,8 +64,8 @@ async function getAllCategories(): Promise<string[]> {
   }
 }
 
-// 加载指定卷类的题目文件
-async function loadQuestionFile(category: string): Promise<QuestionFile | null> {
+// 加载指定卷类的题目文件（本地函数，用于兼容旧逻辑）
+async function loadQuestionFileLocal(category: string): Promise<QuestionFile | null> {
   try {
     const filePath = path.join(QUESTIONS_DIR, `${category}.json`);
     const content = await fs.readFile(filePath, "utf-8");
@@ -65,7 +78,7 @@ async function loadQuestionFile(category: string): Promise<QuestionFile | null> 
       questions: data.questions || [],
     };
   } catch (error) {
-    console.error(`[loadQuestionFile] Error loading ${category}:`, error);
+    console.error(`[loadQuestionFileLocal] Error loading ${category}:`, error);
     return null;
   }
 }
@@ -169,24 +182,43 @@ async function saveQuestionFile(category: string, data: QuestionFile): Promise<v
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-// 从所有文件中收集题目(带卷类信息)
+// 从数据库中收集所有题目(带卷类信息)
+// 直接从数据库读取所有题目，不依赖文件系统的categories
 async function collectAllQuestions(): Promise<Question[]> {
-  const categories = await getAllCategories();
-  const allQuestions: Question[] = [];
+  try {
+    // 直接从数据库读取所有题目
+    const allDbQuestions = await db
+      .selectFrom("questions")
+      .selectAll()
+      .orderBy("id", "asc")
+      .execute();
 
-  for (const category of categories) {
-    const file = await loadQuestionFile(category);
-    if (file && file.questions) {
-      // 为每个题目添加卷类信息
-      const questionsWithCategory = file.questions.map((q) => ({
-        ...q,
+    console.log(`[collectAllQuestions] 从数据库读取到 ${allDbQuestions.length} 个题目`);
+
+    // 转换为前端格式
+    const allQuestions: Question[] = allDbQuestions.map((q) => {
+      // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
+      const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
+        ? q.license_types[0]
+        : "其他";
+
+      return {
+        id: q.id,
+        type: q.type,
+        content: q.content,
+        options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
+        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+        image: q.image || undefined,
+        explanation: q.explanation || undefined,
         category,
-      }));
-      allQuestions.push(...questionsWithCategory);
-    }
-  }
+      };
+    });
 
-  return allQuestions;
+    return allQuestions;
+  } catch (error) {
+    console.error(`[collectAllQuestions] Error loading all questions from database:`, error);
+    return [];
+  }
 }
 
 // 查找题目所属的卷类文件
@@ -213,21 +245,146 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
     const category = query.get("category"); // 卷类筛选
     const search = query.get("search"); // 内容模糊搜索
+    const source = query.get("source"); // 题目源：database（数据库）或版本号（历史JSON包）
     const sortBy = query.get("sortBy") || "id";
     const sortOrder = query.get("sortOrder") || "asc";
 
     // 收集所有题目
     let allQuestions: Question[] = [];
     
-    if (category) {
-      // 只加载指定卷类的题目
-      const file = await loadQuestionFile(category);
-      if (file && file.questions) {
-        allQuestions = file.questions.map((q) => ({ ...q, category }));
+    // 如果指定了版本号（历史JSON包），从JSON包读取
+    if (source && source !== "database") {
+      // source是版本号，优先从统一的questions.json读取
+      let questionsLoaded = false; // 标记是否已加载题目，避免重复加载
+      
+      try {
+        const unifiedFile = await loadQuestionFile(); // 不传参数，读取统一文件
+        console.log(`[GET /api/admin/questions] 读取统一文件，版本号: ${unifiedFile?.version}, 请求版本号: ${source}, 题目数: ${unifiedFile?.questions?.length || 0}`);
+        
+        if (unifiedFile && unifiedFile.questions && unifiedFile.questions.length > 0) {
+          // 检查JSON包的版本号是否匹配
+          const fileVersion = unifiedFile.version;
+          console.log(`[GET /api/admin/questions] 版本号匹配检查: fileVersion=${fileVersion}, source=${source}, 匹配=${fileVersion === source}`);
+          
+          // 只有当版本号匹配时才加载题目（严格匹配）
+          if (fileVersion === source || (!fileVersion && !source)) {
+            // 版本号匹配，或者文件没有版本号且请求也没有版本号（兼容旧格式）
+            // 如果指定了category筛选，只添加匹配的题目
+            if (category) {
+              const filteredQuestions = unifiedFile.questions.filter((q: Question) => {
+                return q.category === category;
+              });
+              console.log(`[GET /api/admin/questions] 按category筛选后题目数: ${filteredQuestions.length}`);
+              allQuestions.push(...filteredQuestions);
+            } else {
+              // 没有category筛选，添加所有题目
+              console.log(`[GET /api/admin/questions] 添加所有题目: ${unifiedFile.questions.length}`);
+              allQuestions.push(...unifiedFile.questions);
+            }
+            questionsLoaded = true; // 标记已加载
+          } else {
+            console.warn(`[GET /api/admin/questions] 版本号不匹配: 文件版本=${fileVersion}, 请求版本=${source}，不加载题目`);
+            // 版本号不匹配，不加载题目（避免显示错误的版本）
+          }
+        } else {
+          console.warn(`[GET /api/admin/questions] 统一文件为空或没有题目: unifiedFile=${!!unifiedFile}, questions=${unifiedFile?.questions?.length || 0}`);
+        }
+      } catch (unifiedError) {
+        console.error(`[GET /api/admin/questions] 读取统一文件失败:`, unifiedError);
+        // 如果统一的questions.json不存在或读取失败，尝试从各个JSON包读取（兼容旧逻辑）
+        // 但只有在未加载题目时才执行
+        if (!questionsLoaded) {
+          const categories = await getAllCategories();
+          console.log(`[GET /api/admin/questions] 尝试从各个JSON包读取，categories: ${categories.length}`);
+          
+          for (const cat of categories) {
+            try {
+              const file = await loadQuestionFileLocal(cat);
+              if (file && file.questions && file.questions.length > 0) {
+                // 检查JSON包的版本号是否匹配
+                const fileVersion = (file as any).version;
+                console.log(`[GET /api/admin/questions] 读取 ${cat}: 版本号=${fileVersion}, 请求版本=${source}`);
+                
+                if (fileVersion === source || (!fileVersion && !source)) {
+                  // 如果指定了category筛选，只添加匹配的题目
+                  if (category) {
+                    const filteredQuestions = file.questions.filter((q: Question) => {
+                      // 如果题目有category字段，使用它；否则使用文件名作为category
+                      const qCategory = q.category || cat;
+                      return qCategory === category;
+                    });
+                    allQuestions.push(...filteredQuestions.map((q: Question) => ({
+                      ...q,
+                      category: q.category || cat,
+                    })));
+                  } else {
+                    // 没有category筛选，添加所有题目
+                    allQuestions.push(...file.questions.map((q: Question) => ({
+                      ...q,
+                      category: q.category || cat,
+                    })));
+                  }
+                  questionsLoaded = true; // 标记已加载
+                }
+              }
+            } catch (error) {
+              console.error(`[GET /api/admin/questions] Error loading ${cat} from JSON:`, error);
+            }
+          }
+        }
       }
+      
+      console.log(`[GET /api/admin/questions] 从JSON包读取后，总题目数: ${allQuestions.length}`);
     } else {
-      // 加载所有题目
-      allQuestions = await collectAllQuestions();
+      // 从数据库读取（source === "database" 或未指定）
+      console.log(`[GET /api/admin/questions] 从数据库读取，category=${category || "全部"}`);
+      
+      if (category) {
+        // 只加载指定卷类的题目（只从数据库读取）
+        try {
+          const dbQuestions = await getQuestionsFromDb(category);
+          console.log(`[GET /api/admin/questions] 从数据库读取 ${category}，找到 ${dbQuestions.length} 个题目`);
+          if (dbQuestions && dbQuestions.length > 0) {
+            allQuestions = dbQuestions;
+          } else {
+            // 如果通过license_types没找到，尝试直接查询所有题目然后筛选
+            console.log(`[GET /api/admin/questions] 通过license_types未找到，尝试直接查询并筛选`);
+            const allDbQuestions = await db
+              .selectFrom("questions")
+              .selectAll()
+              .orderBy("id", "asc")
+              .execute();
+            
+            allQuestions = allDbQuestions
+              .filter((q) => {
+                // 检查license_types数组是否包含category
+                if (Array.isArray(q.license_types)) {
+                  return q.license_types.includes(category);
+                }
+                return false;
+              })
+              .map((q) => ({
+                id: q.id,
+                type: q.type,
+                content: q.content,
+                options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
+                correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+                image: q.image || undefined,
+                explanation: q.explanation || undefined,
+                category: category,
+              }));
+            
+            console.log(`[GET /api/admin/questions] 直接查询后筛选，找到 ${allQuestions.length} 个题目`);
+          }
+        } catch (error) {
+          console.error(`[GET /api/admin/questions] Error loading ${category} from database:`, error);
+          // 数据库读取失败，返回空数组
+        }
+      } else {
+        // 加载所有题目（只从数据库读取）
+        allQuestions = await collectAllQuestions();
+        console.log(`[GET /api/admin/questions] 从数据库读取所有题目，共 ${allQuestions.length} 个`);
+      }
     }
 
     // 内容搜索
@@ -275,15 +432,35 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const total = questionsWithHash.length;
     const paginatedQuestions = questionsWithHash.slice(offset, offset + limit);
 
-    // 只查询当前页题目的 AI 回答（批量查询优化性能）
-    const questionContents = paginatedQuestions.map((q) => q.content);
-    const aiAnswersMap = await getAIAnswersForQuestions(questionContents, "zh");
-
-    // 为当前页的题目添加 AI 回答
-    const questionsWithHashAndAI = paginatedQuestions.map((q) => ({
-      ...q,
-      aiAnswer: aiAnswersMap.get(q.content) || undefined,
-    }));
+    // 查询当前页题目的 AI 回答
+    // 优先从JSON包读取，如果没有则从数据库读取
+    const questionsWithHashAndAI = await Promise.all(
+      paginatedQuestions.map(async (q) => {
+        const questionHash = (q as any).hash || calculateQuestionHash(q);
+        
+        // 1. 优先从JSON包读取（如果题目有category）
+        let aiAnswer: string | null = null;
+        if (q.category) {
+          aiAnswer = await getAIAnswerFromJson(q.category, questionHash);
+        }
+        
+        // 2. 如果JSON包没有，从数据库读取
+        if (!aiAnswer) {
+          aiAnswer = await getAIAnswerFromDb(questionHash, "zh");
+        }
+        
+        // 3. 如果数据库也没有，从ai_logs表查询（兼容旧逻辑）
+        if (!aiAnswer) {
+          const logAnswer = await getAIAnswersForQuestions([q.content], "zh");
+          aiAnswer = logAnswer.get(q.content) || null;
+        }
+        
+        return {
+          ...q,
+          aiAnswer: aiAnswer || undefined,
+        };
+      })
+    );
 
     const pagination = getPaginationMeta(page, limit, total);
 
@@ -324,35 +501,39 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     // 如果未指定卷类,使用默认卷类
     const targetCategory = category || "免许-1";
     
-    // 加载目标卷类的题目文件
-    let file = await loadQuestionFile(targetCategory);
-    if (!file) {
-      // 如果文件不存在,创建新文件
-      file = { questions: [] };
-    }
-
-    // 生成新的ID(查找最大ID + 1)
-    const maxId = file.questions.length > 0
-      ? Math.max(...file.questions.map((q) => q.id))
-      : 0;
-    const newId = maxId + 1;
-
     // 创建新题目
     const newQuestion: Question = {
-      id: newId,
+      id: 0, // 临时ID，数据库会自动生成
       type,
       content: content.trim(),
       correctAnswer,
       ...(options && options.length > 0 ? { options } : {}),
       ...(image ? { image: image.trim() } : {}),
       ...(explanation ? { explanation: explanation.trim() } : {}),
+      category: targetCategory,
     };
 
-    // 添加到文件
-    file.questions.push(newQuestion);
+    // 1. 保存到数据库（作为数据源）
+    const questionId = await saveQuestionToDb(newQuestion);
+    newQuestion.id = questionId;
 
-    // 保存文件
-    await saveQuestionFile(targetCategory, file);
+    // 2. 同步到JSON包
+    try {
+      let file = await loadQuestionFile(targetCategory);
+      if (!file) {
+        file = { questions: [] };
+      }
+      
+      // 更新题目ID（使用数据库生成的ID）
+      const questionWithId = { ...newQuestion, id: questionId };
+      file.questions.push(questionWithId);
+      
+      // 保存到JSON包
+      await saveQuestionFile(targetCategory, file);
+    } catch (fileError) {
+      console.error("[POST /api/admin/questions] Error syncing to JSON:", fileError);
+      // 即使JSON包同步失败，也继续执行（数据库已保存）
+    }
 
     // 记录操作日志
     try {

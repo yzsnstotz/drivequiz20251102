@@ -15,6 +15,8 @@ type Question = {
   image?: string;
   explanation?: string;
   category?: string;
+  hash?: string;
+  aiAnswer?: string;
 };
 
 type ListResponse = {
@@ -35,6 +37,7 @@ type Filters = {
   limit: number;
   category: string;
   search: string;
+  source: string; // 题目源：database（数据库）或版本号（历史JSON包）
   sortBy: "id" | "content" | "category";
   sortOrder: "asc" | "desc";
 };
@@ -44,6 +47,7 @@ const DEFAULT_FILTERS: Filters = {
   limit: 20,
   category: "",
   search: "",
+  source: "database", // 默认显示数据库题目
   sortBy: "id",
   sortOrder: "asc",
 };
@@ -63,6 +67,7 @@ export default function QuestionsPage() {
       limit: n("limit", DEFAULT_FILTERS.limit),
       category: q("category", DEFAULT_FILTERS.category),
       search: q("search", DEFAULT_FILTERS.search),
+      source: q("source", DEFAULT_FILTERS.source),
       sortBy: (q("sortBy", DEFAULT_FILTERS.sortBy) as Filters["sortBy"]) || "id",
       sortOrder: (q("sortOrder", DEFAULT_FILTERS.sortOrder) as Filters["sortOrder"]) || "asc",
     };
@@ -88,6 +93,42 @@ export default function QuestionsPage() {
     failed: number;
     errors: string[];
   } | null>(null);
+  const [updatingHashes, setUpdatingHashes] = useState(false);
+  const [updatingPackage, setUpdatingPackage] = useState(false);
+  const [importingFromJson, setImportingFromJson] = useState(false);
+  const [showImportFromJsonModal, setShowImportFromJsonModal] = useState(false);
+  const [superAdminPassword, setSuperAdminPassword] = useState("");
+  const [importFromJsonResult, setImportFromJsonResult] = useState<{
+    totalProcessed: number;
+    totalImported: number;
+    totalUpdated: number;
+    totalErrors: number;
+    errors: string[];
+    results: Array<{
+      packageName: string;
+      processed: number;
+      imported: number;
+      updated: number;
+      errors: number;
+    }>;
+  } | null>(null);
+  const [versions, setVersions] = useState<Array<{
+    version: string;
+    totalQuestions: number;
+    aiAnswersCount: number;
+    createdAt: string;
+  }>>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [deletingVersion, setDeletingVersion] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{
+    version: string;
+    totalQuestions: number;
+  } | null>(null);
+  const [updateResult, setUpdateResult] = useState<{
+    type: "hashes" | "package";
+    message: string;
+    data?: any;
+  } | null>(null);
 
   // 加载卷类列表
   useEffect(() => {
@@ -109,6 +150,79 @@ export default function QuestionsPage() {
       mounted = false;
     };
   }, []);
+
+  // 加载统一版本号列表（历史版本）
+  const loadVersions = useCallback(async (setDefaultSource: boolean = false) => {
+    setLoadingVersions(true);
+    try {
+      const response = await apiFetch<Array<{
+        version: string;
+        totalQuestions: number;
+        aiAnswersCount: number;
+        createdAt: string;
+      }>>("/api/admin/questions/versions", {
+        method: "GET",
+      });
+      const versionsList = response.data || [];
+      setVersions(versionsList);
+      
+      // 如果需要设置默认源，且有版本号列表且当前source是"database"（默认值），则设置为最新的版本号
+      if (setDefaultSource && versionsList.length > 0) {
+        const currentSource = search?.get("source") || DEFAULT_FILTERS.source;
+        if (currentSource === "database") {
+          const latestVersion = versionsList[0].version; // 版本号列表已按created_at降序排列，第一个是最新的
+          console.log(`[QuestionsPage] 设置默认题目源为最新JSON包版本: ${latestVersion}`);
+          setFilters((prev) => ({
+            ...prev,
+            source: latestVersion,
+          }));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load versions:", e);
+    } finally {
+      setLoadingVersions(false);
+    }
+  }, [search]);
+
+  // 初始加载版本号并设置默认源
+  useEffect(() => {
+    loadVersions(true); // 首次加载时设置默认源
+  }, []); // 只在组件挂载时执行一次
+
+  // 删除JSON包版本号
+  const handleDeleteVersion = async (version: string) => {
+    setDeletingVersion(version);
+    try {
+      const response = await apiDelete<{ message: string; version: string }>(
+        `/api/admin/questions/versions?version=${encodeURIComponent(version)}`
+      );
+
+      // 如果删除的是当前选中的版本，切换到数据库
+      if (filters.source === version) {
+        setFilters((prev) => ({
+          ...prev,
+          source: "database",
+        }));
+      }
+
+      // 重新加载版本号列表
+      await loadVersions(false);
+
+      // 显示成功消息
+      setUpdateResult({
+        type: "package",
+        message: response.data?.message || `版本号 ${version} 已成功删除`,
+        data: response.data,
+      });
+    } catch (e) {
+      console.error("Failed to delete version:", e);
+      setFormError(e instanceof Error ? e.message : "删除版本号失败");
+    } finally {
+      setDeletingVersion(null);
+      setShowDeleteConfirm(null);
+    }
+  };
 
   // 同步 filters 到 URL
   useEffect(() => {
@@ -140,6 +254,7 @@ export default function QuestionsPage() {
       };
       if (filters.category) params.category = filters.category;
       if (filters.search) params.search = filters.search;
+      if (filters.source) params.source = filters.source;
 
       // 构建查询字符串
       const queryString = new URLSearchParams(
@@ -210,7 +325,7 @@ export default function QuestionsPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [filters.category, filters.search, filters.limit, filters.sortBy, filters.sortOrder]);
+  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder]);
 
   // 初始加载或筛选条件改变时重置
   useEffect(() => {
@@ -218,7 +333,7 @@ export default function QuestionsPage() {
     setHasMore(true);
     loadData(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.category, filters.search, filters.sortBy, filters.sortOrder]);
+  }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder]);
 
   // 无限滚动：加载更多
   const loadMore = useCallback(() => {
@@ -293,6 +408,7 @@ export default function QuestionsPage() {
 
   const onReset = () => {
     setFilters({ ...DEFAULT_FILTERS });
+    loadVersions(); // 重置时重新加载版本号列表
   };
 
   // 移除分页功能，改用无限滚动
@@ -593,6 +709,179 @@ export default function QuestionsPage() {
     }
   };
 
+  // 批量更新题目 hash
+  const handleUpdateHashes = async () => {
+    if (!confirm("确认要批量更新所有题目的 Hash 吗？这将重新计算所有题目的 Hash 值。")) {
+      return;
+    }
+
+    setUpdatingHashes(true);
+    setUpdateResult(null);
+    setFormError(null);
+
+    try {
+      const data = await apiPost<{
+        totalProcessed: number;
+        totalUpdated: number;
+        totalErrors: number;
+        totalCategories: number;
+        errors: string[];
+      }>("/api/admin/questions/update-hashes", {});
+
+      setUpdateResult({
+        type: "hashes",
+        message: `Hash 更新完成：处理了 ${data.totalProcessed} 个题目，更新了 ${data.totalUpdated} 个 Hash，${data.totalErrors} 个错误`,
+        data,
+      });
+      // 重新加载数据以显示新的 hash
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "更新 Hash 失败");
+    } finally {
+      setUpdatingHashes(false);
+    }
+  };
+
+  // 手动更新 JSON 包
+  const handleUpdatePackage = async () => {
+    if (!confirm("确认要更新所有题目 JSON 包吗？这将重新计算所有题目的 Hash 并更新统一版本号。")) {
+      return;
+    }
+
+    setUpdatingPackage(true);
+    setUpdateResult(null);
+    setFormError(null);
+
+    try {
+      const data = await apiPost<{
+        version: string;
+        totalQuestions: number;
+        aiAnswersCount: number;
+        message: string;
+      }>("/api/admin/questions/update-package", {});
+
+      setUpdateResult({
+        type: "package",
+        message: data.message || `JSON 包更新完成：统一版本号 ${data.version}，共 ${data.totalQuestions} 个题目，${data.aiAnswersCount} 个AI回答`,
+        data,
+      });
+      // 重新加载版本号列表
+      loadVersions();
+      // 重新加载数据以显示新的 hash
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "更新 JSON 包失败");
+    } finally {
+      setUpdatingPackage(false);
+    }
+  };
+
+  // 下载 JSON 包
+  const handleDownloadPackage = async (packageName: string) => {
+    try {
+      const token = localStorage.getItem("ADMIN_TOKEN");
+      if (!token) {
+        alert("请先登录");
+        return;
+      }
+
+      const response = await fetch(`/api/admin/questions/download?packageName=${encodeURIComponent(packageName)}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "下载失败");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${packageName}.json`;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        if (document.body.contains(a)) {
+          document.body.removeChild(a);
+        }
+      }, 100);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "下载失败");
+    }
+  };
+
+  // JSON包入库
+  const handleImportFromJson = async () => {
+    if (!superAdminPassword.trim()) {
+      alert("请输入超级管理员密码");
+      return;
+    }
+
+    if (!confirm("确认要将JSON包导入到数据库吗？这将覆盖数据库中已存在的题目。")) {
+      return;
+    }
+
+    setImportingFromJson(true);
+    setImportFromJsonResult(null);
+    setFormError(null);
+
+    try {
+      // JSON入库可能需要较长时间，设置5分钟超时
+      const data = await apiPost<{
+        totalProcessed: number;
+        totalImported: number;
+        totalUpdated: number;
+        totalErrors: number;
+        errors: string[];
+        results: Array<{
+          packageName: string;
+          processed: number;
+          imported: number;
+          updated: number;
+          errors: number;
+        }>;
+      }>("/api/admin/questions/import-from-json", {
+        password: superAdminPassword,
+      }, {
+        timeoutMs: 300_000, // 5分钟超时
+      });
+
+      setImportFromJsonResult(data);
+      setShowImportFromJsonModal(false);
+      setSuperAdminPassword("");
+      
+      // 重新加载数据
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+      loadVersions();
+      
+      alert(`JSON包入库完成：处理了 ${data.totalProcessed} 个题目，新增 ${data.totalImported} 个，更新 ${data.totalUpdated} 个，${data.totalErrors} 个错误`);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        if (e.status === 403) {
+          setFormError("超级管理员密码错误");
+        } else {
+          setFormError(e.message || "JSON包入库失败");
+        }
+      } else {
+        setFormError(e instanceof Error ? e.message : "JSON包入库失败");
+      }
+    } finally {
+      setImportingFromJson(false);
+    }
+  };
+
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* 顶部操作区 */}
@@ -616,6 +905,35 @@ export default function QuestionsPage() {
             />
           </label>
           <button
+            className="inline-flex items-center rounded-xl bg-purple-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-purple-600 active:bg-purple-700 touch-manipulation transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleUpdateHashes}
+            disabled={updatingHashes || updatingPackage}
+            title="批量更新所有题目的 Hash（无论有没有都重新计算）"
+          >
+            {updatingHashes ? "更新中..." : "更新Hash"}
+          </button>
+          <button
+            className="inline-flex items-center rounded-xl bg-orange-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-orange-600 active:bg-orange-700 touch-manipulation transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleUpdatePackage}
+            disabled={updatingHashes || updatingPackage}
+            title="更新所有题目 JSON 包（重新计算 hash 并更新版本号）"
+          >
+            {updatingPackage ? "更新中..." : "更新JSON包"}
+          </button>
+          <button
+            className="inline-flex items-center rounded-xl bg-red-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-red-600 active:bg-red-700 touch-manipulation transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => {
+              setShowImportFromJsonModal(true);
+              setSuperAdminPassword("");
+              setFormError(null);
+              setImportFromJsonResult(null);
+            }}
+            disabled={importingFromJson}
+            title="将JSON包导入到数据库（需要超级管理员密码）"
+          >
+            {importingFromJson ? "导入中..." : "JSON入库"}
+          </button>
+          <button
             className="inline-flex items-center rounded-xl bg-blue-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-blue-600 active:bg-blue-700 touch-manipulation transition-colors shadow-sm"
             onClick={() => {
               setShowCreateForm(!showCreateForm);
@@ -631,12 +949,55 @@ export default function QuestionsPage() {
               setItems([]);
               setHasMore(true);
               loadData(1, false);
+              loadVersions();
             }}
           >
             刷新
           </button>
         </div>
       </div>
+
+
+      {/* 更新结果 */}
+      {updateResult && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-blue-50">
+          <div className="text-sm font-medium mb-2">
+            {updateResult.type === "hashes" && "Hash 更新结果"}
+            {updateResult.type === "package" && "JSON 包更新结果"}
+          </div>
+          <div className="text-xs space-y-1">
+            <div className="text-green-600">{updateResult.message}</div>
+            {updateResult.data?.errors && updateResult.data.errors.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-red-600">查看错误详情</summary>
+                <ul className="mt-2 space-y-1 pl-4 list-disc">
+                  {updateResult.data.errors.map((err: string, idx: number) => (
+                    <li key={idx} className="text-xs">{err}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {updateResult.data?.results && updateResult.data.results.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-blue-600">查看详细结果</summary>
+                <ul className="mt-2 space-y-1 pl-4 list-disc">
+                  {updateResult.data.results.map((r: any, idx: number) => (
+                    <li key={idx} className="text-xs">
+                      {r.category}: {r.success ? `✅ ${r.version || "已更新"} (${r.hashUpdated || 0}个Hash)` : "❌ 失败"}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+          <button
+            className="mt-2 text-xs text-blue-600 hover:underline"
+            onClick={() => setUpdateResult(null)}
+          >
+            关闭
+          </button>
+        </div>
+      )}
 
       {/* 导入结果 */}
       {importResult && (
@@ -664,6 +1025,93 @@ export default function QuestionsPage() {
           >
             关闭
           </button>
+        </div>
+      )}
+
+      {/* JSON包入库弹窗 */}
+      {showImportFromJsonModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-4">JSON包入库</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              此操作将把当前服务端的题目JSON包写入到数据库。需要超级管理员密码确认。
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  超级管理员密码
+                </label>
+                <input
+                  type="password"
+                  value={superAdminPassword}
+                  onChange={(e) => setSuperAdminPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !importingFromJson) {
+                      handleImportFromJson();
+                    }
+                  }}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请输入超级管理员密码"
+                  autoFocus
+                  disabled={importingFromJson}
+                />
+              </div>
+              {formError && (
+                <div className="text-sm text-red-600">{formError}</div>
+              )}
+              {importFromJsonResult && (
+                <div className="text-sm space-y-1">
+                  <div className="text-green-600">
+                    处理了 {importFromJsonResult.totalProcessed} 个题目
+                  </div>
+                  <div className="text-blue-600">
+                    新增: {importFromJsonResult.totalImported} 个
+                  </div>
+                  <div className="text-orange-600">
+                    更新: {importFromJsonResult.totalUpdated} 个
+                  </div>
+                  {importFromJsonResult.totalErrors > 0 && (
+                    <div className="text-red-600">
+                      错误: {importFromJsonResult.totalErrors} 个
+                    </div>
+                  )}
+                  {importFromJsonResult.results.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-blue-600">查看详细结果</summary>
+                      <ul className="mt-2 space-y-1 pl-4 list-disc">
+                        {importFromJsonResult.results.map((r, idx) => (
+                          <li key={idx} className="text-xs">
+                            {r.packageName}: 处理 {r.processed} 个，新增 {r.imported} 个，更新 {r.updated} 个，错误 {r.errors} 个
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-6">
+              <button
+                onClick={handleImportFromJson}
+                disabled={importingFromJson || !superAdminPassword.trim()}
+                className="flex-1 inline-flex items-center justify-center rounded-md bg-red-500 text-white text-sm px-4 py-2 hover:bg-red-600 active:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {importingFromJson ? "导入中..." : "确认导入"}
+              </button>
+              <button
+                onClick={() => {
+                  setShowImportFromJsonModal(false);
+                  setSuperAdminPassword("");
+                  setFormError(null);
+                  setImportFromJsonResult(null);
+                }}
+                disabled={importingFromJson}
+                className="flex-1 inline-flex items-center justify-center rounded-md border border-gray-300 text-sm px-4 py-2 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -727,6 +1175,64 @@ export default function QuestionsPage() {
           </select>
         </div>
         <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-gray-700 mb-1">题目源</label>
+          <div className="space-y-1">
+            <select
+              value={filters.source}
+              onChange={(e) =>
+                setFilters((f) => ({
+                  ...f,
+                  source: e.target.value,
+                  page: 1,
+                }))
+              }
+              className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+            >
+              <option value="database">数据库</option>
+              {versions.map((v) => (
+                <option key={v.version} value={v.version}>
+                  {v.version} ({v.totalQuestions}题, {new Date(v.createdAt).toLocaleString("zh-CN")})
+                </option>
+              ))}
+            </select>
+            {/* 删除按钮列表 */}
+            {versions.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {versions.map((v) => (
+                  <button
+                    key={v.version}
+                    onClick={() => {
+                      setShowDeleteConfirm({
+                        version: v.version,
+                        totalQuestions: v.totalQuestions,
+                      });
+                    }}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded border border-red-200 hover:border-red-300 transition-colors"
+                    title={`删除版本 ${v.version}`}
+                    disabled={deletingVersion === v.version}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-3 w-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                    <span>{v.version}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-gray-700 mb-1">搜索内容</label>
           <input
             type="text"
@@ -758,6 +1264,37 @@ export default function QuestionsPage() {
         </div>
       )}
 
+      {/* 删除确认弹窗 */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">确认删除</h2>
+            <p className="text-sm text-gray-700 mb-2">
+              确定要删除版本号 <span className="font-medium">{showDeleteConfirm.version}</span> 吗？
+            </p>
+            <p className="text-sm text-gray-600 mb-4">
+              此操作将删除该版本号的所有数据（共 {showDeleteConfirm.totalQuestions} 题），且无法恢复。
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleDeleteVersion(showDeleteConfirm.version)}
+                disabled={deletingVersion === showDeleteConfirm.version}
+                className="flex-1 rounded-md bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deletingVersion === showDeleteConfirm.version ? "删除中..." : "确认删除"}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                disabled={deletingVersion === showDeleteConfirm.version}
+                className="flex-1 rounded-md border border-gray-300 text-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 列表 - 桌面端 */}
       {loading ? (
         <div className="text-center py-8 text-gray-500 text-sm">加载中...</div>
@@ -774,12 +1311,13 @@ export default function QuestionsPage() {
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">类型</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">题目内容</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">Hash / AI回答</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
-                  <tr key={`${item.category}-${item.id}`} className="border-b border-gray-100 hover:bg-gray-50">
+                {items.map((item, index) => (
+                  <tr key={`${item.hash || item.id}-${item.category || 'unknown'}-${index}`} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-2 px-3 text-xs">{item.id}</td>
                     <td className="py-2 px-3 text-xs font-medium">{item.category || "—"}</td>
                     <td className="py-2 px-3 text-xs">
@@ -792,6 +1330,23 @@ export default function QuestionsPage() {
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
                         : item.correctAnswer}
+                    </td>
+                    <td className="py-2 px-3 text-xs max-w-xs">
+                      <div className="flex flex-col gap-0.5">
+                        {item.hash && (
+                          <div className="text-gray-600 font-mono text-[10px] truncate" title={item.hash}>
+                            <span className="text-gray-500">H:</span> {item.hash.substring(0, 12)}...
+                          </div>
+                        )}
+                        {item.aiAnswer && (
+                          <div className="text-gray-700 text-[10px] truncate leading-tight" title={item.aiAnswer}>
+                            <span className="text-gray-500">AI:</span> {item.aiAnswer.substring(0, 50)}...
+                          </div>
+                        )}
+                        {!item.hash && !item.aiAnswer && (
+                          <span className="text-gray-400 text-[10px]">—</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 px-3 text-xs">
                       <button
@@ -815,8 +1370,8 @@ export default function QuestionsPage() {
 
           {/* 移动端卡片 */}
           <div className="md:hidden space-y-3">
-            {items.map((item) => (
-              <div key={`${item.category}-${item.id}`} className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            {items.map((item, index) => (
+              <div key={`${item.hash || item.id}-${item.category || 'unknown'}-${index}`} className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">ID: {item.id}</span>
                   <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -839,6 +1394,23 @@ export default function QuestionsPage() {
                       : item.correctAnswer}
                   </div>
                 </div>
+                {(item.hash || item.aiAnswer) && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Hash / AI回答</div>
+                    <div className="text-xs space-y-1">
+                      {item.hash && (
+                        <div className="text-gray-600 font-mono truncate" title={item.hash}>
+                          Hash: {item.hash.substring(0, 16)}...
+                        </div>
+                      )}
+                      {item.aiAnswer && (
+                        <div className="text-gray-700 truncate" title={item.aiAnswer}>
+                          AI: {item.aiAnswer.substring(0, 50)}...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {item.options && item.options.length > 0 && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">选项</div>

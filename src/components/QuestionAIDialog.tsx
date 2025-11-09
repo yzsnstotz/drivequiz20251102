@@ -236,7 +236,7 @@ export default function QuestionAIDialog({
           {question.image && (
             <div className="mt-2 relative w-full h-32">
               <Image
-                src={question.image}
+                src={question.image.trim()}
                 alt="题目图片"
                 fill
                 sizes="(max-width: 768px) 100vw, 400px"

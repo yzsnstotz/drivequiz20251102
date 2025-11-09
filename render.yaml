@@ -18,5 +18,5 @@ services:
     rootDir: apps/ai-service
     schedule: "0 0 * * *"
     buildCommand: npm install && npm run build
-    startCommand: node dist/tasks/dailySummarize.js
+    startCommand: node dist/cron.js
 

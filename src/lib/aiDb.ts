@@ -24,6 +24,11 @@ interface AiLogsTable {
   cost_est: number | null; // NUMERIC(10,4)
   safety_flag: string; // "ok" | "needs_human" | "blocked"
   sources: any; // JSONB 字段，存储来源信息数组
+  context_tag: string | null; // "license" | "vehicle" | "service" | "general"
+  from: string | null; // "study" | "question" | "chat" 等，标识来源
+  ai_provider: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
+  cached: boolean | null; // 是否是缓存
+  cache_source: string | null; // "json" | "database"，缓存来源
   created_at: Generated<Date>;
 }
 

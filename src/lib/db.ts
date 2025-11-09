@@ -416,6 +416,64 @@ interface UserBehaviorTable {
 }
 
 // ------------------------------------------------------------
+// 1️⃣4️⃣ questions 表结构定义
+// ------------------------------------------------------------
+interface QuestionTable {
+  id: Generated<number>;
+  content_hash: string;
+  type: "single" | "multiple" | "truefalse";
+  content: string;
+  options: any | null; // JSONB
+  correct_answer: any | null; // JSONB
+  image: string | null;
+  explanation: string | null;
+  license_types: string[] | null;
+  version: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣5️⃣ question_ai_answers 表结构定义
+// ------------------------------------------------------------
+interface QuestionAiAnswerTable {
+  id: Generated<number>;
+  question_hash: string;
+  locale: string;
+  answer: string;
+  sources: any | null; // JSONB
+  model: string | null;
+  created_by: string | null; // UUID
+  view_count: number;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣6️⃣ question_ai_answer_pending_updates 表结构定义
+// ------------------------------------------------------------
+interface QuestionAiAnswerPendingUpdateTable {
+  id: Generated<number>;
+  question_hash: string;
+  locale: string;
+  package_name: string | null;
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣7️⃣ question_package_versions 表结构定义
+// ------------------------------------------------------------
+interface QuestionPackageVersionTable {
+  id: Generated<number>;
+  package_name: string;
+  version: string;
+  total_questions: number;
+  ai_answers_count: number;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
 // 1️⃣1️⃣ 数据库总接口定义
 // ------------------------------------------------------------
 interface Database {
@@ -442,6 +500,10 @@ interface Database {
   ai_logs: AiLogsTable;
   users: UserTable;
   user_behaviors: UserBehaviorTable;
+  questions: QuestionTable;
+  question_ai_answers: QuestionAiAnswerTable;
+  question_ai_answer_pending_updates: QuestionAiAnswerPendingUpdateTable;
+  question_package_versions: QuestionPackageVersionTable;
 }
 
 // ------------------------------------------------------------
