@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Send } from "lucide-react";
+import { detectLanguage, type Language } from "@/lib/i18n";
 
 /** ---- 协议与类型 ---- */
 type Role = "user" | "ai";
@@ -11,17 +12,17 @@ interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number; // epoch ms
-  // AI回复的元数据（仅AI消息有）
+  // AI reply metadata (only for AI messages)
   metadata?: {
-    aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct"; // AI服务提供商
-    model?: string; // 模型名称
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached"; // AI service provider
+    model?: string; // Model name
     sources?: Array<{
       title: string;
       url: string;
       snippet?: string;
       score?: number;
       version?: string;
-    }>; // RAG数据源
+    }>; // RAG sources
   };
 }
 
@@ -53,7 +54,7 @@ interface AiAskResponse {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
-    aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct"; // AI服务提供商
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached"; // AI service provider
   };
   errorCode?: string;
   message?: string;
@@ -86,6 +87,19 @@ function formatErrorMessage(err: unknown): string {
 }
 
 /** ---- 组件 ---- */
+// Get welcome message based on language
+function getWelcomeMessage(lang: Language): string {
+  switch (lang) {
+    case "zh":
+      return "你好！我是你的 AI 助手，有什么我可以帮你的吗？";
+    case "ja":
+      return "こんにちは！私はあなたの AI アシスタントです。何かお手伝いできることはありますか？";
+    case "en":
+    default:
+      return "Hello! I'm your AI assistant. How can I help you?";
+  }
+}
+
 const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
   // 初始化消息历史：从 localStorage 读取，如果不存在则使用默认欢迎消息
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -103,11 +117,13 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         // 解析失败时忽略，使用默认值
       }
     }
+    // 根据用户语言显示欢迎消息
+    const lang = detectLanguage();
     return [
       {
         id: uid(),
         role: "ai",
-        content: "你好！我是你的 AI 助手，有什么我可以帮你的吗？",
+        content: getWelcomeMessage(lang),
         createdAt: Date.now(),
       },
     ];
@@ -349,11 +365,12 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
             if (typeof window !== "undefined") {
               localStorage.removeItem(LOCAL_STORAGE_KEY);
             }
+            const lang = detectLanguage();
             setMessages([
               {
                 id: uid(),
                 role: "ai",
-                content: "你好！我是你的 AI 助手，有什么我可以帮你的吗？",
+                content: getWelcomeMessage(lang),
                 createdAt: Date.now(),
               },
             ]);
@@ -387,17 +404,33 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
               >
                 {m.content}
               </div>
-              {/* AI回复的元数据信息 */}
+              {/* AI reply metadata */}
               {!isUser && m.metadata && (
                 <div className="max-w-[78%] px-2 py-1 text-xs text-gray-500 space-y-1">
-                  {/* AI服务提供商 */}
+                  {/* AI Service Provider */}
                   {m.metadata.aiProvider && (
                     <div className="flex items-center gap-1">
                       <span className="inline-flex items-center gap-1">
                         {m.metadata.aiProvider === "local" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                            <span>本地AI (Ollama)</span>
+                            <span>Local AI (Ollama)</span>
+                            {m.metadata.model && (
+                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            )}
+                          </>
+                        ) : m.metadata.aiProvider === "openai" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span>OpenAI (via Render)</span>
+                            {m.metadata.model && (
+                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            )}
+                          </>
+                        ) : m.metadata.aiProvider === "openai_direct" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                            <span>OpenAI (Direct)</span>
                             {m.metadata.model && (
                               <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
                             )}
@@ -405,37 +438,37 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                         ) : m.metadata.aiProvider === "openrouter" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                            <span>OpenRouter（通过Render）</span>
+                            <span>OpenRouter (via Render)</span>
                             {m.metadata.model && (
                               <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openrouter_direct" ? (
                           <>
-                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                            <span>直连OpenRouter</span>
+                            <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
+                            <span>OpenRouter (Direct)</span>
                             {m.metadata.model && (
                               <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
                             )}
                           </>
-                        ) : (
+                        ) : m.metadata.aiProvider === "cached" ? (
                           <>
-                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                            <span>OpenAI（通过Render）</span>
+                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                            <span>Cached Answer</span>
                             {m.metadata.model && (
                               <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
                             )}
                           </>
-                        )}
+                        ) : null}
                       </span>
                     </div>
                   )}
-                  {/* RAG数据源 */}
+                  {/* RAG Sources */}
                   {m.metadata.sources && m.metadata.sources.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className="text-gray-400">📚 参考来源：</span>
+                      <span className="text-gray-400">📚 Sources:</span>
                       {m.metadata.sources.map((source, idx) => {
-                        const displayText = source.title || source.url || `来源 ${idx + 1}`;
+                        const displayText = source.title || source.url || `Source ${idx + 1}`;
                         const hasUrl = source.url && source.url.trim() !== "";
                         
                         if (hasUrl) {
