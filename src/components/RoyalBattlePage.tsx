@@ -44,7 +44,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
         try {
           const unifiedResponse = await import(`../data/questions/zh/questions.json`);
           const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-          allQuestions = questions;
+          allQuestions = questions as unknown as Question[];
         } catch (unifiedError) {
           // 如果统一的questions.json不存在，从各个JSON包读取（兼容旧逻辑）
           const categories = ['學科講習', '仮免', '免许'];
@@ -54,7 +54,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
               try {
                 const response = await import(`../data/questions/zh/${category}-${i}.json`);
                 const questions = response.questions || response.default?.questions || [];
-                allQuestions = [...allQuestions, ...questions];
+                allQuestions = [...allQuestions, ...(questions as unknown as Question[])];
               } catch (error) {
                 console.log(`No questions found for ${category}-${i}`);
               }

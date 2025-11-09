@@ -99,11 +99,11 @@ function ExamPage() {
         try {
           const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
           const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-          allQuestions = questions;
+          allQuestions = questions as unknown as Question[];
         } catch (unifiedError) {
           // 如果统一的questions.json不存在，从指定文件读取（兼容旧逻辑）
           const response = await import(`../../data/questions/zh/仮免-1.json`);
-          allQuestions = response.questions || response.default?.questions || [];
+          allQuestions = (response.questions || response.default?.questions || []) as unknown as Question[];
         }
         
         // Randomly select questions for the exam

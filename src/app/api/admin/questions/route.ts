@@ -21,7 +21,6 @@ import {
   getAIAnswerFromDb,
   getAIAnswerFromJson,
   loadQuestionFile,
-  saveQuestionFile,
   updateJsonPackage,
   shouldTriggerBatchUpdate,
   batchUpdateJsonPackages,
@@ -271,15 +270,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             // 版本号匹配，或者文件没有版本号且请求也没有版本号（兼容旧格式）
             // 如果指定了category筛选，只添加匹配的题目
             if (category) {
-              const filteredQuestions = unifiedFile.questions.filter((q: Question) => {
+              const filteredQuestions = unifiedFile.questions.filter((q) => {
                 return q.category === category;
               });
               console.log(`[GET /api/admin/questions] 按category筛选后题目数: ${filteredQuestions.length}`);
-              allQuestions.push(...filteredQuestions);
+              allQuestions.push(...(filteredQuestions as Question[]));
             } else {
               // 没有category筛选，添加所有题目
               console.log(`[GET /api/admin/questions] 添加所有题目: ${unifiedFile.questions.length}`);
-              allQuestions.push(...unifiedFile.questions);
+              allQuestions.push(...(unifiedFile.questions as Question[]));
             }
             questionsLoaded = true; // 标记已加载
           } else {
@@ -345,7 +344,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           const dbQuestions = await getQuestionsFromDb(category);
           console.log(`[GET /api/admin/questions] 从数据库读取 ${category}，找到 ${dbQuestions.length} 个题目`);
           if (dbQuestions && dbQuestions.length > 0) {
-            allQuestions = dbQuestions;
+            allQuestions = dbQuestions as Question[];
           } else {
             // 如果通过license_types没找到，尝试直接查询所有题目然后筛选
             console.log(`[GET /api/admin/questions] 通过license_types未找到，尝试直接查询并筛选`);
@@ -529,7 +528,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       file.questions.push(questionWithId);
       
       // 保存到JSON包
-      await saveQuestionFile(targetCategory, file);
+      await saveQuestionFile(targetCategory, file as QuestionFile);
     } catch (fileError) {
       console.error("[POST /api/admin/questions] Error syncing to JSON:", fileError);
       // 即使JSON包同步失败，也继续执行（数据库已保存）
