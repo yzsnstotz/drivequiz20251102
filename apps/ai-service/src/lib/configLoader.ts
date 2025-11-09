@@ -18,10 +18,12 @@
 // 配置缓存（5分钟过期）
 const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5分钟
 
+type NormalizedProvider = "openai" | "openrouter" | "local" | "openrouter_direct";
+
 type ConfigCache = {
   model?: string;
   cacheTtl?: number;
-  aiProvider?: string;
+  aiProvider?: NormalizedProvider;
   lastUpdated: number;
 };
 
@@ -96,16 +98,17 @@ export async function getModelFromConfig(): Promise<string> {
     configCache = {
       model: dbConfig.model,
       cacheTtl: dbConfig.cacheTtl,
-      aiProvider: dbConfig.aiProvider,
+      aiProvider: normalizeProvider(dbConfig.aiProvider),
       lastUpdated: now,
     };
     return dbConfig.model;
   }
 
-  // 如果数据库读取失败，使用环境变量
-  const envModel = process.env.AI_MODEL || "gpt-4o-mini";
-  
-  // 更新缓存（使用环境变量）
+  const envModel = process.env.AI_MODEL?.trim();
+  if (!envModel) {
+    throw new Error("AI model is not configured. Please set ai_config.model or AI_MODEL environment variable.");
+  }
+
   configCache = {
     model: envModel,
     lastUpdated: now,
@@ -116,19 +119,14 @@ export async function getModelFromConfig(): Promise<string> {
 
 /**
  * 获取当前配置的 AI 提供商
- * 优先从数据库读取，如果失败则使用环境变量判断
+ * 优先从数据库读取，如果失败则抛出错误
  */
-export async function getAiProviderFromConfig(): Promise<"openai" | "openrouter" | null> {
+export async function getAiProviderFromConfig(): Promise<"openai" | "openrouter"> {
   // 检查缓存是否有效
   const now = Date.now();
   if (configCache && now - configCache.lastUpdated < CONFIG_CACHE_TTL) {
-    if (configCache.aiProvider) {
-      // 数据库配置：online = OpenAI, openrouter = OpenRouter
-      if (configCache.aiProvider === "online") {
-        return "openai";
-      } else if (configCache.aiProvider === "openrouter" || configCache.aiProvider === "openrouter-direct") {
-        return "openrouter";
-      }
+    if (configCache.aiProvider && isRemoteProvider(configCache.aiProvider)) {
+      return mapRemoteProvider(configCache.aiProvider);
     }
   }
 
@@ -139,24 +137,21 @@ export async function getAiProviderFromConfig(): Promise<"openai" | "openrouter"
     if (!configCache) {
       configCache = { lastUpdated: now };
     }
-    configCache.aiProvider = dbConfig.aiProvider;
+    const normalized = normalizeProvider(dbConfig.aiProvider);
+    configCache.aiProvider = normalized;
     configCache.lastUpdated = now;
-    
-    // 数据库配置：online = OpenAI, openrouter = OpenRouter
-    if (dbConfig.aiProvider === "online") {
-      return "openai";
-    } else if (dbConfig.aiProvider === "openrouter" || dbConfig.aiProvider === "openrouter-direct") {
-      return "openrouter";
+
+    if (normalized && isRemoteProvider(normalized)) {
+      return mapRemoteProvider(normalized);
     }
+
+    if (normalized === "local") {
+      throw new Error("AI provider is set to 'local', remote AI service should not be accessed.");
+    }
+    throw new Error(`Unsupported aiProvider value: ${dbConfig.aiProvider}`);
   }
 
-  // 如果数据库读取失败，使用环境变量判断
-  const baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
-  if (baseUrl.includes("openrouter.ai")) {
-    return "openrouter";
-  }
-  
-  return "openai"; // 默认使用 OpenAI
+  throw new Error("AI provider is not configured. Please set ai_config.aiProvider to 'openai' or 'openrouter'.");
 }
 
 /**
@@ -176,24 +171,28 @@ export async function getCacheTtlFromConfig(): Promise<number> {
   if (dbConfig?.cacheTtl !== undefined) {
     // 更新缓存
     configCache = {
-      model: configCache?.model || dbConfig.model || process.env.AI_MODEL || "gpt-4o-mini",
+      model: configCache?.model || dbConfig.model || undefined,
       cacheTtl: dbConfig.cacheTtl,
       lastUpdated: now,
     };
     return dbConfig.cacheTtl;
   }
 
-  // 如果数据库读取失败，使用环境变量或默认值
-  const envCacheTtl = Number(process.env.AI_CACHE_TTL_SECONDS || 86400);
-  
-  // 更新缓存
-  configCache = {
-    model: configCache?.model || process.env.AI_MODEL || "gpt-4o-mini",
-    cacheTtl: envCacheTtl,
-    lastUpdated: now,
-  };
+  const envTtlRaw = process.env.AI_CACHE_TTL_MS?.trim();
+  if (envTtlRaw) {
+    const envTtl = Number(envTtlRaw);
+    if (Number.isFinite(envTtl) && envTtl > 0) {
+      configCache = {
+        model: configCache?.model,
+        cacheTtl: envTtl,
+        lastUpdated: now,
+      };
+      return envTtl;
+    }
+    throw new Error("AI_CACHE_TTL_MS must be a positive number when provided.");
+  }
 
-  return envCacheTtl;
+  throw new Error("Cache TTL is not configured. Please set ai_config.cacheTtl or AI_CACHE_TTL_MS.");
 }
 
 /**
@@ -201,5 +200,34 @@ export async function getCacheTtlFromConfig(): Promise<number> {
  */
 export function clearConfigCache(): void {
   configCache = null;
+}
+
+function normalizeProvider(value: string | undefined): NormalizedProvider | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "openai":
+      return "openai";
+    case "openrouter":
+      return "openrouter";
+    case "local":
+      return "local";
+    case "openrouter-direct":
+    case "openrouter_direct":
+      return "openrouter_direct";
+    default:
+      return undefined;
+  }
+}
+
+function isRemoteProvider(provider: NormalizedProvider): provider is "openai" | "openrouter" | "openrouter_direct" {
+  return provider !== "local";
+}
+
+function mapRemoteProvider(provider: "openai" | "openrouter" | "openrouter_direct"): "openai" | "openrouter" {
+  if (provider === "openai") {
+    return "openai";
+  }
+  return "openrouter";
 }
 

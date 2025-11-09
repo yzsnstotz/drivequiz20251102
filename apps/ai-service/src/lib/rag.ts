@@ -7,6 +7,7 @@
  */
 
 import type { ServiceConfig } from "../index.js";
+import { getAiProviderFromConfig } from "./configLoader.js";
 import { getOpenAIClient } from "./openaiClient.js";
 
 type RagHit = {
@@ -27,7 +28,13 @@ export type SourceRef = {
 
 const DEFAULT_MATCH_COUNT = 5 as const;
 const CONTEXT_CHAR_LIMIT = 4000 as const;
-const EMBEDDING_MODEL = (process.env.EMBEDDING_MODEL || "text-embedding-3-small").trim();
+const EMBEDDING_MODEL = (() => {
+  const value = process.env.EMBEDDING_MODEL?.trim();
+  if (!value) {
+    throw new Error("EMBEDDING_MODEL is not configured. Please set the environment variable.");
+  }
+  return value;
+})();
 const FETCH_TIMEOUT_MS = Number(process.env.RAG_FETCH_TIMEOUT_MS || 10000);
 
 /** 统一语言规范化（默认 zh，仅接受 zh/ja/en） */
@@ -43,7 +50,8 @@ function safeSlice(s: string, max = 3000): string {
 
 /** 生成查询向量（OpenAI Embeddings） */
 async function embedQuery(config: ServiceConfig, text: string): Promise<number[]> {
-  const openai = getOpenAIClient(config);
+  const aiProvider = await getAiProviderFromConfig();
+  const openai = getOpenAIClient(config, aiProvider);
   const input = safeSlice(text, 3000);
   try {
     const resp = await openai.embeddings.create({

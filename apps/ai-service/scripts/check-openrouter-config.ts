@@ -33,8 +33,8 @@ const checks = [
   {
     name: "OPENAI_BASE_URL",
     value: process.env.OPENAI_BASE_URL,
-    required: false,
-    description: "OpenAI Base URL (should be https://openrouter.ai/api/v1 for OpenRouter)",
+    required: true,
+    description: "OpenAI Base URL (required when using OpenAI)",
   },
   {
     name: "OPENROUTER_REFERER_URL",
@@ -48,10 +48,16 @@ const checks = [
     required: false,
     description: "OpenRouter App Name (optional)",
   },
+  {
+    name: "OPENROUTER_BASE_URL",
+    value: process.env.OPENROUTER_BASE_URL,
+    required: false,
+    description: "OpenRouter Base URL (required when using OpenRouter)",
+  },
 ];
 
 let hasErrors = false;
-const isOpenRouter = process.env.OPENAI_BASE_URL?.includes("openrouter.ai");
+const isOpenRouter = !!process.env.OPENROUTER_BASE_URL;
 
 console.log(`📋 配置检查结果:\n`);
 console.log(`是否使用 OpenRouter: ${isOpenRouter ? "✅ 是" : "❌ 否"}\n`);
@@ -61,7 +67,9 @@ if (isOpenRouter) {
 }
 
 for (const check of checks) {
-  const isRequired = check.required || (isOpenRouter && check.name === "OPENROUTER_API_KEY");
+  const isRequired =
+    check.required ||
+    (isOpenRouter && (check.name === "OPENROUTER_API_KEY" || check.name === "OPENROUTER_BASE_URL"));
   const hasValue = !!check.value;
   const isValid = isRequired ? hasValue : true;
 
@@ -85,20 +93,18 @@ console.log("\n");
 if (isOpenRouter) {
   console.log("🔍 OpenRouter 配置检查:\n");
 
-  if (!process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY) {
-    console.log("❌ 错误: 使用 OpenRouter 时，必须设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY");
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.log("❌ 错误: 使用 OpenRouter 时，必须设置 OPENROUTER_API_KEY");
     hasErrors = true;
-  } else if (process.env.OPENROUTER_API_KEY) {
-    console.log("✅ 使用 OPENROUTER_API_KEY");
   } else {
-    console.log("⚠️  未设置 OPENROUTER_API_KEY，将使用 OPENAI_API_KEY");
+    console.log("✅ 已设置 OPENROUTER_API_KEY");
   }
 
-  if (process.env.OPENAI_BASE_URL !== "https://openrouter.ai/api/v1") {
-    console.log(`⚠️  OPENAI_BASE_URL 设置为: ${process.env.OPENAI_BASE_URL}`);
-    console.log(`   建议设置为: https://openrouter.ai/api/v1`);
+  if (!process.env.OPENROUTER_BASE_URL) {
+    console.log("❌ 错误: OPENROUTER_BASE_URL 未设置");
+    hasErrors = true;
   } else {
-    console.log("✅ OPENAI_BASE_URL 正确设置为 OpenRouter");
+    console.log(`✅ OPENROUTER_BASE_URL: ${process.env.OPENROUTER_BASE_URL}`);
   }
 }
 
