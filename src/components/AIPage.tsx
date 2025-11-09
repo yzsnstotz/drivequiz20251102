@@ -13,7 +13,7 @@ interface ChatMessage {
   createdAt: number; // epoch ms
   // AI回复的元数据（仅AI消息有）
   metadata?: {
-    aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct"; // AI服务提供商
+    aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct"; // AI服务提供商
     model?: string; // 模型名称
     sources?: Array<{
       title: string;
@@ -53,7 +53,7 @@ interface AiAskResponse {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
-    aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct"; // AI服务提供商
+    aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct"; // AI服务提供商
   };
   errorCode?: string;
   message?: string;
@@ -297,7 +297,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         content,
         createdAt: Date.now(),
         metadata: {
-          aiProvider: aiProvider || "online", // 默认为online
+          aiProvider: aiProvider || "openai", // 默认为 openai
           sources: sources || [],
           model: model, // 保存模型名称
         },
@@ -410,7 +410,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                               <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
                             )}
                           </>
-                        ) : m.metadata.aiProvider === "openrouter-direct" ? (
+                        ) : m.metadata.aiProvider === "openrouter_direct" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                             <span>直连OpenRouter</span>

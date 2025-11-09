@@ -20,6 +20,7 @@ import type { ServiceConfig } from "../../index.js";
 import { ensureServiceAuth } from "../../middlewares/auth.js";
 import { cacheGet, cacheSet } from "../../lib/cache.js";
 import { getOpenAIClient } from "../../lib/openaiClient.js";
+import { getAiProviderFromConfig } from "../../lib/configLoader.js";
 import { checkSafety } from "../../lib/safety.js";
 import { ragSearch } from "../../lib/rag.js";
 import { buildCacheKey } from "../ask.js";
@@ -101,7 +102,8 @@ async function prewarmQuestion(
       : "";
 
     // 调用 OpenAI
-    const openai = getOpenAIClient(config);
+    const aiProvider = await getAiProviderFromConfig();
+    const openai = getOpenAIClient(config, aiProvider);
     const sys = buildSystemPrompt(lang);
     const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
     const refPrefix =

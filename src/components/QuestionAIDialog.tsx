@@ -49,7 +49,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   metadata?: {
-    aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct" | "cached";
+    aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "cached";
     model?: string;
     sourceType?: "ai-generated" | "cached" | "knowledge-base";
   };
@@ -144,7 +144,7 @@ export default function QuestionAIDialog({
           url: string;
           snippet?: string;
         }>;
-        aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct";
+        aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct";
         model?: string;
         cached?: boolean;
       }>("/api/ai/ask", {
@@ -162,7 +162,7 @@ export default function QuestionAIDialog({
           role: "assistant",
           content: answer,
           metadata: {
-            aiProvider: result.data.cached ? "cached" : (result.data.aiProvider || "online"),
+            aiProvider: result.data.cached ? "cached" : (result.data.aiProvider || "openai"),
             model: result.data.model,
             sourceType: result.data.cached ? "cached" : "ai-generated",
           },
@@ -308,7 +308,7 @@ export default function QuestionAIDialog({
                                   <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
                                 )}
                               </>
-                            ) : message.metadata.aiProvider === "openrouter-direct" ? (
+                            ) : message.metadata.aiProvider === "openrouter_direct" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                                 <span>直连OpenRouter</span>
