@@ -7,7 +7,7 @@ import {
   BookOpen,
   Car,
   Shield,
-  Map,
+  Map as MapIcon,
 } from "lucide-react";
 import QuestionPage from "./QuestionPage";
 
@@ -170,7 +170,7 @@ function StudyPage() {
           const allQuestions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
           
           // 按category分组统计题目
-          const categoryMap = new Map<string, QuestionSet[]>();
+          const categoryMap: Map<string, QuestionSet[]> = new Map<string, QuestionSet[]>();
           
           allQuestions.forEach((q: any) => {
             const category = q.category || "其他";

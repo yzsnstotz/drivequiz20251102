@@ -15,9 +15,6 @@ import { calculateQuestionHash } from "@/lib/questionHash";
 import {
   getQuestionsFromDb,
   saveQuestionToDb,
-  loadQuestionFile,
-  saveQuestionFile,
-  updateJsonPackage,
   normalizeCorrectAnswer,
 } from "@/lib/questionDb";
 import { db } from "@/lib/db";

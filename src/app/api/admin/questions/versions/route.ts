@@ -158,7 +158,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     }
 
     // 3. 合并数据库版本号和JSON包版本号
-    for (const [version, stats] of versionStats.entries()) {
+    for (const [version, stats] of Array.from(versionStats.entries())) {
       if (!versionMap.has(version)) {
         // 如果数据库中没有该版本号，从JSON包添加
         versionMap.set(version, {

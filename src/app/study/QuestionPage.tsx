@@ -48,16 +48,16 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
           });
           
           if (filteredQuestions.length > 0) {
-            setQuestions(filteredQuestions);
+            setQuestions(filteredQuestions as unknown as Question[]);
           } else {
             // 如果统一文件中没有，尝试从指定文件读取（兼容旧逻辑）
             const response = await import(`../../data/questions/zh/${questionSet.title}.json`);
-            setQuestions(response.questions || response.default?.questions || []);
+            setQuestions((response.questions || response.default?.questions || []) as unknown as Question[]);
           }
         } catch (unifiedError) {
           // 如果统一的questions.json不存在，尝试从指定文件读取（兼容旧逻辑）
           const response = await import(`../../data/questions/zh/${questionSet.title}.json`);
-          setQuestions(response.questions || response.default?.questions || []);
+          setQuestions((response.questions || response.default?.questions || []) as unknown as Question[]);
         }
       } catch (error) {
         console.error('加载题目失败:', error);
