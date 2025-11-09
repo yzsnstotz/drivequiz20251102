@@ -43,17 +43,26 @@ function RoyalBattlePage() {
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        // 加载所有类型的题目
-        const categories = ['學科講習', '仮免', '免许'];
+        // 优先从统一的questions.json读取所有题目
         let allQuestions: Question[] = [];
         
-        for (const category of categories) {
-          for (let i = 1; i <= 6; i++) {
-            try {
-              const response = await import(`../../data/questions/zh/${category}-${i}.json`);
-              allQuestions = [...allQuestions, ...response.questions];
-            } catch (error) {
-              console.log(`No questions found for ${category}-${i}`);
+        try {
+          const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
+          const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
+          allQuestions = questions;
+        } catch (unifiedError) {
+          // 如果统一的questions.json不存在，从各个JSON包读取（兼容旧逻辑）
+          const categories = ['學科講習', '仮免', '免许'];
+          
+          for (const category of categories) {
+            for (let i = 1; i <= 6; i++) {
+              try {
+                const response = await import(`../../data/questions/zh/${category}-${i}.json`);
+                const questions = response.questions || response.default?.questions || [];
+                allQuestions = [...allQuestions, ...questions];
+              } catch (error) {
+                console.log(`No questions found for ${category}-${i}`);
+              }
             }
           }
         }
@@ -152,13 +161,23 @@ function RoyalBattlePage() {
   const isCorrect = (answer: string | string[]) => {
     const currentQuestion = questions[currentQuestionIndex];
     if (Array.isArray(currentQuestion.correctAnswer)) {
+      // 多选题：比较数组
       const selectedArray = Array.isArray(answer) ? answer : [];
       return (
         selectedArray.length === currentQuestion.correctAnswer.length &&
         selectedArray.every(a => currentQuestion.correctAnswer.includes(a))
       );
+    } else if (currentQuestion.type === 'truefalse') {
+      // 判断题：需要统一类型比较（correctAnswer可能是布尔值，answer是字符串）
+      const correctAnswerValue = typeof currentQuestion.correctAnswer === 'boolean' 
+        ? String(currentQuestion.correctAnswer) 
+        : currentQuestion.correctAnswer;
+      const answerValue = typeof answer === 'string' ? answer : String(answer);
+      return correctAnswerValue === answerValue;
+    } else {
+      // 单选题：直接比较
+      return answer === currentQuestion.correctAnswer;
     }
-    return answer === currentQuestion.correctAnswer;
   };
 
   const checkAnswer = (answer: string | string[]) => {
@@ -302,7 +321,7 @@ function RoyalBattlePage() {
           {currentQuestion.image && (
             <div className="mb-4">
               <Image
-                src={currentQuestion.image}
+                src={currentQuestion.image.trim()}
                 alt="题目图片"
                 width={800}
                 height={600}

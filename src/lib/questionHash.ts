@@ -71,3 +71,32 @@ export function generateVersion(sequence: number = 1): string {
   return `${year}${month}${day}-${hours}${minutes}${seconds}-${seq}`;
 }
 
+/**
+ * 生成统一版本号（包含所有题目的hash + 时间戳）
+ * 格式：{所有题目hash的合并hash}-{时间戳}
+ * 
+ * @param questions 所有题目列表
+ * @returns 版本号字符串
+ */
+export function generateUnifiedVersion(questions: Question[]): string {
+  // 1. 计算所有题目的hash并排序（确保一致性）
+  const questionHashes = questions
+    .map((q) => calculateQuestionHash(q))
+    .sort() // 排序确保一致性
+    .join("|");
+
+  // 2. 计算所有hash的合并hash
+  const allContentHash = crypto
+    .createHash("sha256")
+    .update(questionHashes, "utf8")
+    .digest("hex")
+    .substring(0, 16); // 取前16位作为标识
+
+  // 3. 生成时间戳
+  const now = new Date();
+  const timestamp = now.getTime();
+
+  // 4. 组合：hash标识-时间戳
+  return `${allContentHash}-${timestamp}`;
+}
+

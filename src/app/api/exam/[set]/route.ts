@@ -81,35 +81,74 @@ export async function GET(
     }
 
     // 加载题目文件
-    // 根据licenseType和setId确定文件路径
+    // 优先从统一的questions.json读取，根据category字段筛选
     const questionsDir = path.join(process.cwd(), "src/data/questions/zh");
+    const unifiedFilePath = path.join(questionsDir, "questions.json");
     
-    // 文件名映射：根据setId和licenseType确定实际文件名
-    let fileName = setId;
+    let allQuestions: any[] = [];
     
-    // 如果setId包含licenseType信息，直接使用；否则根据licenseType推断
-    if (licenseType === "学科講習") {
-      // 学科講習的题目文件命名规则
-      fileName = setId.startsWith("學科講習") ? setId : `學科講習-${setId}`;
-    } else if (licenseType === "provisional") {
-      // 仮免许的题目文件命名规则
-      fileName = setId.startsWith("仮免") ? setId : `仮免-${setId}`;
-    } else if (licenseType === "regular") {
-      // 正式免许的题目文件命名规则
-      fileName = setId.startsWith("免许") ? setId : `免许-${setId}`;
+    // 优先尝试从统一的questions.json读取
+    try {
+      if (fs.existsSync(unifiedFilePath)) {
+        const unifiedContent = fs.readFileSync(unifiedFilePath, "utf-8");
+        const unifiedData = JSON.parse(unifiedContent);
+        const allQuestionsFromUnified = Array.isArray(unifiedData) ? unifiedData : (unifiedData.questions || []);
+        
+        // 根据setId筛选题目（setId对应category字段）
+        // setId格式可能是：學科講習-1, 仮免-1, 免许-1等
+        allQuestions = allQuestionsFromUnified.filter((q: any) => {
+          return q.category === setId;
+        });
+      }
+    } catch (unifiedError) {
+      // 如果统一的questions.json不存在或读取失败，尝试从指定文件读取（兼容旧逻辑）
+      let fileName = setId;
+      
+      // 如果setId包含licenseType信息，直接使用；否则根据licenseType推断
+      if (licenseType === "学科講習") {
+        fileName = setId.startsWith("學科講習") ? setId : `學科講習-${setId}`;
+      } else if (licenseType === "provisional") {
+        fileName = setId.startsWith("仮免") ? setId : `仮免-${setId}`;
+      } else if (licenseType === "regular") {
+        fileName = setId.startsWith("免许") ? setId : `免许-${setId}`;
+      }
+
+      const filePath = path.join(questionsDir, `${fileName}.json`);
+
+      // 检查文件是否存在
+      if (!fs.existsSync(filePath)) {
+        return err("NOT_FOUND", `题目集 ${setId} 不存在`, 404);
+      }
+
+      // 读取并解析JSON文件
+      const fileContent = fs.readFileSync(filePath, "utf-8");
+      const questionData = JSON.parse(fileContent);
+      allQuestions = questionData.questions || [];
     }
+    
+    // 如果从统一文件读取但没有找到题目，尝试从指定文件读取（兼容旧逻辑）
+    if (allQuestions.length === 0) {
+      let fileName = setId;
+      
+      if (licenseType === "学科講習") {
+        fileName = setId.startsWith("學科講習") ? setId : `學科講習-${setId}`;
+      } else if (licenseType === "provisional") {
+        fileName = setId.startsWith("仮免") ? setId : `仮免-${setId}`;
+      } else if (licenseType === "regular") {
+        fileName = setId.startsWith("免许") ? setId : `免许-${setId}`;
+      }
 
-    const filePath = path.join(questionsDir, `${fileName}.json`);
-
-    // 检查文件是否存在
-    if (!fs.existsSync(filePath)) {
+      const filePath = path.join(questionsDir, `${fileName}.json`);
+      if (fs.existsSync(filePath)) {
+        const fileContent = fs.readFileSync(filePath, "utf-8");
+        const questionData = JSON.parse(fileContent);
+        allQuestions = questionData.questions || [];
+      }
+    }
+    
+    if (allQuestions.length === 0) {
       return err("NOT_FOUND", `题目集 ${setId} 不存在`, 404);
     }
-
-    // 读取并解析JSON文件
-    const fileContent = fs.readFileSync(filePath, "utf-8");
-    const questionData = JSON.parse(fileContent);
-    const allQuestions = questionData.questions || [];
 
     // 应用排序
     const sortedQuestions = [...allQuestions].sort((a, b) => {

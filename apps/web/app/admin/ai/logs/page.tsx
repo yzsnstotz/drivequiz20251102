@@ -93,6 +93,7 @@ export default function AdminAiLogsPage() {
   const [pagination, setPagination] = useState<ListResponse["pagination"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSources, setSelectedSources] = useState<LogItem | null>(null);
+  const [selectedUrls, setSelectedUrls] = useState<Set<number>>(new Set());
 
   // 同步 filters 到 URL
   useEffect(() => {
@@ -426,7 +427,10 @@ export default function AdminAiLogsPage() {
                         <td className="px-4 py-2">
                           {item.sources.length > 0 ? (
                             <button
-                              onClick={() => setSelectedSources(item)}
+                              onClick={() => {
+                                setSelectedSources(item);
+                                setSelectedUrls(new Set());
+                              }}
                               className="text-blue-600 hover:underline text-xs"
                             >
                               查看 ({item.sources.length})
@@ -490,12 +494,63 @@ export default function AdminAiLogsPage() {
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">来源详情</h2>
-              <button
-                onClick={() => setSelectedSources(null)}
-                className="text-gray-500 hover:text-gray-700 text-xl"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedSources.sources.length > 0 && selectedSources.sources.some((s) => s.url) && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const urlIndices = selectedSources.sources
+                          .map((s, idx) => (s.url ? idx : -1))
+                          .filter((idx) => idx !== -1);
+                        if (urlIndices.length === selectedUrls.size) {
+                          // 如果已全选，则全不选
+                          setSelectedUrls(new Set());
+                        } else {
+                          // 否则全选
+                          setSelectedUrls(new Set(urlIndices));
+                        }
+                      }}
+                      className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+                    >
+                      {selectedSources.sources.filter((s, idx) => s.url && selectedUrls.has(idx)).length ===
+                      selectedSources.sources.filter((s) => s.url).length
+                        ? "全不选"
+                        : "全选"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const urls = selectedSources.sources
+                          .filter((s, idx) => s.url && selectedUrls.has(idx))
+                          .map((s) => s.url)
+                          .filter((url): url is string => !!url);
+                        if (urls.length > 0) {
+                          const text = urls.join("\n");
+                          navigator.clipboard.writeText(text).then(() => {
+                            alert(`已复制 ${urls.length} 个 URL 到剪贴板`);
+                          }).catch((err) => {
+                            console.error("复制失败:", err);
+                            alert("复制失败，请手动复制");
+                          });
+                        } else {
+                          alert("请先选择要复制的 URL");
+                        }
+                      }}
+                      className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                    >
+                      复制选中 URL
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedSources(null);
+                    setSelectedUrls(new Set());
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-xl"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div className="space-y-3">
               {selectedSources.sources.length === 0 ? (
@@ -503,25 +558,45 @@ export default function AdminAiLogsPage() {
               ) : (
                 selectedSources.sources.map((source, idx) => (
                   <div key={idx} className="border rounded p-3 text-sm">
-                    <div className="font-medium mb-1">{source.title}</div>
-                    {source.url && (
-                      <div className="mb-1">
-                        <a
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline text-xs break-all"
-                        >
-                          {source.url}
-                        </a>
+                    <div className="flex items-start gap-2">
+                      {source.url && (
+                        <input
+                          type="checkbox"
+                          checked={selectedUrls.has(idx)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedUrls);
+                            if (e.target.checked) {
+                              newSet.add(idx);
+                            } else {
+                              newSet.delete(idx);
+                            }
+                            setSelectedUrls(newSet);
+                          }}
+                          className="mt-1"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <div className="font-medium mb-1">{source.title}</div>
+                        {source.url && (
+                          <div className="mb-1">
+                            <a
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline text-xs break-all"
+                            >
+                              {source.url}
+                            </a>
+                          </div>
+                        )}
+                        {source.snippet && (
+                          <div className="text-gray-600 text-xs mb-1 line-clamp-3">{source.snippet}</div>
+                        )}
+                        <div className="flex gap-3 text-xs text-gray-500">
+                          {source.score != null && <span>相似度: {(source.score * 100).toFixed(1)}%</span>}
+                          {source.version && <span>版本: {source.version}</span>}
+                        </div>
                       </div>
-                    )}
-                    {source.snippet && (
-                      <div className="text-gray-600 text-xs mb-1 line-clamp-3">{source.snippet}</div>
-                    )}
-                    <div className="flex gap-3 text-xs text-gray-500">
-                      {source.score != null && <span>相似度: {(source.score * 100).toFixed(1)}%</span>}
-                      {source.version && <span>版本: {source.version}</span>}
                     </div>
                   </div>
                 ))
