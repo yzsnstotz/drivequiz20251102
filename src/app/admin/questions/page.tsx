@@ -212,8 +212,8 @@ export default function QuestionsPage() {
       // 显示成功消息
       setUpdateResult({
         type: "package",
-        message: response.data?.message || `版本号 ${version} 已成功删除`,
-        data: response.data,
+        message: response.message || `版本号 ${version} 已成功删除`,
+        data: response,
       });
     } catch (e) {
       console.error("Failed to delete version:", e);
