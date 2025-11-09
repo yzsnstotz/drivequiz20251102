@@ -11,6 +11,14 @@ let clientInstance: OpenAI | null = null;
 let lastBaseUrl: string | null = null;
 let lastApiKey: string | null = null;
 
+function requireEnv(key: string): string {
+  const raw = process.env[key];
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new Error(`${key} is not set. Please configure ${key} in the environment.`);
+  }
+  return raw.trim();
+}
+
 /**
  * 清除客户端实例（用于重新创建）
  */
@@ -23,40 +31,23 @@ export function clearOpenAIClient(): void {
 /**
  * 获取或创建 OpenAI 客户端实例
  * @param config 服务配置
- * @param aiProvider 从数据库读取的 AI 提供商配置（可选）
+ * @param aiProvider AI 提供商配置（必须）
  * @returns OpenAI 客户端实例
  */
-export function getOpenAIClient(config: ServiceConfig, aiProvider?: "openai" | "openrouter" | null): OpenAI {
-  // 优先使用传入的 aiProvider 配置（从数据库读取）
-  // 如果没有传入，则根据环境变量判断
+export function getOpenAIClient(config: ServiceConfig, aiProvider: "openai" | "openrouter"): OpenAI {
   let isOpenRouter: boolean;
   let baseUrl: string;
-  
+
   if (aiProvider === "openrouter") {
-    // 明确使用 OpenRouter
     isOpenRouter = true;
-    baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://openrouter.ai/api/v1";
-  } else if (aiProvider === "openai") {
-    // 明确使用 OpenAI
-    isOpenRouter = false;
-    baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
-    // 如果环境变量设置为 OpenRouter，但配置要求使用 OpenAI，则强制使用 OpenAI
-    if (baseUrl.includes("openrouter.ai")) {
-      baseUrl = "https://api.openai.com/v1";
-    }
+    baseUrl = requireEnv("OPENROUTER_BASE_URL");
   } else {
-    // 没有传入配置，使用环境变量判断（向后兼容）
-    baseUrl =
-      process.env.OPENAI_BASE_URL?.trim() ||
-      process.env.OLLAMA_BASE_URL?.trim() ||
-      "https://api.openai.com/v1";
-    isOpenRouter = baseUrl.includes("openrouter.ai");
+    isOpenRouter = false;
+    baseUrl = requireEnv("OPENAI_BASE_URL");
   }
-  
+
   // 根据提供商选择 API key
-  const apiKey = isOpenRouter && config.openrouterApiKey 
-    ? config.openrouterApiKey 
-    : config.openaiApiKey;
+  const apiKey = isOpenRouter ? config.openrouterApiKey : config.openaiApiKey;
 
   // 如果配置改变，重新创建客户端实例
   if (clientInstance && (lastBaseUrl !== baseUrl || lastApiKey !== apiKey)) {
@@ -66,11 +57,9 @@ export function getOpenAIClient(config: ServiceConfig, aiProvider?: "openai" | "
   // 如果客户端实例不存在，创建新的
   if (!clientInstance) {
     // 验证 API key
-    if (!apiKey) {
-      const errorMsg = isOpenRouter 
-        ? "OPENROUTER_API_KEY is not set. Please set OPENROUTER_API_KEY environment variable."
-        : "OPENAI_API_KEY is not set. Please set OPENAI_API_KEY environment variable.";
-      throw new Error(errorMsg);
+    if (!apiKey || apiKey.trim() === "") {
+      const missingKey = isOpenRouter ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
+      throw new Error(`${missingKey} is not set. Please configure ${missingKey} in the environment.`);
     }
 
     const defaultHeaders: Record<string, string> = {
@@ -79,12 +68,12 @@ export function getOpenAIClient(config: ServiceConfig, aiProvider?: "openai" | "
 
     // OpenRouter 需要额外的 headers
     if (isOpenRouter) {
-      defaultHeaders["HTTP-Referer"] = process.env.OPENROUTER_REFERER_URL || "https://zalem.app";
-      defaultHeaders["X-Title"] = process.env.OPENROUTER_APP_NAME || "ZALEM";
+      defaultHeaders["HTTP-Referer"] = requireEnv("OPENROUTER_REFERER_URL");
+      defaultHeaders["X-Title"] = requireEnv("OPENROUTER_APP_NAME");
     }
 
     clientInstance = new OpenAI({
-      apiKey: apiKey,
+      apiKey: apiKey.trim(),
       baseURL: baseUrl,
       defaultHeaders,
     });
@@ -102,10 +91,11 @@ export function getOpenAIClient(config: ServiceConfig, aiProvider?: "openai" | "
  */
 export async function callOpenAIChat(
   config: ServiceConfig,
+  aiProvider: "openai" | "openrouter",
   messages: { role: "system" | "user" | "assistant"; content: string }[],
-  temperature = 0.7
+  temperature = 0.7,
 ): Promise<string> {
-  const openai = getOpenAIClient(config);
+  const openai = getOpenAIClient(config, aiProvider);
   try {
     const completion = await openai.chat.completions.create({
       model: config.aiModel,

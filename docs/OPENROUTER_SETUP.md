@@ -23,7 +23,7 @@
 OPENROUTER_API_KEY=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
 
 # OpenRouter Base URL（必须设置为 OpenRouter 的 API 地址）
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
 # 可选：OpenRouter 需要的额外 headers
 OPENROUTER_REFERER_URL=https://zalem.app  # 你的网站 URL
@@ -31,8 +31,7 @@ OPENROUTER_APP_NAME=ZALEM  # 应用名称
 ```
 
 **注意**：
-- 当 `OPENAI_BASE_URL` 包含 `openrouter.ai` 时，系统会自动使用 OpenRouter
-- 如果设置了 `OPENROUTER_API_KEY`，系统会优先使用它；否则使用 `OPENAI_API_KEY`
+- Render 模式下需要在配置中心选择 `openrouter`
 - `OPENROUTER_REFERER_URL` 和 `OPENROUTER_APP_NAME` 是 OpenRouter 要求的 headers
 
 ### 3. 运行数据库迁移
@@ -88,9 +87,9 @@ OpenRouter 支持多种 AI 提供商的模型，包括：
 
 ## 工作原理
 
-1. **路由选择**：当在配置中心选择 "OpenRouter" 时，系统会使用与 "online" 相同的 AI Service URL
-2. **服务内部**：AI Service 根据环境变量 `OPENAI_BASE_URL` 检测是否为 OpenRouter
-3. **API 调用**：如果检测到 OpenRouter，系统会：
+1. **路由选择**：在配置中心选择 "OpenRouter" 或 "OpenRouter 直连"。
+2. **服务内部**：Render 侧根据数据库 `aiProvider` 返回值决定使用哪家提供商。
+3. **API 调用**：当使用 OpenRouter 时，系统会：
    - 使用 `OPENROUTER_API_KEY`（如果设置）或 `OPENAI_API_KEY`
    - 添加必要的 headers（`HTTP-Referer` 和 `X-Title`）
    - 使用 OpenRouter 兼容的模型名称格式（例如：`openai/gpt-4o-mini`）
@@ -100,16 +99,14 @@ OpenRouter 支持多种 AI 提供商的模型，包括：
 1. **模型名称格式**：OpenRouter 使用 `provider/model` 格式（例如：`openai/gpt-4o-mini`），而不是直接使用模型名称
 2. **成本估算**：当前成本估算基于 OpenAI 定价模型，使用其他提供商时可能需要调整
 3. **API 限制**：不同模型可能有不同的速率限制和配额
-4. **环境变量优先级**：
-   - 如果 `OPENAI_BASE_URL` 包含 `openrouter.ai`，系统会自动使用 OpenRouter
-   - 如果设置了 `OPENROUTER_API_KEY`，优先使用它；否则使用 `OPENAI_API_KEY`
+4. **环境变量**：必须显式配置 `OPENROUTER_API_KEY`、`OPENROUTER_BASE_URL`、`OPENROUTER_REFERER_URL`、`OPENROUTER_APP_NAME`
 
 ## 故障排查
 
 ### 问题：OpenRouter 请求失败
 
 1. 检查 `OPENROUTER_API_KEY` 是否正确设置
-2. 检查 `OPENAI_BASE_URL` 是否设置为 `https://openrouter.ai/api/v1`
+2. 检查 `OPENROUTER_BASE_URL` 是否设置为 `https://openrouter.ai/api/v1`
 3. 检查 API Key 是否有足够的余额
 4. 查看 AI Service 日志以获取详细错误信息
 
