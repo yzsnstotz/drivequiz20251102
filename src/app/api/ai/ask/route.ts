@@ -41,6 +41,7 @@ type AiServiceResponse = {
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
     cached?: boolean; // 缓存标识
+    aiProvider?: string; // AI 服务提供商
   };
   errorCode?: string;
   message?: string;

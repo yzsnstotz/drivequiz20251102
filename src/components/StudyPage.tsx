@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, BookOpen, Car, Shield, Map } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BookOpen, Car, Shield, Map as MapIcon } from 'lucide-react';
 import QuestionPage from './QuestionPage';
 
 interface QuestionSet {
