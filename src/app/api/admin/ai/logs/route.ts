@@ -64,6 +64,10 @@ type CamelRow = {
   safetyFlag: "ok" | "needs_human" | "blocked";
   costEstimate: number | null; // 成本估算（USD）
   sources: SourceInfo[]; // 来源信息数组
+  from: string | null; // "study" | "question" | "chat" 等，标识来源
+  aiProvider: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
+  cached: boolean | null; // 是否是缓存
+  cacheSource: string | null; // "json" | "database"，缓存来源
   createdAt: string; // ISO8601
 };
 
@@ -108,6 +112,10 @@ function mapRow(r: RawRow): CamelRow {
       : "ok", // 默认值，如果数据库返回了意外的值
     costEstimate: r.cost_est == null ? null : Number(r.cost_est),
     sources,
+    from: (r as any).from || null, // 来源标识
+    aiProvider: (r as any).ai_provider || null, // AI服务提供商
+    cached: (r as any).cached ?? false, // 是否是缓存
+    cacheSource: (r as any).cache_source || null, // 缓存来源
     createdAt: toISO(r.created_at) ?? "",
   };
 }
@@ -198,6 +206,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     // 基础查询（只查询 ai_logs）
     // 注意：数据库表中的字段名是 locale，不是 language
     // 注意：sources 字段可能不存在，需要根据检查结果决定是否包含
+    // 注意：from、ai_provider、cached、cache_source 字段可能不存在，需要根据检查结果决定是否包含
     const baseFields = [
       "id",
       "user_id",
@@ -211,9 +220,39 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       "created_at",
     ] as const;
 
+    // 检查 from、ai_provider、cached、cache_source 字段是否存在
+    let hasFromColumn = false;
+    let hasAiProviderColumn = false;
+    let hasCachedColumn = false;
+    let hasCacheSourceColumn = false;
+    
+    try {
+      const columnCheck = await sql<{ column_name: string }>`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ai_logs'
+          AND column_name IN ('from', 'ai_provider', 'cached', 'cache_source')
+      `.execute(aiDb);
+      
+      const existingColumns = new Set(columnCheck.rows.map(r => r.column_name));
+      hasFromColumn = existingColumns.has('from');
+      hasAiProviderColumn = existingColumns.has('ai_provider');
+      hasCachedColumn = existingColumns.has('cached');
+      hasCacheSourceColumn = existingColumns.has('cache_source');
+    } catch {
+      // 如果检查失败，假设字段不存在
+    }
+
+    let fieldsWithMetadata = baseFields;
+    if (hasFromColumn) fieldsWithMetadata = [...fieldsWithMetadata, "from"] as any;
+    if (hasAiProviderColumn) fieldsWithMetadata = [...fieldsWithMetadata, "ai_provider"] as any;
+    if (hasCachedColumn) fieldsWithMetadata = [...fieldsWithMetadata, "cached"] as any;
+    if (hasCacheSourceColumn) fieldsWithMetadata = [...fieldsWithMetadata, "cache_source"] as any;
+
     const fieldsWithSources = hasSourcesColumn
-      ? ([...baseFields, "sources"] as const)
-      : baseFields;
+      ? ([...fieldsWithMetadata, "sources"] as const)
+      : fieldsWithMetadata;
 
     console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 4] Building query...`);
     console.log(`[GET /api/admin/ai/logs] [${requestId}] [Step 4] Selected fields:`, fieldsWithSources);

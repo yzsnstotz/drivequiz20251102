@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { db } from "@/lib/db";
 import { aiDb } from "@/lib/aiDb";
+import { calculateQuestionHash } from "@/lib/questionHash";
+import {
+  getAIAnswerFromJson,
+  getAIAnswerFromDb,
+  saveAIAnswerToDb,
+} from "@/lib/questionDb";
 
 export const runtime = "nodejs";
 
@@ -339,6 +345,10 @@ async function writeAiLogToDatabase(params: {
   costEstUsd: number | null;
   sources?: Array<{ title: string; url: string; snippet?: string }>;
   createdAtIso?: string;
+  from?: string | null; // "study" | "question" | "chat" 等，标识来源
+  aiProvider?: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
+  cached?: boolean | null; // 是否是缓存
+  cacheSource?: string | null; // "json" | "database"，缓存来源
 }): Promise<void> {
   try {
     // 规范化 userId：如果是 act- 格式，直接使用；如果是 anonymous，设为 null
@@ -389,6 +399,10 @@ async function writeAiLogToDatabase(params: {
         safety_flag: params.safetyFlag,
         cost_est: params.costEstUsd,
         sources: sourcesJson as any, // JSONB 字段
+        from: params.from || null, // 来源标识
+        ai_provider: params.aiProvider || null, // AI服务提供商
+        cached: params.cached || false, // 是否是缓存
+        cache_source: params.cacheSource || null, // 缓存来源
         created_at: params.createdAtIso ? new Date(params.createdAtIso) : new Date(),
       })
       .execute();
@@ -762,6 +776,130 @@ export async function POST(req: NextRequest) {
       forwardedUserId,
     });
     
+    // 4.5) 检查JSON包中是否有AI解析（如果是题目）
+    // 尝试从JSON包中获取AI解析，如果存在则直接返回
+    console.log(`[${requestId}] [STEP 4.5] 开始检查JSON包中的AI解析`);
+    let cachedAnswer: string | null = null;
+    let questionHash: string | null = null;
+    let packageName: string | null = null;
+    let cacheSource: "json" | "database" | null = null; // 记录缓存来源
+    
+    try {
+      // 尝试通过问题内容匹配题目数据库
+      // 1. 先从数据库查找匹配的题目（通过content模糊匹配）
+      const matchedQuestion = await db
+        .selectFrom("questions")
+        .selectAll()
+        .where("content", "ilike", `%${question.trim()}%`)
+        .limit(1)
+        .executeTakeFirst();
+      
+      if (matchedQuestion) {
+        // 找到匹配的题目，使用其content_hash
+        questionHash = matchedQuestion.content_hash;
+        console.log(`[${requestId}] [STEP 4.5.0] 从数据库找到匹配的题目`, {
+          questionId: matchedQuestion.id,
+          questionHash: questionHash.substring(0, 16) + "...",
+        });
+        
+        // 从license_types中获取packageName（仅用于日志记录）
+        packageName = matchedQuestion.license_types?.[0] || null;
+        
+        // 1. 优先从统一的questions.json读取（这是最新的包，是唯一的JSON包数据获取源）
+        cachedAnswer = await getAIAnswerFromJson(null, questionHash);
+        if (cachedAnswer) {
+          cacheSource = "json"; // 标记为从JSON包读取
+          console.log(`[${requestId}] [STEP 4.5.1] 从统一的questions.json中找到AI解析`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            answerLength: cachedAnswer.length,
+          });
+        }
+        
+        // 2. 如果统一的JSON包中没有，尝试从数据库读取（不再读取单个JSON包）
+        if (!cachedAnswer) {
+          cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
+          if (cachedAnswer) {
+            cacheSource = "database"; // 标记为从数据库读取
+            console.log(`[${requestId}] [STEP 4.5.2] 从数据库中找到AI解析`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              answerLength: cachedAnswer.length,
+            });
+          }
+        }
+      } else {
+        // 如果没有找到匹配的题目，尝试通过问题内容直接计算hash（简化匹配）
+        // 注意：这种方式可能不够准确，因为hash需要完整的题目信息
+        // 但可以作为后备方案
+        const questionForHash = {
+          type: "single" as const,
+          content: question,
+          correctAnswer: "", // 题目匹配时不需要正确答案
+        };
+        questionHash = calculateQuestionHash(questionForHash);
+        
+        // 1. 优先从统一的questions.json读取（这是最新的包，是唯一的JSON包数据获取源）
+        cachedAnswer = await getAIAnswerFromJson(null, questionHash);
+        if (cachedAnswer) {
+          cacheSource = "json"; // 标记为从JSON包读取
+          console.log(`[${requestId}] [STEP 4.5.1] 从统一的questions.json中找到AI解析（简化匹配）`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            answerLength: cachedAnswer.length,
+          });
+        }
+        
+        // 2. 如果统一的JSON包中没有，尝试从数据库读取（不再读取单个JSON包）
+        if (!cachedAnswer) {
+          cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
+          if (cachedAnswer) {
+            cacheSource = "database"; // 标记为从数据库读取
+            console.log(`[${requestId}] [STEP 4.5.2] 从数据库中找到AI解析（简化匹配）`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              answerLength: cachedAnswer.length,
+            });
+          }
+        }
+      }
+      
+      // 如果找到缓存的AI解析，直接返回
+      if (cachedAnswer) {
+        console.log(`[${requestId}] [STEP 4.5.3] 使用缓存的AI解析，跳过AI服务调用`);
+        
+        // 使用记录的缓存来源（json或database）
+        // 如果cacheSource为null，说明没有找到缓存（不应该到达这里）
+        const finalCacheSource = cacheSource || "database";
+        
+        // 写入日志（标识为习题调用，缓存来源）
+        void writeAiLogToDatabase({
+          userId: forwardedUserId,
+          question,
+          answer: cachedAnswer,
+          locale,
+          model: "Cached", // 缓存时使用"Cached"作为模型名
+          ragHits: 0,
+          safetyFlag: "ok",
+          costEstUsd: null,
+          sources: [],
+          from: "question", // 标识为习题调用
+          aiProvider: "cache",
+          cached: true,
+          cacheSource: finalCacheSource,
+          createdAtIso: new Date().toISOString(),
+        }).catch((error) => {
+          console.error(`[${requestId}] [STEP 4.5.4] 写入缓存日志失败:`, (error as Error).message);
+        });
+        
+        return ok({
+          answer: cachedAnswer,
+          cached: true,
+          aiProvider: "cache",
+          cacheSource: finalCacheSource, // 返回缓存来源
+        });
+      }
+    } catch (error) {
+      console.error(`[${requestId}] [STEP 4.5] 检查缓存失败:`, error);
+      // 如果检查失败，继续调用AI服务（不抛出错误，让流程继续）
+    }
+    
     // 如果是直连 OpenRouter 模式，直接调用 OpenRouter API，不通过 AI Service
     if (aiServiceMode === "openrouter_direct") {
       console.log(`[${requestId}] [STEP 5] 开始直连OpenRouter处理`);
@@ -984,6 +1122,9 @@ export async function POST(req: NextRequest) {
           outputTokens,
         });
         
+        // 判断是否是习题调用（如果之前找到了匹配的题目）
+        const isQuestionCall = !!questionHash;
+        
         // 写入 ai_logs 表（异步，不阻塞响应）
         void writeAiLogToDatabase({
           userId: forwardedUserId,
@@ -995,6 +1136,10 @@ export async function POST(req: NextRequest) {
           safetyFlag: "ok",
           costEstUsd: costEstimate.approxUsd,
           sources: [], // 直连模式下暂时不返回 RAG 来源
+          from: isQuestionCall ? "question" : null, // 如果是习题调用，标识为"question"
+          aiProvider: "openrouter_direct",
+          cached: false,
+          cacheSource: null,
           createdAtIso: new Date().toISOString(),
         }).catch((error) => {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
@@ -1229,6 +1374,9 @@ export async function POST(req: NextRequest) {
           outputTokens,
         });
         
+        // 判断是否是习题调用（如果之前找到了匹配的题目）
+        const isQuestionCall = !!questionHash;
+        
         // 写入 ai_logs 表（异步，不阻塞响应）
         void writeAiLogToDatabase({
           userId: forwardedUserId,
@@ -1240,6 +1388,10 @@ export async function POST(req: NextRequest) {
           safetyFlag: "ok",
           costEstUsd: costEstimate.approxUsd,
           sources: [], // 直连模式下暂时不返回 RAG 来源
+          from: isQuestionCall ? "question" : null, // 如果是习题调用，标识为"question"
+          aiProvider: "openai_direct",
+          cached: false,
+          cacheSource: null,
           createdAtIso: new Date().toISOString(),
         }).catch((error) => {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
@@ -1717,35 +1869,121 @@ export async function POST(req: NextRequest) {
 
     // 7) 成功：写入 ai_logs 表（作为备份，确保所有AI回答都被保存）
     // 注意：AI服务也会写入 ai_logs 表，但这里作为备份确保写入成功
+    // 在 render indirect 和 direct 模式下都调用（除了本地 ollama）
+    // 注意：如果使用了缓存（cached=true），已经在 STEP 4.5.3 中写入了日志，这里应该跳过
+    if (result.ok && result.data && result.data.answer && aiServiceMode !== "local") {
+      // 如果使用了缓存，跳过写入（已经在 STEP 4.5.3 中写入了）
+      if (result.data.cached) {
+        console.log(`[${requestId}] [STEP 7] 使用缓存，跳过写入 ai_logs（已在 STEP 4.5.3 中写入）`);
+      } else {
+        console.log(`[${requestId}] [STEP 7] 开始写入 ai_logs 表（备份）`);
+        
+        // 计算 RAG 命中数
+        const ragHits = Array.isArray(result.data.sources) 
+          ? result.data.sources.length 
+          : 0;
+        
+        // 获取成本估算
+        const costEstUsd = result.data.costEstimate?.approxUsd ?? null;
+        
+        // 异步写入 ai_logs 表（不阻塞响应）
+        // 类型断言：已经检查了 result.data.answer 存在
+        const answer = result.data.answer;
+        if (answer) {
+          // 判断是否是习题调用（如果之前找到了匹配的题目）
+          const isQuestionCall = !!questionHash;
+          
+          void writeAiLogToDatabase({
+            userId: forwardedUserId,
+            question,
+            answer: answer,
+            locale,
+            model: result.data.model || "unknown",
+            ragHits,
+            safetyFlag: result.data.safetyFlag || "ok",
+            costEstUsd,
+            sources: result.data.sources,
+            from: isQuestionCall ? "question" : null, // 如果是习题调用，标识为"question"
+            aiProvider: result.data.aiProvider || aiServiceMode || null, // 使用返回的aiProvider或aiServiceMode
+            cached: false, // 不是缓存
+            cacheSource: null,
+            createdAtIso: new Date().toISOString(),
+          }).catch((error) => {
+            console.error(`[${requestId}] [STEP 7.1] 写入 ai_logs 失败:`, (error as Error).message);
+          });
+        }
+      }
+    }
+    
+    // 7.5) 如果问题是题目，写入 question_ai_answers 表
+    // 并在每10次新解析后触发批量更新JSON包
     if (result.ok && result.data && result.data.answer) {
-      console.log(`[${requestId}] [STEP 7] 开始写入 ai_logs 表（备份）`);
+      // 如果之前没有计算questionHash，尝试重新计算
+      if (!questionHash) {
+        try {
+          // 尝试通过问题内容匹配题目数据库
+          const matchedQuestion = await db
+            .selectFrom("questions")
+            .selectAll()
+            .where("content", "ilike", `%${question.trim()}%`)
+            .limit(1)
+            .executeTakeFirst();
+          
+          if (matchedQuestion) {
+            questionHash = matchedQuestion.content_hash;
+            packageName = matchedQuestion.license_types?.[0] || null;
+            console.log(`[${requestId}] [STEP 7.5.0] 重新计算questionHash`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              packageName,
+            });
+          }
+        } catch (error) {
+          console.error(`[${requestId}] [STEP 7.5.0] 重新计算questionHash失败:`, error);
+        }
+      }
       
-      // 计算 RAG 命中数
-      const ragHits = Array.isArray(result.data.sources) 
-        ? result.data.sources.length 
-        : 0;
-      
-      // 获取成本估算
-      const costEstUsd = result.data.costEstimate?.approxUsd ?? null;
-      
-      // 异步写入 ai_logs 表（不阻塞响应）
-      // 类型断言：已经检查了 result.data.answer 存在
-      const answer = result.data.answer;
-      if (answer) {
-        void writeAiLogToDatabase({
-          userId: forwardedUserId,
-          question,
-          answer: answer,
-          locale,
-          model: result.data.model || "unknown",
-          ragHits,
-          safetyFlag: result.data.safetyFlag || "ok",
-          costEstUsd,
-          sources: result.data.sources,
-          createdAtIso: new Date().toISOString(),
-        }).catch((error) => {
-          console.error(`[${requestId}] [STEP 7.1] 写入 ai_logs 失败:`, (error as Error).message);
-        });
+      // 如果找到了questionHash，写入question_ai_answers表
+      // 注意：只有在数据库中没有AI回答时才写入，如果已有则跳过
+      // JSON包不会被实时更新，只有在批量更新时才更新
+      if (questionHash) {
+        console.log(`[${requestId}] [STEP 7.5] 开始检查并写入 question_ai_answers 表`);
+        
+        const answer = result.data.answer;
+        const localeStr = locale || "zh";
+        
+        // 异步写入 question_ai_answers 表（不阻塞响应）
+        void (async () => {
+          try {
+            // 检查是否已存在（如果数据库已有AI回答，不应该被新回答覆盖）
+            const existing = await getAIAnswerFromDb(questionHash, localeStr);
+            if (existing) {
+              console.log(`[${requestId}] [STEP 7.5.1] 数据库已有AI解析，跳过写入（避免覆盖）`);
+              return;
+            }
+            
+            // 只有在数据库中没有时才写入新回答
+            await saveAIAnswerToDb(
+              questionHash,
+              answer,
+              localeStr,
+              result.data?.model || "unknown",
+              result.data?.sources,
+              forwardedUserId || undefined
+            );
+            
+            console.log(`[${requestId}] [STEP 7.5.2] 成功写入 question_ai_answers 表（新回答）`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              answerLength: answer.length,
+              packageName,
+            });
+            
+            // 注意：JSON包不会被实时更新，只有在手动调用"更新JSON包"功能时才更新
+            // 这样可以避免每次写入新AI回答后都自动更新JSON包
+            console.log(`[${requestId}] [STEP 7.5.3] 已写入数据库，JSON包不会自动更新（需要手动触发批量更新）`);
+          } catch (error) {
+            console.error(`[${requestId}] [STEP 7.5] 写入 question_ai_answers 失败:`, error);
+          }
+        })();
       }
     }
     

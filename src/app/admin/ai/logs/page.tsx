@@ -23,6 +23,10 @@ type LogItem = {
   safetyFlag: "ok" | "needs_human" | "blocked";
   costEstimate: number | null;
   sources: SourceInfo[];
+  from: string | null; // "study" | "question" | "chat" 等，标识来源
+  aiProvider: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
+  cached: boolean | null; // 是否是缓存
+  cacheSource: string | null; // "json" | "database"，缓存来源
   createdAt: string;
 };
 
@@ -401,24 +405,60 @@ export default function AdminAiLogsPage() {
                           )}
                         </td>
                         <td className="px-4 py-2 max-w-xs truncate" title={item.question}>
-                          {item.question}
+                          {/* 如果是习题调用，在问题开头添加标识 */}
+                          {item.from === "question" ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-purple-600 font-bold" title="习题调用AI助手">📚</span>
+                              <span>{item.question}</span>
+                            </span>
+                          ) : (
+                            item.question
+                          )}
                         </td>
                         <td className="px-4 py-2 max-w-xs truncate" title={item.answer || ""}>
                           {item.answer || "—"}
                         </td>
                         <td className="px-4 py-2 text-xs">{item.locale || "—"}</td>
-                        <td className="px-4 py-2 text-xs">{item.model || "—"}</td>
+                        <td className="px-4 py-2 text-xs">
+                          {/* 如果是缓存，显示"Cached"，否则显示模型名称 */}
+                          {item.cached ? (
+                            <span className="text-orange-600 font-medium">Cached</span>
+                          ) : (
+                            item.model || "—"
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-xs">{item.ragHits}</td>
-                        <td className="px-4 py-2">
-                          {item.sources.length > 0 ? (
+                        <td className="px-4 py-2 text-xs">
+                          {/* 显示AI服务提供商和缓存来源 */}
+                          {item.cached ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-orange-600 font-medium">缓存</span>
+                              {item.cacheSource && (
+                                <span className="text-gray-500 text-[10px]">
+                                  {item.cacheSource === "json" ? "JSON缓存" : "数据库缓存"}
+                                </span>
+                              )}
+                            </div>
+                          ) : item.aiProvider ? (
+                            <span className="text-blue-600">
+                              {item.aiProvider === "openai" ? "OpenAI" :
+                               item.aiProvider === "local" ? "Local" :
+                               item.aiProvider === "openrouter" ? "OpenRouter" :
+                               item.aiProvider === "openrouter_direct" ? "OpenRouter Direct" :
+                               item.aiProvider === "openai_direct" ? "OpenAI Direct" :
+                               item.aiProvider}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                          {/* 来源按钮（如果有sources） */}
+                          {item.sources.length > 0 && (
                             <button
                               onClick={() => setSelectedSources(item)}
-                              className="text-blue-600 hover:underline text-xs"
+                              className="block mt-1 text-blue-600 hover:underline text-xs"
                             >
-                              查看 ({item.sources.length})
+                              查看来源 ({item.sources.length})
                             </button>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
                           )}
                         </td>
                         <td className="px-4 py-2">

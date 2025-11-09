@@ -93,10 +93,18 @@ function ExamPage() {
     // Load questions from the same source as study page
     const loadQuestions = async () => {
       try {
-        // For exam, we'll use a random selection of questions from existing sets
-        // For now, let's use a specific set as example
-        const response = await import(`../../data/questions/zh/仮免-1.json`);
-        const allQuestions = response.questions;
+        // 优先从统一的questions.json读取所有题目
+        let allQuestions: Question[] = [];
+        
+        try {
+          const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
+          const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
+          allQuestions = questions;
+        } catch (unifiedError) {
+          // 如果统一的questions.json不存在，从指定文件读取（兼容旧逻辑）
+          const response = await import(`../../data/questions/zh/仮免-1.json`);
+          allQuestions = response.questions || response.default?.questions || [];
+        }
         
         // Randomly select questions for the exam
         const selectedQuestions = allQuestions
@@ -141,11 +149,24 @@ function ExamPage() {
     setShowAnswer(true);
     
     const currentQuestion = questions[currentQuestionIndex];
-    const isCorrect = Array.isArray(currentQuestion.correctAnswer)
-      ? Array.isArray(answer) &&
+    let isCorrect: boolean;
+    
+    if (Array.isArray(currentQuestion.correctAnswer)) {
+      // 多选题：比较数组
+      isCorrect = Array.isArray(answer) &&
         answer.length === currentQuestion.correctAnswer.length &&
-        answer.every(a => currentQuestion.correctAnswer.includes(a))
-      : answer === currentQuestion.correctAnswer;
+        answer.every(a => currentQuestion.correctAnswer.includes(a));
+    } else if (currentQuestion.type === 'truefalse') {
+      // 判断题：需要统一类型比较（correctAnswer可能是布尔值，answer是字符串）
+      const correctAnswerValue = typeof currentQuestion.correctAnswer === 'boolean' 
+        ? String(currentQuestion.correctAnswer) 
+        : currentQuestion.correctAnswer;
+      const answerValue = typeof answer === 'string' ? answer : String(answer);
+      isCorrect = correctAnswerValue === answerValue;
+    } else {
+      // 单选题：直接比较
+      isCorrect = answer === currentQuestion.correctAnswer;
+    }
 
     // Add to answered questions
     const newAnsweredQuestions = new Set(answeredQuestions);
@@ -369,7 +390,7 @@ function ExamPage() {
           {currentQuestion.image && (
             <div className="mb-4 relative w-full aspect-video">
               <Image
-                src={currentQuestion.image}
+                src={currentQuestion.image.trim()}
                 alt="题目图片"
                 fill
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"

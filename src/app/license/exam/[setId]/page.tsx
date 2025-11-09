@@ -120,19 +120,30 @@ export default function LicenseExamPage() {
     let correct = 0;
     questions.forEach((question, index) => {
       const userAnswer = answers[index];
+      let isCorrect: boolean;
+      
       if (Array.isArray(question.correctAnswer)) {
+        // 多选题：比较数组
         const userArray = Array.isArray(userAnswer) ? userAnswer : [];
         const correctArray = question.correctAnswer;
-        if (
+        isCorrect = (
           userArray.length === correctArray.length &&
           userArray.every((ans) => correctArray.includes(ans))
-        ) {
-          correct++;
-        }
+        );
+      } else if (question.type === 'truefalse') {
+        // 判断题：需要统一类型比较（correctAnswer可能是布尔值，userAnswer是字符串）
+        const correctAnswerValue = typeof question.correctAnswer === 'boolean' 
+          ? String(question.correctAnswer) 
+          : question.correctAnswer;
+        const answerValue = typeof userAnswer === 'string' ? userAnswer : String(userAnswer);
+        isCorrect = correctAnswerValue === answerValue;
       } else {
-        if (userAnswer === question.correctAnswer) {
-          correct++;
-        }
+        // 单选题：直接比较
+        isCorrect = userAnswer === question.correctAnswer;
+      }
+      
+      if (isCorrect) {
+        correct++;
       }
     });
     return { correct, total: questions.length, percentage: Math.round((correct / questions.length) * 100) };
@@ -265,7 +276,7 @@ export default function LicenseExamPage() {
           {currentQuestion.image && (
             // eslint-disable-next-line @next/next/no-img-element -- 题目图片可能来自动态第三方域名，未知尺寸
             <img
-              src={currentQuestion.image}
+              src={currentQuestion.image.trim()}
               alt="题目图片"
               className="w-full max-w-md mx-auto mb-4 rounded-lg"
             />

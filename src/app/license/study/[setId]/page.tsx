@@ -104,6 +104,7 @@ export default function LicenseStudyPage() {
     if (!currentQuestion) return false;
     
     if (currentQuestion.type === "multiple") {
+      // 多选题：比较数组
       const selected = Array.isArray(selectedAnswer) ? selectedAnswer : [];
       const correct = Array.isArray(currentQuestion.correctAnswer)
         ? currentQuestion.correctAnswer
@@ -112,7 +113,15 @@ export default function LicenseStudyPage() {
         selected.length === correct.length &&
         selected.every((ans) => correct.includes(ans))
       );
+    } else if (currentQuestion.type === "truefalse") {
+      // 判断题：需要统一类型比较（correctAnswer可能是布尔值，selectedAnswer是字符串）
+      const correctAnswerValue = typeof currentQuestion.correctAnswer === 'boolean' 
+        ? String(currentQuestion.correctAnswer) 
+        : currentQuestion.correctAnswer;
+      const answerValue = typeof selectedAnswer === 'string' ? selectedAnswer : String(selectedAnswer);
+      return correctAnswerValue === answerValue;
     } else {
+      // 单选题：直接比较
       return selectedAnswer === currentQuestion.correctAnswer;
     }
   };
@@ -210,7 +219,7 @@ export default function LicenseStudyPage() {
           {currentQuestion.image && (
             // eslint-disable-next-line @next/next/no-img-element -- 题目图片可能来自动态第三方域名，未知尺寸
             <img
-              src={currentQuestion.image}
+              src={currentQuestion.image.trim()}
               alt="题目图片"
               className="w-full max-w-md mx-auto mb-4 rounded-lg"
             />

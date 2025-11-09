@@ -11,6 +11,16 @@ import { NextRequest } from "next/server";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError, notFound } from "@/app/api/_lib/errors";
 import { logUpdate, logDelete } from "@/app/api/_lib/operationLog";
+import { calculateQuestionHash } from "@/lib/questionHash";
+import {
+  getQuestionsFromDb,
+  saveQuestionToDb,
+  loadQuestionFile,
+  saveQuestionFile,
+  updateJsonPackage,
+  normalizeCorrectAnswer,
+} from "@/lib/questionDb";
+import { db } from "@/lib/db";
 import fs from "fs/promises";
 import path from "path";
 import type { Question, QuestionFile } from "../route";
@@ -50,20 +60,42 @@ async function getAllCategories(): Promise<string[]> {
 }
 
 // 查找题目所属的卷类文件
+// 只从数据库读取，如果数据库没有则返回null
 async function findQuestionCategory(questionId: number): Promise<{
   category: string;
   question: Question;
 } | null> {
-  const categories = await getAllCategories();
-  for (const category of categories) {
-    const file = await loadQuestionFile(category);
-    if (file && file.questions) {
-      const found = file.questions.find((q) => q.id === questionId);
-      if (found) {
-        return { category, question: found };
-      }
+  try {
+    // 只从数据库读取
+    const dbQuestion = await db
+      .selectFrom("questions")
+      .selectAll()
+      .where("id", "=", questionId)
+      .executeTakeFirst();
+    
+    if (dbQuestion) {
+      // 从license_types中获取category
+      const category = dbQuestion.license_types?.[0] || "免许-1";
+      
+      // 转换为前端格式
+      const question: Question = {
+        id: dbQuestion.id,
+        type: dbQuestion.type,
+        content: dbQuestion.content,
+        options: Array.isArray(dbQuestion.options) ? dbQuestion.options : undefined,
+        correctAnswer: normalizeCorrectAnswer(dbQuestion.correct_answer, dbQuestion.type),
+        image: dbQuestion.image || undefined,
+        explanation: dbQuestion.explanation || undefined,
+        category,
+      };
+      
+      return { category, question };
     }
+  } catch (error) {
+    console.error("[findQuestionCategory] Error reading from database:", error);
   }
+  
+  // 数据库没有，返回null
   return null;
 }
 
@@ -123,6 +155,27 @@ export const PUT = withAdminAuth(
         return badRequest("Question content cannot be empty");
       }
 
+      // 构建更新后的题目
+      const updatedQuestion: Question = {
+        ...oldQuestion,
+        ...(type ? { type } : {}),
+        ...(content ? { content: content.trim() } : {}),
+        ...(correctAnswer !== undefined ? { correctAnswer } : {}),
+        ...(options !== undefined ? { options } : {}),
+        ...(image !== undefined ? (image ? { image: image.trim() } : {}) : {}),
+        ...(explanation !== undefined ? (explanation ? { explanation: explanation.trim() } : {}) : {}),
+        category: targetCategory,
+      };
+
+      // 1. 更新数据库（作为数据源）
+      try {
+        await saveQuestionToDb(updatedQuestion);
+      } catch (dbError) {
+        console.error("[PUT /api/admin/questions/:id] Error updating database:", dbError);
+        // 即使数据库更新失败，也继续同步到JSON包（保持兼容性）
+      }
+
+      // 2. 同步到JSON包
       // 如果卷类改变,需要从旧文件删除,添加到新文件
       if (targetCategory !== oldCategory) {
         // 从旧文件删除
@@ -137,16 +190,6 @@ export const PUT = withAdminAuth(
         if (!newFile) {
           newFile = { questions: [] };
         }
-
-        const updatedQuestion: Question = {
-          ...oldQuestion,
-          ...(type ? { type } : {}),
-          ...(content ? { content: content.trim() } : {}),
-          ...(correctAnswer !== undefined ? { correctAnswer } : {}),
-          ...(options !== undefined ? { options } : {}),
-          ...(image !== undefined ? (image ? { image: image.trim() } : {}) : {}),
-          ...(explanation !== undefined ? (explanation ? { explanation: explanation.trim() } : {}) : {}),
-        };
 
         newFile.questions.push(updatedQuestion);
         await saveQuestionFile(targetCategory, newFile);
@@ -176,12 +219,6 @@ export const PUT = withAdminAuth(
         return success({ ...updatedQuestion, category: targetCategory });
       } else {
         // 在同一文件中更新
-        const file = await loadQuestionFile(targetCategory);
-        if (!file) return internalError("Question file not found");
-
-        const questionIndex = file.questions.findIndex((q) => q.id === id);
-        if (questionIndex === -1) return notFound("Question not found");
-
         const updatedQuestion: Question = {
           ...oldQuestion,
           ...(type ? { type } : {}),
@@ -190,7 +227,23 @@ export const PUT = withAdminAuth(
           ...(options !== undefined ? { options } : {}),
           ...(image !== undefined ? (image ? { image: image.trim() } : {}) : {}),
           ...(explanation !== undefined ? (explanation ? { explanation: explanation.trim() } : {}) : {}),
+          category: targetCategory,
         };
+
+        // 1. 更新数据库（作为数据源）
+        try {
+          await saveQuestionToDb(updatedQuestion);
+        } catch (dbError) {
+          console.error("[PUT /api/admin/questions/:id] Error updating database:", dbError);
+          // 即使数据库更新失败，也继续同步到JSON包（保持兼容性）
+        }
+
+        // 2. 同步到JSON包
+        const file = await loadQuestionFile(targetCategory);
+        if (!file) return internalError("Question file not found");
+
+        const questionIndex = file.questions.findIndex((q) => q.id === id);
+        if (questionIndex === -1) return notFound("Question not found");
 
         file.questions[questionIndex] = updatedQuestion;
         await saveQuestionFile(targetCategory, file);
@@ -242,7 +295,18 @@ export const DELETE = withAdminAuth(
 
       const { category, question } = result;
 
-      // 从文件中删除
+      // 1. 从数据库删除（作为数据源）
+      try {
+        await db
+          .deleteFrom("questions")
+          .where("id", "=", id)
+          .execute();
+      } catch (dbError) {
+        console.error("[DELETE /api/admin/questions/:id] Error deleting from database:", dbError);
+        // 即使数据库删除失败，也继续从JSON包删除（保持兼容性）
+      }
+
+      // 2. 从JSON包删除
       const file = await loadQuestionFile(category);
       if (!file) return internalError("Question file not found");
 
