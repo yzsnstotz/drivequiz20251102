@@ -53,23 +53,58 @@ const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN;
 const USER_JWT_SECRET = process.env.USER_JWT_SECRET; // HMAC 密钥（用户端 JWT 校验，HS256）
 
 // 本地 AI 服务配置（如果启用）
-const USE_LOCAL_AI = process.env.USE_LOCAL_AI === "true" || process.env.USE_LOCAL_AI === "1";
-const LOCAL_AI_SERVICE_URL = process.env.LOCAL_AI_SERVICE_URL;
-const LOCAL_AI_SERVICE_TOKEN = process.env.LOCAL_AI_SERVICE_TOKEN;
+const LOCAL_AI_SERVICE_URL = process.env.LOCAL_AI_SERVICE_URL?.trim();
+const LOCAL_AI_SERVICE_TOKEN = process.env.LOCAL_AI_SERVICE_TOKEN?.trim();
 
 // 直连 OpenRouter 配置
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-const OPENROUTER_REFERER_URL = process.env.OPENROUTER_REFERER_URL || "https://zalem.app";
-const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME || "ZALEM";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim();
+const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL?.trim();
+const OPENROUTER_REFERER_URL = process.env.OPENROUTER_REFERER_URL?.trim();
+const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME?.trim();
+
+// 直连 OpenAI 配置
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim();
 
 // 在模块加载时记录环境变量（仅在开发环境）
 if (process.env.NODE_ENV === "development") {
   console.log("[ENV MODULE] 环境变量配置", {
-    USE_LOCAL_AI,
     LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL || "(empty)",
     AI_SERVICE_URL: AI_SERVICE_URL || "(empty)",
+    OPENROUTER_BASE_URL: OPENROUTER_BASE_URL || "(empty)",
   });
+}
+
+type AiProviderValue = "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
+
+function requireEnvVar(key: string): string {
+  const raw = process.env[key];
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new Error(`${key} is not configured.`);
+  }
+  return raw.trim();
+}
+
+function normalizeAiProviderValue(value: string | null | undefined): AiProviderValue | null {
+  if (!value) return null;
+  const v = value.trim().toLowerCase();
+  switch (v) {
+    case "online":
+    case "openai":
+      return "openai";
+    case "local":
+      return "local";
+    case "openrouter":
+      return "openrouter";
+    case "openrouter-direct":
+    case "openrouter_direct":
+      return "openrouter_direct";
+    case "openai-direct":
+    case "openai_direct":
+      return "openai_direct";
+    default:
+      return null;
+  }
 }
 
 // ==== 环境检测 ====
@@ -386,11 +421,10 @@ export async function POST(req: NextRequest) {
     console.log(`[${requestId}] [STEP 0] 开始选择AI服务`);
     let selectedAiServiceUrl: string | undefined;
     let selectedAiServiceToken: string | undefined;
-    let aiServiceMode: "local" | "online" | "openrouter" | "openrouter-direct";
+    let aiServiceMode: "local" | "openai" | "openrouter" | "openrouter_direct" | "openai_direct";
     
     // 记录环境变量状态
     console.log(`[${requestId}] [ENV CHECK] 环境变量检查`, {
-      USE_LOCAL_AI: USE_LOCAL_AI,
       LOCAL_AI_SERVICE_URL: LOCAL_AI_SERVICE_URL ? `${LOCAL_AI_SERVICE_URL.substring(0, 20)}...` : "(empty)",
       LOCAL_AI_SERVICE_TOKEN: LOCAL_AI_SERVICE_TOKEN ? "***" : "(empty)",
       AI_SERVICE_URL: AI_SERVICE_URL ? `${AI_SERVICE_URL.substring(0, 20)}...` : "(empty)",
@@ -400,12 +434,12 @@ export async function POST(req: NextRequest) {
     });
     
     // 检查 URL 参数是否强制选择模式
-    let forceMode: "local" | "online" | null = null;
+    let forceMode: "local" | "openai" | null = null;
     try {
       const url = new URL(req.url);
       const aiParam = url.searchParams.get("ai")?.toLowerCase();
-      if (aiParam === "local" || aiParam === "online") {
-        forceMode = aiParam as "local" | "online";
+      if (aiParam === "local" || aiParam === "online" || aiParam === "openai") {
+        forceMode = aiParam === "local" ? "local" : "openai";
         console.log(`[${requestId}] [STEP 0.1] URL参数强制模式: ${forceMode}`);
       }
     } catch (e) {
@@ -414,7 +448,7 @@ export async function POST(req: NextRequest) {
     }
     
     // 从数据库读取 aiProvider 配置（如果 URL 参数没有强制指定）
-    let aiProviderFromDb: "online" | "local" | "openrouter" | "openrouter-direct" | null = null;
+    let aiProviderFromDb: AiProviderValue | null = null;
     if (!forceMode) {
       try {
         console.log(`[${requestId}] [STEP 0.2] 从数据库读取aiProvider配置`);
@@ -424,9 +458,14 @@ export async function POST(req: NextRequest) {
           .where("key", "=", "aiProvider")
           .executeTakeFirst();
         
-        if (configRow && (configRow.value === "local" || configRow.value === "online" || configRow.value === "openrouter" || configRow.value === "openrouter-direct")) {
-          aiProviderFromDb = configRow.value as "online" | "local" | "openrouter" | "openrouter-direct";
-          console.log(`[${requestId}] [STEP 0.2] 数据库配置: ${aiProviderFromDb}`);
+        if (configRow) {
+          const normalized = normalizeAiProviderValue(configRow.value);
+          if (normalized) {
+            aiProviderFromDb = normalized;
+            console.log(`[${requestId}] [STEP 0.2] 数据库配置: ${normalized}`);
+          } else {
+            console.warn(`[${requestId}] [STEP 0.2] 数据库配置值无效: ${configRow.value}`);
+          }
         } else {
           console.log(`[${requestId}] [STEP 0.2] 数据库配置为空或无效`);
         }
@@ -436,19 +475,19 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    // 优先级：URL 参数 > 数据库配置 > 环境变量
-    // 如果数据库配置存在，优先使用数据库配置；否则使用环境变量
-    // openrouter 和 online 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
-    const wantLocal = forceMode 
-      ? forceMode === "local" 
-      : (aiProviderFromDb !== null 
-          ? aiProviderFromDb === "local" 
-          : USE_LOCAL_AI);
-    
+    // 优先级：URL 参数 > 数据库配置
+    if (!forceMode && !aiProviderFromDb) {
+      console.error(`[${requestId}] [STEP 0.3] 未获取到 aiProvider 配置`);
+      return err("INTERNAL_ERROR", "AI provider is not configured.", 500);
+    }
+
+    const wantLocal = forceMode
+      ? forceMode === "local"
+      : aiProviderFromDb === "local";
+
     console.log(`[${requestId}] [STEP 0.3] AI服务选择决策`, {
       forceMode,
       aiProviderFromDb,
-      USE_LOCAL_AI,
       wantLocal,
     });
     
@@ -469,8 +508,8 @@ export async function POST(req: NextRequest) {
         }
         selectedAiServiceUrl = AI_SERVICE_URL;
         selectedAiServiceToken = AI_SERVICE_TOKEN;
-        aiServiceMode = "online";
-        console.log(`[${requestId}] [STEP 0.4] 已选择在线AI服务（回退）`);
+        aiServiceMode = "openai";
+        console.log(`[${requestId}] [STEP 0.4] 已选择 OpenAI 服务（回退）`);
       } else {
         selectedAiServiceUrl = LOCAL_AI_SERVICE_URL;
         selectedAiServiceToken = LOCAL_AI_SERVICE_TOKEN;
@@ -489,23 +528,28 @@ export async function POST(req: NextRequest) {
           ) },
         );
       }
-      // 如果是 openrouter-direct，不通过 AI Service，直接调用 OpenRouter API
-      if (aiProviderFromDb === "openrouter-direct") {
-        aiServiceMode = "openrouter-direct";
+      // 如果是 openrouter_direct 或 openai_direct，不通过 AI Service，直接调用 API
+      if (aiProviderFromDb === "openrouter_direct") {
+        aiServiceMode = "openrouter_direct";
         console.log(`[${requestId}] [STEP 0.4] 已选择直连OpenRouter模式（不通过AI Service）`);
+      } else if (aiProviderFromDb === "openai_direct") {
+        aiServiceMode = "openai_direct";
+        console.log(`[${requestId}] [STEP 0.4] 已选择直连OpenAI模式（不通过AI Service）`);
       } else {
       selectedAiServiceUrl = AI_SERVICE_URL;
       selectedAiServiceToken = AI_SERVICE_TOKEN;
-      // openrouter 和 online 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
-      aiServiceMode = aiProviderFromDb === "openrouter" ? "openrouter" : "online";
-      console.log(`[${requestId}] [STEP 0.4] 已选择${aiServiceMode === "openrouter" ? "OpenRouter" : "在线"}AI服务`);
+      // openrouter 和 openai 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
+      aiServiceMode = aiProviderFromDb === "openrouter" ? "openrouter" : "openai";
+      console.log(`[${requestId}] [STEP 0.4] 已选择${aiServiceMode === "openrouter" ? "OpenRouter" : "OpenAI"} AI服务`);
       }
     }
     
     console.log(`[${requestId}] [STEP 0.5] AI服务选择完成`, {
       mode: aiServiceMode,
-      url: aiServiceMode === "openrouter-direct" ? "直连OpenRouter" : (selectedAiServiceUrl ? `${selectedAiServiceUrl.substring(0, 30)}...` : "(empty)"),
-      hasToken: aiServiceMode === "openrouter-direct" ? "N/A" : !!selectedAiServiceToken,
+      url: (aiServiceMode === "openrouter_direct" || aiServiceMode === "openai_direct") 
+        ? (aiServiceMode === "openrouter_direct" ? "直连OpenRouter" : "直连OpenAI")
+        : (selectedAiServiceUrl ? `${selectedAiServiceUrl.substring(0, 30)}...` : "(empty)"),
+      hasToken: (aiServiceMode === "openrouter_direct" || aiServiceMode === "openai_direct") ? "N/A" : !!selectedAiServiceToken,
     });
 
     // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
@@ -719,7 +763,7 @@ export async function POST(req: NextRequest) {
     });
     
     // 如果是直连 OpenRouter 模式，直接调用 OpenRouter API，不通过 AI Service
-    if (aiServiceMode === "openrouter-direct") {
+    if (aiServiceMode === "openrouter_direct") {
       console.log(`[${requestId}] [STEP 5] 开始直连OpenRouter处理`);
       
       // 检查环境变量
@@ -729,32 +773,45 @@ export async function POST(req: NextRequest) {
       }
       
       // 调试：检查 API Key 格式（不打印完整内容）
+      // 检查是否有空白字符问题
+      const originalLength = process.env.OPENROUTER_API_KEY?.length || 0;
+      const trimmedLength = OPENROUTER_API_KEY.length;
+      const hasWhitespace = originalLength !== trimmedLength;
       const apiKeyPrefix = OPENROUTER_API_KEY.substring(0, 10);
       const apiKeyLength = OPENROUTER_API_KEY.length;
       console.log(`[${requestId}] [STEP 5.1.1] API Key 检查`, {
         prefix: apiKeyPrefix,
         length: apiKeyLength,
+        originalLength: originalLength,
+        trimmedLength: trimmedLength,
+        hasWhitespace: hasWhitespace,
         startsWithSkOr: OPENROUTER_API_KEY.startsWith("sk-or-v1-"),
         hasValue: !!OPENROUTER_API_KEY,
+        warning: hasWhitespace ? "检测到 API Key 中有空白字符，已自动去除" : undefined,
       });
       
-      const openRouterBaseUrl = OPENAI_BASE_URL.includes("openrouter.ai") 
-        ? OPENAI_BASE_URL 
-        : "https://openrouter.ai/api/v1";
+      const openRouterBaseUrl = requireEnvVar("OPENROUTER_BASE_URL");
+      const openRouterRefererUrl = requireEnvVar("OPENROUTER_REFERER_URL");
+      const openRouterAppName = requireEnvVar("OPENROUTER_APP_NAME");
       
       // 从数据库读取模型配置
-      let model = "openai/gpt-4o-mini"; // 默认模型
+      let model: string | null = null;
       try {
         const modelRow = await (aiDb as any)
           .selectFrom("ai_config")
           .select(["value"])
           .where("key", "=", "model")
           .executeTakeFirst();
-        if (modelRow && modelRow.value) {
-          model = modelRow.value;
+        if (modelRow && modelRow.value && modelRow.value.trim()) {
+          model = modelRow.value.trim();
         }
       } catch (e) {
-        console.warn(`[${requestId}] [STEP 5.2] 读取模型配置失败，使用默认模型:`, (e as Error).message);
+        console.warn(`[${requestId}] [STEP 5.2] 读取模型配置失败:`, (e as Error).message);
+      }
+
+      if (!model) {
+        console.error(`[${requestId}] [STEP 5.2] 无法确定直连 OpenRouter 的模型`);
+        return err("INTERNAL_ERROR", "OpenRouter model is not configured.", 500);
       }
       
       // 安全审查（简化版，使用本地规则）
@@ -807,10 +864,14 @@ export async function POST(req: NextRequest) {
       
       const openRouterHeaders: Record<string, string> = {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": OPENROUTER_REFERER_URL,
-        "X-Title": OPENROUTER_APP_NAME,
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": openRouterRefererUrl,
+        "X-Title": openRouterAppName,
       };
+      
+      // 注意：OpenRouter 要求使用 HTTP-Referer（不是 Referer）
+      // 但某些 HTTP 客户端可能会自动转换，所以我们也尝试添加 Referer
+      // 不过根据 OpenRouter 文档，HTTP-Referer 是正确的
       
       // 调试：检查 headers（不打印完整 API Key）
       console.log(`[${requestId}] [STEP 5.5.1] OpenRouter Headers 检查`, {
@@ -859,9 +920,32 @@ export async function POST(req: NextRequest) {
             },
           });
           
-          // 如果是 401 错误，提供更详细的错误信息
+          // 如果是 401 错误，提供更详细的错误信息和诊断建议
           if (openRouterResponse.status === 401) {
-            return err("AUTH_REQUIRED", `OpenRouter API authentication failed. Please check your OPENROUTER_API_KEY. Error: ${errorDetails.error?.message || errorText}`, 401);
+            const errorMessage = errorDetails.error?.message || errorText;
+            const originalLength = process.env.OPENROUTER_API_KEY?.length || 0;
+            const trimmedLength = OPENROUTER_API_KEY.length;
+            const hasWhitespace = originalLength !== trimmedLength;
+            const diagnosticInfo = {
+              error: errorMessage,
+              apiKeyPrefix: OPENROUTER_API_KEY.substring(0, 15),
+              apiKeyLength: OPENROUTER_API_KEY.length,
+              originalLength: originalLength,
+              trimmedLength: trimmedLength,
+              hasWhitespace: hasWhitespace,
+              apiKeyFormat: OPENROUTER_API_KEY.startsWith("sk-or-v1-") ? "correct" : "incorrect",
+              httpReferer: OPENROUTER_REFERER_URL,
+              xTitle: OPENROUTER_APP_NAME,
+              suggestion: errorMessage === "User not found." 
+                ? hasWhitespace
+                  ? "API Key 中检测到空白字符（已自动去除）。如果问题仍然存在，请检查 Vercel 环境变量中的 OPENROUTER_API_KEY 是否正确配置，确保没有多余的空格或换行符，并验证 API Key 在 OpenRouter 中仍然有效。"
+                  : "API Key 可能无效或已过期。请检查 Vercel 环境变量中的 OPENROUTER_API_KEY 是否正确配置，并确保 API Key 在 OpenRouter 中仍然有效。建议：1) 验证 API Key 是否有效（使用 curl 测试），2) 检查 Vercel 环境变量中是否有隐藏字符，3) 重新设置环境变量并重新部署。"
+                : "请检查 OPENROUTER_API_KEY 环境变量是否正确配置。"
+            };
+            
+            console.error(`[${requestId}] [STEP 5.6.1] OpenRouter 401 错误诊断`, diagnosticInfo);
+            
+            return err("AUTH_REQUIRED", `OpenRouter API 认证失败: ${errorMessage}。请检查 Vercel 环境变量中的 OPENROUTER_API_KEY 是否正确配置。`, 401);
           }
           
           return err("PROVIDER_ERROR", `OpenRouter API error: ${openRouterResponse.status} ${openRouterResponse.statusText}`, openRouterResponse.status >= 500 ? 502 : openRouterResponse.status);
@@ -923,7 +1007,7 @@ export async function POST(req: NextRequest) {
           model: openRouterData.model || model,
           safetyFlag: "ok" as const,
           costEstimate,
-          aiProvider: "openrouter-direct",
+          aiProvider: "openrouter_direct",
         });
       } catch (error) {
         const errorObj = error as Error;
@@ -941,8 +1025,253 @@ export async function POST(req: NextRequest) {
       }
     }
     
+    // 如果是直连 OpenAI 模式，直接调用 OpenAI API，不通过 AI Service
+    if (aiServiceMode === "openai_direct") {
+      console.log(`[${requestId}] [STEP 5] 开始直连OpenAI处理`);
+      
+      // 检查环境变量
+      if (!OPENAI_API_KEY) {
+        console.error(`[${requestId}] [STEP 5.1] OPENAI_API_KEY 未设置`);
+        return err("INTERNAL_ERROR", "OPENAI_API_KEY is not set. Please set OPENAI_API_KEY environment variable.", 500);
+      }
+      
+      // 调试：检查 API Key 格式（不打印完整内容）
+      const originalLength = process.env.OPENAI_API_KEY?.length || 0;
+      const trimmedLength = OPENAI_API_KEY.length;
+      const hasWhitespace = originalLength !== trimmedLength;
+      const apiKeyPrefix = OPENAI_API_KEY.substring(0, 10);
+      const apiKeyLength = OPENAI_API_KEY.length;
+      console.log(`[${requestId}] [STEP 5.1.1] API Key 检查`, {
+        prefix: apiKeyPrefix,
+        length: apiKeyLength,
+        originalLength: originalLength,
+        trimmedLength: trimmedLength,
+        hasWhitespace: hasWhitespace,
+        startsWithSk: OPENAI_API_KEY.startsWith("sk-"),
+        hasValue: !!OPENAI_API_KEY,
+        warning: hasWhitespace ? "检测到 API Key 中有空白字符，已自动去除" : undefined,
+      });
+      
+      const openaiBaseUrl = requireEnvVar("OPENAI_BASE_URL");
+      
+      // 从数据库读取模型配置
+      let model: string | null = null;
+      try {
+        const modelRow = await (aiDb as any)
+          .selectFrom("ai_config")
+          .select(["value"])
+          .where("key", "=", "model")
+          .executeTakeFirst();
+        if (modelRow && modelRow.value && modelRow.value.trim()) {
+          model = modelRow.value.trim();
+        }
+      } catch (e) {
+        console.warn(`[${requestId}] [STEP 5.2] 读取模型配置失败:`, (e as Error).message);
+      }
+
+      if (!model) {
+        console.error(`[${requestId}] [STEP 5.2] 无法确定直连 OpenAI 的模型`);
+        return err("INTERNAL_ERROR", "OpenAI model is not configured.", 500);
+      }
+      
+      // 安全审查（简化版，使用本地规则）
+      const safetyCheck = checkSafetySimple(question);
+      if (!safetyCheck.pass) {
+        console.warn(`[${requestId}] [STEP 5.3] 安全审查未通过:`, safetyCheck.reason);
+        return err("FORBIDDEN", safetyCheck.reason || "Content blocked by safety policy", 403);
+      }
+      
+      // RAG 检索（简化版，如果配置了 Supabase 则使用）
+      let ragContext = "";
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (supabaseUrl && supabaseServiceKey) {
+          // 这里可以调用 RAG 检索，但为了简化，暂时跳过
+          // 如果需要完整的 RAG 功能，可以复用 apps/ai-service/src/lib/rag.ts 的逻辑
+          console.log(`[${requestId}] [STEP 5.4] RAG 检索已配置，但直连模式下暂时跳过`);
+        }
+      } catch (e) {
+        console.warn(`[${requestId}] [STEP 5.4] RAG 检索失败:`, (e as Error).message);
+      }
+      
+      // 构建系统提示
+      const lang = locale || "zh";
+      const sysPrompt = buildSystemPrompt(lang);
+      const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
+      const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
+      
+      // 调用 OpenAI API
+      console.log(`[${requestId}] [STEP 5.5] 开始调用OpenAI API`, {
+        model,
+        baseUrl: openaiBaseUrl,
+        questionLength: question.length,
+        hasRagContext: !!ragContext,
+      });
+      
+      const openaiUrl = `${openaiBaseUrl}/chat/completions`;
+      const openaiBody = {
+        model: model,
+        temperature: 0.4,
+        messages: [
+          { role: "system", content: sysPrompt },
+          {
+            role: "user",
+            content: `${userPrefix} ${question}\n\n${refPrefix}\n${ragContext || "（無/None）"}`,
+          },
+        ],
+      };
+      
+      const openaiHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      };
+      
+      // 调试：检查 headers（不打印完整 API Key）
+      console.log(`[${requestId}] [STEP 5.5.1] OpenAI Headers 检查`, {
+        hasAuthorization: !!openaiHeaders["Authorization"],
+        authorizationPrefix: openaiHeaders["Authorization"]?.substring(0, 20) + "...",
+        contentType: openaiHeaders["Content-Type"],
+      });
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+        
+        const openaiResponse = await fetch(openaiUrl, {
+          method: "POST",
+          headers: openaiHeaders,
+          body: JSON.stringify(openaiBody),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!openaiResponse.ok) {
+          const errorText = await openaiResponse.text().catch(() => "");
+          let errorDetails: any = {};
+          try {
+            errorDetails = JSON.parse(errorText);
+          } catch {
+            errorDetails = { raw: errorText };
+          }
+          
+          console.error(`[${requestId}] [STEP 5.6] OpenAI API 错误:`, {
+            status: openaiResponse.status,
+            statusText: openaiResponse.statusText,
+            error: errorText,
+            errorDetails,
+            apiKeyPrefix: OPENAI_API_KEY.substring(0, 10),
+            apiKeyLength: OPENAI_API_KEY.length,
+            apiKeyStartsWithSk: OPENAI_API_KEY.startsWith("sk-"),
+            url: openaiUrl,
+          });
+          
+          // 如果是 401 错误，提供更详细的错误信息和诊断建议
+          if (openaiResponse.status === 401) {
+            const errorMessage = errorDetails.error?.message || errorText;
+            const originalLength = process.env.OPENAI_API_KEY?.length || 0;
+            const trimmedLength = OPENAI_API_KEY.length;
+            const hasWhitespace = originalLength !== trimmedLength;
+            const diagnosticInfo = {
+              error: errorMessage,
+              apiKeyPrefix: OPENAI_API_KEY.substring(0, 15),
+              apiKeyLength: OPENAI_API_KEY.length,
+              originalLength: originalLength,
+              trimmedLength: trimmedLength,
+              hasWhitespace: hasWhitespace,
+              apiKeyFormat: OPENAI_API_KEY.startsWith("sk-") ? "correct" : "incorrect",
+              suggestion: errorMessage === "Incorrect API key provided." 
+                ? hasWhitespace
+                  ? "API Key 中检测到空白字符（已自动去除）。如果问题仍然存在，请检查 Vercel 环境变量中的 OPENAI_API_KEY 是否正确配置，确保没有多余的空格或换行符，并验证 API Key 在 OpenAI 中仍然有效。"
+                  : "API Key 可能无效或已过期。请检查 Vercel 环境变量中的 OPENAI_API_KEY 是否正确配置，并确保 API Key 在 OpenAI 中仍然有效。建议：1) 验证 API Key 是否有效（使用 curl 测试），2) 检查 Vercel 环境变量中是否有隐藏字符，3) 重新设置环境变量并重新部署。"
+                : "请检查 OPENAI_API_KEY 环境变量是否正确配置。"
+            };
+            
+            console.error(`[${requestId}] [STEP 5.6.1] OpenAI 401 错误诊断`, diagnosticInfo);
+            
+            return err("AUTH_REQUIRED", `OpenAI API 认证失败: ${errorMessage}。请检查 Vercel 环境变量中的 OPENAI_API_KEY 是否正确配置。`, 401);
+          }
+          
+          return err("PROVIDER_ERROR", `OpenAI API error: ${openaiResponse.status} ${openaiResponse.statusText}`, openaiResponse.status >= 500 ? 502 : openaiResponse.status);
+        }
+        
+        const openaiData = await openaiResponse.json() as {
+          choices?: Array<{ message?: { content?: string } }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+          model?: string;
+        };
+        
+        const answer = openaiData.choices?.[0]?.message?.content?.trim() || "";
+        if (!answer) {
+          console.error(`[${requestId}] [STEP 5.7] OpenAI API 返回空答案`);
+          return err("PROVIDER_ERROR", "OpenAI API returned empty answer", 502);
+        }
+        
+        // 截断答案（如果超过限制）
+        const truncatedAnswer = answer.length > ANSWER_CHAR_LIMIT 
+          ? answer.substring(0, ANSWER_CHAR_LIMIT) + "..."
+          : answer;
+        
+        // 计算成本估算（简化版）
+        const inputTokens = openaiData.usage?.prompt_tokens || 0;
+        const outputTokens = openaiData.usage?.completion_tokens || 0;
+        const costEstimate = {
+          inputTokens,
+          outputTokens,
+          approxUsd: 0, // 简化版，不计算具体成本
+        };
+        
+        console.log(`[${requestId}] [STEP 5.8] OpenAI API 调用成功`, {
+          model: openaiData.model || model,
+          answerLength: truncatedAnswer.length,
+          inputTokens,
+          outputTokens,
+        });
+        
+        // 写入 ai_logs 表（异步，不阻塞响应）
+        void writeAiLogToDatabase({
+          userId: forwardedUserId,
+          question,
+          answer: truncatedAnswer,
+          locale,
+          model: openaiData.model || model,
+          ragHits: 0, // 直连模式下暂时没有 RAG
+          safetyFlag: "ok",
+          costEstUsd: costEstimate.approxUsd,
+          sources: [], // 直连模式下暂时不返回 RAG 来源
+          createdAtIso: new Date().toISOString(),
+        }).catch((error) => {
+          console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
+        });
+        
+        // 返回结果
+        return ok({
+          answer: truncatedAnswer,
+          sources: [], // 直连模式下暂时不返回 RAG 来源
+          model: openaiData.model || model,
+          safetyFlag: "ok" as const,
+          costEstimate,
+          aiProvider: "openai_direct",
+        });
+      } catch (error) {
+        const errorObj = error as Error;
+        console.error(`[${requestId}] [STEP 5.9] OpenAI API 调用失败:`, {
+          error: errorObj.message,
+          name: errorObj.name,
+          stack: errorObj.stack,
+        });
+        
+        if (errorObj.name === "AbortError" || errorObj.message.includes("timeout")) {
+          return err("PROVIDER_ERROR", "OpenAI API request timeout (30s)", 504);
+        }
+        
+        return err("PROVIDER_ERROR", `Failed to call OpenAI API: ${errorObj.message}`, 502);
+      }
+    }
+    
     // 确保 selectedAiServiceUrl 不重复 /v1 路径（仅在非直连模式下）
-    // 注意：openrouter-direct 模式已经在上面处理并返回了，不会到达这里
+    // 注意：openrouter_direct 和 openai_direct 模式已经在上面处理并返回了，不会到达这里
     if (!selectedAiServiceUrl || !selectedAiServiceToken) {
       console.error(`[${requestId}] [STEP 5] AI服务配置不完整`, {
         hasUrl: !!selectedAiServiceUrl,
@@ -1001,13 +1330,18 @@ export async function POST(req: NextRequest) {
         timeout: 30000,
       });
       
+      const upstreamHeaders: Record<string, string> = {
+        "content-type": "application/json; charset=utf-8",
+        authorization: `Bearer ${selectedAiServiceToken}`,
+        "x-zalem-client": "web",
+      };
+      if (aiServiceMode === "openai" || aiServiceMode === "openrouter") {
+        upstreamHeaders["X-AI-Provider"] = aiServiceMode;
+      }
+
       upstream = await fetch(upstreamUrl, {
         method: "POST",
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          authorization: `Bearer ${selectedAiServiceToken}`,
-          "x-zalem-client": "web",
-        },
+        headers: upstreamHeaders,
         body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
@@ -1078,7 +1412,7 @@ export async function POST(req: NextRequest) {
           
           console.log(`[${requestId}] [STEP 5.2.2] 开始回退请求`, {
             url: fallbackUrl,
-            mode: "online",
+            mode: "openai",
           });
           
           const fallbackStartTime = Date.now();
@@ -1095,13 +1429,16 @@ export async function POST(req: NextRequest) {
               url: fallbackUrl,
             });
             
+            const fallbackHeaders: Record<string, string> = {
+              "content-type": "application/json; charset=utf-8",
+              authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+              "x-zalem-client": "web",
+            };
+            fallbackHeaders["X-AI-Provider"] = "openai";
+
             const fallbackResponse = await fetch(fallbackUrl, {
               method: "POST",
-              headers: {
-                "content-type": "application/json; charset=utf-8",
-                authorization: `Bearer ${AI_SERVICE_TOKEN}`,
-                "x-zalem-client": "web",
-              },
+              headers: fallbackHeaders,
               body: JSON.stringify(requestBody),
               signal: fallbackController.signal,
             });
@@ -1118,7 +1455,7 @@ export async function POST(req: NextRequest) {
             
             // 使用回退响应继续处理
             upstream = fallbackResponse;
-            aiServiceMode = "online"; // 更新模式标记
+            aiServiceMode = "openai"; // 更新模式标记
           } catch (fallbackError) {
             const fallbackDuration = Date.now() - fallbackStartTime;
             const fallbackErr = fallbackError as Error;
@@ -1206,13 +1543,16 @@ export async function POST(req: NextRequest) {
             fallbackController.abort();
           }, fallbackTimeout);
           
+          const fallbackHeaders: Record<string, string> = {
+            "content-type": "application/json; charset=utf-8",
+            authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+            "x-zalem-client": "web",
+          };
+          fallbackHeaders["X-AI-Provider"] = "openai";
+
           const fallbackResponse = await fetch(fallbackUrl, {
             method: "POST",
-            headers: {
-              "content-type": "application/json; charset=utf-8",
-              authorization: `Bearer ${AI_SERVICE_TOKEN}`,
-              "x-zalem-client": "web",
-            },
+            headers: fallbackHeaders,
             body: JSON.stringify(requestBody),
             signal: fallbackController.signal,
           });
@@ -1224,10 +1564,10 @@ export async function POST(req: NextRequest) {
             const fallbackResult = JSON.parse(fallbackText) as AiServiceResponse;
             
             if (fallbackResult.ok) {
-              console.log(`[${requestId}] [STEP 6.1.2] 回退到在线AI服务成功`);
+              console.log(`[${requestId}] [STEP 6.1.2] 回退到 OpenAI 服务成功`);
               // 使用回退响应继续处理
               result = fallbackResult;
-              aiServiceMode = "online";
+              aiServiceMode = "openai";
             } else {
               // 回退服务也返回错误，继续使用原始错误
               console.error(`[${requestId}] [STEP 6.1.2] 回退服务也返回错误:`, fallbackResult);
@@ -1415,7 +1755,7 @@ export async function POST(req: NextRequest) {
       // 在返回数据中添加AI类型信息
       const responseData = {
         ...result.data,
-        aiProvider: aiServiceMode, // "online" 或 "local" 或 "openrouter" 或 "openrouter-direct"
+        aiProvider: aiServiceMode,
         cached: result.data.cached || false, // 透传缓存标识
       };
       
