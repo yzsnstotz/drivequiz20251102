@@ -19,6 +19,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { ServiceConfig } from "../../index.js";
 import { ensureServiceAuth } from "../../middlewares/auth.js";
 import { getOpenAIClient } from "../../lib/openaiClient.js";
+import { getAiProviderFromConfig } from "../../lib/configLoader.js";
 // Logger import removed for performance
 
 // 统一响应类型
@@ -78,7 +79,8 @@ async function createEmbedding(
   config: ServiceConfig,
   text: string,
 ): Promise<number[]> {
-  const openai = getOpenAIClient(config);
+  const aiProvider = await getAiProviderFromConfig();
+  const openai = getOpenAIClient(config, aiProvider);
   try {
     const resp = await openai.embeddings.create({
       model: EMBEDDING_MODEL,

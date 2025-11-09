@@ -166,11 +166,11 @@ const ENV = {
 
 
 
-function forceModeFromReq(req: any): "local" | "online" | null {
+function forceModeFromReq(req: any): "local" | "openai" | null {
 
   const m = req?.nextUrl?.searchParams?.get("ai")?.toLowerCase();
 
-  if (m === "local" || m === "online") return m as any;
+  if (m === "local" || m === "online" || m === "openai") return m === "local" ? "local" : "openai";
 
   return null;
 
@@ -194,7 +194,7 @@ function pickAiTarget(req: any) {
 
   if (!ENV.AI_SERVICE_URL || !ENV.AI_SERVICE_TOKEN) throw new Error("Online AI service URL/TOKEN is not configured.");
 
-  return { mode: "online" as const, url: ENV.AI_SERVICE_URL, token: ENV.AI_SERVICE_TOKEN };
+  return { mode: "openai" as const, url: ENV.AI_SERVICE_URL, token: ENV.AI_SERVICE_TOKEN };
 
 }
 
@@ -484,19 +484,19 @@ fi
 
 
 
-# 4.4 强制 online（仅验证开关 & 指纹）
+# 4.4 强制 openai（仅验证开关 & 指纹）
 
-log "测试 4.4：?ai=online（若未配置线上 URL/TOKEN，出现报错属正常）"
+log "测试 4.4：?ai=openai（若未配置线上 URL/TOKEN，出现报错属正常）"
 
-H4="$(call_ask "http://127.0.0.1:${WEB_PORT}/api/ai/ask?ai=online" '{"question":"force online","locale":"zh"}')"
+H4="$(call_ask "http://127.0.0.1:${WEB_PORT}/api/ai/ask?ai=openai" '{"question":"force openai","locale":"zh"}')"
 
 if echo "$H4" | grep -qi "x-route-fingerprint: ${FPRINT}"; then
 
-  REPORT+="\n- ✅ 4.4 强制 online：指纹存在，命中了本文件（是否能连上线上由你是否配置决定）。"
+  REPORT+="\n- ✅ 4.4 强制 openai：指纹存在，命中了本文件（是否能连上线上由你是否配置决定）。"
 
 else
 
-  REPORT+="\n- ❌ 4.4 强制 online：未见指纹，疑似 rewrite/middleware 拦截。"
+  REPORT+="\n- ❌ 4.4 强制 openai：未见指纹，疑似 rewrite/middleware 拦截。"
 
 fi
 

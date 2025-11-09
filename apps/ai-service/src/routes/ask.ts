@@ -202,19 +202,16 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const aiProvider = await getAiProviderFromConfig();
         console.log("[ASK ROUTE] AI provider from config", {
           aiProvider,
-          note: aiProvider === "openai" ? "使用 OpenAI" : aiProvider === "openrouter" ? "使用 OpenRouter" : "使用环境变量判断",
         });
 
         // 7) 调用 OpenAI
         let openai;
         try {
           openai = getOpenAIClient(config, aiProvider);
-          const baseUrl = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
-          const isOpenRouter = aiProvider === "openrouter" || (aiProvider === null && baseUrl.includes("openrouter.ai"));
           console.log("[ASK ROUTE] AI client initialized successfully", {
             aiProvider,
-            baseUrl: openai.baseURL || baseUrl,
-            isOpenRouter,
+            baseUrl: openai.baseURL,
+            isOpenRouter: aiProvider === "openrouter",
             hasOpenRouterKey: !!config.openrouterApiKey,
             hasOpenAIKey: !!config.openaiApiKey,
           });
@@ -223,8 +220,9 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           console.error("[ASK ROUTE] Failed to initialize AI client:", {
             error: error.message,
             stack: error.stack,
-            baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
-            isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
+            aiProvider,
+            openaiBaseUrl: process.env.OPENAI_BASE_URL,
+            openrouterBaseUrl: process.env.OPENROUTER_BASE_URL,
           });
           reply.code(500).send({
             ok: false,
@@ -266,6 +264,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           });
         } catch (e) {
           const error = e as Error & { status?: number; code?: string };
+          const resolvedBaseUrl = openai.baseURL;
           console.error("[ASK ROUTE] AI API call failed:", {
             error: error.message,
             name: error.name,
@@ -273,8 +272,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             code: error.code,
             stack: error.stack,
             model,
-            baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
-            isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
+            baseUrl: resolvedBaseUrl,
+            aiProvider,
           });
           // 提取更详细的错误信息
           let errorMessage = error.message || "AI API call failed";
@@ -304,8 +303,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             message: errorMessage,
             details: {
               model,
-              baseUrl: process.env.OPENAI_BASE_URL || process.env.OLLAMA_BASE_URL || "https://api.openai.com/v1",
-              isOpenRouter: (process.env.OPENAI_BASE_URL || "").includes("openrouter.ai"),
+              baseUrl: resolvedBaseUrl,
+              aiProvider,
             },
           });
           return;
