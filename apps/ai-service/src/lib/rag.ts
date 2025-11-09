@@ -28,13 +28,7 @@ export type SourceRef = {
 
 const DEFAULT_MATCH_COUNT = 5 as const;
 const CONTEXT_CHAR_LIMIT = 4000 as const;
-const EMBEDDING_MODEL = (() => {
-  const value = process.env.EMBEDDING_MODEL?.trim();
-  if (!value) {
-    throw new Error("EMBEDDING_MODEL is not configured. Please set the environment variable.");
-  }
-  return value;
-})();
+const EMBEDDING_MODEL = (process.env.EMBEDDING_MODEL || "text-embedding-3-small").trim();
 const FETCH_TIMEOUT_MS = Number(process.env.RAG_FETCH_TIMEOUT_MS || 10000);
 
 /** 统一语言规范化（默认 zh，仅接受 zh/ja/en） */
