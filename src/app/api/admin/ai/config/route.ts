@@ -53,7 +53,7 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       model: config.model || "gpt-4o-mini",
       cacheTtl: config.cacheTtl || "86400",
       costAlertUsdThreshold: config.costAlertUsdThreshold || "10.00",
-      aiProvider: config.aiProvider || "online", // 默认使用在线AI
+      aiProvider: config.aiProvider || "openai",
     };
 
     return success(result);
@@ -88,7 +88,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           model?: string;
           cacheTtl?: number;
           costAlertUsdThreshold?: number;
-          aiProvider?: "online" | "local" | "openrouter" | "openrouter-direct";
+          aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
         }
       | null;
 
@@ -139,8 +139,14 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
     }
 
     if (body.aiProvider !== undefined) {
-      if (body.aiProvider !== "online" && body.aiProvider !== "local" && body.aiProvider !== "openrouter" && body.aiProvider !== "openrouter-direct") {
-        return badRequest("aiProvider must be either 'online', 'local', 'openrouter', or 'openrouter-direct'.");
+      if (
+        body.aiProvider !== "openai" &&
+        body.aiProvider !== "local" &&
+        body.aiProvider !== "openrouter" &&
+        body.aiProvider !== "openrouter_direct" &&
+        body.aiProvider !== "openai_direct"
+      ) {
+        return badRequest("aiProvider must be either 'openai', 'local', 'openrouter', 'openrouter_direct', or 'openai_direct'.");
       }
       updates.push({ key: "aiProvider", value: body.aiProvider });
     }
@@ -219,7 +225,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       model: configMap.model || "gpt-4o-mini",
       cacheTtl: configMap.cacheTtl || "86400",
       costAlertUsdThreshold: configMap.costAlertUsdThreshold || "10.00",
-      aiProvider: configMap.aiProvider || "online",
+      aiProvider: configMap.aiProvider || "openai",
     };
 
     return success(result);

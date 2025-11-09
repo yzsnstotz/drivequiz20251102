@@ -17,14 +17,19 @@ export type LocalAIConfig = {
   version: string;
 };
 
+function requireEnv(key: keyof NodeJS.ProcessEnv): string {
+  const raw = process.env[key];
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new Error(`${key} 必须配置`);
+  }
+  return raw.trim();
+}
+
 export function loadConfig(): LocalAIConfig {
   const {
     PORT,
     HOST,
     SERVICE_TOKENS,
-    OLLAMA_BASE_URL,
-    AI_MODEL,
-    EMBEDDING_MODEL,
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY,
     NODE_ENV,
@@ -44,9 +49,9 @@ export function loadConfig(): LocalAIConfig {
         .map((s) => s.trim())
         .filter(Boolean)
     ),
-    ollamaBaseUrl: OLLAMA_BASE_URL || "http://localhost:11434/v1",
-    aiModel: AI_MODEL || "llama3.2:3b",
-    embeddingModel: EMBEDDING_MODEL || "nomic-embed-text",
+    ollamaBaseUrl: requireEnv("OLLAMA_BASE_URL"),
+    aiModel: requireEnv("AI_MODEL"),
+    embeddingModel: requireEnv("EMBEDDING_MODEL"),
     supabaseUrl: SUPABASE_URL,
     supabaseServiceKey: SUPABASE_SERVICE_KEY,
     nodeEnv: NODE_ENV || "development",

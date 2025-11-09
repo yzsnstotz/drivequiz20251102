@@ -3,9 +3,17 @@
  * 提供统一的 Ollama API 调用接口
  */
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
-const AI_MODEL = process.env.AI_MODEL || "llama3.2:3b";
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || "nomic-embed-text";
+function requireEnv(key: string): string {
+  const raw = process.env[key];
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new Error(`${key} is not set. Please configure ${key} in the environment.`);
+  }
+  return raw.trim();
+}
+
+const OLLAMA_BASE_URL = requireEnv("OLLAMA_BASE_URL");
+const AI_MODEL = requireEnv("AI_MODEL");
+const EMBEDDING_MODEL = requireEnv("EMBEDDING_MODEL");
 // 超时配置：Ollama 生成可能需要较长时间，特别是处理长对话历史时
 const OLLAMA_CHAT_TIMEOUT_MS = Number(process.env.OLLAMA_CHAT_TIMEOUT_MS || 90_000); // 90秒
 const OLLAMA_EMBEDDING_TIMEOUT_MS = Number(process.env.OLLAMA_EMBEDDING_TIMEOUT_MS || 30_000); // 30秒

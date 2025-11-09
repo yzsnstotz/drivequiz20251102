@@ -1,5 +1,86 @@
 # OpenRouter 故障排查指南
 
+## 401 Unauthorized / "User not found" 错误
+
+### 常见原因（Vercel 部署）
+
+1. **API Key 无效或已过期**
+2. **环境变量未正确配置在 Vercel 中**
+3. **API Key 格式正确但值不正确**
+4. **Vercel 环境变量未正确同步**
+
+### 排查步骤（针对 openrouter_direct 模式）
+
+#### 1. 检查 Vercel 环境变量
+
+在 `openrouter_direct` 模式下，环境变量需要在 **Vercel 主站** 中配置，而不是在 AI Service 中。
+
+确保在 **Vercel Dashboard** 中设置了以下环境变量：
+
+```bash
+# 必需
+OPENROUTER_API_KEY=sk-or-v1-xxxxx
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# 可选
+OPENROUTER_REFERER_URL=https://zalem.app
+OPENROUTER_APP_NAME=ZALEM
+```
+
+**重要**：
+- 这些环境变量需要在 **Vercel 主站** 中设置（不是 AI Service）
+- 确保环境变量名称完全正确（区分大小写）
+- 确保 API Key 值完整且没有多余的空格或换行符
+- **代码已自动处理空白字符**：如果环境变量中有首尾空白字符，代码会自动去除（使用 `trim()`）
+- 如果仍然遇到 401 错误，请检查 Vercel 环境变量中是否有隐藏字符，建议重新复制粘贴 API Key
+
+#### 2. 验证 API Key 有效性
+
+在本地或使用 curl 测试 API Key：
+
+```bash
+curl https://openrouter.ai/api/v1/models \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "HTTP-Referer: https://zalem.app" \
+  -H "X-Title: ZALEM"
+```
+
+如果返回 401 错误，说明 API Key 无效或已过期。
+
+#### 3. 检查 Vercel 环境变量同步
+
+1. 登录 Vercel Dashboard
+2. 进入项目设置 → Environment Variables
+3. 确认 `OPENROUTER_API_KEY` 已设置
+4. 检查环境变量是否应用到正确的环境（Production/Preview/Development）
+5. 如果修改了环境变量，需要重新部署应用
+
+#### 4. 查看 Vercel 日志
+
+在 Vercel Dashboard 中查看函数日志，应该能看到详细的错误诊断信息：
+
+```
+[STEP 5.6.1] OpenRouter 401 错误诊断 {
+  error: "User not found.",
+  apiKeyPrefix: "sk-or-v1-f74f...",
+  apiKeyLength: 74,
+  apiKeyFormat: "correct",
+  suggestion: "API Key 可能无效或已过期..."
+}
+```
+
+#### 5. 重新创建 API Key
+
+如果 API Key 无效，请：
+
+1. 访问 [OpenRouter Keys](https://openrouter.ai/keys)
+2. 删除旧的 API Key（如果存在）
+3. 创建新的 API Key
+4. 在 Vercel 中更新 `OPENROUTER_API_KEY` 环境变量
+5. 重新部署应用
+
+---
+
 ## 502 Bad Gateway 错误
 
 ### 常见原因
@@ -119,14 +200,22 @@ curl -X POST http://localhost:8787/v1/ask \
 2. 确认环境变量名称正确（`OPENROUTER_API_KEY`）
 3. 重启 AI Service
 
-#### 错误 2: `Invalid API key`
+#### 错误 2: `Invalid API key` 或 `User not found` (401)
 
 **原因**：API Key 无效或已过期
 
 **解决方案**：
 1. 访问 [OpenRouter Keys](https://openrouter.ai/keys) 检查 API Key
 2. 创建新的 API Key
-3. 更新环境变量并重启服务
+3. 更新环境变量：
+   - 如果使用 `openrouter_direct` 模式：在 **Vercel** 中更新 `OPENROUTER_API_KEY`
+   - 如果使用 `openrouter` 模式：在 **AI Service** 中更新 `OPENROUTER_API_KEY`
+4. 重新部署应用（Vercel）或重启服务（AI Service）
+
+**Vercel 部署注意事项**：
+- 确保环境变量在 Vercel Dashboard 中正确配置
+- 检查环境变量是否应用到正确的环境（Production/Preview/Development）
+- 修改环境变量后需要重新部署才能生效
 
 #### 错误 3: `Model 'xxx' not found`
 
@@ -188,10 +277,23 @@ curl https://openrouter.ai/api/v1/chat/completions \
 
 ### 验证清单
 
-- [ ] `OPENROUTER_API_KEY` 已设置
-- [ ] `OPENAI_BASE_URL` 设置为 `https://openrouter.ai/api/v1`
+#### 对于 openrouter_direct 模式（Vercel 部署）
+
+- [ ] `OPENROUTER_API_KEY` 已在 **Vercel** 中设置
+- [ ] `OPENROUTER_BASE_URL` 设置为 `https://openrouter.ai/api/v1`（在 Vercel 中）
+- [ ] `OPENROUTER_REFERER_URL` 和 `OPENROUTER_APP_NAME` 已设置（可选）
+- [ ] Vercel 应用已重新部署（修改环境变量后）
+- [ ] 在配置中心选择了 "openrouter_direct"
+- [ ] 模型名称格式正确（`provider/model`）
+- [ ] API Key 有效（通过 curl 测试）
+- [ ] 网络连接正常
+
+#### 对于 openrouter 模式（通过 AI Service）
+
+- [ ] `OPENROUTER_API_KEY` 已在 **AI Service** 中设置
+- [ ] `OPENROUTER_BASE_URL` 设置为 `https://openrouter.ai/api/v1`（在 AI Service 中）
 - [ ] AI Service 已重启
-- [ ] 在配置中心选择了 "OpenRouter"
+- [ ] 在配置中心选择了 "openrouter"
 - [ ] 模型名称格式正确（`provider/model`）
 - [ ] API Key 有效（通过 curl 测试）
 - [ ] AI Service 正在运行

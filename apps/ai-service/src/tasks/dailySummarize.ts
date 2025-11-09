@@ -5,6 +5,7 @@
  */
 
 import { getOpenAIClient } from "../lib/openaiClient.js";
+import { getAiProviderFromConfig } from "../lib/configLoader.js";
 import { getRagContext } from "../lib/rag.js";
 import { cacheSet } from "../lib/cache.js";
 import { checkSafety } from "../lib/safety.js";
@@ -98,7 +99,8 @@ export async function runDailySummarize(
     const ragContext = await getRagContext(queryText || "无数据", "zh", config);
 
     // 5) 生成摘要草案（让模型归纳常见问题、知识缺口与安全观察）
-    const openai = getOpenAIClient(config);
+    const aiProvider = await getAiProviderFromConfig();
+    const openai = getOpenAIClient(config, aiProvider);
     const model = resolveModel(config);
     const prompt = composePrompt(dateUtc, agg, ragContext);
 
@@ -261,14 +263,16 @@ function aggregate(logs: AskLogRecord[]) {
 }
 
 function resolveModel(config: ServiceConfig): string {
-  // 支持多种命名以兼容不同版本配置
   const anyCfg = config as any;
-  return (
+  const model =
     anyCfg.aiModel ||
     anyCfg.openaiModel ||
-    anyCfg.models?.summary ||
-    "gpt-4o-mini"
-  );
+    anyCfg.models?.summary;
+
+  if (typeof model !== "string" || model.trim() === "") {
+    throw new Error("AI model is not configured for daily summary.");
+  }
+  return model.trim();
 }
 
 function normalize(s: string) {
