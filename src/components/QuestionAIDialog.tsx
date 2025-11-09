@@ -49,7 +49,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   metadata?: {
-    aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "cached";
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached";
     model?: string;
     sourceType?: "ai-generated" | "cached" | "knowledge-base";
   };
@@ -171,15 +171,15 @@ export default function QuestionAIDialog({
       } else {
         const errorMessage: Message = {
           role: "assistant",
-          content: "抱歉，AI服务暂时不可用，请稍后再试。",
+          content: "Sorry, AI service is temporarily unavailable. Please try again later.",
         };
         setMessages((prev) => [...prev, errorMessage]);
       }
     } catch (error) {
-      console.error("获取AI解释失败:", error);
+      console.error("Failed to get AI explanation:", error);
       const errorMessage: Message = {
         role: "assistant",
-        content: "抱歉，获取AI解释时发生错误，请稍后再试。",
+        content: "Sorry, an error occurred while getting AI explanation. Please try again later.",
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -285,17 +285,33 @@ export default function QuestionAIDialog({
                       {message.content}
                     </div>
                   </div>
-                  {/* AI回复的元数据信息 */}
+                  {/* AI reply metadata */}
                   {message.role === "assistant" && message.metadata && (
                     <div className="max-w-[80%] px-2 py-1 text-xs text-gray-500 space-y-1 mt-1">
-                      {/* AI服务提供商和模型 */}
+                      {/* AI Service Provider and Model */}
                       {(message.metadata.aiProvider || message.metadata.model) && (
                         <div className="flex items-center gap-1">
                           <span className="inline-flex items-center gap-1">
                             {message.metadata.aiProvider === "local" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                <span>本地AI (Ollama)</span>
+                                <span>Local AI (Ollama)</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "openai" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                <span>OpenAI (via Render)</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "openai_direct" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                                <span>OpenAI (Direct)</span>
                                 {message.metadata.model && (
                                   <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
                                 )}
@@ -303,15 +319,15 @@ export default function QuestionAIDialog({
                             ) : message.metadata.aiProvider === "openrouter" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                <span>OpenRouter（通过Render）</span>
+                                <span>OpenRouter (via Render)</span>
                                 {message.metadata.model && (
                                   <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openrouter_direct" ? (
                               <>
-                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                <span>直连OpenRouter</span>
+                                <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
+                                <span>OpenRouter (Direct)</span>
                                 {message.metadata.model && (
                                   <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
                                 )}
@@ -319,20 +335,12 @@ export default function QuestionAIDialog({
                             ) : message.metadata.aiProvider === "cached" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                                <span>知识库答案</span>
+                                <span>Cached Answer</span>
                                 {message.metadata.model && (
                                   <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
                                 )}
                               </>
-                            ) : (
-                              <>
-                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                <span>OpenAI（通过Render）</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
-                                )}
-                              </>
-                            )}
+                            ) : null}
                           </span>
                         </div>
                       )}
