@@ -96,7 +96,7 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       .orderBy("id", "asc")
       .execute();
 
-    // 转换为前端格式
+    // 转换为前端格式（保留 content_hash）
     return questions.map((q) => ({
       id: q.id,
       type: q.type,
@@ -106,6 +106,7 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       image: q.image || undefined,
       explanation: q.explanation || undefined,
       category: packageName,
+      content_hash: q.content_hash, // 保留 content_hash 字段
     }));
   } catch (error) {
     console.error(`[getQuestionsFromDb] Error loading ${packageName}:`, error);
@@ -879,8 +880,8 @@ export async function updateAllJsonPackages(): Promise<{
 
     console.log(`[updateAllJsonPackages] 从数据库读取到 ${allDbQuestions.length} 个题目`);
 
-    // 转换为前端格式
-    const allQuestions: Question[] = allDbQuestions.map((q) => {
+    // 转换为前端格式（使用content_hash作为hash，不重新计算）
+    const questionsWithHash = allDbQuestions.map((q) => {
       // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
       const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
         ? q.license_types[0]
@@ -895,25 +896,20 @@ export async function updateAllJsonPackages(): Promise<{
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category,
+        hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
       };
     });
     
-    // 2. 重新计算所有题目的hash（刷新contenthash）
-    const questionsWithHash = allQuestions.map((q) => {
-      const hash = calculateQuestionHash(q);
-      return {
-        ...q,
-        hash,
-      };
-    });
-    
-    // 3. 获取所有题目的AI回答（从数据库）
+    // 3. 获取所有题目的AI回答（从数据库，使用hash作为question_hash）
     const aiAnswers: Record<string, string> = {};
     for (const question of questionsWithHash) {
-      const questionHash = (question as any).hash || calculateQuestionHash(question);
-      const answer = await getAIAnswerFromDb(questionHash, "zh");
-      if (answer) {
-        aiAnswers[questionHash] = answer;
+      // 使用hash作为question_hash（hash就是content_hash）
+      const questionHash = (question as any).hash;
+      if (questionHash) {
+        const answer = await getAIAnswerFromDb(questionHash, "zh");
+        if (answer) {
+          aiAnswers[questionHash] = answer;
+        }
       }
     }
 

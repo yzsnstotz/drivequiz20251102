@@ -10,6 +10,38 @@ import {
   saveAIAnswerToDb,
 } from "@/lib/questionDb";
 
+// 用户缓存存储（内存缓存，按用户ID和题目hash存储）
+// 格式：Map<userId, Map<questionHash, answer>>
+const userAnswerCache = new Map<string, Map<string, string>>();
+
+/**
+ * 获取用户缓存的AI答案
+ */
+function getUserCachedAnswer(userId: string | null, questionHash: string): string | null {
+  if (!userId || !questionHash) return null;
+  const userCache = userAnswerCache.get(userId);
+  if (!userCache) return null;
+  return userCache.get(questionHash) || null;
+}
+
+/**
+ * 存储用户缓存的AI答案
+ */
+function setUserCachedAnswer(userId: string | null, questionHash: string, answer: string): void {
+  if (!userId || !questionHash || !answer) return;
+  let userCache = userAnswerCache.get(userId);
+  if (!userCache) {
+    userCache = new Map();
+    userAnswerCache.set(userId, userCache);
+  }
+  userCache.set(questionHash, answer);
+  // 限制每个用户的缓存大小（最多1000条）
+  if (userCache.size > 1000) {
+    const entries = Array.from(userCache.entries());
+    entries.slice(0, entries.length - 1000).forEach(([key]) => userCache!.delete(key));
+  }
+}
+
 export const runtime = "nodejs";
 
 /**
@@ -24,6 +56,7 @@ export const runtime = "nodejs";
 type AskRequest = {
   question: string;
   locale?: string;
+  questionHash?: string; // 题目的hash值（从JSON包或数据库获取，避免重复计算）
 };
 
 type AiServiceResponse = {
@@ -705,9 +738,13 @@ export async function POST(req: NextRequest) {
       return err("VALIDATION_FAILED", "invalid locale.", 400);
     }
     
+    // 获取题目的hash值（如果前端传递了，直接使用，避免重复计算）
+    const questionHashFromRequest = body.questionHash?.trim() || null;
+    
     console.log(`[${requestId}] [STEP 2.6] 参数校验通过`, {
       questionLength: question.length,
       locale: locale || "(none)",
+      hasQuestionHash: !!questionHashFromRequest,
     });
 
     // 3) 配额检查（用户维度 10次/日）
@@ -777,86 +814,42 @@ export async function POST(req: NextRequest) {
       forwardedUserId,
     });
     
-    // 4.5) 检查JSON包中是否有AI解析（如果是题目）
-    // 尝试从JSON包中获取AI解析，如果存在则直接返回
-    console.log(`[${requestId}] [STEP 4.5] 开始检查JSON包中的AI解析`);
+    // 4.5) 检查是否有缓存的AI解析（如果是题目）
+    // 前端已经检查过本地JSON包，后端直接检查数据库
+    console.log(`[${requestId}] [STEP 4.5] 开始检查缓存的AI解析`);
     let cachedAnswer: string | null = null;
     let questionHash: string | null = null;
     let packageName: string | null = null;
     let cacheSource: "json" | "database" | null = null; // 记录缓存来源
     
     try {
-      // 尝试通过问题内容匹配题目数据库
-      // 1. 先从数据库查找匹配的题目（通过content模糊匹配）
-      const matchedQuestion = await db
-        .selectFrom("questions")
-        .selectAll()
-        .where("content", "ilike", `%${question.trim()}%`)
-        .limit(1)
-        .executeTakeFirst();
-      
-      if (matchedQuestion) {
-        // 找到匹配的题目，使用其content_hash
-        questionHash = matchedQuestion.content_hash;
-        console.log(`[${requestId}] [STEP 4.5.0] 从数据库找到匹配的题目`, {
-          questionId: matchedQuestion.id,
+      // 1. 使用前端传递的hash值（前端必须传递hash）
+      if (questionHashFromRequest) {
+        questionHash = questionHashFromRequest;
+        console.log(`[${requestId}] [STEP 4.5.0] 使用前端传递的hash值`, {
           questionHash: questionHash.substring(0, 16) + "...",
         });
-        
-        // 从license_types中获取packageName（仅用于日志记录）
-        packageName = matchedQuestion.license_types?.[0] || null;
-        
-        // 1. 优先从统一的questions.json读取（这是最新的包，是唯一的JSON包数据获取源）
-        cachedAnswer = await getAIAnswerFromJson(null, questionHash);
-        if (cachedAnswer) {
-          cacheSource = "json"; // 标记为从JSON包读取
-          console.log(`[${requestId}] [STEP 4.5.1] 从统一的questions.json中找到AI解析`, {
-            questionHash: questionHash.substring(0, 16) + "...",
-            answerLength: cachedAnswer.length,
-          });
-        }
-        
-        // 2. 如果统一的JSON包中没有，尝试从数据库读取（不再读取单个JSON包）
-        if (!cachedAnswer) {
-          cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
-          if (cachedAnswer) {
-            cacheSource = "database"; // 标记为从数据库读取
-            console.log(`[${requestId}] [STEP 4.5.2] 从数据库中找到AI解析`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: cachedAnswer.length,
-            });
-          }
-        }
       } else {
-        // 如果没有找到匹配的题目，尝试通过问题内容直接计算hash（简化匹配）
-        // 注意：这种方式可能不够准确，因为hash需要完整的题目信息
-        // 但可以作为后备方案
-        const questionForHash = {
-          type: "single" as const,
-          content: question,
-          correctAnswer: "", // 题目匹配时不需要正确答案
-        };
-        questionHash = calculateQuestionHash(questionForHash);
-        
-        // 1. 优先从统一的questions.json读取（这是最新的包，是唯一的JSON包数据获取源）
-        cachedAnswer = await getAIAnswerFromJson(null, questionHash);
+        // 如果没有传递hash，说明这不是题目请求，直接调用AI服务
+        console.log(`[${requestId}] [STEP 4.5.0] 未传递hash值，将直接调用AI服务生成新解析`);
+        // questionHash 保持为 null，后续会直接调用AI服务
+        questionHash = null;
+      }
+      
+      // 2. 如果有了questionHash，直接检查数据库（前端已经检查过JSON包）
+      if (questionHash) {
+        // 直接检查数据库（前端已经检查过本地JSON包，不需要重复检查）
+        cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
         if (cachedAnswer) {
-          cacheSource = "json"; // 标记为从JSON包读取
-          console.log(`[${requestId}] [STEP 4.5.1] 从统一的questions.json中找到AI解析（简化匹配）`, {
+          cacheSource = "database"; // 标记为从数据库读取
+          console.log(`[${requestId}] [STEP 4.5.1] 从数据库中找到AI解析`, {
             questionHash: questionHash.substring(0, 16) + "...",
             answerLength: cachedAnswer.length,
           });
-        }
-        
-        // 2. 如果统一的JSON包中没有，尝试从数据库读取（不再读取单个JSON包）
-        if (!cachedAnswer) {
-          cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
-          if (cachedAnswer) {
-            cacheSource = "database"; // 标记为从数据库读取
-            console.log(`[${requestId}] [STEP 4.5.2] 从数据库中找到AI解析（简化匹配）`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: cachedAnswer.length,
-            });
+          // 存入用户缓存（按照要求：从数据库获取后存入用户cache）
+          if (forwardedUserId) {
+            setUserCachedAnswer(forwardedUserId, questionHash, cachedAnswer);
+            console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户缓存（来源：数据库）`);
           }
         }
       }
@@ -1919,27 +1912,44 @@ export async function POST(req: NextRequest) {
     // 7.5) 如果问题是题目，写入 question_ai_answers 表
     // 并在每10次新解析后触发批量更新JSON包
     if (result.ok && result.data && result.data.answer) {
-      // 如果之前没有计算questionHash，尝试重新计算
+      // 如果之前没有计算questionHash，尝试重新匹配题目
       if (!questionHash) {
         try {
-          // 尝试通过问题内容匹配题目数据库
-          const matchedQuestion = await db
+          // 尝试通过问题内容匹配题目数据库（与STEP 4.5保持一致）
+          const trimmedQuestion = question.trim();
+          let matchedQuestion = await db
             .selectFrom("questions")
             .selectAll()
-            .where("content", "ilike", `%${question.trim()}%`)
+            .where("content", "=", trimmedQuestion) // 优先精确匹配
             .limit(1)
             .executeTakeFirst();
+          
+          // 如果精确匹配失败，尝试模糊匹配
+          if (!matchedQuestion) {
+            matchedQuestion = await db
+              .selectFrom("questions")
+              .selectAll()
+              .where("content", "ilike", `%${trimmedQuestion}%`)
+              .orderBy("id", "desc") // 优先匹配最新的题目
+              .limit(1)
+              .executeTakeFirst();
+          }
           
           if (matchedQuestion) {
             questionHash = matchedQuestion.content_hash;
             packageName = matchedQuestion.license_types?.[0] || null;
-            console.log(`[${requestId}] [STEP 7.5.0] 重新计算questionHash`, {
+            console.log(`[${requestId}] [STEP 7.5.0] 重新匹配题目并获取questionHash`, {
               questionHash: questionHash.substring(0, 16) + "...",
               packageName,
+              matchType: matchedQuestion.content === trimmedQuestion ? "exact" : "fuzzy",
+            });
+          } else {
+            console.log(`[${requestId}] [STEP 7.5.0] 无法匹配到数据库中的题目，跳过写入question_ai_answers表`, {
+              questionPreview: trimmedQuestion.substring(0, 50) + "...",
             });
           }
         } catch (error) {
-          console.error(`[${requestId}] [STEP 7.5.0] 重新计算questionHash失败:`, error);
+          console.error(`[${requestId}] [STEP 7.5.0] 重新匹配题目失败:`, error);
         }
       }
       
@@ -1977,6 +1987,12 @@ export async function POST(req: NextRequest) {
               answerLength: answer.length,
               packageName,
             });
+            
+            // 存入用户缓存（按照要求：AI解析后存入用户cache）
+            if (forwardedUserId) {
+              setUserCachedAnswer(forwardedUserId, questionHash, answer);
+              console.log(`[${requestId}] [STEP 7.5.2.1] 已存入用户缓存（来源：AI解析）`);
+            }
             
             // 注意：JSON包不会被实时更新，只有在手动调用"更新JSON包"功能时才更新
             // 这样可以避免每次写入新AI回答后都自动更新JSON包
