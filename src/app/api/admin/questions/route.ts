@@ -183,9 +183,9 @@ async function saveQuestionFile(category: string, data: QuestionFile): Promise<v
 
 // 从数据库中收集所有题目(带卷类信息)
 // 直接从数据库读取所有题目，不依赖文件系统的categories
-async function collectAllQuestions(): Promise<Question[]> {
+async function collectAllQuestions(): Promise<(Question & { content_hash?: string })[]> {
   try {
-    // 直接从数据库读取所有题目
+    // 直接从数据库读取所有题目（包含 content_hash）
     const allDbQuestions = await db
       .selectFrom("questions")
       .selectAll()
@@ -194,8 +194,8 @@ async function collectAllQuestions(): Promise<Question[]> {
 
     console.log(`[collectAllQuestions] 从数据库读取到 ${allDbQuestions.length} 个题目`);
 
-    // 转换为前端格式
-    const allQuestions: Question[] = allDbQuestions.map((q) => {
+    // 转换为前端格式（保留 content_hash）
+    const allQuestions = allDbQuestions.map((q) => {
       // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
       const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
         ? q.license_types[0]
@@ -210,6 +210,7 @@ async function collectAllQuestions(): Promise<Question[]> {
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category,
+        content_hash: q.content_hash, // 保留 content_hash 字段
       };
     });
 
@@ -250,6 +251,8 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
     // 收集所有题目
     let allQuestions: Question[] = [];
+    // 保存JSON包的aiAnswers对象（当数据源为JSON包时使用）
+    let jsonPackageAiAnswers: Record<string, string> | null = null;
     
     // 如果指定了版本号（历史JSON包），从JSON包读取
     if (source && source !== "database") {
@@ -267,6 +270,10 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           
           // 只有当版本号匹配时才加载题目（严格匹配）
           if (fileVersion === source || (!fileVersion && !source)) {
+            // 保存JSON包的aiAnswers对象
+            jsonPackageAiAnswers = unifiedFile.aiAnswers || {};
+            console.log(`[GET /api/admin/questions] 保存JSON包的aiAnswers，共 ${Object.keys(jsonPackageAiAnswers).length} 个AI回答`);
+            
             // 版本号匹配，或者文件没有版本号且请求也没有版本号（兼容旧格式）
             // 如果指定了category筛选，只添加匹配的题目
             if (category) {
@@ -305,6 +312,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 console.log(`[GET /api/admin/questions] 读取 ${cat}: 版本号=${fileVersion}, 请求版本=${source}`);
                 
                 if (fileVersion === source || (!fileVersion && !source)) {
+                  // 保存JSON包的aiAnswers对象（如果还没有保存）
+                  if (!jsonPackageAiAnswers && file.aiAnswers) {
+                    jsonPackageAiAnswers = file.aiAnswers;
+                    console.log(`[GET /api/admin/questions] 从 ${cat} 保存JSON包的aiAnswers，共 ${Object.keys(jsonPackageAiAnswers).length} 个AI回答`);
+                  } else if (file.aiAnswers) {
+                    // 如果已经有aiAnswers，合并（但这种情况应该不会发生，因为每个JSON包应该独立）
+                    jsonPackageAiAnswers = { ...jsonPackageAiAnswers, ...file.aiAnswers };
+                  }
+                  
                   // 如果指定了category筛选，只添加匹配的题目
                   if (category) {
                     const filteredQuestions = file.questions.filter((q: Question) => {
@@ -371,6 +387,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 image: q.image || undefined,
                 explanation: q.explanation || undefined,
                 category: category,
+                content_hash: q.content_hash, // 保留 content_hash 字段
               }));
             
             console.log(`[GET /api/admin/questions] 直接查询后筛选，找到 ${allQuestions.length} 个题目`);
@@ -432,36 +449,87 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const paginatedQuestions = questionsWithHash.slice(offset, offset + limit);
 
     // 查询当前页题目的 AI 回答
-    // 优先从JSON包读取，如果没有则从数据库读取
-    const questionsWithHashAndAI = await Promise.all(
-      paginatedQuestions.map(async (q) => {
+    let questionsWithHashAndAI: any[];
+    let cacheCount = 0; // 缓存计数（匹配成功的数量）
+
+    if (source === "database" || !source) {
+      // 当数据源为数据库时，只从 question_ai_answers 表查询
+      console.log(`[GET /api/admin/questions] 数据源为数据库，从 question_ai_answers 表批量查询 AI 回答`);
+      
+      // 收集所有题目的 content_hash（从数据库读取的题目应该已经有 content_hash）
+      const questionHashes = paginatedQuestions.map((q) => {
+        // 优先使用数据库中的 content_hash，如果没有则计算
+        return (q as any).content_hash || (q as any).hash || calculateQuestionHash(q);
+      });
+
+      // 批量查询 question_ai_answers 表
+      const aiAnswersMap = new Map<string, string>();
+      if (questionHashes.length > 0) {
+        try {
+          const aiAnswers = await db
+            .selectFrom("question_ai_answers")
+            .select(["question_hash", "answer", "created_at"])
+            .where("question_hash", "in", questionHashes)
+            .where("locale", "=", "zh")
+            .orderBy("question_hash", "asc")
+            .orderBy("created_at", "desc")
+            .execute();
+
+          // 构建映射（每个 question_hash 只保留最新的回答）
+          // 由于已经按 question_hash 和 created_at 排序，第一个出现的记录就是最新的
+          for (const aiAnswer of aiAnswers) {
+            if (!aiAnswersMap.has(aiAnswer.question_hash) && aiAnswer.answer) {
+              aiAnswersMap.set(aiAnswer.question_hash, aiAnswer.answer);
+              cacheCount++; // 每有一条匹配，计数+1
+            }
+          }
+        } catch (error) {
+          console.error(`[GET /api/admin/questions] 批量查询 question_ai_answers 失败:`, error);
+        }
+      }
+
+      // 将 AI 回答附加到题目上
+      questionsWithHashAndAI = paginatedQuestions.map((q) => {
+        const questionHash = (q as any).content_hash || (q as any).hash || calculateQuestionHash(q);
+        const aiAnswer = aiAnswersMap.get(questionHash) || null;
+        
+        return {
+          ...q,
+          aiAnswer: aiAnswer || undefined,
+        };
+      });
+
+      console.log(`[GET /api/admin/questions] 数据库查询完成，匹配到 ${cacheCount} 条 AI 回答`);
+    } else {
+      // 当数据源为 JSON 包时，只从该JSON包的aiAnswers对象中读取
+      console.log(`[GET /api/admin/questions] 数据源为JSON包，从JSON包的aiAnswers对象读取AI回答`);
+      
+      questionsWithHashAndAI = paginatedQuestions.map((q) => {
         const questionHash = (q as any).hash || calculateQuestionHash(q);
         
-        // 1. 优先从JSON包读取（如果题目有category）
+        // 只从该JSON包的aiAnswers对象中读取
         let aiAnswer: string | null = null;
-        if (q.category) {
-          aiAnswer = await getAIAnswerFromJson(q.category, questionHash);
-        }
-        
-        // 2. 如果JSON包没有，从数据库读取
-        if (!aiAnswer) {
-          aiAnswer = await getAIAnswerFromDb(questionHash, "zh");
-        }
-        
-        // 3. 如果数据库也没有，从ai_logs表查询（兼容旧逻辑）
-        if (!aiAnswer) {
-          const logAnswer = await getAIAnswersForQuestions([q.content], "zh");
-          aiAnswer = logAnswer.get(q.content) || null;
+        if (jsonPackageAiAnswers) {
+          aiAnswer = jsonPackageAiAnswers[questionHash] || null;
         }
         
         return {
           ...q,
           aiAnswer: aiAnswer || undefined,
         };
-      })
-    );
+      });
+      
+      const matchedCount = questionsWithHashAndAI.filter((q) => q.aiAnswer).length;
+      console.log(`[GET /api/admin/questions] JSON包查询完成，匹配到 ${matchedCount} 条 AI 回答（共 ${Object.keys(jsonPackageAiAnswers || {}).length} 个AI回答）`);
+    }
 
     const pagination = getPaginationMeta(page, limit, total);
+
+    // 当数据源为数据库时，在响应中添加缓存计数（供"计算统计"功能使用）
+    if (source === "database" || !source) {
+      // 将 cacheCount 添加到 pagination 对象中，以便前端可以访问
+      (pagination as any).cacheCount = cacheCount;
+    }
 
     return success(questionsWithHashAndAI, pagination);
   } catch (err: any) {
