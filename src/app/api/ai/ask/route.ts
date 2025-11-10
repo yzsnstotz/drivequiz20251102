@@ -1955,7 +1955,7 @@ export async function POST(req: NextRequest) {
       
       // 如果找到了questionHash，写入question_ai_answers表
       // 注意：只有在数据库中没有AI回答时才写入，如果已有则跳过
-      // JSON包不会被实时更新，只有在批量更新时才更新
+      // 注意：JSON包不会实时更新，需要定期在后台手动更新
       if (questionHash) {
         console.log(`[${requestId}] [STEP 7.5] 开始检查并写入 question_ai_answers 表`);
         
@@ -1963,17 +1963,22 @@ export async function POST(req: NextRequest) {
         const localeStr = locale || "zh";
         
         // 异步写入 question_ai_answers 表（不阻塞响应）
-        void (async () => {
+        // 注意：在Serverless环境中，使用Promise确保异步操作完成
+        // 注意：JSON包不会实时更新，需要定期在后台手动更新
+        const writePromise = (async () => {
           try {
-            // 检查是否已存在（如果数据库已有AI回答，不应该被新回答覆盖）
+            // 检查是否已存在（防止并发请求重复写入）
+            // 注意：正常情况下，如果数据库有答案，STEP 4.5就会返回，不会到达这里
+            // 这里检查是为了防止并发请求的情况
             const existing = await getAIAnswerFromDb(questionHash, localeStr);
             if (existing) {
-              console.log(`[${requestId}] [STEP 7.5.1] 数据库已有AI解析，跳过写入（避免覆盖）`);
+              console.log(`[${requestId}] [STEP 7.5.1] 数据库已有AI解析（可能是并发请求），跳过写入（避免覆盖）`);
+              // 注意：JSON包不会实时更新，需要定期在后台手动更新
               return;
             }
             
             // 只有在数据库中没有时才写入新回答
-            await saveAIAnswerToDb(
+            const savedId = await saveAIAnswerToDb(
               questionHash,
               answer,
               localeStr,
@@ -1982,25 +1987,45 @@ export async function POST(req: NextRequest) {
               forwardedUserId || undefined
             );
             
-            console.log(`[${requestId}] [STEP 7.5.2] 成功写入 question_ai_answers 表（新回答）`, {
+            if (savedId > 0) {
+              console.log(`[${requestId}] [STEP 7.5.2] 成功写入 question_ai_answers 表（新回答）`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: answer.length,
+                packageName,
+                savedId,
+              });
+              
+              // 存入用户缓存（按照要求：AI解析后存入用户cache）
+              if (forwardedUserId) {
+                setUserCachedAnswer(forwardedUserId, questionHash, answer);
+                console.log(`[${requestId}] [STEP 7.5.2.1] 已存入用户缓存（来源：AI解析）`);
+              }
+              
+              // 注意：JSON包不会实时更新，需要定期在后台手动更新
+              // 用户下次请求时，会从数据库读取缓存（STEP 4.5）
+              console.log(`[${requestId}] [STEP 7.5.3] 已写入数据库，JSON包需要定期手动更新`);
+            } else {
+              console.warn(`[${requestId}] [STEP 7.5.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`);
+            }
+          } catch (error) {
+            // 详细记录错误信息，包括堆栈
+            const errorObj = error as Error;
+            console.error(`[${requestId}] [STEP 7.5] 写入 question_ai_answers 失败:`, {
+              error: errorObj.message,
+              name: errorObj.name,
+              stack: errorObj.stack,
               questionHash: questionHash.substring(0, 16) + "...",
               answerLength: answer.length,
-              packageName,
             });
-            
-            // 存入用户缓存（按照要求：AI解析后存入用户cache）
-            if (forwardedUserId) {
-              setUserCachedAnswer(forwardedUserId, questionHash, answer);
-              console.log(`[${requestId}] [STEP 7.5.2.1] 已存入用户缓存（来源：AI解析）`);
-            }
-            
-            // 注意：JSON包不会被实时更新，只有在手动调用"更新JSON包"功能时才更新
-            // 这样可以避免每次写入新AI回答后都自动更新JSON包
-            console.log(`[${requestId}] [STEP 7.5.3] 已写入数据库，JSON包不会自动更新（需要手动触发批量更新）`);
-          } catch (error) {
-            console.error(`[${requestId}] [STEP 7.5] 写入 question_ai_answers 失败:`, error);
+            // 不抛出错误，避免影响主流程
           }
         })();
+        
+        // 在Serverless环境中，确保异步操作被正确跟踪
+        // 使用Promise.catch确保错误被捕获
+        writePromise.catch((error) => {
+          console.error(`[${requestId}] [STEP 7.5] 异步写入操作失败:`, error);
+        });
       }
     }
     
