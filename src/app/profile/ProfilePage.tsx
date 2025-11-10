@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, XSquare, Settings, Edit2, Trophy, BookOpen } from 'lucide-react';
 import Link from 'next/link';
+import { getLocalPackageVersion } from '@/lib/questionsLoader';
 
 interface ExamHistory {
   id: string;
@@ -29,6 +30,7 @@ function ProfilePage() {
   const [editValue, setEditValue] = useState('');
   const [examHistory, setExamHistory] = useState<ExamHistory[]>([]);
   const [practiceHistory, setPracticeHistory] = useState<PracticeHistory[]>([]);
+  const [pkgVersion, setPkgVersion] = useState<string | null>(null);
 
   useEffect(() => {
     // 从 localStorage 加载用户昵称
@@ -50,6 +52,14 @@ function ProfilePage() {
       // 只保留最近50题
       const recentHistory = allHistory.slice(-50);
       setPracticeHistory(recentHistory);
+    }
+
+    // 读取当前本地题库版本号（用于测试校对显示）
+    try {
+      const v = getLocalPackageVersion();
+      setPkgVersion(v);
+    } catch {
+      setPkgVersion(null);
     }
   }, []);
 
@@ -146,6 +156,10 @@ function ProfilePage() {
               <Edit2 className="h-4 w-4 text-gray-400 group-hover:text-blue-600" />
             </div>
           )}
+          {/* 本地题库版本展示 */}
+          <div className="mt-2 text-xs text-gray-500">
+            题库版本：{pkgVersion ? pkgVersion : '未缓存/未知'}
+          </div>
         </div>
       </div>
 

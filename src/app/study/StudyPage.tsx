@@ -10,6 +10,7 @@ import {
   Map as MapIcon,
 } from "lucide-react";
 import QuestionPage from "./QuestionPage";
+import { loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 
 interface QuestionSet {
   id: string;
@@ -164,20 +165,20 @@ function StudyPage() {
     // 从统一的questions.json动态加载题目集
     const loadQuestionSets = async () => {
       try {
-        // 优先从统一的questions.json读取
+        // 优先通过统一加载器读取
         try {
-          const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
-          const allQuestions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-          
+          const pkg = await loadUnifiedQuestionsPackage();
+          const allQuestions = pkg?.questions || [];
+
           // 按category分组统计题目
           const categoryMap: Map<string, QuestionSet[]> = new Map<string, QuestionSet[]>();
-          
+
           allQuestions.forEach((q: any) => {
             const category = q.category || "其他";
             if (!categoryMap.has(category)) {
               categoryMap.set(category, []);
             }
-            
+
             // 检查是否已存在该题目集
             const existingSet = categoryMap.get(category)!.find(s => s.title === category);
             if (!existingSet) {
@@ -190,7 +191,7 @@ function StudyPage() {
               });
             }
           });
-          
+
           // 统计每个category的题目数
           categoryMap.forEach((sets, category) => {
             const count = allQuestions.filter((q: any) => q.category === category).length;
@@ -198,7 +199,7 @@ function StudyPage() {
               set.totalQuestions = count;
             });
           });
-          
+
           // 按category分组，构建动态分类
           const categoryGroups = new Map<string, QuestionSet[]>();
           categoryMap.forEach((sets, category) => {
@@ -209,14 +210,14 @@ function StudyPage() {
             }
             categoryGroups.get(prefix)!.push(...sets);
           });
-          
+
           // 构建动态分类列表
           const newCategories: Category[] = [];
           categoryGroups.forEach((sets, prefix) => {
             // 根据prefix确定图标和标题
             let icon: React.ReactNode;
             let title: string;
-            
+
             if (prefix.includes('學科講習') || prefix.includes('学科讲习')) {
               icon = <BookOpen className="h-6 w-6 text-blue-600" />;
               title = '学科讲习';
@@ -230,7 +231,7 @@ function StudyPage() {
               icon = <BookOpen className="h-6 w-6 text-gray-600" />;
               title = prefix;
             }
-            
+
             newCategories.push({
               id: prefix.toLowerCase().replace(/\s+/g, '-'),
               title,
@@ -238,9 +239,9 @@ function StudyPage() {
               questionSets: sets.sort((a, b) => a.title.localeCompare(b.title)),
             });
           });
-          
+
           setDynamicCategories(newCategories);
-          
+
           // 初始化题目集数据，从localStorage读取进度
           const initializedSets = newCategories.flatMap(category =>
             category.questionSets.map(set => {
