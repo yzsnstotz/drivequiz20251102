@@ -1139,6 +1139,65 @@ export async function POST(req: NextRequest) {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
         });
         
+        // 如果是题目，写入 question_ai_answers 表（异步，不阻塞响应）
+        if (questionHash) {
+          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenRouter模式）`);
+          
+          const localeStr = locale || "zh";
+          
+          // 异步写入 question_ai_answers 表（不阻塞响应）
+          const writePromise = (async () => {
+            try {
+              // 检查是否已存在（防止并发请求重复写入）
+              const existing = await getAIAnswerFromDb(questionHash, localeStr);
+              if (existing) {
+                console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`);
+                return;
+              }
+              
+              // 只有在数据库中没有时才写入新回答
+              const savedId = await saveAIAnswerToDb(
+                questionHash,
+                truncatedAnswer,
+                localeStr,
+                openRouterData.model || model,
+                [], // 直连模式下暂时没有 RAG 来源
+                forwardedUserId || undefined
+              );
+              
+              if (savedId > 0) {
+                console.log(`[${requestId}] [STEP 5.8.2.2] 成功写入 question_ai_answers 表（新回答）`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  savedId,
+                });
+                
+                // 存入用户缓存
+                if (forwardedUserId) {
+                  setUserCachedAnswer(forwardedUserId, questionHash, truncatedAnswer);
+                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`);
+                }
+              } else {
+                console.warn(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`);
+              }
+            } catch (error) {
+              const errorObj = error as Error;
+              console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
+                error: errorObj.message,
+                name: errorObj.name,
+                stack: errorObj.stack,
+                questionHash: questionHash.substring(0, 16) + "...",
+              });
+            }
+          })();
+          
+          writePromise.catch((error) => {
+            console.error(`[${requestId}] [STEP 5.8.2] 异步写入操作失败:`, error);
+          });
+        }
+        
+        console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenRouter模式）`);
+        
         // 返回结果
         return ok({
           answer: truncatedAnswer,
@@ -1390,6 +1449,65 @@ export async function POST(req: NextRequest) {
         }).catch((error) => {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
         });
+        
+        // 如果是题目，写入 question_ai_answers 表（异步，不阻塞响应）
+        if (questionHash) {
+          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenAI模式）`);
+          
+          const localeStr = locale || "zh";
+          
+          // 异步写入 question_ai_answers 表（不阻塞响应）
+          const writePromise = (async () => {
+            try {
+              // 检查是否已存在（防止并发请求重复写入）
+              const existing = await getAIAnswerFromDb(questionHash, localeStr);
+              if (existing) {
+                console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`);
+                return;
+              }
+              
+              // 只有在数据库中没有时才写入新回答
+              const savedId = await saveAIAnswerToDb(
+                questionHash,
+                truncatedAnswer,
+                localeStr,
+                openaiData.model || model,
+                [], // 直连模式下暂时没有 RAG 来源
+                forwardedUserId || undefined
+              );
+              
+              if (savedId > 0) {
+                console.log(`[${requestId}] [STEP 5.8.2.2] 成功写入 question_ai_answers 表（新回答）`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  savedId,
+                });
+                
+                // 存入用户缓存
+                if (forwardedUserId) {
+                  setUserCachedAnswer(forwardedUserId, questionHash, truncatedAnswer);
+                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`);
+                }
+              } else {
+                console.warn(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`);
+              }
+            } catch (error) {
+              const errorObj = error as Error;
+              console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
+                error: errorObj.message,
+                name: errorObj.name,
+                stack: errorObj.stack,
+                questionHash: questionHash.substring(0, 16) + "...",
+              });
+            }
+          })();
+          
+          writePromise.catch((error) => {
+            console.error(`[${requestId}] [STEP 5.8.2] 异步写入操作失败:`, error);
+          });
+        }
+        
+        console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenAI模式）`);
         
         // 返回结果
         return ok({
