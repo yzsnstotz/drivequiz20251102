@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import { loadAllQuestions } from '@/lib/questionsLoader';
 
 interface Question {
   id: number;
@@ -43,25 +44,25 @@ function RoyalBattlePage() {
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        // 优先从统一的questions.json读取所有题目
-        let allQuestions: Question[] = [];
-        
-        try {
-          const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
-          const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-          allQuestions = questions as unknown as Question[];
-        } catch (unifiedError) {
-          // 如果统一的questions.json不存在，从各个JSON包读取（兼容旧逻辑）
-          const categories = ['學科講習', '仮免', '免许'];
-          
-          for (const category of categories) {
-            for (let i = 1; i <= 6; i++) {
-              try {
-                const response = await import(`../../data/questions/zh/${category}-${i}.json`);
-                const questions = response.questions || response.default?.questions || [];
-                allQuestions = [...allQuestions, ...questions];
-              } catch (error) {
-                console.log(`No questions found for ${category}-${i}`);
+        // 通过版本检查与缓存的统一加载器获取题库
+        let allQuestions: Question[] = await loadAllQuestions();
+        // 兼容旧逻辑：加载器失败时尝试老的静态导入
+        if (!allQuestions || allQuestions.length === 0) {
+          try {
+            const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
+            const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
+            allQuestions = questions as unknown as Question[];
+          } catch {
+            const categories = ['學科講習', '仮免', '免许'];
+            for (const category of categories) {
+              for (let i = 1; i <= 6; i++) {
+                try {
+                  const response = await import(`../../data/questions/zh/${category}-${i}.json`);
+                  const questions = response.questions || response.default?.questions || [];
+                  allQuestions = [...allQuestions, ...questions];
+                } catch {
+                  // ignore
+                }
               }
             }
           }
