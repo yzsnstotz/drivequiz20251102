@@ -45,6 +45,8 @@ export interface Question {
 
 export interface QuestionFile {
   questions: Question[];
+  version?: string;
+  aiAnswers?: Record<string, string>;
 }
 
 // 题目数据目录
@@ -75,6 +77,8 @@ async function loadQuestionFileLocal(category: string): Promise<QuestionFile | n
     }
     return {
       questions: data.questions || [],
+      version: data.version,
+      aiAnswers: data.aiAnswers || {},
     };
   } catch (error) {
     console.error(`[loadQuestionFileLocal] Error loading ${category}:`, error);
