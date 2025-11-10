@@ -471,6 +471,73 @@ export async function saveQuestionFile(
 }
 
 /**
+ * 更新JSON包中的单个AI回答（实时更新）
+ * @param questionHash 题目hash
+ * @param answer AI回答
+ * @param locale 语言（默认zh）
+ */
+export async function updateJsonPackageAiAnswer(
+  questionHash: string,
+  answer: string,
+  locale: string = "zh"
+): Promise<void> {
+  try {
+    // 只更新中文的JSON包（其他语言暂不支持）
+    if (locale !== "zh") {
+      console.log(`[updateJsonPackageAiAnswer] 跳过非中文语言: ${locale}`);
+      return;
+    }
+
+    const unifiedFilePath = path.join(QUESTIONS_DIR, "questions.json");
+    
+    // 读取现有的JSON包
+    let existingData: { questions: Question[]; version?: string; aiAnswers?: Record<string, string> } = {
+      questions: [],
+      aiAnswers: {},
+    };
+    
+    try {
+      const existingContent = await fs.readFile(unifiedFilePath, "utf-8");
+      const parsed = JSON.parse(existingContent);
+      existingData = {
+        questions: Array.isArray(parsed) ? parsed : (parsed.questions || []),
+        version: parsed.version,
+        aiAnswers: parsed.aiAnswers || {},
+      };
+    } catch (error) {
+      // 如果文件不存在，记录错误但不抛出（可能是首次运行）
+      console.warn(`[updateJsonPackageAiAnswer] JSON包文件不存在或读取失败:`, (error as Error).message);
+      return;
+    }
+    
+    // 更新aiAnswers对象
+    const updatedAiAnswers = {
+      ...existingData.aiAnswers,
+      [questionHash]: answer,
+    };
+    
+    // 保存更新后的JSON包
+    const updatedData = {
+      questions: existingData.questions,
+      version: existingData.version,
+      aiAnswers: updatedAiAnswers,
+    };
+    
+    await fs.writeFile(unifiedFilePath, JSON.stringify(updatedData, null, 2), "utf-8");
+    
+    console.log(`[updateJsonPackageAiAnswer] 成功更新JSON包中的AI回答`, {
+      questionHash: questionHash.substring(0, 16) + "...",
+      answerLength: answer.length,
+      totalAiAnswers: Object.keys(updatedAiAnswers).length,
+    });
+  } catch (error) {
+    // 更新JSON包失败不影响主流程，仅记录日志
+    console.error(`[updateJsonPackageAiAnswer] 更新JSON包失败:`, error);
+    // 不抛出错误，避免影响主流程
+  }
+}
+
+/**
  * 从JSON包获取题目的AI回答
  * @param packageName 包名（可选），如果不提供，从统一的questions.json读取
  * @param questionHash 题目hash
