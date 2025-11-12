@@ -200,6 +200,15 @@ export async function getAIAnswerFromDb(
 }
 
 /**
+ * 验证是否为有效的 UUID 格式
+ */
+function isValidUUID(str: string | null | undefined): boolean {
+  if (!str) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+/**
  * 保存AI回答到数据库
  */
 export async function saveAIAnswerToDb(
@@ -211,6 +220,19 @@ export async function saveAIAnswerToDb(
   createdBy?: string
 ): Promise<number> {
   try {
+    // 规范化 createdBy：只接受有效的 UUID 格式
+    // 如果传入的是 act- 格式或其他非 UUID 格式，设为 null
+    let normalizedCreatedBy: string | null = null;
+    if (createdBy && isValidUUID(createdBy)) {
+      normalizedCreatedBy = createdBy;
+    } else if (createdBy) {
+      // 如果不是有效的 UUID，记录日志但不抛出错误
+      console.warn(`[saveAIAnswerToDb] createdBy 不是有效的 UUID 格式，将设为 null`, {
+        createdBy,
+        questionHash: questionHash.substring(0, 16) + "...",
+      });
+    }
+    
     // 检查是否已存在
     const existing = await db
       .selectFrom("question_ai_answers")
@@ -234,7 +256,7 @@ export async function saveAIAnswerToDb(
           answer,
           sources: sources ? (sources as any) : null,
           model: model || null,
-          created_by: createdBy || null,
+          created_by: normalizedCreatedBy,
           view_count: 0,
         })
         .returning("id")
