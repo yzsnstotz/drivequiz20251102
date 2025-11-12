@@ -57,8 +57,15 @@ function removeFromLocalStorage(key: string): void {
 export async function getLatestPackageVersion(): Promise<string | null> {
   try {
     const res = await apiGet<{ version: string }>(VERSION_ENDPOINT);
-    return (res as any)?.version || null;
-  } catch {
+    const version = res?.version || null;
+    if (version) {
+      console.log(`[getLatestPackageVersion] 获取到最新版本号: ${version}`);
+    } else {
+      console.warn(`[getLatestPackageVersion] 版本号为空，响应:`, res);
+    }
+    return version;
+  } catch (error) {
+    console.error(`[getLatestPackageVersion] 获取版本号失败:`, error);
     return null;
   }
 }
@@ -83,21 +90,49 @@ function getCachedPackage(version: string): UnifiedPackage | null {
 }
 
 function cachePackage(version: string, data: UnifiedPackage): void {
-  setToLocalStorage(`${LS_PREFIX}${version}`, JSON.stringify(data));
-  setToLocalStorage(LS_CURRENT_VERSION_KEY, version);
-  // 可选：清理历史版本，避免无限增长
   try {
-    if (typeof window !== "undefined") {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(LS_PREFIX) && key !== `${LS_PREFIX}${version}`) {
-          // 保留最近版本，其它的可以按需删除
-          // 此处只删除超过2个的历史可以优化；目前简单策略：不删除
+    const packageKey = `${LS_PREFIX}${version}`;
+    const packageData = JSON.stringify(data);
+    
+    // 检查数据大小（localStorage 通常限制为 5-10MB）
+    const dataSize = new Blob([packageData]).size;
+    const dataSizeMB = (dataSize / 1024 / 1024).toFixed(2);
+    console.log(`[cachePackage] 准备缓存包，版本: ${version}, 大小: ${dataSizeMB}MB`);
+    
+    if (dataSize > 5 * 1024 * 1024) {
+      console.warn(`[cachePackage] 警告：包大小超过 5MB (${dataSizeMB}MB)，可能超出 localStorage 限制`);
+    }
+    
+    setToLocalStorage(packageKey, packageData);
+    setToLocalStorage(LS_CURRENT_VERSION_KEY, version);
+    
+    // 验证是否写入成功
+    const verifyPackage = getFromLocalStorage(packageKey);
+    const verifyVersion = getFromLocalStorage(LS_CURRENT_VERSION_KEY);
+    
+    if (verifyPackage && verifyVersion === version) {
+      console.log(`[cachePackage] 缓存成功，版本: ${version}`);
+    } else {
+      console.error(`[cachePackage] 缓存失败！版本: ${version}, 验证版本: ${verifyVersion || "无"}`);
+    }
+    
+    // 可选：清理历史版本，避免无限增长
+    try {
+      if (typeof window !== "undefined") {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(LS_PREFIX) && key !== packageKey) {
+            // 保留最近版本，其它的可以按需删除
+            // 此处只删除超过2个的历史可以优化；目前简单策略：不删除
+          }
         }
       }
+    } catch (error) {
+      console.warn(`[cachePackage] 清理历史版本失败:`, error);
     }
-  } catch {
-    // ignore
+  } catch (error) {
+    console.error(`[cachePackage] 缓存包失败:`, error);
+    throw error; // 抛出错误，让调用者知道缓存失败
   }
 }
 
@@ -117,25 +152,34 @@ export function getLocalPackageVersion(): string | null {
 export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | null> {
   // 1) 先读取 localStorage 中的版本号（同步操作，无需等待）
   const localVersion = getLocalPackageVersion();
+  console.log(`[loadUnifiedQuestionsPackage] 本地版本号: ${localVersion || "无"}`);
   
   // 2) 请求服务器最新版本号
   const latestVersion = await getLatestPackageVersion();
   if (!latestVersion) {
     // 版本不可用时，仍尝试直接拉取包（容错）
+    console.warn(`[loadUnifiedQuestionsPackage] 无法获取服务器版本号，尝试直接拉取包`);
     const pkg = await fetchUnifiedPackage();
     if (pkg?.version) {
       cachePackage(pkg.version, pkg);
+      console.log(`[loadUnifiedQuestionsPackage] 容错模式：已缓存包，版本号: ${pkg.version}`);
+    } else {
+      console.error(`[loadUnifiedQuestionsPackage] 容错模式：拉取的包没有版本号`);
     }
     return pkg;
   }
 
+  console.log(`[loadUnifiedQuestionsPackage] 服务器最新版本号: ${latestVersion}`);
+
   // 3) 比较版本号
   if (localVersion === latestVersion) {
     // 版本一致，使用缓存（确保缓存是最新题目）
+    console.log(`[loadUnifiedQuestionsPackage] 版本一致，使用缓存`);
     const cached = getCachedPackage(latestVersion);
     if (cached?.questions && cached.questions.length > 0) {
       // 确保版本号标记是最新的
       setToLocalStorage(LS_CURRENT_VERSION_KEY, latestVersion);
+      console.log(`[loadUnifiedQuestionsPackage] 使用缓存成功，题目数: ${cached.questions.length}`);
       return cached;
     }
     // 如果缓存不存在但版本号一致，重新下载（数据可能被清除）
@@ -146,6 +190,7 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
     if (pkg) {
       const versionToUse = pkg.version || latestVersion;
       cachePackage(versionToUse, pkg);
+      console.log(`[loadUnifiedQuestionsPackage] 重新下载完成，版本号: ${versionToUse}`);
     }
     return pkg;
   } else {
@@ -158,9 +203,19 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
       const versionToUse = pkg.version || latestVersion;
       // 更新 localStorage 和缓存
       cachePackage(versionToUse, pkg);
-      console.log(
-        `[loadUnifiedQuestionsPackage] 版本更新完成: ${versionToUse}`
-      );
+      // 验证版本号是否已更新
+      const verifyVersion = getLocalPackageVersion();
+      if (verifyVersion === versionToUse) {
+        console.log(
+          `[loadUnifiedQuestionsPackage] 版本更新完成并已验证: ${versionToUse}`
+        );
+      } else {
+        console.error(
+          `[loadUnifiedQuestionsPackage] 版本更新失败！期望: ${versionToUse}, 实际: ${verifyVersion || "无"}`
+        );
+      }
+    } else {
+      console.error(`[loadUnifiedQuestionsPackage] 下载包失败，无法更新版本号`);
     }
     return pkg;
   }
