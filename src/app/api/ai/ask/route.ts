@@ -2030,47 +2030,6 @@ export async function POST(req: NextRequest) {
     // 7.5) 如果问题是题目，写入 question_ai_answers 表
     // 并在每10次新解析后触发批量更新JSON包
     if (result.ok && result.data && result.data.answer) {
-      // 如果之前没有计算questionHash，尝试重新匹配题目
-      if (!questionHash) {
-        try {
-          // 尝试通过问题内容匹配题目数据库（与STEP 4.5保持一致）
-          const trimmedQuestion = question.trim();
-          let matchedQuestion = await db
-            .selectFrom("questions")
-            .selectAll()
-            .where("content", "=", trimmedQuestion) // 优先精确匹配
-            .limit(1)
-            .executeTakeFirst();
-          
-          // 如果精确匹配失败，尝试模糊匹配
-          if (!matchedQuestion) {
-            matchedQuestion = await db
-              .selectFrom("questions")
-              .selectAll()
-              .where("content", "ilike", `%${trimmedQuestion}%`)
-              .orderBy("id", "desc") // 优先匹配最新的题目
-              .limit(1)
-              .executeTakeFirst();
-          }
-          
-          if (matchedQuestion) {
-            questionHash = matchedQuestion.content_hash;
-            packageName = matchedQuestion.license_types?.[0] || null;
-            console.log(`[${requestId}] [STEP 7.5.0] 重新匹配题目并获取questionHash`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              packageName,
-              matchType: matchedQuestion.content === trimmedQuestion ? "exact" : "fuzzy",
-            });
-          } else {
-            console.log(`[${requestId}] [STEP 7.5.0] 无法匹配到数据库中的题目，跳过写入question_ai_answers表`, {
-              questionPreview: trimmedQuestion.substring(0, 50) + "...",
-            });
-          }
-        } catch (error) {
-          console.error(`[${requestId}] [STEP 7.5.0] 重新匹配题目失败:`, error);
-        }
-      }
-      
       // 如果找到了questionHash，写入question_ai_answers表
       // 注意：只有在数据库中没有AI回答时才写入，如果已有则跳过
       // 注意：JSON包不会实时更新，需要定期在后台手动更新
