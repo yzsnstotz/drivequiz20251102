@@ -6,6 +6,10 @@ import Image from "next/image";
 import { apiFetch } from "@/lib/apiClient.front";
 import { loadAiAnswers, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 
+// 前端内存缓存（按题目hash存储）
+// 格式：Map<questionHash, answer>
+const memoryCache = new Map<string, string>();
+
 const getStoredUserId = (): string | null => {
   if (typeof window === "undefined") return null;
   const cached = localStorage.getItem("USER_ID");
@@ -90,6 +94,12 @@ export default function QuestionAIDialog({
         const pkg = await loadUnifiedQuestionsPackage();
         const ai = pkg?.aiAnswers || {};
         setLocalAiAnswers(ai);
+        
+        // 同步到内存缓存（理论上每次更新缓存都会和localStorage同步）
+        Object.entries(ai).forEach(([hash, answer]) => {
+          memoryCache.set(hash, answer);
+        });
+        
         console.log("[QuestionAIDialog] 已加载本地aiAnswers，共", Object.keys(ai).length, "个", {
           version: pkg?.version || "未知",
         });
@@ -178,11 +188,32 @@ export default function QuestionAIDialog({
         return;
       }
       
-      // 1. 先检查本地JSON包中的aiAnswer（优先检查本地缓存）
+      // 1. 优先检查内存缓存（理论上每次更新缓存都会和localStorage同步，所以缓存没有localStorage也应该没有）
+      const memoryCachedAnswer = memoryCache.get(questionHash);
+      if (memoryCachedAnswer) {
+        console.log("[QuestionAIDialog] 从内存缓存找到AI解析");
+        const newMessage: Message = {
+          role: "assistant",
+          content: memoryCachedAnswer,
+          metadata: {
+            aiProvider: "cached",
+            sourceType: "cached",
+            cacheSource: "localStorage", // 内存缓存标记为localStorage（与后端保持一致）
+          },
+        };
+        setMessages((prev) => [...prev, newMessage]);
+        setIsLoading(false);
+        setIsInitialLoading(false);
+        return;
+      }
+      
+      // 2. 如果内存缓存中没有，检查本地JSON包（localStorage）
       // 如果localAiAnswers不为null（已加载完成），检查是否有对应的答案
       if (localAiAnswers !== null && localAiAnswers[questionHash]) {
         const cachedAnswer = localAiAnswers[questionHash];
         console.log("[QuestionAIDialog] 从本地LocalStorage找到AI解析");
+        // 存入内存缓存（与localStorage同步）
+        memoryCache.set(questionHash, cachedAnswer);
         const newMessage: Message = {
           role: "assistant",
           content: cachedAnswer,
@@ -201,7 +232,7 @@ export default function QuestionAIDialog({
       // 如果localAiAnswers为null，说明还在加载中，直接请求后端
       // （本地缓存会在下次打开对话框时生效）
       
-      // 2. 如果本地JSON包中没有，才请求后端
+      // 3. 如果内存缓存和localStorage都没有，才请求后端
       const result = await apiFetch<{
         answer: string;
         sources?: Array<{
@@ -225,6 +256,12 @@ export default function QuestionAIDialog({
       if (result.ok && result.data?.answer) {
         // TypeScript 类型守卫：确保 answer 存在
         const answer = result.data.answer;
+        
+        // 如果是从缓存获取的，存入内存缓存（与localStorage同步）
+        if (result.data.cached && questionHash) {
+          memoryCache.set(questionHash, answer);
+        }
+        
         const newMessage: Message = {
           role: "assistant",
           content: answer,
