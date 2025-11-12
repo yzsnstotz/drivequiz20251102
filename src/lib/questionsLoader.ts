@@ -107,9 +107,18 @@ export function getLocalPackageVersion(): string | null {
 
 /**
  * 核心入口：带版本检查与本地缓存的统一题库加载
+ * 优化逻辑：
+ * 1. 先读取 localStorage 中的版本号（同步，快速）
+ * 2. 请求服务器最新版本号
+ * 3. 比较版本号：
+ *    - 如果一致：使用缓存（确保缓存是最新题目）
+ *    - 如果不一致：从服务器下载最新版本并更新 localStorage 和缓存
  */
 export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | null> {
-  // 1) 获取最新版本
+  // 1) 先读取 localStorage 中的版本号（同步操作，无需等待）
+  const localVersion = getLocalPackageVersion();
+  
+  // 2) 请求服务器最新版本号
   const latestVersion = await getLatestPackageVersion();
   if (!latestVersion) {
     // 版本不可用时，仍尝试直接拉取包（容错）
@@ -120,22 +129,43 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
     return pkg;
   }
 
-  // 2) 命中缓存直接返回
-  const cached = getCachedPackage(latestVersion);
-  if (cached?.questions && cached.questions.length > 0) {
-    setToLocalStorage(LS_CURRENT_VERSION_KEY, latestVersion);
-    return cached;
+  // 3) 比较版本号
+  if (localVersion === latestVersion) {
+    // 版本一致，使用缓存（确保缓存是最新题目）
+    const cached = getCachedPackage(latestVersion);
+    if (cached?.questions && cached.questions.length > 0) {
+      // 确保版本号标记是最新的
+      setToLocalStorage(LS_CURRENT_VERSION_KEY, latestVersion);
+      return cached;
+    }
+    // 如果缓存不存在但版本号一致，重新下载（数据可能被清除）
+    console.log(
+      `[loadUnifiedQuestionsPackage] 版本一致但缓存不存在，重新下载: ${latestVersion}`
+    );
+    const pkg = await fetchUnifiedPackage();
+    if (pkg) {
+      const versionToUse = pkg.version || latestVersion;
+      cachePackage(versionToUse, pkg);
+    }
+    return pkg;
+  } else {
+    // 版本不一致，从服务器下载最新版本并更新 localStorage 和缓存
+    console.log(
+      `[loadUnifiedQuestionsPackage] 版本不一致，更新中: ${localVersion || "无"} -> ${latestVersion}`
+    );
+    const pkg = await fetchUnifiedPackage();
+    if (pkg) {
+      const versionToUse = pkg.version || latestVersion;
+      // 更新 localStorage 和缓存
+      cachePackage(versionToUse, pkg);
+      console.log(
+        `[loadUnifiedQuestionsPackage] 版本更新完成: ${versionToUse}`
+      );
+    }
+    return pkg;
   }
-
-  // 3) 拉取并缓存
-  const pkg = await fetchUnifiedPackage();
-  if (pkg) {
-    // 如果返回包含版本，按返回的版本缓存；否则按 latestVersion 缓存
-    const versionToUse = pkg.version || latestVersion;
-    cachePackage(versionToUse, pkg);
-  }
-  return pkg;
 }
+
 
 /**
  * 便捷方法：直接拿 questions 数组（为空则返回 []）
