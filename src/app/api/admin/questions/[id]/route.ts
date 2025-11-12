@@ -16,6 +16,7 @@ import {
   getQuestionsFromDb,
   saveQuestionToDb,
   normalizeCorrectAnswer,
+  updateAIAnswerToDb,
 } from "@/lib/questionDb";
 import { db } from "@/lib/db";
 import fs from "fs/promises";
@@ -134,7 +135,7 @@ export const PUT = withAdminAuth(
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
       const body = await req.json();
-      const { type, content, options, correctAnswer, image, explanation, category } = body;
+      const { type, content, options, correctAnswer, image, explanation, category, aiAnswer } = body;
 
       // 查找题目
       const result = await findQuestionCategory(id);
@@ -170,6 +171,33 @@ export const PUT = withAdminAuth(
       } catch (dbError) {
         console.error("[PUT /api/admin/questions/:id] Error updating database:", dbError);
         // 即使数据库更新失败，也继续同步到JSON包（保持兼容性）
+      }
+
+      // 1.5. 更新AI回答（如果提供了 aiAnswer）
+      if (aiAnswer !== undefined) {
+        try {
+          // 计算题目的 hash
+          const questionHash = calculateQuestionHash(updatedQuestion);
+          
+          // 更新或插入 AI 回答（包括空内容，允许清空）
+          await updateAIAnswerToDb(
+            questionHash,
+            aiAnswer ? aiAnswer.trim() : "",
+            "zh", // 默认使用中文
+            "manual", // 标记为手动编辑
+            undefined,
+            undefined // createdBy 留空，因为是管理员手动编辑
+          );
+          console.log(`[PUT /api/admin/questions/:id] 成功更新AI回答`, {
+            questionId: id,
+            questionHash: questionHash.substring(0, 16) + "...",
+            answerLength: aiAnswer ? aiAnswer.trim().length : 0,
+            isEmpty: !aiAnswer || aiAnswer.trim().length === 0,
+          });
+        } catch (aiAnswerError) {
+          console.error("[PUT /api/admin/questions/:id] Error updating AI answer:", aiAnswerError);
+          // AI回答更新失败不影响主流程
+        }
       }
 
       // 2. 同步到JSON包

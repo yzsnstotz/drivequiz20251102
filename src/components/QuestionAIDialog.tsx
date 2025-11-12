@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { apiFetch } from "@/lib/apiClient.front";
+import { loadAiAnswers, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 
 const getStoredUserId = (): string | null => {
   if (typeof window === "undefined") return null;
@@ -37,6 +38,7 @@ interface Question {
   options?: string[];
   correctAnswer: string | string[];
   explanation?: string;
+  hash?: string; // 题目的hash值（与数据库的content_hash是同一个值）
 }
 
 interface QuestionAIDialogProps {
@@ -52,6 +54,7 @@ interface Message {
     aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached";
     model?: string;
     sourceType?: "ai-generated" | "cached" | "knowledge-base";
+    cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
   };
 }
 
@@ -66,6 +69,7 @@ export default function QuestionAIDialog({
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
+  const [localAiAnswers, setLocalAiAnswers] = useState<Record<string, string> | null>(null);
 
   // 滚动到底部
   const scrollToBottom = () => {
@@ -77,6 +81,29 @@ export default function QuestionAIDialog({
       scrollToBottom();
     }
   }, [isOpen, messages]);
+
+  // 加载本地/缓存JSON包中的aiAnswers（每次打开对话框时检查版本号并加载）
+  useEffect(() => {
+    const loadLocalAiAnswers = async () => {
+      try {
+        // 使用 loadUnifiedQuestionsPackage 会自动检查版本号并更新
+        const pkg = await loadUnifiedQuestionsPackage();
+        const ai = pkg?.aiAnswers || {};
+        setLocalAiAnswers(ai);
+        console.log("[QuestionAIDialog] 已加载本地aiAnswers，共", Object.keys(ai).length, "个", {
+          version: pkg?.version || "未知",
+        });
+      } catch (error) {
+        console.warn("[QuestionAIDialog] 无法加载缓存aiAnswers:", error);
+        setLocalAiAnswers({}); // 设置为空对象，表示已尝试加载但失败
+      }
+    };
+    
+    // 每次打开对话框时重新加载（检查版本号）
+    if (isOpen) {
+      loadLocalAiAnswers();
+    }
+  }, [isOpen]);
 
   // 初始化AI解释
   useEffect(() => {
@@ -137,6 +164,44 @@ export default function QuestionAIDialog({
       
       const questionText = userQuestion || formatQuestionForAI();
       
+      // 获取题目的hash值（前端必须传递hash）
+      const questionHash = question.hash;
+      
+      if (!questionHash) {
+        const errorMessage: Message = {
+          role: "assistant",
+          content: "题目缺少hash值，无法获取AI解析。",
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setIsLoading(false);
+        setIsInitialLoading(false);
+        return;
+      }
+      
+      // 1. 先检查本地JSON包中的aiAnswer（优先检查本地缓存）
+      // 如果localAiAnswers不为null（已加载完成），检查是否有对应的答案
+      if (localAiAnswers !== null && localAiAnswers[questionHash]) {
+        const cachedAnswer = localAiAnswers[questionHash];
+        console.log("[QuestionAIDialog] 从本地LocalStorage找到AI解析");
+        const newMessage: Message = {
+          role: "assistant",
+          content: cachedAnswer,
+          metadata: {
+            aiProvider: "cached",
+            sourceType: "cached",
+            cacheSource: "localStorage", // 明确标记为从 localStorage 读取
+          },
+        };
+        setMessages((prev) => [...prev, newMessage]);
+        setIsLoading(false);
+        setIsInitialLoading(false);
+        return;
+      }
+      
+      // 如果localAiAnswers为null，说明还在加载中，直接请求后端
+      // （本地缓存会在下次打开对话框时生效）
+      
+      // 2. 如果本地JSON包中没有，才请求后端
       const result = await apiFetch<{
         answer: string;
         sources?: Array<{
@@ -147,11 +212,13 @@ export default function QuestionAIDialog({
         aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct";
         model?: string;
         cached?: boolean;
+        cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
       }>("/api/ai/ask", {
         method: "POST",
         body: {
           question: questionText,
           locale: "zh-CN",
+          questionHash: questionHash, // 传递题目的hash值
         },
       });
 
@@ -165,6 +232,7 @@ export default function QuestionAIDialog({
             aiProvider: result.data.cached ? "cached" : (result.data.aiProvider || "openai"),
             model: result.data.model,
             sourceType: result.data.cached ? "cached" : "ai-generated",
+            cacheSource: result.data.cacheSource || (result.data.cached ? "database" : undefined), // 明确标记缓存来源
           },
         };
         setMessages((prev) => [...prev, newMessage]);
@@ -336,6 +404,11 @@ export default function QuestionAIDialog({
                               <>
                                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                                 <span>Cached Answer</span>
+                                {message.metadata.cacheSource && (
+                                  <span className="text-gray-400 ml-1">
+                                    ({message.metadata.cacheSource === "localStorage" ? "LocalStorage" : "Database"})
+                                  </span>
+                                )}
                                 {message.metadata.model && (
                                   <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
                                 )}

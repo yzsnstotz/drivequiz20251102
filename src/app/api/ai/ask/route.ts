@@ -10,6 +10,38 @@ import {
   saveAIAnswerToDb,
 } from "@/lib/questionDb";
 
+// 用户缓存存储（内存缓存，按用户ID和题目hash存储）
+// 格式：Map<userId, Map<questionHash, answer>>
+const userAnswerCache = new Map<string, Map<string, string>>();
+
+/**
+ * 获取用户缓存的AI答案
+ */
+function getUserCachedAnswer(userId: string | null, questionHash: string): string | null {
+  if (!userId || !questionHash) return null;
+  const userCache = userAnswerCache.get(userId);
+  if (!userCache) return null;
+  return userCache.get(questionHash) || null;
+}
+
+/**
+ * 存储用户缓存的AI答案
+ */
+function setUserCachedAnswer(userId: string | null, questionHash: string, answer: string): void {
+  if (!userId || !questionHash || !answer) return;
+  let userCache = userAnswerCache.get(userId);
+  if (!userCache) {
+    userCache = new Map();
+    userAnswerCache.set(userId, userCache);
+  }
+  userCache.set(questionHash, answer);
+  // 限制每个用户的缓存大小（最多1000条）
+  if (userCache.size > 1000) {
+    const entries = Array.from(userCache.entries());
+    entries.slice(0, entries.length - 1000).forEach(([key]) => userCache!.delete(key));
+  }
+}
+
 export const runtime = "nodejs";
 
 /**
@@ -24,6 +56,7 @@ export const runtime = "nodejs";
 type AskRequest = {
   question: string;
   locale?: string;
+  questionHash?: string; // 题目的hash值（从JSON包或数据库获取，避免重复计算）
 };
 
 type AiServiceResponse = {
@@ -294,6 +327,23 @@ function normalizeQuestion(q: string) {
   return q.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+ * 确保写入和查询时使用相同的 locale 格式
+ */
+function normalizeLocale(locale: string | undefined | null): string {
+  if (!locale) return "zh";
+  const localeLower = locale.toLowerCase().trim();
+  if (localeLower.startsWith("zh")) {
+    return "zh";
+  } else if (localeLower.startsWith("ja")) {
+    return "ja";
+  } else if (localeLower.startsWith("en")) {
+    return "en";
+  }
+  return locale;
+}
+
 // ==== 辅助函数：构建系统提示 ====
 function buildSystemPrompt(lang: string): string {
   const base =
@@ -349,7 +399,7 @@ async function writeAiLogToDatabase(params: {
   from?: string | null; // "study" | "question" | "chat" 等，标识来源
   aiProvider?: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
   cached?: boolean | null; // 是否是缓存
-  cacheSource?: string | null; // "json" | "database"，缓存来源
+  cacheSource?: string | null; // "localStorage" | "database"，缓存来源
 }): Promise<void> {
   try {
     // 规范化 userId：如果是 act- 格式，直接使用；如果是 anonymous，设为 null
@@ -705,9 +755,13 @@ export async function POST(req: NextRequest) {
       return err("VALIDATION_FAILED", "invalid locale.", 400);
     }
     
+    // 获取题目的hash值（如果前端传递了，直接使用，避免重复计算）
+    const questionHashFromRequest = body.questionHash?.trim() || null;
+    
     console.log(`[${requestId}] [STEP 2.6] 参数校验通过`, {
       questionLength: question.length,
       locale: locale || "(none)",
+      hasQuestionHash: !!questionHashFromRequest,
     });
 
     // 3) 配额检查（用户维度 10次/日）
@@ -777,86 +831,44 @@ export async function POST(req: NextRequest) {
       forwardedUserId,
     });
     
-    // 4.5) 检查JSON包中是否有AI解析（如果是题目）
-    // 尝试从JSON包中获取AI解析，如果存在则直接返回
-    console.log(`[${requestId}] [STEP 4.5] 开始检查JSON包中的AI解析`);
+    // 4.5) 检查是否有缓存的AI解析（如果是题目）
+    // 前端已经检查过本地JSON包，后端直接检查数据库
+    console.log(`[${requestId}] [STEP 4.5] 开始检查缓存的AI解析`);
     let cachedAnswer: string | null = null;
     let questionHash: string | null = null;
     let packageName: string | null = null;
-    let cacheSource: "json" | "database" | null = null; // 记录缓存来源
+    let cacheSource: "localStorage" | "database" | null = null; // 记录缓存来源
     
     try {
-      // 尝试通过问题内容匹配题目数据库
-      // 1. 先从数据库查找匹配的题目（通过content模糊匹配）
-      const matchedQuestion = await db
-        .selectFrom("questions")
-        .selectAll()
-        .where("content", "ilike", `%${question.trim()}%`)
-        .limit(1)
-        .executeTakeFirst();
-      
-      if (matchedQuestion) {
-        // 找到匹配的题目，使用其content_hash
-        questionHash = matchedQuestion.content_hash;
-        console.log(`[${requestId}] [STEP 4.5.0] 从数据库找到匹配的题目`, {
-          questionId: matchedQuestion.id,
+      // 1. 使用前端传递的hash值（前端必须传递hash）
+      if (questionHashFromRequest) {
+        questionHash = questionHashFromRequest;
+        console.log(`[${requestId}] [STEP 4.5.0] 使用前端传递的hash值`, {
           questionHash: questionHash.substring(0, 16) + "...",
         });
-        
-        // 从license_types中获取packageName（仅用于日志记录）
-        packageName = matchedQuestion.license_types?.[0] || null;
-        
-        // 1. 优先从统一的questions.json读取（这是最新的包，是唯一的JSON包数据获取源）
-        cachedAnswer = await getAIAnswerFromJson(null, questionHash);
-        if (cachedAnswer) {
-          cacheSource = "json"; // 标记为从JSON包读取
-          console.log(`[${requestId}] [STEP 4.5.1] 从统一的questions.json中找到AI解析`, {
-            questionHash: questionHash.substring(0, 16) + "...",
-            answerLength: cachedAnswer.length,
-          });
-        }
-        
-        // 2. 如果统一的JSON包中没有，尝试从数据库读取（不再读取单个JSON包）
-        if (!cachedAnswer) {
-          cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
-          if (cachedAnswer) {
-            cacheSource = "database"; // 标记为从数据库读取
-            console.log(`[${requestId}] [STEP 4.5.2] 从数据库中找到AI解析`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: cachedAnswer.length,
-            });
-          }
-        }
       } else {
-        // 如果没有找到匹配的题目，尝试通过问题内容直接计算hash（简化匹配）
-        // 注意：这种方式可能不够准确，因为hash需要完整的题目信息
-        // 但可以作为后备方案
-        const questionForHash = {
-          type: "single" as const,
-          content: question,
-          correctAnswer: "", // 题目匹配时不需要正确答案
-        };
-        questionHash = calculateQuestionHash(questionForHash);
-        
-        // 1. 优先从统一的questions.json读取（这是最新的包，是唯一的JSON包数据获取源）
-        cachedAnswer = await getAIAnswerFromJson(null, questionHash);
+        // 如果没有传递hash，说明这不是题目请求，直接调用AI服务
+        console.log(`[${requestId}] [STEP 4.5.0] 未传递hash值，将直接调用AI服务生成新解析`);
+        // questionHash 保持为 null，后续会直接调用AI服务
+        questionHash = null;
+      }
+      
+      // 2. 如果有了questionHash，直接检查数据库（前端已经检查过JSON包）
+      if (questionHash) {
+        // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+        const normalizedLocale = normalizeLocale(locale);
+        // 直接检查数据库（前端已经检查过本地JSON包，不需要重复检查）
+        cachedAnswer = await getAIAnswerFromDb(questionHash, normalizedLocale);
         if (cachedAnswer) {
-          cacheSource = "json"; // 标记为从JSON包读取
-          console.log(`[${requestId}] [STEP 4.5.1] 从统一的questions.json中找到AI解析（简化匹配）`, {
+          cacheSource = "database"; // 标记为从数据库读取
+          console.log(`[${requestId}] [STEP 4.5.1] 从数据库中找到AI解析`, {
             questionHash: questionHash.substring(0, 16) + "...",
             answerLength: cachedAnswer.length,
           });
-        }
-        
-        // 2. 如果统一的JSON包中没有，尝试从数据库读取（不再读取单个JSON包）
-        if (!cachedAnswer) {
-          cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
-          if (cachedAnswer) {
-            cacheSource = "database"; // 标记为从数据库读取
-            console.log(`[${requestId}] [STEP 4.5.2] 从数据库中找到AI解析（简化匹配）`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: cachedAnswer.length,
-            });
+          // 存入用户缓存（按照要求：从数据库获取后存入用户cache）
+          if (forwardedUserId) {
+            setUserCachedAnswer(forwardedUserId, questionHash, cachedAnswer);
+            console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户缓存（来源：数据库）`);
           }
         }
       }
@@ -1146,6 +1158,76 @@ export async function POST(req: NextRequest) {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
         });
         
+        // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
+        if (questionHash) {
+          // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+          const localeStr = normalizeLocale(locale);
+          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenRouter模式）`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            locale: localeStr,
+            originalLocale: locale,
+          });
+          
+          // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+          try {
+            // 检查是否已存在（防止并发请求重复写入）
+            const existing = await getAIAnswerFromDb(questionHash, localeStr);
+            if (existing) {
+              console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                existingAnswerLength: existing.length,
+              });
+            } else {
+              // 只有在数据库中没有时才写入新回答
+              const savedId = await saveAIAnswerToDb(
+                questionHash,
+                truncatedAnswer,
+                localeStr,
+                openRouterData.model || model,
+                [], // 直连模式下暂时没有 RAG 来源
+                forwardedUserId || undefined
+              );
+              
+              if (savedId > 0) {
+                console.log(`[${requestId}] [STEP 5.8.2.2] 成功写入 question_ai_answers 表（新回答）`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  savedId,
+                  locale: localeStr,
+                });
+                
+                // 存入用户缓存
+                if (forwardedUserId) {
+                  setUserCachedAnswer(forwardedUserId, questionHash, truncatedAnswer);
+                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`, {
+                    userId: forwardedUserId,
+                    questionHash: questionHash.substring(0, 16) + "...",
+                  });
+                }
+              } else {
+                console.error(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  locale: localeStr,
+                });
+              }
+            }
+          } catch (error) {
+            const errorObj = error as Error;
+            console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
+              error: errorObj.message,
+              name: errorObj.name,
+              stack: errorObj.stack,
+              questionHash: questionHash.substring(0, 16) + "...",
+              locale: localeStr,
+            });
+          }
+        } else {
+          console.warn(`[${requestId}] [STEP 5.8.2] questionHash 为 null，跳过写入 question_ai_answers 表（直连OpenRouter模式）`);
+        }
+        
+        console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenRouter模式）`);
+        
         // 返回结果
         return ok({
           answer: truncatedAnswer,
@@ -1397,6 +1479,76 @@ export async function POST(req: NextRequest) {
         }).catch((error) => {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
         });
+        
+        // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
+        if (questionHash) {
+          // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+          const localeStr = normalizeLocale(locale);
+          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenAI模式）`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            locale: localeStr,
+            originalLocale: locale,
+          });
+          
+          // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+          try {
+            // 检查是否已存在（防止并发请求重复写入）
+            const existing = await getAIAnswerFromDb(questionHash, localeStr);
+            if (existing) {
+              console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                existingAnswerLength: existing.length,
+              });
+            } else {
+              // 只有在数据库中没有时才写入新回答
+              const savedId = await saveAIAnswerToDb(
+                questionHash,
+                truncatedAnswer,
+                localeStr,
+                openaiData.model || model,
+                [], // 直连模式下暂时没有 RAG 来源
+                forwardedUserId || undefined
+              );
+              
+              if (savedId > 0) {
+                console.log(`[${requestId}] [STEP 5.8.2.2] 成功写入 question_ai_answers 表（新回答）`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  savedId,
+                  locale: localeStr,
+                });
+                
+                // 存入用户缓存
+                if (forwardedUserId) {
+                  setUserCachedAnswer(forwardedUserId, questionHash, truncatedAnswer);
+                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`, {
+                    userId: forwardedUserId,
+                    questionHash: questionHash.substring(0, 16) + "...",
+                  });
+                }
+              } else {
+                console.error(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  locale: localeStr,
+                });
+              }
+            }
+          } catch (error) {
+            const errorObj = error as Error;
+            console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
+              error: errorObj.message,
+              name: errorObj.name,
+              stack: errorObj.stack,
+              questionHash: questionHash.substring(0, 16) + "...",
+              locale: localeStr,
+            });
+          }
+        } else {
+          console.warn(`[${requestId}] [STEP 5.8.2] questionHash 为 null，跳过写入 question_ai_answers 表（直连OpenAI模式）`);
+        }
+        
+        console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenAI模式）`);
         
         // 返回结果
         return ok({
@@ -1919,51 +2071,57 @@ export async function POST(req: NextRequest) {
     // 7.5) 如果问题是题目，写入 question_ai_answers 表
     // 并在每10次新解析后触发批量更新JSON包
     if (result.ok && result.data && result.data.answer) {
-      // 如果之前没有计算questionHash，尝试重新计算
-      if (!questionHash) {
-        try {
-          // 尝试通过问题内容匹配题目数据库
-          const matchedQuestion = await db
-            .selectFrom("questions")
-            .selectAll()
-            .where("content", "ilike", `%${question.trim()}%`)
-            .limit(1)
-            .executeTakeFirst();
-          
-          if (matchedQuestion) {
-            questionHash = matchedQuestion.content_hash;
-            packageName = matchedQuestion.license_types?.[0] || null;
-            console.log(`[${requestId}] [STEP 7.5.0] 重新计算questionHash`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              packageName,
-            });
-          }
-        } catch (error) {
-          console.error(`[${requestId}] [STEP 7.5.0] 重新计算questionHash失败:`, error);
-        }
-      }
+      // 记录 questionHash 状态，用于调试
+      console.log(`[${requestId}] [STEP 7.5] 准备写入 question_ai_answers 表`, {
+        hasQuestionHash: !!questionHash,
+        questionHash: questionHash ? `${questionHash.substring(0, 16)}...` : "(null)",
+        hasAnswer: !!result.data.answer,
+        answerLength: result.data.answer?.length || 0,
+        locale: locale || "zh",
+      });
       
       // 如果找到了questionHash，写入question_ai_answers表
       // 注意：只有在数据库中没有AI回答时才写入，如果已有则跳过
-      // JSON包不会被实时更新，只有在批量更新时才更新
+      // 注意：JSON包不会实时更新，需要定期在后台手动更新
       if (questionHash) {
-        console.log(`[${requestId}] [STEP 7.5] 开始检查并写入 question_ai_answers 表`);
+        console.log(`[${requestId}] [STEP 7.5] 开始检查并写入 question_ai_answers 表`, {
+          questionHash: questionHash.substring(0, 16) + "...",
+          questionHashLength: questionHash.length,
+          locale: locale || "zh",
+        });
         
         const answer = result.data.answer;
-        const localeStr = locale || "zh";
+        // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+        const localeStr = normalizeLocale(locale);
         
-        // 异步写入 question_ai_answers 表（不阻塞响应）
-        void (async () => {
-          try {
-            // 检查是否已存在（如果数据库已有AI回答，不应该被新回答覆盖）
-            const existing = await getAIAnswerFromDb(questionHash, localeStr);
-            if (existing) {
-              console.log(`[${requestId}] [STEP 7.5.1] 数据库已有AI解析，跳过写入（避免覆盖）`);
-              return;
-            }
+        // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+        // 注意：Vercel 等 Serverless 环境可能会在响应返回后立即终止函数执行
+        // 为了确保数据写入，我们使用 await 等待写入完成
+        try {
+          // 检查是否已存在（防止并发请求重复写入）
+          // 注意：正常情况下，如果数据库有答案，STEP 4.5就会返回，不会到达这里
+          // 这里检查是为了防止并发请求的情况
+          console.log(`[${requestId}] [STEP 7.5.0] 检查数据库中是否已存在AI解析`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            locale: localeStr,
+          });
+          
+          const existing = await getAIAnswerFromDb(questionHash, localeStr);
+          if (existing) {
+            console.log(`[${requestId}] [STEP 7.5.1] 数据库已有AI解析（可能是并发请求），跳过写入（避免覆盖）`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              existingAnswerLength: existing.length,
+            });
+            // 注意：JSON包不会实时更新，需要定期在后台手动更新
+          } else {
+            console.log(`[${requestId}] [STEP 7.5.1] 数据库中不存在AI解析，准备写入新回答`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              answerLength: answer.length,
+              model: result.data?.model || "unknown",
+            });
             
             // 只有在数据库中没有时才写入新回答
-            await saveAIAnswerToDb(
+            const savedId = await saveAIAnswerToDb(
               questionHash,
               answer,
               localeStr,
@@ -1972,19 +2130,58 @@ export async function POST(req: NextRequest) {
               forwardedUserId || undefined
             );
             
-            console.log(`[${requestId}] [STEP 7.5.2] 成功写入 question_ai_answers 表（新回答）`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: answer.length,
-              packageName,
-            });
-            
-            // 注意：JSON包不会被实时更新，只有在手动调用"更新JSON包"功能时才更新
-            // 这样可以避免每次写入新AI回答后都自动更新JSON包
-            console.log(`[${requestId}] [STEP 7.5.3] 已写入数据库，JSON包不会自动更新（需要手动触发批量更新）`);
-          } catch (error) {
-            console.error(`[${requestId}] [STEP 7.5] 写入 question_ai_answers 失败:`, error);
+            if (savedId > 0) {
+              console.log(`[${requestId}] [STEP 7.5.2] 成功写入 question_ai_answers 表（新回答）`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: answer.length,
+                packageName,
+                savedId,
+                locale: localeStr,
+              });
+              
+              // 存入用户缓存（按照要求：AI解析后存入用户cache）
+              if (forwardedUserId) {
+                setUserCachedAnswer(forwardedUserId, questionHash, answer);
+                console.log(`[${requestId}] [STEP 7.5.2.1] 已存入用户缓存（来源：AI解析）`, {
+                  userId: forwardedUserId,
+                  questionHash: questionHash.substring(0, 16) + "...",
+                });
+              }
+              
+              // 注意：JSON包不会实时更新，需要定期在后台手动更新
+              // 用户下次请求时，会从数据库读取缓存（STEP 4.5）
+              console.log(`[${requestId}] [STEP 7.5.3] 已写入数据库，JSON包需要定期手动更新`);
+            } else {
+              console.error(`[${requestId}] [STEP 7.5.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: answer.length,
+                locale: localeStr,
+                model: result.data?.model || "unknown",
+              });
+            }
           }
-        })();
+        } catch (error) {
+          // 详细记录错误信息，包括堆栈
+          const errorObj = error as Error;
+          console.error(`[${requestId}] [STEP 7.5] 写入 question_ai_answers 失败:`, {
+            error: errorObj.message,
+            name: errorObj.name,
+            stack: errorObj.stack,
+            questionHash: questionHash.substring(0, 16) + "...",
+            answerLength: answer.length,
+            locale: localeStr,
+          });
+          // 不抛出错误，避免影响主流程
+        }
+      } else {
+        // questionHash 为 null，记录警告日志
+        console.warn(`[${requestId}] [STEP 7.5] questionHash 为 null，跳过写入 question_ai_answers 表`, {
+          hasQuestionHashFromRequest: !!questionHashFromRequest,
+          questionHashFromRequest: questionHashFromRequest ? `${questionHashFromRequest.substring(0, 16)}...` : "(null)",
+          questionLength: question.length,
+          questionPreview: question.substring(0, 100) + "...",
+          note: "如果这是一道题目，前端应该传递 questionHash 字段",
+        });
       }
     }
     

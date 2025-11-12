@@ -6,6 +6,7 @@
 
 import { db } from "@/lib/db";
 import { calculateQuestionHash, generateVersion, generateUnifiedVersion, Question } from "@/lib/questionHash";
+import { sql } from "kysely";
 import fs from "fs/promises";
 import path from "path";
 
@@ -88,7 +89,8 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       .where((eb) =>
         eb.or([
           // 检查license_types数组是否包含packageName
-          eb("license_types", "@>", [packageName]),
+          // 使用 sql 模板确保正确的 PostgreSQL 数组格式
+          sql<boolean>`${eb.ref("license_types")} @> ARRAY[${sql.literal(packageName)}]::text[]`,
           // 或者通过version匹配（如果version字段存储了包名）
           eb("version", "=", packageName),
         ])
@@ -96,7 +98,7 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       .orderBy("id", "asc")
       .execute();
 
-    // 转换为前端格式
+    // 转换为前端格式（保留 content_hash）
     return questions.map((q) => ({
       id: q.id,
       type: q.type,
@@ -106,6 +108,7 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       image: q.image || undefined,
       explanation: q.explanation || undefined,
       category: packageName,
+      content_hash: q.content_hash, // 保留 content_hash 字段
     }));
   } catch (error) {
     console.error(`[getQuestionsFromDb] Error loading ${packageName}:`, error);
@@ -199,6 +202,15 @@ export async function getAIAnswerFromDb(
 }
 
 /**
+ * 验证是否为有效的 UUID 格式
+ */
+function isValidUUID(str: string | null | undefined): boolean {
+  if (!str) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+/**
  * 保存AI回答到数据库
  */
 export async function saveAIAnswerToDb(
@@ -210,6 +222,19 @@ export async function saveAIAnswerToDb(
   createdBy?: string
 ): Promise<number> {
   try {
+    // 规范化 createdBy：只接受有效的 UUID 格式
+    // 如果传入的是 act- 格式或其他非 UUID 格式，设为 null
+    let normalizedCreatedBy: string | null = null;
+    if (createdBy && isValidUUID(createdBy)) {
+      normalizedCreatedBy = createdBy;
+    } else if (createdBy) {
+      // 如果不是有效的 UUID，记录日志但不抛出错误
+      console.warn(`[saveAIAnswerToDb] createdBy 不是有效的 UUID 格式，将设为 null`, {
+        createdBy,
+        questionHash: questionHash.substring(0, 16) + "...",
+      });
+    }
+    
     // 检查是否已存在
     const existing = await db
       .selectFrom("question_ai_answers")
@@ -233,7 +258,7 @@ export async function saveAIAnswerToDb(
           answer,
           sources: sources ? (sources as any) : null,
           model: model || null,
-          created_by: createdBy || null,
+          created_by: normalizedCreatedBy,
           view_count: 0,
         })
         .returning("id")
@@ -243,6 +268,76 @@ export async function saveAIAnswerToDb(
     }
   } catch (error) {
     console.error("[saveAIAnswerToDb] Error:", error);
+    throw error;
+  }
+}
+
+/**
+ * 更新AI回答到数据库（如果已存在则更新，不存在则插入）
+ */
+export async function updateAIAnswerToDb(
+  questionHash: string,
+  answer: string,
+  locale: string = "zh",
+  model?: string,
+  sources?: any[],
+  createdBy?: string
+): Promise<number> {
+  try {
+    // 规范化 createdBy：只接受有效的 UUID 格式
+    let normalizedCreatedBy: string | null = null;
+    if (createdBy && isValidUUID(createdBy)) {
+      normalizedCreatedBy = createdBy;
+    } else if (createdBy) {
+      console.warn(`[updateAIAnswerToDb] createdBy 不是有效的 UUID 格式，将设为 null`, {
+        createdBy,
+        questionHash: questionHash.substring(0, 16) + "...",
+      });
+    }
+    
+    // 检查是否已存在
+    const existing = await db
+      .selectFrom("question_ai_answers")
+      .select(["id", "answer"])
+      .where("question_hash", "=", questionHash)
+      .where("locale", "=", locale)
+      .executeTakeFirst();
+
+    if (existing) {
+      // 更新现有回答
+      await db
+        .updateTable("question_ai_answers")
+        .set({
+          answer,
+          sources: sources ? (sources as any) : null,
+          model: model || null,
+          updated_at: new Date(),
+        })
+        .where("id", "=", existing.id)
+        .execute();
+      
+      console.log(`[updateAIAnswerToDb] 成功更新AI回答（ID: ${existing.id}）`);
+      return existing.id;
+    } else {
+      // 插入新回答
+      const result = await db
+        .insertInto("question_ai_answers")
+        .values({
+          question_hash: questionHash,
+          locale,
+          answer,
+          sources: sources ? (sources as any) : null,
+          model: model || null,
+          created_by: normalizedCreatedBy,
+          view_count: 0,
+        })
+        .returning("id")
+        .executeTakeFirst();
+
+      return result?.id || 0;
+    }
+  } catch (error) {
+    console.error("[updateAIAnswerToDb] Error:", error);
     throw error;
   }
 }
@@ -466,6 +561,73 @@ export async function saveQuestionFile(
   } catch (error) {
     console.error(`[saveQuestionFile] Error saving:`, error);
     throw error;
+  }
+}
+
+/**
+ * 更新JSON包中的单个AI回答（实时更新）
+ * @param questionHash 题目hash
+ * @param answer AI回答
+ * @param locale 语言（默认zh）
+ */
+export async function updateJsonPackageAiAnswer(
+  questionHash: string,
+  answer: string,
+  locale: string = "zh"
+): Promise<void> {
+  try {
+    // 只更新中文的JSON包（其他语言暂不支持）
+    if (locale !== "zh") {
+      console.log(`[updateJsonPackageAiAnswer] 跳过非中文语言: ${locale}`);
+      return;
+    }
+
+    const unifiedFilePath = path.join(QUESTIONS_DIR, "questions.json");
+    
+    // 读取现有的JSON包
+    let existingData: { questions: Question[]; version?: string; aiAnswers?: Record<string, string> } = {
+      questions: [],
+      aiAnswers: {},
+    };
+    
+    try {
+      const existingContent = await fs.readFile(unifiedFilePath, "utf-8");
+      const parsed = JSON.parse(existingContent);
+      existingData = {
+        questions: Array.isArray(parsed) ? parsed : (parsed.questions || []),
+        version: parsed.version,
+        aiAnswers: parsed.aiAnswers || {},
+      };
+    } catch (error) {
+      // 如果文件不存在，记录错误但不抛出（可能是首次运行）
+      console.warn(`[updateJsonPackageAiAnswer] JSON包文件不存在或读取失败:`, (error as Error).message);
+      return;
+    }
+    
+    // 更新aiAnswers对象
+    const updatedAiAnswers = {
+      ...existingData.aiAnswers,
+      [questionHash]: answer,
+    };
+    
+    // 保存更新后的JSON包
+    const updatedData = {
+      questions: existingData.questions,
+      version: existingData.version,
+      aiAnswers: updatedAiAnswers,
+    };
+    
+    await fs.writeFile(unifiedFilePath, JSON.stringify(updatedData, null, 2), "utf-8");
+    
+    console.log(`[updateJsonPackageAiAnswer] 成功更新JSON包中的AI回答`, {
+      questionHash: questionHash.substring(0, 16) + "...",
+      answerLength: answer.length,
+      totalAiAnswers: Object.keys(updatedAiAnswers).length,
+    });
+  } catch (error) {
+    // 更新JSON包失败不影响主流程，仅记录日志
+    console.error(`[updateJsonPackageAiAnswer] 更新JSON包失败:`, error);
+    // 不抛出错误，避免影响主流程
   }
 }
 
@@ -867,8 +1029,35 @@ export async function updateAllJsonPackages(): Promise<{
   version: string;
   totalQuestions: number;
   aiAnswersCount: number;
+  previousVersion?: string;
+  previousTotalQuestions?: number;
+  previousAiAnswersCount?: number;
+  questionsAdded?: number;
+  questionsUpdated?: number;
+  aiAnswersAdded?: number;
+  aiAnswersUpdated?: number;
 }> {
   try {
+    // 0. 获取上一个版本的信息（用于对比）
+    const previousVersionInfo = await getLatestUnifiedVersionInfo();
+    const previousVersion = previousVersionInfo?.version;
+    let previousTotalQuestions = 0;
+    let previousAiAnswersCount = 0;
+    
+    if (previousVersionInfo && previousVersion) {
+      const previousVersionData = await db
+        .selectFrom("question_package_versions")
+        .select(["total_questions", "ai_answers_count"])
+        .where("package_name", "=", "__unified__")
+        .where("version", "=", previousVersion)
+        .executeTakeFirst();
+      
+      if (previousVersionData) {
+        previousTotalQuestions = previousVersionData.total_questions || 0;
+        previousAiAnswersCount = previousVersionData.ai_answers_count || 0;
+      }
+    }
+
     // 1. 直接从数据库读取所有题目（不依赖文件系统的categories）
     console.log(`[updateAllJsonPackages] 开始从数据库读取所有题目`);
     const allDbQuestions = await db
@@ -879,8 +1068,8 @@ export async function updateAllJsonPackages(): Promise<{
 
     console.log(`[updateAllJsonPackages] 从数据库读取到 ${allDbQuestions.length} 个题目`);
 
-    // 转换为前端格式
-    const allQuestions: Question[] = allDbQuestions.map((q) => {
+    // 转换为前端格式（使用content_hash作为hash，不重新计算）
+    const questionsWithHash = allDbQuestions.map((q) => {
       // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
       const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
         ? q.license_types[0]
@@ -895,25 +1084,63 @@ export async function updateAllJsonPackages(): Promise<{
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category,
+        hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
       };
     });
     
-    // 2. 重新计算所有题目的hash（刷新contenthash）
-    const questionsWithHash = allQuestions.map((q) => {
-      const hash = calculateQuestionHash(q);
-      return {
-        ...q,
-        hash,
-      };
-    });
-    
-    // 3. 获取所有题目的AI回答（从数据库）
+    // 3. 获取所有题目的AI回答（从数据库，使用hash作为question_hash）
+    // 批量查询所有AI回答，提高性能并支持多种locale格式
     const aiAnswers: Record<string, string> = {};
-    for (const question of questionsWithHash) {
-      const questionHash = (question as any).hash || calculateQuestionHash(question);
-      const answer = await getAIAnswerFromDb(questionHash, "zh");
-      if (answer) {
-        aiAnswers[questionHash] = answer;
+    const questionHashes = questionsWithHash
+      .map((q) => (q as any).hash)
+      .filter((hash): hash is string => !!hash);
+    
+    if (questionHashes.length > 0) {
+      try {
+        // 批量查询，同时支持 zh、zh-CN、zh_CN 格式（兼容历史数据）
+        const aiAnswersFromDb = await db
+          .selectFrom("question_ai_answers")
+          .select(["question_hash", "answer", "created_at", "locale"])
+          .where("question_hash", "in", questionHashes)
+          .where((eb) =>
+            eb.or([
+              eb("locale", "=", "zh"),
+              eb("locale", "=", "zh-CN"),
+              eb("locale", "=", "zh_CN"),
+            ])
+          )
+          .orderBy("question_hash", "asc")
+          .orderBy("created_at", "desc")
+          .execute();
+
+        // 构建映射（每个 question_hash 只保留最新的回答）
+        for (const aiAnswer of aiAnswersFromDb) {
+          if (!aiAnswers[aiAnswer.question_hash] && aiAnswer.answer) {
+            aiAnswers[aiAnswer.question_hash] = aiAnswer.answer;
+          }
+        }
+        
+        console.log(`[updateAllJsonPackages] 从数据库批量查询到 ${Object.keys(aiAnswers).length} 个AI回答`);
+      } catch (error) {
+        console.error(`[updateAllJsonPackages] 批量查询 question_ai_answers 失败:`, error);
+        // 如果批量查询失败，回退到逐个查询（兼容旧逻辑）
+        console.log(`[updateAllJsonPackages] 回退到逐个查询模式`);
+        for (const question of questionsWithHash) {
+          const questionHash = (question as any).hash;
+          if (questionHash) {
+            // 尝试多种 locale 格式
+            let answer = await getAIAnswerFromDb(questionHash, "zh");
+            if (!answer) {
+              answer = await getAIAnswerFromDb(questionHash, "zh-CN");
+            }
+            if (!answer) {
+              answer = await getAIAnswerFromDb(questionHash, "zh_CN");
+            }
+            if (answer) {
+              aiAnswers[questionHash] = answer;
+            }
+          }
+        }
       }
     }
 
@@ -950,15 +1177,47 @@ export async function updateAllJsonPackages(): Promise<{
       console.error(`[updateAllJsonPackages] Error saving unified package:`, error);
     }
 
+    const totalQuestions = questionsWithHash.length;
+    const aiAnswersCount = Object.keys(aiAnswers).length;
+    
+    // 计算变化量
+    const questionsAdded = previousTotalQuestions > 0 
+      ? Math.max(0, totalQuestions - previousTotalQuestions)
+      : totalQuestions; // 如果没有上一个版本，所有题目都是新增的
+    const questionsUpdated = previousTotalQuestions > 0 
+      ? Math.min(previousTotalQuestions, totalQuestions)
+      : 0; // 如果没有上一个版本，没有更新的题目
+    
+    const aiAnswersAdded = previousAiAnswersCount > 0
+      ? Math.max(0, aiAnswersCount - previousAiAnswersCount)
+      : aiAnswersCount; // 如果没有上一个版本，所有AI回答都是新增的
+    const aiAnswersUpdated = previousAiAnswersCount > 0
+      ? Math.min(previousAiAnswersCount, aiAnswersCount)
+      : 0; // 如果没有上一个版本，没有更新的AI回答
+
     console.log(`[updateAllJsonPackages] Updated all packages to unified version ${version}`, {
-      totalQuestions: questionsWithHash.length,
-      aiAnswersCount: Object.keys(aiAnswers).length,
+      totalQuestions,
+      aiAnswersCount,
+      previousVersion,
+      previousTotalQuestions,
+      previousAiAnswersCount,
+      questionsAdded,
+      questionsUpdated,
+      aiAnswersAdded,
+      aiAnswersUpdated,
     });
 
     return {
       version,
-      totalQuestions: questionsWithHash.length,
-      aiAnswersCount: Object.keys(aiAnswers).length,
+      totalQuestions,
+      aiAnswersCount,
+      previousVersion,
+      previousTotalQuestions,
+      previousAiAnswersCount,
+      questionsAdded,
+      questionsUpdated,
+      aiAnswersAdded,
+      aiAnswersUpdated,
     };
   } catch (error) {
     console.error(`[updateAllJsonPackages] Error:`, error);
