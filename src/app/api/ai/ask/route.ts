@@ -1139,22 +1139,25 @@ export async function POST(req: NextRequest) {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
         });
         
-        // 如果是题目，写入 question_ai_answers 表（异步，不阻塞响应）
+        // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
         if (questionHash) {
-          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenRouter模式）`);
+          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenRouter模式）`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            locale: locale || "zh",
+          });
           
           const localeStr = locale || "zh";
           
-          // 异步写入 question_ai_answers 表（不阻塞响应）
-          const writePromise = (async () => {
-            try {
-              // 检查是否已存在（防止并发请求重复写入）
-              const existing = await getAIAnswerFromDb(questionHash, localeStr);
-              if (existing) {
-                console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`);
-                return;
-              }
-              
+          // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+          try {
+            // 检查是否已存在（防止并发请求重复写入）
+            const existing = await getAIAnswerFromDb(questionHash, localeStr);
+            if (existing) {
+              console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                existingAnswerLength: existing.length,
+              });
+            } else {
               // 只有在数据库中没有时才写入新回答
               const savedId = await saveAIAnswerToDb(
                 questionHash,
@@ -1170,30 +1173,37 @@ export async function POST(req: NextRequest) {
                   questionHash: questionHash.substring(0, 16) + "...",
                   answerLength: truncatedAnswer.length,
                   savedId,
+                  locale: localeStr,
                 });
                 
                 // 存入用户缓存
                 if (forwardedUserId) {
                   setUserCachedAnswer(forwardedUserId, questionHash, truncatedAnswer);
-                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`);
+                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`, {
+                    userId: forwardedUserId,
+                    questionHash: questionHash.substring(0, 16) + "...",
+                  });
                 }
               } else {
-                console.warn(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`);
+                console.error(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  locale: localeStr,
+                });
               }
-            } catch (error) {
-              const errorObj = error as Error;
-              console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
-                error: errorObj.message,
-                name: errorObj.name,
-                stack: errorObj.stack,
-                questionHash: questionHash.substring(0, 16) + "...",
-              });
             }
-          })();
-          
-          writePromise.catch((error) => {
-            console.error(`[${requestId}] [STEP 5.8.2] 异步写入操作失败:`, error);
-          });
+          } catch (error) {
+            const errorObj = error as Error;
+            console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
+              error: errorObj.message,
+              name: errorObj.name,
+              stack: errorObj.stack,
+              questionHash: questionHash.substring(0, 16) + "...",
+              locale: localeStr,
+            });
+          }
+        } else {
+          console.warn(`[${requestId}] [STEP 5.8.2] questionHash 为 null，跳过写入 question_ai_answers 表（直连OpenRouter模式）`);
         }
         
         console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenRouter模式）`);
@@ -1450,22 +1460,25 @@ export async function POST(req: NextRequest) {
           console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
         });
         
-        // 如果是题目，写入 question_ai_answers 表（异步，不阻塞响应）
+        // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
         if (questionHash) {
-          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenAI模式）`);
+          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenAI模式）`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            locale: locale || "zh",
+          });
           
           const localeStr = locale || "zh";
           
-          // 异步写入 question_ai_answers 表（不阻塞响应）
-          const writePromise = (async () => {
-            try {
-              // 检查是否已存在（防止并发请求重复写入）
-              const existing = await getAIAnswerFromDb(questionHash, localeStr);
-              if (existing) {
-                console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`);
-                return;
-              }
-              
+          // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+          try {
+            // 检查是否已存在（防止并发请求重复写入）
+            const existing = await getAIAnswerFromDb(questionHash, localeStr);
+            if (existing) {
+              console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                existingAnswerLength: existing.length,
+              });
+            } else {
               // 只有在数据库中没有时才写入新回答
               const savedId = await saveAIAnswerToDb(
                 questionHash,
@@ -1481,30 +1494,37 @@ export async function POST(req: NextRequest) {
                   questionHash: questionHash.substring(0, 16) + "...",
                   answerLength: truncatedAnswer.length,
                   savedId,
+                  locale: localeStr,
                 });
                 
                 // 存入用户缓存
                 if (forwardedUserId) {
                   setUserCachedAnswer(forwardedUserId, questionHash, truncatedAnswer);
-                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`);
+                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`, {
+                    userId: forwardedUserId,
+                    questionHash: questionHash.substring(0, 16) + "...",
+                  });
                 }
               } else {
-                console.warn(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`);
+                console.error(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  locale: localeStr,
+                });
               }
-            } catch (error) {
-              const errorObj = error as Error;
-              console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
-                error: errorObj.message,
-                name: errorObj.name,
-                stack: errorObj.stack,
-                questionHash: questionHash.substring(0, 16) + "...",
-              });
             }
-          })();
-          
-          writePromise.catch((error) => {
-            console.error(`[${requestId}] [STEP 5.8.2] 异步写入操作失败:`, error);
-          });
+          } catch (error) {
+            const errorObj = error as Error;
+            console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
+              error: errorObj.message,
+              name: errorObj.name,
+              stack: errorObj.stack,
+              questionHash: questionHash.substring(0, 16) + "...",
+              locale: localeStr,
+            });
+          }
+        } else {
+          console.warn(`[${requestId}] [STEP 5.8.2] questionHash 为 null，跳过写入 question_ai_answers 表（直连OpenAI模式）`);
         }
         
         console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenAI模式）`);
@@ -2030,29 +2050,53 @@ export async function POST(req: NextRequest) {
     // 7.5) 如果问题是题目，写入 question_ai_answers 表
     // 并在每10次新解析后触发批量更新JSON包
     if (result.ok && result.data && result.data.answer) {
+      // 记录 questionHash 状态，用于调试
+      console.log(`[${requestId}] [STEP 7.5] 准备写入 question_ai_answers 表`, {
+        hasQuestionHash: !!questionHash,
+        questionHash: questionHash ? `${questionHash.substring(0, 16)}...` : "(null)",
+        hasAnswer: !!result.data.answer,
+        answerLength: result.data.answer?.length || 0,
+        locale: locale || "zh",
+      });
+      
       // 如果找到了questionHash，写入question_ai_answers表
       // 注意：只有在数据库中没有AI回答时才写入，如果已有则跳过
       // 注意：JSON包不会实时更新，需要定期在后台手动更新
       if (questionHash) {
-        console.log(`[${requestId}] [STEP 7.5] 开始检查并写入 question_ai_answers 表`);
+        console.log(`[${requestId}] [STEP 7.5] 开始检查并写入 question_ai_answers 表`, {
+          questionHash: questionHash.substring(0, 16) + "...",
+          questionHashLength: questionHash.length,
+          locale: locale || "zh",
+        });
         
         const answer = result.data.answer;
         const localeStr = locale || "zh";
         
-        // 异步写入 question_ai_answers 表（不阻塞响应）
-        // 注意：在Serverless环境中，使用Promise确保异步操作完成
-        // 注意：JSON包不会实时更新，需要定期在后台手动更新
-        const writePromise = (async () => {
-          try {
-            // 检查是否已存在（防止并发请求重复写入）
-            // 注意：正常情况下，如果数据库有答案，STEP 4.5就会返回，不会到达这里
-            // 这里检查是为了防止并发请求的情况
-            const existing = await getAIAnswerFromDb(questionHash, localeStr);
-            if (existing) {
-              console.log(`[${requestId}] [STEP 7.5.1] 数据库已有AI解析（可能是并发请求），跳过写入（避免覆盖）`);
-              // 注意：JSON包不会实时更新，需要定期在后台手动更新
-              return;
-            }
+        // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+        // 注意：Vercel 等 Serverless 环境可能会在响应返回后立即终止函数执行
+        // 为了确保数据写入，我们使用 await 等待写入完成
+        try {
+          // 检查是否已存在（防止并发请求重复写入）
+          // 注意：正常情况下，如果数据库有答案，STEP 4.5就会返回，不会到达这里
+          // 这里检查是为了防止并发请求的情况
+          console.log(`[${requestId}] [STEP 7.5.0] 检查数据库中是否已存在AI解析`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            locale: localeStr,
+          });
+          
+          const existing = await getAIAnswerFromDb(questionHash, localeStr);
+          if (existing) {
+            console.log(`[${requestId}] [STEP 7.5.1] 数据库已有AI解析（可能是并发请求），跳过写入（避免覆盖）`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              existingAnswerLength: existing.length,
+            });
+            // 注意：JSON包不会实时更新，需要定期在后台手动更新
+          } else {
+            console.log(`[${requestId}] [STEP 7.5.1] 数据库中不存在AI解析，准备写入新回答`, {
+              questionHash: questionHash.substring(0, 16) + "...",
+              answerLength: answer.length,
+              model: result.data?.model || "unknown",
+            });
             
             // 只有在数据库中没有时才写入新回答
             const savedId = await saveAIAnswerToDb(
@@ -2070,38 +2114,51 @@ export async function POST(req: NextRequest) {
                 answerLength: answer.length,
                 packageName,
                 savedId,
+                locale: localeStr,
               });
               
               // 存入用户缓存（按照要求：AI解析后存入用户cache）
               if (forwardedUserId) {
                 setUserCachedAnswer(forwardedUserId, questionHash, answer);
-                console.log(`[${requestId}] [STEP 7.5.2.1] 已存入用户缓存（来源：AI解析）`);
+                console.log(`[${requestId}] [STEP 7.5.2.1] 已存入用户缓存（来源：AI解析）`, {
+                  userId: forwardedUserId,
+                  questionHash: questionHash.substring(0, 16) + "...",
+                });
               }
               
               // 注意：JSON包不会实时更新，需要定期在后台手动更新
               // 用户下次请求时，会从数据库读取缓存（STEP 4.5）
               console.log(`[${requestId}] [STEP 7.5.3] 已写入数据库，JSON包需要定期手动更新`);
             } else {
-              console.warn(`[${requestId}] [STEP 7.5.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`);
+              console.error(`[${requestId}] [STEP 7.5.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: answer.length,
+                locale: localeStr,
+                model: result.data?.model || "unknown",
+              });
             }
-          } catch (error) {
-            // 详细记录错误信息，包括堆栈
-            const errorObj = error as Error;
-            console.error(`[${requestId}] [STEP 7.5] 写入 question_ai_answers 失败:`, {
-              error: errorObj.message,
-              name: errorObj.name,
-              stack: errorObj.stack,
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: answer.length,
-            });
-            // 不抛出错误，避免影响主流程
           }
-        })();
-        
-        // 在Serverless环境中，确保异步操作被正确跟踪
-        // 使用Promise.catch确保错误被捕获
-        writePromise.catch((error) => {
-          console.error(`[${requestId}] [STEP 7.5] 异步写入操作失败:`, error);
+        } catch (error) {
+          // 详细记录错误信息，包括堆栈
+          const errorObj = error as Error;
+          console.error(`[${requestId}] [STEP 7.5] 写入 question_ai_answers 失败:`, {
+            error: errorObj.message,
+            name: errorObj.name,
+            stack: errorObj.stack,
+            questionHash: questionHash.substring(0, 16) + "...",
+            answerLength: answer.length,
+            locale: localeStr,
+          });
+          // 不抛出错误，避免影响主流程
+        }
+      } else {
+        // questionHash 为 null，记录警告日志
+        console.warn(`[${requestId}] [STEP 7.5] questionHash 为 null，跳过写入 question_ai_answers 表`, {
+          hasQuestionHashFromRequest: !!questionHashFromRequest,
+          questionHashFromRequest: questionHashFromRequest ? `${questionHashFromRequest.substring(0, 16)}...` : "(null)",
+          questionLength: question.length,
+          questionPreview: question.substring(0, 100) + "...",
+          note: "如果这是一道题目，前端应该传递 questionHash 字段",
         });
       }
     }
