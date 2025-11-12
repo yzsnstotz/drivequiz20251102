@@ -5,7 +5,7 @@
 // ============================================================
 
 import { db } from "@/lib/db";
-import { calculateQuestionHash, generateVersion, generateUnifiedVersion, calculateContentHash, Question } from "@/lib/questionHash";
+import { calculateQuestionHash, generateVersion, generateUnifiedVersion, calculateContentHash, calculateFullContentHash, calculateAiAnswersHash, Question } from "@/lib/questionHash";
 import { sql } from "kysely";
 import fs from "fs/promises";
 import path from "path";
@@ -1222,24 +1222,27 @@ export async function updateAllJsonPackages(): Promise<{
       }
     }
 
-    // 5. 计算当前内容hash，检查是否与上一个版本相同
-    const currentContentHash = calculateContentHash(questionsWithHash);
+    // 5. 计算当前完整内容hash（包含题目和AI回答），检查是否与上一个版本相同
+    const currentFullContentHash = calculateFullContentHash(questionsWithHash, aiAnswers);
     let version: string;
     
     if (previousVersion && previousVersionInfo) {
-      // 尝试从数据库读取上一个版本的内容hash
+      // 尝试从数据库读取上一个版本的完整内容
       try {
         const previousVersionContent = await getUnifiedVersionContent(previousVersion);
         if (previousVersionContent && previousVersionContent.questions) {
-          const previousContentHash = calculateContentHash(previousVersionContent.questions);
+          const previousFullContentHash = calculateFullContentHash(
+            previousVersionContent.questions,
+            previousVersionContent.aiAnswers || {}
+          );
           
-          // 如果内容hash相同，说明内容没有变化，复用上一个版本号
-          if (currentContentHash === previousContentHash) {
-            console.log(`[updateAllJsonPackages] 内容hash相同(${currentContentHash})，复用上一个版本号: ${previousVersion}`);
+          // 如果完整内容hash相同，说明内容没有变化，复用上一个版本号
+          if (currentFullContentHash === previousFullContentHash) {
+            console.log(`[updateAllJsonPackages] 完整内容hash相同(${currentFullContentHash})，复用上一个版本号: ${previousVersion}`);
             version = previousVersion;
           } else {
-            // 内容有变化，生成新版本号
-            console.log(`[updateAllJsonPackages] 内容hash不同，生成新版本号。上一个: ${previousContentHash}, 当前: ${currentContentHash}`);
+            // 内容有变化（题目或AI回答），生成新版本号
+            console.log(`[updateAllJsonPackages] 完整内容hash不同，生成新版本号。上一个: ${previousFullContentHash}, 当前: ${currentFullContentHash}`);
             version = generateUnifiedVersion(questionsWithHash);
           }
         } else {
@@ -1258,11 +1261,38 @@ export async function updateAllJsonPackages(): Promise<{
       version = generateUnifiedVersion(questionsWithHash);
     }
 
-    // 6. 如果版本号与上一个相同，只更新文件，不保存到数据库（避免重复记录）
+    // 6. 如果版本号与上一个相同，仍然需要检查并更新数据库（因为AI回答可能已更新）
+    // 但为了避免重复记录，先检查是否真的需要更新
     if (version === previousVersion) {
-      console.log(`[updateAllJsonPackages] 版本号未变化，只更新文件，不保存到数据库`);
+      // 检查AI回答数量或内容是否有变化
+      const previousAiAnswersCount = previousVersionInfo?.aiAnswersCount || 0;
+      const currentAiAnswersCount = Object.keys(aiAnswers).length;
+      const previousVersionContent = await getUnifiedVersionContent(previousVersion).catch(() => null);
+      const previousAiAnswers = previousVersionContent?.aiAnswers || {};
       
-      // 只更新文件
+      // 计算AI回答的变化
+      const previousAiAnswersHash = calculateAiAnswersHash(previousAiAnswers);
+      const currentAiAnswersHash = calculateAiAnswersHash(aiAnswers);
+      const aiAnswersChanged = previousAiAnswersHash !== currentAiAnswersHash;
+      
+      if (aiAnswersChanged || currentAiAnswersCount !== previousAiAnswersCount) {
+        console.log(`[updateAllJsonPackages] 版本号未变化但AI回答有变化（数量: ${previousAiAnswersCount} -> ${currentAiAnswersCount}, 内容hash: ${previousAiAnswersHash} -> ${currentAiAnswersHash}），更新数据库`);
+        // 更新数据库中的AI回答
+        await saveUnifiedVersion(
+          version,
+          questionsWithHash.length,
+          currentAiAnswersCount,
+          {
+            questions: questionsWithHash,
+            version,
+            aiAnswers,
+          }
+        );
+      } else {
+        console.log(`[updateAllJsonPackages] 版本号未变化且AI回答未变化，只更新文件`);
+      }
+      
+      // 更新文件
       try {
         await saveQuestionFile("__unified__", {
           questions: questionsWithHash,
@@ -1273,18 +1303,19 @@ export async function updateAllJsonPackages(): Promise<{
         console.error(`[updateAllJsonPackages] Error saving unified package:`, error);
       }
       
-      // 返回结果（版本号未变化）
+      // 返回结果
+      const aiAnswersAdded = Math.max(0, currentAiAnswersCount - previousAiAnswersCount);
       return {
         version,
         totalQuestions: questionsWithHash.length,
-        aiAnswersCount: Object.keys(aiAnswers).length,
+        aiAnswersCount: currentAiAnswersCount,
         previousVersion,
         previousTotalQuestions,
         previousAiAnswersCount,
         questionsAdded: 0,
         questionsUpdated: 0,
-        aiAnswersAdded: 0,
-        aiAnswersUpdated: 0,
+        aiAnswersAdded: aiAnswersChanged ? aiAnswersAdded : 0,
+        aiAnswersUpdated: aiAnswersChanged && currentAiAnswersCount === previousAiAnswersCount ? 1 : 0,
       };
     }
 
