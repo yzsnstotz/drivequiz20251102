@@ -5,7 +5,6 @@ import { db } from "@/lib/db";
 import { aiDb } from "@/lib/aiDb";
 import { calculateQuestionHash } from "@/lib/questionHash";
 import {
-  getAIAnswerFromJson,
   getAIAnswerFromDb,
   saveAIAnswerToDb,
 } from "@/lib/questionDb";
@@ -399,7 +398,7 @@ async function writeAiLogToDatabase(params: {
   from?: string | null; // "study" | "question" | "chat" 等，标识来源
   aiProvider?: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
   cached?: boolean | null; // 是否是缓存
-  cacheSource?: string | null; // "localStorage" | "database"，缓存来源
+  cacheSource?: string | null; // "localStorage" | "database" | "json"，缓存来源（写入数据库时会将"localStorage"转换为"json"）
 }): Promise<void> {
   try {
     // 规范化 userId：如果是 act- 格式，直接使用；如果是 anonymous，设为 null
@@ -832,11 +831,10 @@ export async function POST(req: NextRequest) {
     });
     
     // 4.5) 检查是否有缓存的AI解析（如果是题目）
-    // 前端已经检查过本地JSON包，后端直接检查数据库
+    // 前端已经检查过内存缓存和本地JSON包，后端直接查询数据库（Serverless环境中内存缓存不可靠）
     console.log(`[${requestId}] [STEP 4.5] 开始检查缓存的AI解析`);
     let cachedAnswer: string | null = null;
     let questionHash: string | null = null;
-    let packageName: string | null = null;
     let cacheSource: "localStorage" | "database" | null = null; // 记录缓存来源
     
     try {
@@ -853,11 +851,12 @@ export async function POST(req: NextRequest) {
         questionHash = null;
       }
       
-      // 2. 如果有了questionHash，直接检查数据库（前端已经检查过JSON包）
+      // 2. 如果有了questionHash，直接检查数据库（Serverless环境中内存缓存不可靠）
       if (questionHash) {
         // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
         const normalizedLocale = normalizeLocale(locale);
-        // 直接检查数据库（前端已经检查过本地JSON包，不需要重复检查）
+        
+        // 直接查询数据库（Serverless环境中每个实例独立，内存缓存无法跨请求共享）
         cachedAnswer = await getAIAnswerFromDb(questionHash, normalizedLocale);
         if (cachedAnswer) {
           cacheSource = "database"; // 标记为从数据库读取
@@ -865,20 +864,19 @@ export async function POST(req: NextRequest) {
             questionHash: questionHash.substring(0, 16) + "...",
             answerLength: cachedAnswer.length,
           });
-          // 存入用户缓存（按照要求：从数据库获取后存入用户cache）
+          // 存入用户内存缓存（虽然Serverless环境中不可靠，但同一实例的后续请求可能受益）
           if (forwardedUserId) {
             setUserCachedAnswer(forwardedUserId, questionHash, cachedAnswer);
-            console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户缓存（来源：数据库）`);
+            console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户内存缓存（来源：数据库）`);
           }
         }
       }
       
       // 如果找到缓存的AI解析，直接返回
       if (cachedAnswer) {
-        console.log(`[${requestId}] [STEP 4.5.3] 使用缓存的AI解析，跳过AI服务调用`);
+        console.log(`[${requestId}] [STEP 4.5.2] 使用缓存的AI解析，跳过AI服务调用`);
         
-        // 使用记录的缓存来源（json或database）
-        // 如果cacheSource为null，说明没有找到缓存（不应该到达这里）
+        // 使用记录的缓存来源（后端只从数据库读取，所以是 "database"）
         const finalCacheSource = cacheSource || "database";
         
         // 写入日志（标识为习题调用，缓存来源）
@@ -895,17 +893,17 @@ export async function POST(req: NextRequest) {
           from: "question", // 标识为习题调用
           aiProvider: "cache",
           cached: true,
-          cacheSource: finalCacheSource,
+          cacheSource: finalCacheSource, // 后端只从数据库读取，所以是 "database"
           createdAtIso: new Date().toISOString(),
         }).catch((error) => {
-          console.error(`[${requestId}] [STEP 4.5.4] 写入缓存日志失败:`, (error as Error).message);
+          console.error(`[${requestId}] [STEP 4.5.3] 写入缓存日志失败:`, (error as Error).message);
         });
         
         return ok({
           answer: cachedAnswer,
           cached: true,
           aiProvider: "cache",
-          cacheSource: finalCacheSource, // 返回缓存来源
+          cacheSource: finalCacheSource, // 返回前端时使用 "database"
         });
       }
     } catch (error) {
@@ -2134,7 +2132,6 @@ export async function POST(req: NextRequest) {
               console.log(`[${requestId}] [STEP 7.5.2] 成功写入 question_ai_answers 表（新回答）`, {
                 questionHash: questionHash.substring(0, 16) + "...",
                 answerLength: answer.length,
-                packageName,
                 savedId,
                 locale: localeStr,
               });
