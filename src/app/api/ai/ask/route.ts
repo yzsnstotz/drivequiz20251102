@@ -399,7 +399,7 @@ async function writeAiLogToDatabase(params: {
   from?: string | null; // "study" | "question" | "chat" 等，标识来源
   aiProvider?: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
   cached?: boolean | null; // 是否是缓存
-  cacheSource?: string | null; // "json" | "database"，缓存来源
+  cacheSource?: string | null; // "localStorage" | "database"，缓存来源
 }): Promise<void> {
   try {
     // 规范化 userId：如果是 act- 格式，直接使用；如果是 anonymous，设为 null
@@ -837,7 +837,7 @@ export async function POST(req: NextRequest) {
     let cachedAnswer: string | null = null;
     let questionHash: string | null = null;
     let packageName: string | null = null;
-    let cacheSource: "json" | "database" | null = null; // 记录缓存来源
+    let cacheSource: "localStorage" | "database" | null = null; // 记录缓存来源
     
     try {
       // 1. 使用前端传递的hash值（前端必须传递hash）
