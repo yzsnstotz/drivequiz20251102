@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Clock, CheckSquare, XSquare, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import { loadAllQuestions } from '@/lib/questionsLoader';
 
 interface Question {
   id: number;
@@ -93,17 +94,17 @@ function ExamPage() {
     // Load questions from the same source as study page
     const loadQuestions = async () => {
       try {
-        // 优先从统一的questions.json读取所有题目
-        let allQuestions: Question[] = [];
-        
-        try {
-          const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
-          const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-          allQuestions = questions as unknown as Question[];
-        } catch (unifiedError) {
-          // 如果统一的questions.json不存在，从指定文件读取（兼容旧逻辑）
-          const response = await import(`../../data/questions/zh/仮免-1.json`);
-          allQuestions = (response.questions || response.default?.questions || []) as unknown as Question[];
+        // 优先通过统一加载器读取题目
+        let allQuestions: Question[] = await loadAllQuestions();
+        if (!allQuestions || allQuestions.length === 0) {
+          try {
+            const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
+            const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
+            allQuestions = questions as unknown as Question[];
+          } catch {
+            const response = await import(`../../data/questions/zh/仮免-1.json`);
+            allQuestions = (response.questions || response.default?.questions || []) as unknown as Question[];
+          }
         }
         
         // Randomly select questions for the exam

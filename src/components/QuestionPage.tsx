@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Bot } from 'lucide-react';
 import QuestionAIDialog from './QuestionAIDialog';
+import { loadUnifiedQuestionsPackage } from '@/lib/questionsLoader';
 
 interface Question {
   id: number;
@@ -35,25 +36,14 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        // 优先从统一的questions.json读取，根据category字段筛选
-        try {
-          const unifiedResponse = await import(`../data/questions/zh/questions.json`);
-          const allQuestions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-          
-          // 根据questionSet.title（对应category字段）筛选题目
-          const filteredQuestions = allQuestions.filter((q: any) => {
-            return q.category === questionSet.title;
-          });
-          
-          if (filteredQuestions.length > 0) {
-            setQuestions(filteredQuestions as unknown as Question[]);
-          } else {
-            // 如果统一文件中没有，尝试从指定文件读取（兼容旧逻辑）
-            const response = await import(`../data/questions/zh/${questionSet.title}.json`);
-            setQuestions((response.questions || response.default?.questions || []) as unknown as Question[]);
-          }
-        } catch (unifiedError) {
-          // 如果统一的questions.json不存在，尝试从指定文件读取（兼容旧逻辑）
+        // 通过版本检查与缓存的统一加载器获取题库，并按类别筛选
+        const pkg = await loadUnifiedQuestionsPackage();
+        const allQuestions = pkg?.questions || [];
+        const filtered = allQuestions.filter((q: any) => q.category === questionSet.title);
+        if (filtered.length > 0) {
+          setQuestions(filtered as unknown as Question[]);
+        } else {
+          // 兼容旧逻辑：尝试从指定文件读取
           const response = await import(`../data/questions/zh/${questionSet.title}.json`);
           setQuestions((response.questions || response.default?.questions || []) as unknown as Question[]);
         }
