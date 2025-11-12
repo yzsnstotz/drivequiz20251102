@@ -188,7 +188,11 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
     );
     const pkg = await fetchUnifiedPackage();
     if (pkg) {
-      const versionToUse = pkg.version || latestVersion;
+      // 优先使用最新版本号，确保版本号一致
+      const versionToUse = latestVersion;
+      if (pkg.version !== latestVersion) {
+        pkg.version = latestVersion;
+      }
       cachePackage(versionToUse, pkg);
       console.log(`[loadUnifiedQuestionsPackage] 重新下载完成，版本号: ${versionToUse}`);
     }
@@ -200,9 +204,21 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
     );
     const pkg = await fetchUnifiedPackage();
     if (pkg) {
-      const versionToUse = pkg.version || latestVersion;
+      // 关键修复：优先使用从数据库获取的最新版本号，而不是文件中的版本号
+      // 因为文件中的版本号可能过时，而数据库中的版本号是最新的
+      const versionToUse = latestVersion;
+      
+      // 如果包中的版本号与最新版本号不一致，更新包中的版本号
+      if (pkg.version !== latestVersion) {
+        console.log(
+          `[loadUnifiedQuestionsPackage] 包中的版本号(${pkg.version || "无"})与最新版本号(${latestVersion})不一致，使用最新版本号`
+        );
+        pkg.version = latestVersion;
+      }
+      
       // 更新 localStorage 和缓存
       cachePackage(versionToUse, pkg);
+      
       // 验证版本号是否已更新
       const verifyVersion = getLocalPackageVersion();
       if (verifyVersion === versionToUse) {
