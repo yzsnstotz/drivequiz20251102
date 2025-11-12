@@ -327,6 +327,23 @@ function normalizeQuestion(q: string) {
   return q.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+ * 确保写入和查询时使用相同的 locale 格式
+ */
+function normalizeLocale(locale: string | undefined | null): string {
+  if (!locale) return "zh";
+  const localeLower = locale.toLowerCase().trim();
+  if (localeLower.startsWith("zh")) {
+    return "zh";
+  } else if (localeLower.startsWith("ja")) {
+    return "ja";
+  } else if (localeLower.startsWith("en")) {
+    return "en";
+  }
+  return locale;
+}
+
 // ==== 辅助函数：构建系统提示 ====
 function buildSystemPrompt(lang: string): string {
   const base =
@@ -838,8 +855,10 @@ export async function POST(req: NextRequest) {
       
       // 2. 如果有了questionHash，直接检查数据库（前端已经检查过JSON包）
       if (questionHash) {
+        // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+        const normalizedLocale = normalizeLocale(locale);
         // 直接检查数据库（前端已经检查过本地JSON包，不需要重复检查）
-        cachedAnswer = await getAIAnswerFromDb(questionHash, locale || "zh");
+        cachedAnswer = await getAIAnswerFromDb(questionHash, normalizedLocale);
         if (cachedAnswer) {
           cacheSource = "database"; // 标记为从数据库读取
           console.log(`[${requestId}] [STEP 4.5.1] 从数据库中找到AI解析`, {
@@ -1141,12 +1160,13 @@ export async function POST(req: NextRequest) {
         
         // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
         if (questionHash) {
+          // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+          const localeStr = normalizeLocale(locale);
           console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenRouter模式）`, {
             questionHash: questionHash.substring(0, 16) + "...",
-            locale: locale || "zh",
+            locale: localeStr,
+            originalLocale: locale,
           });
-          
-          const localeStr = locale || "zh";
           
           // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
           try {
@@ -1462,12 +1482,13 @@ export async function POST(req: NextRequest) {
         
         // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
         if (questionHash) {
+          // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+          const localeStr = normalizeLocale(locale);
           console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连OpenAI模式）`, {
             questionHash: questionHash.substring(0, 16) + "...",
-            locale: locale || "zh",
+            locale: localeStr,
+            originalLocale: locale,
           });
-          
-          const localeStr = locale || "zh";
           
           // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
           try {
@@ -2070,7 +2091,8 @@ export async function POST(req: NextRequest) {
         });
         
         const answer = result.data.answer;
-        const localeStr = locale || "zh";
+        // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+        const localeStr = normalizeLocale(locale);
         
         // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
         // 注意：Vercel 等 Serverless 环境可能会在响应返回后立即终止函数执行
