@@ -259,13 +259,10 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     // 保存JSON包的aiAnswers对象（当数据源为JSON包时使用）
     let jsonPackageAiAnswers: Record<string, string> | null = null;
     
-    // 如果指定了版本号（历史JSON包），优先从数据库读取历史版本内容
+    // 如果指定了版本号（历史JSON包），从数据库读取历史版本内容
     if (source && source !== "database") {
-      // source是版本号，优先从数据库读取历史版本内容
-      let questionsLoaded = false;
-      
+      // source是版本号，从数据库读取历史版本内容
       try {
-        // 1. 优先从数据库读取历史版本内容
         const versionContent = await getUnifiedVersionContent(source);
         if (versionContent && versionContent.questions && versionContent.questions.length > 0) {
           console.log(`[GET /api/admin/questions] 从数据库读取历史版本 ${source}，题目数: ${versionContent.questions.length}`);
@@ -286,53 +283,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             console.log(`[GET /api/admin/questions] 添加所有题目: ${versionContent.questions.length}`);
             allQuestions.push(...(versionContent.questions as Question[]));
           }
-          questionsLoaded = true;
         } else {
-          console.log(`[GET /api/admin/questions] 数据库中没有找到版本 ${source} 的内容，尝试从文件读取`);
+          console.warn(`[GET /api/admin/questions] 数据库中没有找到版本 ${source} 的内容`);
+          // 如果数据库中没有找到，返回空结果
+          allQuestions = [];
         }
       } catch (dbError) {
         console.error(`[GET /api/admin/questions] 从数据库读取历史版本失败:`, dbError);
-      }
-      
-      // 2. 如果数据库中没有找到，尝试从文件读取（兼容旧逻辑）
-      if (!questionsLoaded) {
-        try {
-          const unifiedFile = await loadQuestionFile(); // 不传参数，读取统一文件
-          console.log(`[GET /api/admin/questions] 读取统一文件，版本号: ${unifiedFile?.version}, 请求版本号: ${source}, 题目数: ${unifiedFile?.questions?.length || 0}`);
-          
-          if (unifiedFile && unifiedFile.questions && unifiedFile.questions.length > 0) {
-            // 检查JSON包的版本号是否匹配
-            const fileVersion = unifiedFile.version;
-            console.log(`[GET /api/admin/questions] 版本号匹配检查: fileVersion=${fileVersion}, source=${source}, 匹配=${fileVersion === source}`);
-            
-            // 如果版本号匹配，加载题目
-            if (fileVersion === source || (!fileVersion && !source)) {
-              // 保存JSON包的aiAnswers对象
-              jsonPackageAiAnswers = unifiedFile.aiAnswers || {};
-              console.log(`[GET /api/admin/questions] 保存JSON包的aiAnswers，共 ${Object.keys(jsonPackageAiAnswers).length} 个AI回答`);
-              
-              // 如果指定了category筛选，只添加匹配的题目
-              if (category) {
-                const filteredQuestions = unifiedFile.questions.filter((q) => {
-                  return q.category === category;
-                });
-                console.log(`[GET /api/admin/questions] 按category筛选后题目数: ${filteredQuestions.length}`);
-                allQuestions.push(...(filteredQuestions as Question[]));
-              } else {
-                // 没有category筛选，添加所有题目
-                console.log(`[GET /api/admin/questions] 添加所有题目: ${unifiedFile.questions.length}`);
-                allQuestions.push(...(unifiedFile.questions as Question[]));
-              }
-              questionsLoaded = true;
-            } else {
-              console.warn(`[GET /api/admin/questions] 文件版本号(${fileVersion})与请求版本号(${source})不匹配，不加载题目`);
-            }
-          } else {
-            console.warn(`[GET /api/admin/questions] 统一文件为空或没有题目: unifiedFile=${!!unifiedFile}, questions=${unifiedFile?.questions?.length || 0}`);
-          }
-        } catch (unifiedError) {
-          console.error(`[GET /api/admin/questions] 读取统一文件失败:`, unifiedError);
-        }
+        // 发生错误时，返回空结果
+        allQuestions = [];
       }
       
       console.log(`[GET /api/admin/questions] 从历史版本读取后，总题目数: ${allQuestions.length}`);
