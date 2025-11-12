@@ -467,14 +467,21 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       });
 
       // 批量查询 question_ai_answers 表
+      // 注意：同时查询 "zh" 和 "zh-CN" 格式，因为历史数据可能使用不同的格式
       const aiAnswersMap = new Map<string, string>();
       if (questionHashes.length > 0) {
         try {
           const aiAnswers = await db
             .selectFrom("question_ai_answers")
-            .select(["question_hash", "answer", "created_at"])
+            .select(["question_hash", "answer", "created_at", "locale"])
             .where("question_hash", "in", questionHashes)
-            .where("locale", "=", "zh")
+            .where((eb) =>
+              eb.or([
+                eb("locale", "=", "zh"),
+                eb("locale", "=", "zh-CN"),
+                eb("locale", "=", "zh_CN"),
+              ])
+            )
             .orderBy("question_hash", "asc")
             .orderBy("created_at", "desc")
             .execute();
