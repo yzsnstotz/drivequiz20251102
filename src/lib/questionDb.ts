@@ -6,6 +6,7 @@
 
 import { db } from "@/lib/db";
 import { calculateQuestionHash, generateVersion, generateUnifiedVersion, Question } from "@/lib/questionHash";
+import { sql } from "kysely";
 import fs from "fs/promises";
 import path from "path";
 
@@ -88,7 +89,8 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       .where((eb) =>
         eb.or([
           // 检查license_types数组是否包含packageName
-          eb("license_types", "@>", [packageName]),
+          // 使用 sql 模板确保正确的 PostgreSQL 数组格式
+          sql<boolean>`${eb.ref("license_types")} @> ARRAY[${sql.literal(packageName)}]::text[]`,
           // 或者通过version匹配（如果version字段存储了包名）
           eb("version", "=", packageName),
         ])
