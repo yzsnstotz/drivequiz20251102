@@ -1062,14 +1062,57 @@ export async function updateAllJsonPackages(): Promise<{
     });
     
     // 3. 获取所有题目的AI回答（从数据库，使用hash作为question_hash）
+    // 批量查询所有AI回答，提高性能并支持多种locale格式
     const aiAnswers: Record<string, string> = {};
-    for (const question of questionsWithHash) {
-      // 使用hash作为question_hash（hash就是content_hash）
-      const questionHash = (question as any).hash;
-      if (questionHash) {
-        const answer = await getAIAnswerFromDb(questionHash, "zh");
-        if (answer) {
-          aiAnswers[questionHash] = answer;
+    const questionHashes = questionsWithHash
+      .map((q) => (q as any).hash)
+      .filter((hash): hash is string => !!hash);
+    
+    if (questionHashes.length > 0) {
+      try {
+        // 批量查询，同时支持 zh、zh-CN、zh_CN 格式（兼容历史数据）
+        const aiAnswersFromDb = await db
+          .selectFrom("question_ai_answers")
+          .select(["question_hash", "answer", "created_at", "locale"])
+          .where("question_hash", "in", questionHashes)
+          .where((eb) =>
+            eb.or([
+              eb("locale", "=", "zh"),
+              eb("locale", "=", "zh-CN"),
+              eb("locale", "=", "zh_CN"),
+            ])
+          )
+          .orderBy("question_hash", "asc")
+          .orderBy("created_at", "desc")
+          .execute();
+
+        // 构建映射（每个 question_hash 只保留最新的回答）
+        for (const aiAnswer of aiAnswersFromDb) {
+          if (!aiAnswers[aiAnswer.question_hash] && aiAnswer.answer) {
+            aiAnswers[aiAnswer.question_hash] = aiAnswer.answer;
+          }
+        }
+        
+        console.log(`[updateAllJsonPackages] 从数据库批量查询到 ${Object.keys(aiAnswers).length} 个AI回答`);
+      } catch (error) {
+        console.error(`[updateAllJsonPackages] 批量查询 question_ai_answers 失败:`, error);
+        // 如果批量查询失败，回退到逐个查询（兼容旧逻辑）
+        console.log(`[updateAllJsonPackages] 回退到逐个查询模式`);
+        for (const question of questionsWithHash) {
+          const questionHash = (question as any).hash;
+          if (questionHash) {
+            // 尝试多种 locale 格式
+            let answer = await getAIAnswerFromDb(questionHash, "zh");
+            if (!answer) {
+              answer = await getAIAnswerFromDb(questionHash, "zh-CN");
+            }
+            if (!answer) {
+              answer = await getAIAnswerFromDb(questionHash, "zh_CN");
+            }
+            if (answer) {
+              aiAnswers[questionHash] = answer;
+            }
+          }
         }
       }
     }
