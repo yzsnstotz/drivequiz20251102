@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { apiFetch } from "@/lib/apiClient.front";
-import { loadAiAnswers } from "@/lib/questionsLoader";
+import { loadAiAnswers, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 
 const getStoredUserId = (): string | null => {
   if (typeof window === "undefined") return null;
