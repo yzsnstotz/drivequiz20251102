@@ -1044,7 +1044,7 @@ export async function updateAllJsonPackages(): Promise<{
     let previousTotalQuestions = 0;
     let previousAiAnswersCount = 0;
     
-    if (previousVersionInfo) {
+    if (previousVersionInfo && previousVersion) {
       const previousVersionData = await db
         .selectFrom("question_package_versions")
         .select(["total_questions", "ai_answers_count"])
