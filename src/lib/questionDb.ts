@@ -271,6 +271,76 @@ export async function saveAIAnswerToDb(
 }
 
 /**
+ * 更新AI回答到数据库（如果已存在则更新，不存在则插入）
+ */
+export async function updateAIAnswerToDb(
+  questionHash: string,
+  answer: string,
+  locale: string = "zh",
+  model?: string,
+  sources?: any[],
+  createdBy?: string
+): Promise<number> {
+  try {
+    // 规范化 createdBy：只接受有效的 UUID 格式
+    let normalizedCreatedBy: string | null = null;
+    if (createdBy && isValidUUID(createdBy)) {
+      normalizedCreatedBy = createdBy;
+    } else if (createdBy) {
+      console.warn(`[updateAIAnswerToDb] createdBy 不是有效的 UUID 格式，将设为 null`, {
+        createdBy,
+        questionHash: questionHash.substring(0, 16) + "...",
+      });
+    }
+    
+    // 检查是否已存在
+    const existing = await db
+      .selectFrom("question_ai_answers")
+      .select(["id", "answer"])
+      .where("question_hash", "=", questionHash)
+      .where("locale", "=", locale)
+      .executeTakeFirst();
+
+    if (existing) {
+      // 更新现有回答
+      await db
+        .updateTable("question_ai_answers")
+        .set({
+          answer,
+          sources: sources ? (sources as any) : null,
+          model: model || null,
+          updated_at: new Date(),
+        })
+        .where("id", "=", existing.id)
+        .execute();
+      
+      console.log(`[updateAIAnswerToDb] 成功更新AI回答（ID: ${existing.id}）`);
+      return existing.id;
+    } else {
+      // 插入新回答
+      const result = await db
+        .insertInto("question_ai_answers")
+        .values({
+          question_hash: questionHash,
+          locale,
+          answer,
+          sources: sources ? (sources as any) : null,
+          model: model || null,
+          created_by: normalizedCreatedBy,
+          view_count: 0,
+        })
+        .returning("id")
+        .executeTakeFirst();
+
+      return result?.id || 0;
+    }
+  } catch (error) {
+    console.error("[updateAIAnswerToDb] Error:", error);
+    throw error;
+  }
+}
+
+/**
  * 检查是否有待更新的AI回答
  */
 export async function checkPendingUpdates(): Promise<number> {

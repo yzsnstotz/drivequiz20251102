@@ -512,6 +512,7 @@ export default function QuestionsPage() {
     const category = formData.get("category")?.toString() || editingQuestion.category || "免许-1";
     const image = formData.get("image")?.toString() || "";
     const explanation = formData.get("explanation")?.toString() || "";
+    const aiAnswer = formData.get("aiAnswer")?.toString() || "";
 
     // 解析选项
     const options: string[] = [];
@@ -546,6 +547,7 @@ export default function QuestionsPage() {
         image: image || undefined,
         explanation: explanation || undefined,
         category,
+        aiAnswer: aiAnswer || undefined,
       });
 
       setShowEditForm(false);
@@ -1687,6 +1689,20 @@ function QuestionForm({
           defaultValue={question?.explanation || ""}
           className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           placeholder="请输入题目解析..."
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          AI解析
+          <span className="text-gray-500 font-normal ml-1">(AI生成的题目解析)</span>
+        </label>
+        <textarea
+          name="aiAnswer"
+          rows={4}
+          defaultValue={question?.aiAnswer || ""}
+          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          placeholder="请输入或编辑AI解析..."
         />
       </div>
 
