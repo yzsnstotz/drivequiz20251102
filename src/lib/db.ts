@@ -469,6 +469,7 @@ interface QuestionPackageVersionTable {
   version: string;
   total_questions: number;
   ai_answers_count: number;
+  package_content: any | null; // JSONB字段，存储完整的JSON包内容
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
