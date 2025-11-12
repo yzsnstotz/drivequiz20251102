@@ -1029,8 +1029,35 @@ export async function updateAllJsonPackages(): Promise<{
   version: string;
   totalQuestions: number;
   aiAnswersCount: number;
+  previousVersion?: string;
+  previousTotalQuestions?: number;
+  previousAiAnswersCount?: number;
+  questionsAdded?: number;
+  questionsUpdated?: number;
+  aiAnswersAdded?: number;
+  aiAnswersUpdated?: number;
 }> {
   try {
+    // 0. 获取上一个版本的信息（用于对比）
+    const previousVersionInfo = await getLatestUnifiedVersionInfo();
+    const previousVersion = previousVersionInfo?.version;
+    let previousTotalQuestions = 0;
+    let previousAiAnswersCount = 0;
+    
+    if (previousVersionInfo) {
+      const previousVersionData = await db
+        .selectFrom("question_package_versions")
+        .select(["total_questions", "ai_answers_count"])
+        .where("package_name", "=", "__unified__")
+        .where("version", "=", previousVersion)
+        .executeTakeFirst();
+      
+      if (previousVersionData) {
+        previousTotalQuestions = previousVersionData.total_questions || 0;
+        previousAiAnswersCount = previousVersionData.ai_answers_count || 0;
+      }
+    }
+
     // 1. 直接从数据库读取所有题目（不依赖文件系统的categories）
     console.log(`[updateAllJsonPackages] 开始从数据库读取所有题目`);
     const allDbQuestions = await db
@@ -1150,15 +1177,47 @@ export async function updateAllJsonPackages(): Promise<{
       console.error(`[updateAllJsonPackages] Error saving unified package:`, error);
     }
 
+    const totalQuestions = questionsWithHash.length;
+    const aiAnswersCount = Object.keys(aiAnswers).length;
+    
+    // 计算变化量
+    const questionsAdded = previousTotalQuestions > 0 
+      ? Math.max(0, totalQuestions - previousTotalQuestions)
+      : totalQuestions; // 如果没有上一个版本，所有题目都是新增的
+    const questionsUpdated = previousTotalQuestions > 0 
+      ? Math.min(previousTotalQuestions, totalQuestions)
+      : 0; // 如果没有上一个版本，没有更新的题目
+    
+    const aiAnswersAdded = previousAiAnswersCount > 0
+      ? Math.max(0, aiAnswersCount - previousAiAnswersCount)
+      : aiAnswersCount; // 如果没有上一个版本，所有AI回答都是新增的
+    const aiAnswersUpdated = previousAiAnswersCount > 0
+      ? Math.min(previousAiAnswersCount, aiAnswersCount)
+      : 0; // 如果没有上一个版本，没有更新的AI回答
+
     console.log(`[updateAllJsonPackages] Updated all packages to unified version ${version}`, {
-      totalQuestions: questionsWithHash.length,
-      aiAnswersCount: Object.keys(aiAnswers).length,
+      totalQuestions,
+      aiAnswersCount,
+      previousVersion,
+      previousTotalQuestions,
+      previousAiAnswersCount,
+      questionsAdded,
+      questionsUpdated,
+      aiAnswersAdded,
+      aiAnswersUpdated,
     });
 
     return {
       version,
-      totalQuestions: questionsWithHash.length,
-      aiAnswersCount: Object.keys(aiAnswers).length,
+      totalQuestions,
+      aiAnswersCount,
+      previousVersion,
+      previousTotalQuestions,
+      previousAiAnswersCount,
+      questionsAdded,
+      questionsUpdated,
+      aiAnswersAdded,
+      aiAnswersUpdated,
     };
   } catch (error) {
     console.error(`[updateAllJsonPackages] Error:`, error);
