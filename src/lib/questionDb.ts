@@ -648,10 +648,22 @@ export async function getAIAnswerFromJson(
       
       // 2. 从统一的questions.json读取
       const file = await loadQuestionFile(undefined);
-      if (!file || !file.aiAnswers) {
-        console.log(`[getAIAnswerFromJson] questions.json文件不存在或没有aiAnswers字段`);
+      if (!file) {
+        console.log(`[getAIAnswerFromJson] questions.json文件不存在`);
         return null;
       }
+      if (!file.aiAnswers) {
+        console.log(`[getAIAnswerFromJson] questions.json文件存在但没有aiAnswers字段`);
+        return null;
+      }
+      // 记录aiAnswers的基本信息（用于调试）
+      const aiAnswersKeys = Object.keys(file.aiAnswers);
+      console.log(`[getAIAnswerFromJson] 已加载questions.json`, {
+        version: file.version,
+        hasAiAnswers: !!file.aiAnswers,
+        aiAnswersCount: aiAnswersKeys.length,
+        filePath: path.join(QUESTIONS_DIR, "questions.json"),
+      });
       
       // 3. 验证文件中的版本号是否是最新的（确保获取的是最新包）
       if (latestVersionInfo) {
@@ -700,9 +712,14 @@ export async function getAIAnswerFromJson(
         });
         return answer;
       } else {
+        // 记录更详细的调试信息
+        const aiAnswersKeys = Object.keys(file.aiAnswers);
+        const sampleHashes = aiAnswersKeys.slice(0, 3).map(h => h.substring(0, 16) + "...");
         console.log(`[getAIAnswerFromJson] questions.json中没有找到对应的AI回答`, {
           questionHash: questionHash.substring(0, 16) + "...",
-          totalAnswers: Object.keys(file.aiAnswers).length,
+          totalAnswers: aiAnswersKeys.length,
+          sampleHashes: sampleHashes.length > 0 ? sampleHashes : "无",
+          fileVersion: file.version,
         });
         return null;
       }
