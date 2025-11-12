@@ -1265,7 +1265,7 @@ export async function updateAllJsonPackages(): Promise<{
     // 但为了避免重复记录，先检查是否真的需要更新
     if (version === previousVersion) {
       // 检查AI回答数量或内容是否有变化
-      const previousAiAnswersCount = previousVersionInfo?.aiAnswersCount || 0;
+      // previousAiAnswersCount 已在前面定义（第1092行）
       const currentAiAnswersCount = Object.keys(aiAnswers).length;
       const previousVersionContent = await getUnifiedVersionContent(previousVersion).catch(() => null);
       const previousAiAnswers = previousVersionContent?.aiAnswers || {};
