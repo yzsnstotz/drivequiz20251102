@@ -35,6 +35,7 @@
     "apps/local-ai-service",
     "apps/web",
     "apps/drivequiz-api",
+    "apps/question-processor",
     "playwright.config.ts"
   ]
 }
