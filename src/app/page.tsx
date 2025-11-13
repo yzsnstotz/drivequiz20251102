@@ -412,7 +412,7 @@ export default function HomePage() {
               </div>
               <div className="text-left">
                 <h3 className="text-lg font-bold">AI 智能助手</h3>
-                <p className="text-sm text-white/90">随时解答你的驾考问题</p>
+                <p className="text-sm text-white/90">随时解答你的驾考问题 <span className="text-white/70">by Zalem</span></p>
               </div>
             </div>
             <ChevronRight className="h-6 w-6" />
