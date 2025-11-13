@@ -16,7 +16,10 @@ app.get("/health", async () => {
 
 // POST /translate
 app.post("/translate", async (req, reply) => {
+  const requestId = `translate-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   try {
+    app.log.info({ requestId, body: req.body }, "[Translate] Request received");
+    
     const schema = z.object({
       questionId: z.number().optional(),
       contentHash: z.string().optional(),
@@ -26,22 +29,35 @@ app.post("/translate", async (req, reply) => {
       message: "questionId or contentHash required"
     });
     const input = schema.parse(req.body);
+    
+    app.log.info({ requestId, input }, "[Translate] Input validated");
 
     // Load source text (zh or a translation as from)
+    app.log.info({ requestId, questionId: input.questionId, contentHash: input.contentHash }, "[Translate] Loading source content");
     const baseHash = input.contentHash || (await (async () => {
+      app.log.info({ requestId, questionId: input.questionId }, "[Translate] Querying question by ID");
       const row = await db.selectFrom("questions").select(["content_hash"]).where("id", "=", input.questionId!).executeTakeFirst();
-      if (!row) throw new Error("Question not found");
+      if (!row) {
+        app.log.error({ requestId, questionId: input.questionId }, "[Translate] Question not found");
+        throw new Error("Question not found");
+      }
+      app.log.info({ requestId, contentHash: row.content_hash }, "[Translate] Question found");
       return row.content_hash;
     })());
 
     let sourceContent: { content: string; options?: string[]; explanation?: string } | null = null;
     if (input.from.toLowerCase().startsWith("zh")) {
       // from base questions
+      app.log.info({ requestId, baseHash, from: input.from }, "[Translate] Loading from base questions table");
       const q = await db.selectFrom("questions")
         .select(["content", "options", "explanation"])
         .where("content_hash", "=", baseHash)
         .executeTakeFirst();
-      if (!q) throw new Error("Base question not found");
+      if (!q) {
+        app.log.error({ requestId, baseHash }, "[Translate] Base question not found");
+        throw new Error("Base question not found");
+      }
+      app.log.info({ requestId, hasContent: !!q.content, hasOptions: !!q.options, hasExplanation: !!q.explanation }, "[Translate] Base question loaded");
       sourceContent = {
         content: q.content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [String(q.options)] : undefined),
@@ -49,12 +65,17 @@ app.post("/translate", async (req, reply) => {
       };
     } else {
       // from existing translation
+      app.log.info({ requestId, baseHash, from: input.from }, "[Translate] Loading from translations table");
       const t = await db.selectFrom("question_translations")
         .select(["content", "options", "explanation"])
         .where("content_hash", "=", baseHash)
         .where("locale", "=", input.from)
         .executeTakeFirst();
-      if (!t) throw new Error("Source translation not found");
+      if (!t) {
+        app.log.error({ requestId, baseHash, from: input.from }, "[Translate] Source translation not found");
+        throw new Error("Source translation not found");
+      }
+      app.log.info({ requestId, hasContent: !!t.content, hasOptions: !!t.options, hasExplanation: !!t.explanation }, "[Translate] Source translation loaded");
       sourceContent = {
         content: t.content,
         options: Array.isArray(t.options) ? t.options : (t.options ? [String(t.options)] : undefined),
@@ -62,13 +83,16 @@ app.post("/translate", async (req, reply) => {
       };
     }
 
+    app.log.info({ requestId, from: input.from, to: input.to }, "[Translate] Calling AI translation service");
     const result = await translateWithPolish({
       source: sourceContent!,
       from: input.from,
       to: input.to
     });
+    app.log.info({ requestId, hasContent: !!result.content, hasOptions: !!result.options, hasExplanation: !!result.explanation }, "[Translate] AI translation completed");
 
     // Upsert translation
+    app.log.info({ requestId, baseHash, locale: input.to }, "[Translate] Checking for existing translation");
     const existing = await db.selectFrom("question_translations")
       .select(["id"])
       .where("content_hash", "=", baseHash)
@@ -76,6 +100,7 @@ app.post("/translate", async (req, reply) => {
       .executeTakeFirst();
 
     if (existing) {
+      app.log.info({ requestId, translationId: existing.id }, "[Translate] Updating existing translation");
       await db.updateTable("question_translations")
         .set({
           content: result.content,
@@ -85,7 +110,9 @@ app.post("/translate", async (req, reply) => {
         })
         .where("id", "=", existing.id)
         .execute();
+      app.log.info({ requestId, translationId: existing.id }, "[Translate] Translation updated successfully");
     } else {
+      app.log.info({ requestId, baseHash, locale: input.to }, "[Translate] Inserting new translation");
       await db.insertInto("question_translations")
         .values({
           content_hash: baseHash,
@@ -96,11 +123,13 @@ app.post("/translate", async (req, reply) => {
           source: "ai"
         })
         .execute();
+      app.log.info({ requestId, baseHash, locale: input.to }, "[Translate] Translation inserted successfully");
     }
 
+    app.log.info({ requestId, baseHash, locale: input.to }, "[Translate] Request completed successfully");
     return reply.send({ ok: true, data: { contentHash: baseHash, locale: input.to } });
   } catch (error: any) {
-    app.log.error({ err: error }, "Translate endpoint error");
+    app.log.error({ requestId, err: error, message: error?.message, stack: error?.stack }, "[Translate] Error occurred");
     const message = error?.message || "Internal server error";
     const statusCode = error?.code === "ECONNREFUSED" || error?.code === "ENOTFOUND" || message.includes("database") || message.includes("connection") ? 503 : 500;
     return reply.code(statusCode).send({ 
@@ -113,7 +142,10 @@ app.post("/translate", async (req, reply) => {
 
 // POST /polish
 app.post("/polish", async (req, reply) => {
+  const requestId = `polish-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   try {
+    app.log.info({ requestId, body: req.body }, "[Polish] Request received");
+    
     const schema = z.object({
       questionId: z.number().optional(),
       contentHash: z.string().optional(),
@@ -122,33 +154,52 @@ app.post("/polish", async (req, reply) => {
       message: "questionId or contentHash required"
     });
     const input = schema.parse(req.body);
+    
+    app.log.info({ requestId, input }, "[Polish] Input validated");
 
+    app.log.info({ requestId, questionId: input.questionId, contentHash: input.contentHash }, "[Polish] Loading content hash");
     const baseHash = input.contentHash || (await (async () => {
+      app.log.info({ requestId, questionId: input.questionId }, "[Polish] Querying question by ID");
       const row = await db.selectFrom("questions").select(["content_hash"]).where("id", "=", input.questionId!).executeTakeFirst();
-      if (!row) throw new Error("Question not found");
+      if (!row) {
+        app.log.error({ requestId, questionId: input.questionId }, "[Polish] Question not found");
+        throw new Error("Question not found");
+      }
+      app.log.info({ requestId, contentHash: row.content_hash }, "[Polish] Question found");
       return row.content_hash;
     })());
 
     // Load text in locale
+    app.log.info({ requestId, baseHash, locale: input.locale }, "[Polish] Loading text in locale");
     let text: { content: string; options?: string[]; explanation?: string } | null = null;
     if (input.locale.toLowerCase().startsWith("zh")) {
+      app.log.info({ requestId, baseHash }, "[Polish] Loading from base questions table");
       const q = await db.selectFrom("questions")
         .select(["content", "options", "explanation"])
         .where("content_hash", "=", baseHash)
         .executeTakeFirst();
-      if (!q) throw new Error("Base question not found");
+      if (!q) {
+        app.log.error({ requestId, baseHash }, "[Polish] Base question not found");
+        throw new Error("Base question not found");
+      }
+      app.log.info({ requestId, hasContent: !!q.content, hasOptions: !!q.options, hasExplanation: !!q.explanation }, "[Polish] Base question loaded");
       text = {
         content: q.content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [String(q.options)] : undefined),
         explanation: q.explanation || undefined
       };
     } else {
+      app.log.info({ requestId, baseHash, locale: input.locale }, "[Polish] Loading from translations table");
       const t = await db.selectFrom("question_translations")
         .select(["content", "options", "explanation"])
         .where("content_hash", "=", baseHash)
         .where("locale", "=", input.locale)
         .executeTakeFirst();
-      if (!t) throw new Error("Translation not found");
+      if (!t) {
+        app.log.error({ requestId, baseHash, locale: input.locale }, "[Polish] Translation not found");
+        throw new Error("Translation not found");
+      }
+      app.log.info({ requestId, hasContent: !!t.content, hasOptions: !!t.options, hasExplanation: !!t.explanation }, "[Polish] Translation loaded");
       text = {
         content: t.content,
         options: Array.isArray(t.options) ? t.options : (t.options ? [String(t.options)] : undefined),
@@ -156,9 +207,12 @@ app.post("/polish", async (req, reply) => {
       };
     }
 
+    app.log.info({ requestId, locale: input.locale }, "[Polish] Calling AI polish service");
     const result = await polishContent({ text: text!, locale: input.locale });
+    app.log.info({ requestId, hasContent: !!result.content, hasOptions: !!result.options, hasExplanation: !!result.explanation }, "[Polish] AI polish completed");
 
     // Insert review as pending
+    app.log.info({ requestId, baseHash, locale: input.locale }, "[Polish] Inserting polish review");
     await db.insertInto("question_polish_reviews")
       .values({
         content_hash: baseHash,
@@ -169,10 +223,12 @@ app.post("/polish", async (req, reply) => {
         status: "pending"
       })
       .execute();
+    app.log.info({ requestId, baseHash, locale: input.locale }, "[Polish] Polish review inserted successfully");
 
+    app.log.info({ requestId, baseHash, locale: input.locale }, "[Polish] Request completed successfully");
     return reply.send({ ok: true });
   } catch (error: any) {
-    app.log.error({ err: error }, "Polish endpoint error");
+    app.log.error({ requestId, err: error, message: error?.message, stack: error?.stack }, "[Polish] Error occurred");
     const message = error?.message || "Internal server error";
     const statusCode = error?.code === "ECONNREFUSED" || error?.code === "ENOTFOUND" || message.includes("database") || message.includes("connection") ? 503 : 500;
     return reply.code(statusCode).send({ 
