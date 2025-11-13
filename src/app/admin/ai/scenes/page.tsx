@@ -196,21 +196,28 @@ export default function AdminAiScenesPage() {
 
     try {
       const base = getBaseUrl();
-      const token = getAuthToken();
       const locale = (typeof navigator !== "undefined" && navigator.language) || "zh-CN";
+
+      // 测试功能使用匿名模式，不传递管理员 token
+      // /api/ai/ask 会自动使用 anonymous 作为 userId
+      // 添加超时控制（60秒）
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
       const response = await fetch(`${base}/api/ai/ask`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           question: testInput,
           locale: locale,
           scene: scene.scene_key,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -238,6 +245,17 @@ export default function AdminAiScenesPage() {
         }));
       }
     } catch (err) {
+      let errorMessage = "测试失败";
+      if (err instanceof Error) {
+        if (err.name === "AbortError" || err.message.includes("timeout")) {
+          errorMessage = "请求超时（60秒），请检查网络连接或稍后重试";
+        } else if (err.message.includes("Failed to fetch") || err.message.includes("ERR_TIMED_OUT")) {
+          errorMessage = "网络请求超时，请检查网络连接或 AI 服务是否正常运行";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
       setTestStates((prev) => ({
         ...prev,
         [scene.id]: {
@@ -245,7 +263,7 @@ export default function AdminAiScenesPage() {
           testing: false,
           testInput: testInput,
           testResult: null,
-          testError: err instanceof Error ? err.message : "测试失败",
+          testError: errorMessage,
         },
       }));
     }
