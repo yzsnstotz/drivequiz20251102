@@ -59,6 +59,7 @@ type AskRequest = {
   questionHash?: string; // 题目的hash值（从JSON包或数据库获取，避免重复计算）
   scene?: string; // 场景标识：chat, question_explanation 等
   skipCache?: boolean; // 是否跳过缓存（用于测试场景）
+  testMode?: boolean; // 测试模式：如果为true，优先使用直连模式以加快响应
 };
 
 type AiServiceResponse = {
@@ -821,17 +822,20 @@ export async function POST(req: NextRequest) {
     // 3. 否则使用 chat 场景（默认）
     const scene = body.scene?.trim() || (body.questionHash ? "question_explanation" : "chat");
     const skipCache = body.skipCache === true; // 是否跳过缓存
+    const testMode = body.testMode === true; // 测试模式：优先使用直连模式以加快响应
     console.log(`[${requestId}] [STEP 2.5.1] 场景标识: ${scene}`, {
       sceneFromRequest: body.scene,
       hasQuestionHash: !!body.questionHash,
       inferredScene: body.questionHash ? "question_explanation" : "chat",
       skipCache: skipCache,
+      testMode: testMode,
       requestBody: {
         hasQuestion: !!body.question,
         questionLength: body.question?.length || 0,
         locale: body.locale,
         scene: body.scene,
         skipCache: body.skipCache,
+        testMode: body.testMode,
       },
     });
     
@@ -843,6 +847,18 @@ export async function POST(req: NextRequest) {
       locale: locale || "(none)",
       hasQuestionHash: !!questionHashFromRequest,
     });
+
+    // 2.7) 测试模式优化：如果testMode为true且配置了OpenRouter API Key，强制使用直连模式以加快响应
+    if (testMode && OPENROUTER_API_KEY && (aiServiceMode === "openrouter" || aiServiceMode === "openai")) {
+      console.log(`[${requestId}] [STEP 2.7] 检测到测试模式，切换到直连OpenRouter模式以加快响应`, {
+        originalMode: aiServiceMode,
+        newMode: "openrouter_direct",
+      });
+      aiServiceMode = "openrouter_direct";
+      // 清除通过AI Service的配置
+      selectedAiServiceUrl = undefined;
+      selectedAiServiceToken = undefined;
+    }
 
     // 3) 配额检查（用户维度 10次/日）
     console.log(`[${requestId}] [STEP 3] 开始配额检查`);
