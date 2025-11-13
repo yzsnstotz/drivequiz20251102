@@ -2239,8 +2239,8 @@ export async function POST(req: NextRequest) {
       })();
     }
 
-    // 7) 成功：写入 ai_logs 表（作为备份，确保所有AI回答都被保存）
-    // 注意：AI服务也会写入 ai_logs 表，但这里作为备份确保写入成功
+    // 7) 成功：写入 ai_logs 表（统一入口，确保所有AI回答都被保存）
+    // 注意：AI服务不再写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
     // 在 render indirect 和 direct 模式下都调用（除了本地 ollama）
     // 注意：如果使用了缓存（cached=true），已经在 STEP 4.5.3 中写入了日志，这里应该跳过
     if (result.ok && result.data && result.data.answer && aiServiceMode !== "local") {

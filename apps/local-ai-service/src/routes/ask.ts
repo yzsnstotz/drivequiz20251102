@@ -3,7 +3,6 @@ import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getRagContext } from "../lib/rag.js";
 import { callOllamaChat } from "../lib/ollamaClient.js";
 import type { LocalAIConfig } from "../lib/config.js";
-import { logAiInteraction } from "../lib/dbLogger.js";
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
@@ -198,22 +197,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 6) 计算 RAG 命中数
         const ragHits = reference ? 1 : 0;
 
-        // 7) 异步写入 ai_logs（不阻断响应）
-        void logAiInteraction({
-          userId: body.userId || null,
-          question,
-          answer,
-          lang,
-          model: config.aiModel,
-          ragHits,
-          safetyFlag: "ok", // 本地服务暂不实现安全审查
-          costEstUsd: null, // 本地AI不计算成本
-          createdAtIso: new Date().toISOString(),
-          sources: sources.length > 0 ? sources : undefined,
-        }).catch((error) => {
-          // 写入失败不影响主流程，仅记录错误
-          console.error("[LOCAL-AI] Failed to write ai_logs:", error instanceof Error ? error.message : String(error));
-        });
+        // 7) 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
+        // 主路由会在 STEP 7 中写入日志（但 local 模式会跳过，因为 aiServiceMode === "local"）
 
         // 8) 返回结果（与在线AI服务格式完全一致）
         const result: AskResult = {
