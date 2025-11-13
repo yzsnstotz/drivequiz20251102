@@ -16,6 +16,7 @@ export default function AdminAiHub() {
           { href: "/admin/ai/logs", title: "问答日志", desc: "按条件查询 AI 日志明细" },
           { href: "/admin/ai/filters", title: "过滤规则", desc: "禁答/非相关关键词配置" },
           { href: "/admin/ai/config", title: "配置中心", desc: "可读写核心运营参数并即时生效" },
+          { href: "/admin/ai/scenes", title: "场景配置", desc: "不同 AI 场景的 Prompt 和格式配置" },
           { href: "/admin/ai/rag", title: "知识库上传", desc: "法规文档上传 → 向量化" },
           { href: "/admin/ai/rag/list", title: "文档列表", desc: "可见文档列表、版本/状态切换、重建向量" },
         ].map((x) => (
