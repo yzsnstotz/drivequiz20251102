@@ -29,7 +29,8 @@ export type SourceRef = {
 const DEFAULT_MATCH_COUNT = 5 as const;
 const CONTEXT_CHAR_LIMIT = 4000 as const;
 const EMBEDDING_MODEL = (process.env.EMBEDDING_MODEL || "text-embedding-3-small").trim();
-const FETCH_TIMEOUT_MS = Number(process.env.RAG_FETCH_TIMEOUT_MS || 10000);
+// 优化：缩短超时时间到 5 秒，避免 RAG 检索阻塞主流程
+const FETCH_TIMEOUT_MS = Number(process.env.RAG_FETCH_TIMEOUT_MS || 5000);
 
 /** 统一语言规范化（默认 zh，仅接受 zh/ja/en） */
 function normalizeLang(lang?: string): "zh" | "ja" | "en" {
@@ -43,9 +44,14 @@ function safeSlice(s: string, max = 3000): string {
 }
 
 /** 生成查询向量（OpenAI Embeddings） */
-async function embedQuery(config: ServiceConfig, text: string): Promise<number[]> {
-  const aiProvider = await getAiProviderFromConfig();
-  const openai = getOpenAIClient(config, aiProvider);
+async function embedQuery(
+  config: ServiceConfig,
+  text: string,
+  aiProvider?: "openai" | "openrouter"
+): Promise<number[]> {
+  // 如果未提供 aiProvider，才从配置读取（避免重复查询）
+  const provider = aiProvider || await getAiProviderFromConfig();
+  const openai = getOpenAIClient(config, provider);
   const input = safeSlice(text, 3000);
   try {
     const resp = await openai.embeddings.create({
@@ -139,15 +145,17 @@ function buildContext(hits: RagHit[]): string {
 /**
  * 对外入口：获取检索上下文
  * - 无 Supabase 配置或 RPC 缺失/失败 → 返回空字符串
+ * @param aiProvider 可选的 AI 提供商，避免重复查询配置
  */
 export async function getRagContext(
   question: string,
   lang = "zh",
-  config?: ServiceConfig
+  config?: ServiceConfig,
+  aiProvider?: "openai" | "openrouter"
 ): Promise<string> {
   try {
     if (!config) return "";
-    const embedding = await embedQuery(config, question);
+    const embedding = await embedQuery(config, question, aiProvider);
     const hits = await callSupabaseMatch(config, embedding, lang, DEFAULT_MATCH_COUNT);
     return buildContext(hits);
   } catch {
@@ -167,13 +175,14 @@ export async function ragSearch(
   question: string,
   topK = 3,
   threshold = 0.75,
-  config?: ServiceConfig
+  config?: ServiceConfig,
+  aiProvider?: "openai" | "openrouter"
 ): Promise<SourceRef[]> {
   try {
     if (!config) return [];
 
     // 1) 生成查询向量
-    const embedding = await embedQuery(config, question);
+    const embedding = await embedQuery(config, question, aiProvider);
 
     // 2) 调用 Supabase RPC match_documents
     const hits = await callSupabaseMatch(config, embedding, "zh", topK);
