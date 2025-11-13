@@ -176,9 +176,40 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        // 4) 安全审查
-        const safe = await checkSafety(question);
-        // 映射 category 到 safetyFlag: 高风险类别视为 blocked，其他为 needs_human
+        // 4) 并行执行：安全审查、RAG检索、配置读取（优化性能）
+        // 优先从请求头读取 X-AI-Provider，避免不必要的数据库查询
+        const { getAiProviderFromConfig } = await import("../lib/configLoader.js");
+        
+        // 获取 aiProvider（用于 RAG 检索）
+        // 注意：HTTP 头名称是大小写不敏感的，但 Fastify 会将其转换为小写
+        const headerProvider = (request.headers["x-ai-provider"] || request.headers["X-AI-Provider"]) as string | undefined;
+        const aiProviderPromise = (async (): Promise<"openai" | "openrouter"> => {
+          if (headerProvider === "openai" || headerProvider === "openrouter") {
+            console.log("[ASK ROUTE] AI provider from header", { 
+              aiProvider: headerProvider,
+              rawHeader: request.headers["x-ai-provider"] || request.headers["X-AI-Provider"],
+              allHeaders: Object.keys(request.headers).filter(k => k.toLowerCase().includes("ai-provider")),
+            });
+            return headerProvider;
+          }
+          console.log("[ASK ROUTE] AI provider not found in header, reading from config", {
+            headerProvider,
+            availableHeaders: Object.keys(request.headers).filter(k => k.toLowerCase().includes("ai") || k.toLowerCase().includes("provider")),
+          });
+          const provider = await getAiProviderFromConfig();
+          console.log("[ASK ROUTE] AI provider from config", { aiProvider: provider });
+          return provider;
+        })();
+        
+        // 并行执行：安全审查、RAG检索（需要aiProvider）、配置读取
+        const [safe, reference, aiProviderResult] = await Promise.all([
+          checkSafety(question),
+          // RAG 检索需要先获取 aiProvider，但可以并行执行
+          aiProviderPromise.then(provider => getRagContext(question, lang, config, provider).catch(() => "")),
+          aiProviderPromise,
+        ]);
+
+        // 处理安全审查结果
         const blockedCategories: string[] = ["sexual", "violence", "hate", "illegal", "malware", "privacy"];
         const safetyFlag: "ok" | "needs_human" | "blocked" = safe.ok
           ? "ok"
@@ -194,17 +225,9 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        // 5) RAG 检索（可能为空）
-        const reference = await getRagContext(question, lang, config);
+        const aiProvider = aiProviderResult;
 
-        // 6) 从数据库读取 AI 提供商配置
-        const { getAiProviderFromConfig } = await import("../lib/configLoader.js");
-        const aiProvider = await getAiProviderFromConfig();
-        console.log("[ASK ROUTE] AI provider from config", {
-          aiProvider,
-        });
-
-        // 7) 调用 OpenAI
+        // 6) 调用 OpenAI
         let openai;
         try {
           openai = getOpenAIClient(config, aiProvider);
