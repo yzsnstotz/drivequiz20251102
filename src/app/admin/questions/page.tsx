@@ -40,6 +40,7 @@ type Filters = {
   source: string; // 题目源：database（数据库）或版本号（历史JSON包）
   sortBy: "id" | "content" | "category";
   sortOrder: "asc" | "desc";
+  locale?: string;
 };
 
 const DEFAULT_FILTERS: Filters = {
@@ -50,6 +51,7 @@ const DEFAULT_FILTERS: Filters = {
   source: "database", // 默认显示数据库题目
   sortBy: "id",
   sortOrder: "asc",
+  locale: "zh",
 };
 
 export default function QuestionsPage() {
@@ -129,6 +131,7 @@ export default function QuestionsPage() {
     message: string;
     data?: any;
   } | null>(null);
+  const [languageOptions] = useState<string[]>(["zh", "en", "ja"]);
 
   // 加载卷类列表
   useEffect(() => {
@@ -260,6 +263,7 @@ export default function QuestionsPage() {
       if (filters.category) params.category = filters.category;
       if (filters.search) params.search = filters.search;
       if (filters.source) params.source = filters.source;
+      if (filters.locale) params.locale = filters.locale;
 
       // 构建查询字符串
       const queryString = new URLSearchParams(
@@ -1181,6 +1185,26 @@ export default function QuestionsPage() {
             ))}
           </select>
         </div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-xs font-medium text-gray-700 mb-1">语言</label>
+          <select
+            value={filters.locale}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                locale: e.target.value,
+                page: 1,
+              }))
+            }
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          >
+            {languageOptions.map((loc) => (
+              <option key={loc} value={loc}>
+                {loc}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-gray-700 mb-1">题目源</label>
           <div className="space-y-1">
@@ -1368,6 +1392,48 @@ export default function QuestionsPage() {
                       >
                         删除
                       </button>
+                      <span className="mx-1 text-gray-300">|</span>
+                      <button
+                        onClick={async () => {
+                          const to = prompt("请输入目标语言（如 en/ja/zh-CN）：", "en") || "";
+                          if (!to.trim()) return;
+                          try {
+                            const payload: any = {
+                              from: filters.locale || "zh",
+                              to: to.trim(),
+                            };
+                            if (item.hash) payload.contentHash = item.hash;
+                            else payload.questionId = item.id;
+                            await apiPost("/api/admin/question-processing/translate", payload);
+                            alert("翻译任务已提交");
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "翻译提交失败");
+                          }
+                        }}
+                        className="text-indigo-600 hover:underline mr-2"
+                        title="翻译并润色到指定语言"
+                      >
+                        翻译到...
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const payload: any = {
+                              locale: filters.locale || "zh",
+                            };
+                            if (item.hash) payload.contentHash = item.hash;
+                            else payload.questionId = item.id;
+                            await apiPost("/api/admin/question-processing/polish", payload);
+                            alert("润色建议已生成，待审核");
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "润色提交失败");
+                          }
+                        }}
+                        className="text-emerald-600 hover:underline"
+                        title="对当前语言题面进行润色（生成待审核）"
+                      >
+                        润色
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1440,6 +1506,45 @@ export default function QuestionsPage() {
                     className="flex-1 text-center rounded-xl bg-red-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-red-600 active:bg-red-700 touch-manipulation transition-colors shadow-sm"
                   >
                     删除
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const to = prompt("请输入目标语言（如 en/ja/zh-CN）：", "en") || "";
+                      if (!to.trim()) return;
+                      try {
+                        const payload: any = {
+                          from: filters.locale || "zh",
+                          to: to.trim(),
+                        };
+                        if (item.hash) payload.contentHash = item.hash;
+                        else payload.questionId = item.id;
+                        await apiPost("/api/admin/question-processing/translate", payload);
+                        alert("翻译任务已提交");
+                      } catch (e) {
+                        alert(e instanceof Error ? e.message : "翻译提交失败");
+                      }
+                    }}
+                    className="flex-1 text-center rounded-xl bg-indigo-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-indigo-600 active:bg-indigo-700 transition-colors shadow-sm"
+                  >
+                    翻译到...
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const payload: any = {
+                          locale: filters.locale || "zh",
+                        };
+                        if (item.hash) payload.contentHash = item.hash;
+                        else payload.questionId = item.id;
+                        await apiPost("/api/admin/question-processing/polish", payload);
+                        alert("润色建议已生成，待审核");
+                      } catch (e) {
+                        alert(e instanceof Error ? e.message : "润色提交失败");
+                      }
+                    }}
+                    className="flex-1 text-center rounded-xl bg-emerald-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm"
+                  >
+                    润色
                   </button>
                 </div>
               </div>
