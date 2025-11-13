@@ -202,6 +202,18 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
     console.log(
       `[loadUnifiedQuestionsPackage] 版本不一致，更新中: ${localVersion || "无"} -> ${latestVersion}`
     );
+    
+    // 强制清除旧版本的缓存（如果有）
+    if (localVersion) {
+      try {
+        const oldCacheKey = `${LS_PREFIX}${localVersion}`;
+        removeFromLocalStorage(oldCacheKey);
+        console.log(`[loadUnifiedQuestionsPackage] 已清除旧版本缓存: ${localVersion}`);
+      } catch (error) {
+        console.warn(`[loadUnifiedQuestionsPackage] 清除旧版本缓存失败:`, error);
+      }
+    }
+    
     const pkg = await fetchUnifiedPackage();
     if (pkg) {
       // 关键修复：优先使用从数据库获取的最新版本号，而不是文件中的版本号
@@ -216,18 +228,31 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
         pkg.version = latestVersion;
       }
       
-      // 更新 localStorage 和缓存
+      // 强制清除可能存在的旧版本缓存（确保使用最新内容）
+      try {
+        const existingCacheKey = `${LS_PREFIX}${versionToUse}`;
+        const existingCache = getFromLocalStorage(existingCacheKey);
+        if (existingCache) {
+          removeFromLocalStorage(existingCacheKey);
+          console.log(`[loadUnifiedQuestionsPackage] 已清除可能存在的旧缓存: ${versionToUse}`);
+        }
+      } catch (error) {
+        console.warn(`[loadUnifiedQuestionsPackage] 清除现有缓存失败:`, error);
+      }
+      
+      // 更新 localStorage 和缓存（强制刷新）
       cachePackage(versionToUse, pkg);
       
       // 验证版本号是否已更新
       const verifyVersion = getLocalPackageVersion();
-      if (verifyVersion === versionToUse) {
+      const verifyCache = getCachedPackage(versionToUse);
+      if (verifyVersion === versionToUse && verifyCache) {
         console.log(
-          `[loadUnifiedQuestionsPackage] 版本更新完成并已验证: ${versionToUse}`
+          `[loadUnifiedQuestionsPackage] 版本更新完成并已验证: ${versionToUse}, 题目数: ${verifyCache.questions?.length || 0}`
         );
       } else {
         console.error(
-          `[loadUnifiedQuestionsPackage] 版本更新失败！期望: ${versionToUse}, 实际: ${verifyVersion || "无"}`
+          `[loadUnifiedQuestionsPackage] 版本更新失败！期望版本: ${versionToUse}, 实际版本: ${verifyVersion || "无"}, 缓存存在: ${!!verifyCache}`
         );
       }
     } else {

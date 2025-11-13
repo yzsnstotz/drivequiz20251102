@@ -206,7 +206,10 @@ export default function QuestionsPage() {
         }));
       }
 
-      // 重新加载版本号列表
+      // 立即从版本列表中移除已删除的版本（优化用户体验）
+      setVersions((prev) => prev.filter((v) => v.version !== version));
+
+      // 重新加载版本号列表（确保与服务器同步）
       await loadVersions(false);
 
       // 显示成功消息
@@ -218,6 +221,8 @@ export default function QuestionsPage() {
     } catch (e) {
       console.error("Failed to delete version:", e);
       setFormError(e instanceof Error ? e.message : "删除版本号失败");
+      // 删除失败时，重新加载版本列表以恢复状态
+      await loadVersions(false);
     } finally {
       setDeletingVersion(null);
       setShowDeleteConfirm(null);

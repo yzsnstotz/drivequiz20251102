@@ -53,134 +53,14 @@ async function getAllCategories(): Promise<string[]> {
 // ============================================================
 export const GET = withAdminAuth(async (req: NextRequest) => {
   try {
-    // 1. 从数据库读取版本号
+    // 只从数据库读取版本号（数据库是版本号的权威来源）
+    // 已删除的版本号不会出现在数据库中，因此不会显示在前端
     const dbVersions = await getAllUnifiedVersions();
-    const versionMap = new Map<string, {
-      version: string;
-      totalQuestions: number;
-      aiAnswersCount: number;
-      createdAt: Date;
-    }>();
-
-    // 将数据库版本号添加到Map中
-    for (const v of dbVersions) {
-      versionMap.set(v.version, v);
-    }
-
-    // 2. 从统一的questions.json中读取版本号
-    try {
-      const unifiedFile = await loadQuestionFile(); // 不传参数，读取统一文件
-      if (unifiedFile && unifiedFile.version && unifiedFile.questions) {
-        const version = unifiedFile.version;
-        const questionCount = unifiedFile.questions.length;
-        const aiAnswerCount = unifiedFile.aiAnswers ? Object.keys(unifiedFile.aiAnswers).length : 0;
-
-        // 尝试从文件系统获取创建时间
-        let fileDate: Date;
-        try {
-          const unifiedFilePath = path.join(QUESTIONS_DIR, "questions.json");
-          const stats = await fs.stat(unifiedFilePath);
-          fileDate = stats.mtime;
-        } catch {
-          fileDate = new Date();
-        }
-
-        // 如果数据库中没有该版本号，从JSON包添加
-        if (!versionMap.has(version)) {
-          versionMap.set(version, {
-            version,
-            totalQuestions: questionCount,
-            aiAnswersCount: aiAnswerCount,
-            createdAt: fileDate,
-          });
-        } else {
-          // 如果数据库中有，使用数据库的数据（更准确），但如果没有题目数，使用JSON包的统计
-          const existing = versionMap.get(version)!;
-          if (existing.totalQuestions === 0 && questionCount > 0) {
-            existing.totalQuestions = questionCount;
-          }
-          if (existing.aiAnswersCount === 0 && aiAnswerCount > 0) {
-            existing.aiAnswersCount = aiAnswerCount;
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`[GET /api/admin/questions/versions] Error loading unified file:`, error);
-    }
     
-    // 兼容旧逻辑：如果统一的questions.json不存在，从各个JSON包中扫描版本号
-    const categories = await getAllCategories();
-    const versionStats = new Map<string, {
-      totalQuestions: number;
-      aiAnswersCount: number;
-      earliestDate: Date;
-    }>();
+    console.log(`[GET /api/admin/questions/versions] 从数据库读取到 ${dbVersions.length} 个版本号`);
 
-    // 第一遍扫描：统计每个版本号的题目总数
-    for (const category of categories) {
-      try {
-        const file = await loadQuestionFile(category);
-        if (file && file.version && file.questions) {
-          const version = file.version;
-          const questionCount = file.questions.length;
-          const aiAnswerCount = file.aiAnswers ? Object.keys(file.aiAnswers).length : 0;
-
-          // 尝试从文件系统获取创建时间
-          let fileDate: Date;
-          try {
-            const filePath = path.join(QUESTIONS_DIR, `${category}.json`);
-            const stats = await fs.stat(filePath);
-            fileDate = stats.mtime;
-          } catch {
-            fileDate = new Date();
-          }
-
-          if (!versionStats.has(version)) {
-            versionStats.set(version, {
-              totalQuestions: questionCount,
-              aiAnswersCount: aiAnswerCount,
-              earliestDate: fileDate,
-            });
-          } else {
-            // 累加题目数和AI回答数（因为同一版本号可能出现在多个JSON包中）
-            const stats = versionStats.get(version)!;
-            stats.totalQuestions += questionCount;
-            stats.aiAnswersCount += aiAnswerCount;
-            // 使用最早的日期
-            if (fileDate < stats.earliestDate) {
-              stats.earliestDate = fileDate;
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`[GET /api/admin/questions/versions] Error loading ${category}:`, error);
-      }
-    }
-
-    // 3. 合并数据库版本号和JSON包版本号
-    for (const [version, stats] of Array.from(versionStats.entries())) {
-      if (!versionMap.has(version)) {
-        // 如果数据库中没有该版本号，从JSON包添加
-        versionMap.set(version, {
-          version,
-          totalQuestions: stats.totalQuestions,
-          aiAnswersCount: stats.aiAnswersCount,
-          createdAt: stats.earliestDate,
-        });
-      } else {
-        // 如果数据库中有，使用数据库的数据（更准确），但如果没有题目数，使用JSON包的统计
-        const existing = versionMap.get(version)!;
-        if (existing.totalQuestions === 0 && stats.totalQuestions > 0) {
-          existing.totalQuestions = stats.totalQuestions;
-        }
-        if (existing.aiAnswersCount === 0 && stats.aiAnswersCount > 0) {
-          existing.aiAnswersCount = stats.aiAnswersCount;
-        }
-      }
-    }
-
-    // 4. 转换为数组并按创建时间排序
-    const versions = Array.from(versionMap.values()).sort((a, b) => {
+    // 转换为数组并按创建时间排序
+    const versions = dbVersions.sort((a, b) => {
       return b.createdAt.getTime() - a.createdAt.getTime();
     });
 

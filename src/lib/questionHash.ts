@@ -72,13 +72,13 @@ export function generateVersion(sequence: number = 1): string {
 }
 
 /**
- * 生成统一版本号（包含所有题目的hash + 时间戳）
- * 格式：{所有题目hash的合并hash}-{时间戳}
+ * 计算所有题目的内容hash（不包含时间戳）
+ * 用于比较内容是否发生变化
  * 
  * @param questions 所有题目列表
- * @returns 版本号字符串
+ * @returns 内容hash字符串（16位）
  */
-export function generateUnifiedVersion(questions: Question[]): string {
+export function calculateContentHash(questions: Question[]): string {
   // 1. 计算所有题目的hash并排序（确保一致性）
   const questionHashes = questions
     .map((q) => calculateQuestionHash(q))
@@ -92,11 +92,66 @@ export function generateUnifiedVersion(questions: Question[]): string {
     .digest("hex")
     .substring(0, 16); // 取前16位作为标识
 
-  // 3. 生成时间戳
+  return allContentHash;
+}
+
+/**
+ * 计算AI回答的内容hash
+ * 用于检测AI回答是否发生变化
+ * 
+ * @param aiAnswers AI回答对象（questionHash -> answer）
+ * @returns AI回答hash字符串（16位）
+ */
+export function calculateAiAnswersHash(aiAnswers: Record<string, string>): string {
+  // 1. 将所有AI回答的hash和内容组合并排序（确保一致性）
+  const entries = Object.entries(aiAnswers)
+    .map(([hash, answer]) => `${hash}:${answer}`)
+    .sort() // 排序确保一致性
+    .join("|");
+
+  // 2. 计算合并hash
+  const aiAnswersHash = crypto
+    .createHash("sha256")
+    .update(entries, "utf8")
+    .digest("hex")
+    .substring(0, 16); // 取前16位作为标识
+
+  return aiAnswersHash;
+}
+
+/**
+ * 计算完整内容hash（包含题目和AI回答）
+ * 用于检测是否有任何内容变化
+ * 
+ * @param questions 所有题目列表
+ * @param aiAnswers AI回答对象（questionHash -> answer）
+ * @returns 完整内容hash字符串（33位：题目hash(16) + '-' + AI回答hash(16)）
+ */
+export function calculateFullContentHash(
+  questions: Question[],
+  aiAnswers: Record<string, string>
+): string {
+  const questionsHash = calculateContentHash(questions);
+  const aiAnswersHash = calculateAiAnswersHash(aiAnswers);
+  return `${questionsHash}-${aiAnswersHash}`;
+}
+
+/**
+ * 生成统一版本号（包含所有题目的hash + 时间戳）
+ * 格式：{所有题目hash的合并hash}-{时间戳}
+ * 
+ * @param questions 所有题目列表
+ * @returns 版本号字符串
+ */
+export function generateUnifiedVersion(questions: Question[]): string {
+  // 1. 计算内容hash
+  const allContentHash = calculateContentHash(questions);
+
+  // 2. 生成时间戳
   const now = new Date();
   const timestamp = now.getTime();
 
-  // 4. 组合：hash标识-时间戳
+  // 3. 组合：hash标识-时间戳
   return `${allContentHash}-${timestamp}`;
 }
 
