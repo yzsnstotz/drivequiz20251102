@@ -119,8 +119,45 @@ WHERE table_schema = 'public'
 - [ ] `QUESTION_PROCESSOR_DATABASE_URL` 或 `DATABASE_URL` 已配置
 - [ ] 数据库连接字符串指向 drivequiz 主程序数据库
 - [ ] 表结构已通过迁移脚本创建
-- [ ] `QUESTION_PROCESSOR_URL` 已配置（API 路由使用）
+- [ ] `QUESTION_PROCESSOR_URL` 已配置（API 路由使用）**⚠️ 生产环境必需**
 - [ ] `AI_SERVICE_URL` 已配置（翻译和润色功能需要）
+
+## ⚠️ 重要：QUESTION_PROCESSOR_URL 配置
+
+在生产环境（Vercel）中，**必须**配置 `QUESTION_PROCESSOR_URL` 环境变量，指向 question-processor 服务的生产 URL。
+
+### 配置步骤
+
+1. **在 Vercel Dashboard 中配置环境变量**
+   - 进入项目 Settings > Environment Variables
+   - 添加 `QUESTION_PROCESSOR_URL`
+   - 值应该是 question-processor 服务的完整 URL，例如：
+     - `https://question-processor.zalem.app` (如果通过 Cloudflare Tunnel)
+     - `https://question-processor.onrender.com` (如果部署在 Render)
+     - 或其他部署服务的 URL
+
+2. **验证配置**
+   - 确保 URL 不是 `http://127.0.0.1:8083` 或 `http://localhost:8083`
+   - 确保 URL 是 HTTPS（生产环境推荐）
+   - 确保 URL 可以公开访问
+
+### 错误提示
+
+如果未配置 `QUESTION_PROCESSOR_URL`，在生产环境中会收到以下错误：
+```
+QUESTION_PROCESSOR_URL environment variable is not configured. 
+Please set QUESTION_PROCESSOR_URL in Vercel environment variables to the production question-processor service URL.
+```
+
+### 部署 question-processor 服务
+
+question-processor 需要单独部署。可以选择：
+
+1. **Render / Railway / Fly.io** 等平台部署
+2. **Cloudflare Tunnel**（类似 AI Service 的部署方式）
+3. **VPS 服务器** 部署
+
+部署后，将服务的公共 URL 配置到 `QUESTION_PROCESSOR_URL` 环境变量中。
 
 ## 相关文件
 

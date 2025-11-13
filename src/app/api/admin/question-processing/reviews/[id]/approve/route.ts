@@ -1,10 +1,6 @@
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success } from "@/app/api/_lib/errors";
-
-function getProcessorUrl(): string {
-  const url = process.env.QUESTION_PROCESSOR_URL || `http://127.0.0.1:${process.env.QUESTION_PROCESSOR_PORT || 8083}`;
-  return url.replace(/\/+$/, "");
-}
+import { getProcessorUrl } from "../../_lib/getProcessorUrl";
 
 export const POST = withAdminAuth(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
