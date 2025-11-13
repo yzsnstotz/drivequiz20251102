@@ -58,6 +58,7 @@ type AskRequest = {
   locale?: string;
   questionHash?: string; // 题目的hash值（从JSON包或数据库获取，避免重复计算）
   scene?: string; // 场景标识：chat, question_explanation 等
+  skipCache?: boolean; // 是否跳过缓存（用于测试场景）
 };
 
 type AiServiceResponse = {
@@ -819,15 +820,18 @@ export async function POST(req: NextRequest) {
     // 2. 如果有 questionHash，推断为 question_explanation 场景
     // 3. 否则使用 chat 场景（默认）
     const scene = body.scene?.trim() || (body.questionHash ? "question_explanation" : "chat");
+    const skipCache = body.skipCache === true; // 是否跳过缓存
     console.log(`[${requestId}] [STEP 2.5.1] 场景标识: ${scene}`, {
       sceneFromRequest: body.scene,
       hasQuestionHash: !!body.questionHash,
       inferredScene: body.questionHash ? "question_explanation" : "chat",
+      skipCache: skipCache,
       requestBody: {
         hasQuestion: !!body.question,
         questionLength: body.question?.length || 0,
         locale: body.locale,
         scene: body.scene,
+        skipCache: body.skipCache,
       },
     });
     
@@ -909,24 +913,32 @@ export async function POST(req: NextRequest) {
     
     // 4.5) 检查是否有缓存的AI解析（如果是题目）
     // 前端已经检查过内存缓存和本地JSON包，后端直接查询数据库（Serverless环境中内存缓存不可靠）
-    console.log(`[${requestId}] [STEP 4.5] 开始检查缓存的AI解析`);
+    console.log(`[${requestId}] [STEP 4.5] 开始检查缓存的AI解析`, {
+      skipCache: skipCache,
+    });
     let cachedAnswer: string | null = null;
     let questionHash: string | null = null;
     let cacheSource: "localStorage" | "database" | null = null; // 记录缓存来源
     
-    try {
-      // 1. 使用前端传递的hash值（前端必须传递hash）
-      if (questionHashFromRequest) {
-        questionHash = questionHashFromRequest;
-        console.log(`[${requestId}] [STEP 4.5.0] 使用前端传递的hash值`, {
-          questionHash: questionHash.substring(0, 16) + "...",
-        });
-      } else {
-        // 如果没有传递hash，说明这不是题目请求，直接调用AI服务
-        console.log(`[${requestId}] [STEP 4.5.0] 未传递hash值，将直接调用AI服务生成新解析`);
-        // questionHash 保持为 null，后续会直接调用AI服务
-        questionHash = null;
-      }
+    // 如果 skipCache 为 true，跳过所有缓存检查
+    if (skipCache) {
+      console.log(`[${requestId}] [STEP 4.5] 跳过缓存检查（skipCache=true）`);
+      questionHash = questionHashFromRequest || null;
+      cachedAnswer = null;
+    } else {
+      try {
+        // 1. 使用前端传递的hash值（前端必须传递hash）
+        if (questionHashFromRequest) {
+          questionHash = questionHashFromRequest;
+          console.log(`[${requestId}] [STEP 4.5.0] 使用前端传递的hash值`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+          });
+        } else {
+          // 如果没有传递hash，说明这不是题目请求，直接调用AI服务
+          console.log(`[${requestId}] [STEP 4.5.0] 未传递hash值，将直接调用AI服务生成新解析`);
+          // questionHash 保持为 null，后续会直接调用AI服务
+          questionHash = null;
+        }
       
       // 2. 如果有了questionHash，按优先级检查：内存缓存 -> JSON包 -> 数据库
       if (questionHash) {
@@ -980,8 +992,8 @@ export async function POST(req: NextRequest) {
         }
       }
       
-      // 如果找到缓存的AI解析，直接返回
-      if (cachedAnswer) {
+      // 如果找到缓存的AI解析，直接返回（除非 skipCache 为 true）
+      if (cachedAnswer && !skipCache) {
         console.log(`[${requestId}] [STEP 4.5.2] 使用缓存的AI解析，跳过AI服务调用`);
         
         // 使用记录的缓存来源（优先JSON包，其次数据库）

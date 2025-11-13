@@ -195,3 +195,5 @@ psql $DATABASE_URL -f src/migrations/20251113_create_ai_scene_config.sql
 - `src/components/AIPage.tsx` - 首页 AI 助手组件（已更新）
 
 
+
+
