@@ -16,149 +16,171 @@ app.get("/health", async () => {
 
 // POST /translate
 app.post("/translate", async (req, reply) => {
-  const schema = z.object({
-    questionId: z.number().optional(),
-    contentHash: z.string().optional(),
-    from: z.string(),
-    to: z.string()
-  }).refine(v => !!(v.questionId || v.contentHash), {
-    message: "questionId or contentHash required"
-  });
-  const input = schema.parse(req.body);
+  try {
+    const schema = z.object({
+      questionId: z.number().optional(),
+      contentHash: z.string().optional(),
+      from: z.string(),
+      to: z.string()
+    }).refine(v => !!(v.questionId || v.contentHash), {
+      message: "questionId or contentHash required"
+    });
+    const input = schema.parse(req.body);
 
-  // Load source text (zh or a translation as from)
-  const baseHash = input.contentHash || (await (async () => {
-    const row = await db.selectFrom("questions").select(["content_hash"]).where("id", "=", input.questionId!).executeTakeFirst();
-    if (!row) throw new Error("Question not found");
-    return row.content_hash;
-  })());
+    // Load source text (zh or a translation as from)
+    const baseHash = input.contentHash || (await (async () => {
+      const row = await db.selectFrom("questions").select(["content_hash"]).where("id", "=", input.questionId!).executeTakeFirst();
+      if (!row) throw new Error("Question not found");
+      return row.content_hash;
+    })());
 
-  let sourceContent: { content: string; options?: string[]; explanation?: string } | null = null;
-  if (input.from.toLowerCase().startsWith("zh")) {
-    // from base questions
-    const q = await db.selectFrom("questions")
-      .select(["content", "options", "explanation"])
+    let sourceContent: { content: string; options?: string[]; explanation?: string } | null = null;
+    if (input.from.toLowerCase().startsWith("zh")) {
+      // from base questions
+      const q = await db.selectFrom("questions")
+        .select(["content", "options", "explanation"])
+        .where("content_hash", "=", baseHash)
+        .executeTakeFirst();
+      if (!q) throw new Error("Base question not found");
+      sourceContent = {
+        content: q.content,
+        options: Array.isArray(q.options) ? q.options : (q.options ? [String(q.options)] : undefined),
+        explanation: q.explanation || undefined
+      };
+    } else {
+      // from existing translation
+      const t = await db.selectFrom("question_translations")
+        .select(["content", "options", "explanation"])
+        .where("content_hash", "=", baseHash)
+        .where("locale", "=", input.from)
+        .executeTakeFirst();
+      if (!t) throw new Error("Source translation not found");
+      sourceContent = {
+        content: t.content,
+        options: Array.isArray(t.options) ? t.options : (t.options ? [String(t.options)] : undefined),
+        explanation: t.explanation || undefined
+      };
+    }
+
+    const result = await translateWithPolish({
+      source: sourceContent!,
+      from: input.from,
+      to: input.to
+    });
+
+    // Upsert translation
+    const existing = await db.selectFrom("question_translations")
+      .select(["id"])
       .where("content_hash", "=", baseHash)
+      .where("locale", "=", input.to)
       .executeTakeFirst();
-    if (!q) throw new Error("Base question not found");
-    sourceContent = {
-      content: q.content,
-      options: Array.isArray(q.options) ? q.options : (q.options ? [String(q.options)] : undefined),
-      explanation: q.explanation || undefined
-    };
-  } else {
-    // from existing translation
-    const t = await db.selectFrom("question_translations")
-      .select(["content", "options", "explanation"])
-      .where("content_hash", "=", baseHash)
-      .where("locale", "=", input.from)
-      .executeTakeFirst();
-    if (!t) throw new Error("Source translation not found");
-    sourceContent = {
-      content: t.content,
-      options: Array.isArray(t.options) ? t.options : (t.options ? [String(t.options)] : undefined),
-      explanation: t.explanation || undefined
-    };
+
+    if (existing) {
+      await db.updateTable("question_translations")
+        .set({
+          content: result.content,
+          options: result.options ? (result.options as any) : null,
+          explanation: result.explanation || null,
+          updated_at: new Date()
+        })
+        .where("id", "=", existing.id)
+        .execute();
+    } else {
+      await db.insertInto("question_translations")
+        .values({
+          content_hash: baseHash,
+          locale: input.to,
+          content: result.content,
+          options: result.options ? (result.options as any) : null,
+          explanation: result.explanation || null,
+          source: "ai"
+        })
+        .execute();
+    }
+
+    return reply.send({ ok: true, data: { contentHash: baseHash, locale: input.to } });
+  } catch (error: any) {
+    app.log.error({ err: error }, "Translate endpoint error");
+    const message = error?.message || "Internal server error";
+    const statusCode = error?.code === "ECONNREFUSED" || error?.code === "ENOTFOUND" || message.includes("database") || message.includes("connection") ? 503 : 500;
+    return reply.code(statusCode).send({ 
+      ok: false, 
+      message: message,
+      error: process.env.NODE_ENV === "development" ? String(error) : undefined
+    });
   }
-
-  const result = await translateWithPolish({
-    source: sourceContent!,
-    from: input.from,
-    to: input.to
-  });
-
-  // Upsert translation
-  const existing = await db.selectFrom("question_translations")
-    .select(["id"])
-    .where("content_hash", "=", baseHash)
-    .where("locale", "=", input.to)
-    .executeTakeFirst();
-
-  if (existing) {
-    await db.updateTable("question_translations")
-      .set({
-        content: result.content,
-        options: result.options ? (result.options as any) : null,
-        explanation: result.explanation || null,
-        updated_at: new Date()
-      })
-      .where("id", "=", existing.id)
-      .execute();
-  } else {
-    await db.insertInto("question_translations")
-      .values({
-        content_hash: baseHash,
-        locale: input.to,
-        content: result.content,
-        options: result.options ? (result.options as any) : null,
-        explanation: result.explanation || null,
-        source: "ai"
-      })
-      .execute();
-  }
-
-  return reply.send({ ok: true, data: { contentHash: baseHash, locale: input.to } });
 });
 
 // POST /polish
 app.post("/polish", async (req, reply) => {
-  const schema = z.object({
-    questionId: z.number().optional(),
-    contentHash: z.string().optional(),
-    locale: z.string()
-  }).refine(v => !!(v.questionId || v.contentHash), {
-    message: "questionId or contentHash required"
-  });
-  const input = schema.parse(req.body);
+  try {
+    const schema = z.object({
+      questionId: z.number().optional(),
+      contentHash: z.string().optional(),
+      locale: z.string()
+    }).refine(v => !!(v.questionId || v.contentHash), {
+      message: "questionId or contentHash required"
+    });
+    const input = schema.parse(req.body);
 
-  const baseHash = input.contentHash || (await (async () => {
-    const row = await db.selectFrom("questions").select(["content_hash"]).where("id", "=", input.questionId!).executeTakeFirst();
-    if (!row) throw new Error("Question not found");
-    return row.content_hash;
-  })());
+    const baseHash = input.contentHash || (await (async () => {
+      const row = await db.selectFrom("questions").select(["content_hash"]).where("id", "=", input.questionId!).executeTakeFirst();
+      if (!row) throw new Error("Question not found");
+      return row.content_hash;
+    })());
 
-  // Load text in locale
-  let text: { content: string; options?: string[]; explanation?: string } | null = null;
-  if (input.locale.toLowerCase().startsWith("zh")) {
-    const q = await db.selectFrom("questions")
-      .select(["content", "options", "explanation"])
-      .where("content_hash", "=", baseHash)
-      .executeTakeFirst();
-    if (!q) throw new Error("Base question not found");
-    text = {
-      content: q.content,
-      options: Array.isArray(q.options) ? q.options : (q.options ? [String(q.options)] : undefined),
-      explanation: q.explanation || undefined
-    };
-  } else {
-    const t = await db.selectFrom("question_translations")
-      .select(["content", "options", "explanation"])
-      .where("content_hash", "=", baseHash)
-      .where("locale", "=", input.locale)
-      .executeTakeFirst();
-    if (!t) throw new Error("Translation not found");
-    text = {
-      content: t.content,
-      options: Array.isArray(t.options) ? t.options : (t.options ? [String(t.options)] : undefined),
-      explanation: t.explanation || undefined
-    };
+    // Load text in locale
+    let text: { content: string; options?: string[]; explanation?: string } | null = null;
+    if (input.locale.toLowerCase().startsWith("zh")) {
+      const q = await db.selectFrom("questions")
+        .select(["content", "options", "explanation"])
+        .where("content_hash", "=", baseHash)
+        .executeTakeFirst();
+      if (!q) throw new Error("Base question not found");
+      text = {
+        content: q.content,
+        options: Array.isArray(q.options) ? q.options : (q.options ? [String(q.options)] : undefined),
+        explanation: q.explanation || undefined
+      };
+    } else {
+      const t = await db.selectFrom("question_translations")
+        .select(["content", "options", "explanation"])
+        .where("content_hash", "=", baseHash)
+        .where("locale", "=", input.locale)
+        .executeTakeFirst();
+      if (!t) throw new Error("Translation not found");
+      text = {
+        content: t.content,
+        options: Array.isArray(t.options) ? t.options : (t.options ? [String(t.options)] : undefined),
+        explanation: t.explanation || undefined
+      };
+    }
+
+    const result = await polishContent({ text: text!, locale: input.locale });
+
+    // Insert review as pending
+    await db.insertInto("question_polish_reviews")
+      .values({
+        content_hash: baseHash,
+        locale: input.locale,
+        proposed_content: result.content,
+        proposed_options: result.options ? (result.options as any) : null,
+        proposed_explanation: result.explanation || null,
+        status: "pending"
+      })
+      .execute();
+
+    return reply.send({ ok: true });
+  } catch (error: any) {
+    app.log.error({ err: error }, "Polish endpoint error");
+    const message = error?.message || "Internal server error";
+    const statusCode = error?.code === "ECONNREFUSED" || error?.code === "ENOTFOUND" || message.includes("database") || message.includes("connection") ? 503 : 500;
+    return reply.code(statusCode).send({ 
+      ok: false, 
+      message: message,
+      error: process.env.NODE_ENV === "development" ? String(error) : undefined
+    });
   }
-
-  const result = await polishContent({ text: text!, locale: input.locale });
-
-  // Insert review as pending
-  await db.insertInto("question_polish_reviews")
-    .values({
-      content_hash: baseHash,
-      locale: input.locale,
-      proposed_content: result.content,
-      proposed_options: result.options ? (result.options as any) : null,
-      proposed_explanation: result.explanation || null,
-      status: "pending"
-    })
-    .execute();
-
-  return reply.send({ ok: true });
 });
 
 // GET /reviews

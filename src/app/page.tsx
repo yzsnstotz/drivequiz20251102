@@ -79,13 +79,11 @@ export default function HomePage() {
     // 加载广告栏配置
     const loadAdSlots = async () => {
       try {
-        console.log("[广告加载] 开始加载广告栏配置...");
         const res = await fetch("/api/ad-slots");
         if (res.ok) {
           const data = await res.json();
           if (data.ok) {
             const items = data.data.items || [];
-            console.log("[广告加载] 广告栏配置加载成功:", items);
             setAdSlots(items);
             
             // 检查启动页广告 - 只在首次访问时显示
@@ -93,30 +91,23 @@ export default function HomePage() {
               // 检查是否已经显示过启动页广告
               const hasShownSplash = localStorage.getItem("splash_ad_shown");
               if (hasShownSplash === "true") {
-                console.log("[广告加载] 启动页广告已显示过，跳过");
                 return false; // 已显示过，不需要检查弹窗
               }
 
               const splashConfig = items.find((item: AdSlotConfig & { splashDuration?: number }) => item.slotKey === "splash_screen");
-              console.log("[广告加载] 启动页广告配置:", splashConfig);
               if (splashConfig) {
                 if (splashConfig.splashDuration) {
                   setSplashDuration(splashConfig.splashDuration);
                 }
                 try {
-                  console.log("[广告加载] 检查启动页广告数据...");
                   const res = await fetch("/api/merchant-ads?adSlot=splash_screen");
                   if (res.ok) {
                     const data = await res.json();
-                    console.log("[广告加载] 启动页广告数据响应:", data);
                     if (data.ok && data.data.items && data.data.items.length > 0) {
-                      console.log("[广告加载] 找到启动页广告，数量:", data.data.items.length);
                       setShowSplash(true);
                       // 标记为已显示
                       localStorage.setItem("splash_ad_shown", "true");
                       return true; // 有启动页广告，不需要检查弹窗
-                    } else {
-                      console.log("[广告加载] 没有启动页广告数据");
                     }
                   } else {
                     console.error("[广告加载] 启动页广告请求失败:", res.status);
@@ -124,8 +115,6 @@ export default function HomePage() {
                 } catch (error) {
                   console.error("[广告加载] 检查启动页广告失败:", error);
                 }
-              } else {
-                console.log("[广告加载] 没有找到启动页广告配置");
               }
               return false; // 没有启动页广告，需要检查弹窗
             };
@@ -133,22 +122,16 @@ export default function HomePage() {
             // 检查弹窗广告
             const checkPopupAd = async () => {
               const popupConfig = items.find((item: AdSlotConfig) => item.slotKey === "popup_ad");
-              console.log("[广告加载] 弹窗广告配置:", popupConfig);
               if (popupConfig) {
                 try {
-                  console.log("[广告加载] 检查弹窗广告数据...");
                   const res = await fetch("/api/merchant-ads?adSlot=popup_ad");
                   if (res.ok) {
                     const data = await res.json();
-                    console.log("[广告加载] 弹窗广告数据响应:", data);
                     if (data.ok && data.data.items && data.data.items.length > 0) {
-                      console.log("[广告加载] 找到弹窗广告，数量:", data.data.items.length);
                       // 延迟显示弹窗
                       setTimeout(() => {
                         setShowPopup(true);
                       }, 500);
-                    } else {
-                      console.log("[广告加载] 没有弹窗广告数据");
                     }
                   } else {
                     console.error("[广告加载] 弹窗广告请求失败:", res.status);
@@ -156,8 +139,6 @@ export default function HomePage() {
                 } catch (error) {
                   console.error("[广告加载] 检查弹窗广告失败:", error);
                 }
-              } else {
-                console.log("[广告加载] 没有找到弹窗广告配置");
               }
             };
             
