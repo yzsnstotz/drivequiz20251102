@@ -55,9 +55,9 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   metadata?: {
-    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached";
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached" | "system";
     model?: string;
-    sourceType?: "ai-generated" | "cached" | "knowledge-base";
+    sourceType?: "ai-generated" | "cached" | "knowledge-base" | "system-tip";
     cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
   };
 }
