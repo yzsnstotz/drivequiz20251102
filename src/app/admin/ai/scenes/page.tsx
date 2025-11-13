@@ -73,6 +73,14 @@ async function deleteScene(id: number): Promise<{ ok: boolean; message?: string 
   return res.json();
 }
 
+type TestState = {
+  sceneId: number;
+  testing: boolean;
+  testInput: string;
+  testResult: string | null;
+  testError: string | null;
+};
+
 export default function AdminAiScenesPage() {
   const [scenes, setScenes] = useState<SceneConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +88,7 @@ export default function AdminAiScenesPage() {
   const [isNewScene, setIsNewScene] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [testStates, setTestStates] = useState<Record<number, TestState>>({});
 
   useEffect(() => {
     loadScenes();
@@ -164,6 +173,92 @@ export default function AdminAiScenesPage() {
     } catch (err) {
       alert(err instanceof Error ? err.message : "删除失败");
     }
+  };
+
+  const handleTest = async (scene: SceneConfig) => {
+    const testInput = testStates[scene.id]?.testInput || "";
+    if (!testInput.trim()) {
+      alert("请输入测试问题");
+      return;
+    }
+
+    // 初始化测试状态
+    setTestStates((prev) => ({
+      ...prev,
+      [scene.id]: {
+        sceneId: scene.id,
+        testing: true,
+        testInput: testInput,
+        testResult: null,
+        testError: null,
+      },
+    }));
+
+    try {
+      const base = getBaseUrl();
+      const token = getAuthToken();
+      const locale = (typeof navigator !== "undefined" && navigator.language) || "zh-CN";
+
+      const response = await fetch(`${base}/api/ai/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          question: testInput,
+          locale: locale,
+          scene: scene.scene_key,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.ok && data.data?.answer) {
+        setTestStates((prev) => ({
+          ...prev,
+          [scene.id]: {
+            sceneId: scene.id,
+            testing: false,
+            testInput: testInput,
+            testResult: data.data.answer,
+            testError: null,
+          },
+        }));
+      } else {
+        setTestStates((prev) => ({
+          ...prev,
+          [scene.id]: {
+            sceneId: scene.id,
+            testing: false,
+            testInput: testInput,
+            testResult: null,
+            testError: data.message || "测试失败",
+          },
+        }));
+      }
+    } catch (err) {
+      setTestStates((prev) => ({
+        ...prev,
+        [scene.id]: {
+          sceneId: scene.id,
+          testing: false,
+          testInput: testInput,
+          testResult: null,
+          testError: err instanceof Error ? err.message : "测试失败",
+        },
+      }));
+    }
+  };
+
+  const updateTestInput = (sceneId: number, input: string) => {
+    setTestStates((prev) => ({
+      ...prev,
+      [sceneId]: {
+        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
+        testInput: input,
+      },
+    }));
   };
 
   if (loading) {
@@ -380,54 +475,105 @@ export default function AdminAiScenesPage() {
       )}
 
       <div className="space-y-4">
-        {scenes.map((scene) => (
-          <div key={scene.id} className="border rounded-lg p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium">{scene.scene_name}</h3>
-                <p className="text-sm text-gray-500">
-                  <code className="bg-gray-100 px-1 rounded">{scene.scene_key}</code>
-                  {scene.description && ` · ${scene.description}`}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`px-2 py-1 rounded text-xs ${
-                    scene.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-                  }`}
-                >
-                  {scene.enabled ? "启用" : "禁用"}
-                </span>
-                <button
-                  onClick={() => handleEdit(scene)}
-                  className="px-3 py-1 rounded border text-sm hover:bg-gray-50"
-                >
-                  编辑
-                </button>
-                <button
-                  onClick={() => handleDelete(scene.id)}
-                  className="px-3 py-1 rounded border text-sm hover:bg-red-50 text-red-600"
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-            <div className="text-sm text-gray-600 space-y-1">
-              <div>
-                <span className="font-medium">最大长度:</span> {scene.max_length} 字符
-              </div>
-              <div>
-                <span className="font-medium">温度:</span> {scene.temperature}
-              </div>
-              <div className="mt-2">
-                <span className="font-medium">中文 Prompt:</span>
-                <div className="mt-1 p-2 bg-gray-50 rounded text-xs font-mono line-clamp-2">
-                  {scene.system_prompt_zh}
+        {scenes.map((scene) => {
+          const testState = testStates[scene.id] || {
+            sceneId: scene.id,
+            testing: false,
+            testInput: "",
+            testResult: null,
+            testError: null,
+          };
+
+          return (
+            <div key={scene.id} className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">{scene.scene_name}</h3>
+                  <p className="text-sm text-gray-500">
+                    <code className="bg-gray-100 px-1 rounded">{scene.scene_key}</code>
+                    {scene.description && ` · ${scene.description}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2 py-1 rounded text-xs ${
+                      scene.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {scene.enabled ? "启用" : "禁用"}
+                  </span>
+                  <button
+                    onClick={() => handleEdit(scene)}
+                    className="px-3 py-1 rounded border text-sm hover:bg-gray-50"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    onClick={() => handleDelete(scene.id)}
+                    className="px-3 py-1 rounded border text-sm hover:bg-red-50 text-red-600"
+                  >
+                    删除
+                  </button>
                 </div>
               </div>
+              <div className="text-sm text-gray-600 space-y-1">
+                <div>
+                  <span className="font-medium">最大长度:</span> {scene.max_length} 字符
+                </div>
+                <div>
+                  <span className="font-medium">温度:</span> {scene.temperature}
+                </div>
+                <div className="mt-2">
+                  <span className="font-medium">中文 Prompt:</span>
+                  <div className="mt-1 p-2 bg-gray-50 rounded text-xs font-mono line-clamp-2">
+                    {scene.system_prompt_zh}
+                  </div>
+                </div>
+              </div>
+
+              {/* 测试功能 */}
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm">测试场景</h4>
+                  <button
+                    onClick={() => handleTest(scene)}
+                    disabled={testState.testing || !scene.enabled}
+                    className="px-3 py-1 rounded bg-blue-500 text-white text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {testState.testing ? "测试中..." : "测试"}
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">测试输入（模拟用户问题）</label>
+                  <textarea
+                    value={testState.testInput}
+                    onChange={(e) => updateTestInput(scene.id, e.target.value)}
+                    placeholder="输入测试问题，例如：什么是交通标志？"
+                    rows={3}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    disabled={testState.testing}
+                  />
+                </div>
+                {testState.testResult && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">AI 回复</label>
+                    <div className="p-3 bg-green-50 border border-green-200 rounded text-sm whitespace-pre-wrap">
+                      {testState.testResult}
+                    </div>
+                  </div>
+                )}
+                {testState.testError && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-red-600">错误</label>
+                    <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                      {testState.testError}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {scenes.length === 0 && !editingScene && (
@@ -444,4 +590,5 @@ export default function AdminAiScenesPage() {
     </div>
   );
 }
+
 

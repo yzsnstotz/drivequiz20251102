@@ -37,9 +37,9 @@ function getMainAppUrl(): string {
 
 /**
  * 调用主站的 /api/ai/ask 路由
- * 这样可以使用数据库中的 aiProvider 配置
+ * 这样可以使用数据库中的 aiProvider 配置和场景配置
  */
-export async function askAi(body: AskBody): Promise<any> {
+export async function askAi(body: AskBody & { scene?: string }): Promise<any> {
   const mainAppUrl = getMainAppUrl();
   const url = `${mainAppUrl}/api/ai/ask`;
   
@@ -52,6 +52,7 @@ export async function askAi(body: AskBody): Promise<any> {
     body: JSON.stringify({
       question: body.question,
       locale: body.lang || "zh-CN",
+      scene: body.scene, // 传递场景标识，使用数据库中的场景配置
       // 不传递 userId，使用匿名模式
     })
   });
@@ -78,14 +79,8 @@ export async function translateWithPolish(params: {
   to: string;
 }): Promise<TranslateResult> {
   const { source, from, to } = params;
-  const systemPrompt = [
-    `You are a professional exam item translator and editor.`,
-    `Translate the driving-exam question into target language ${to} from ${from}.`,
-    `If the source is ambiguous, polish it for clarity while preserving meaning.`,
-    `Output strictly JSON with keys: content (string), options (string[] optional), explanation (string optional).`,
-    `Do not include any commentary, only JSON.`
-  ].join("\n");
-
+  // 使用场景配置，场景配置中的 prompt 已经包含了翻译要求
+  // 这里只需要传递题目内容，场景配置会自动应用
   const questionText = [
     `Source language: ${from}`,
     `Target language: ${to}`,
@@ -95,8 +90,9 @@ export async function translateWithPolish(params: {
   ].filter(Boolean).join("\n");
 
   const data = await askAi({
-    question: `${systemPrompt}\n\n${questionText}`,
-    lang: to
+    question: questionText,
+    lang: to,
+    scene: "question_translation" // 使用翻译场景配置
   });
 
   // Try parse JSON content from the answer
@@ -125,12 +121,8 @@ export async function polishContent(params: {
   locale: string;
 }): Promise<TranslateResult> {
   const { text, locale } = params;
-  const systemPrompt = [
-    `You are an editor improving clarity and correctness of driving-exam questions in ${locale}.`,
-    `Polish the text for clarity, fix grammar, keep original meaning.`,
-    `Output strictly JSON with keys: content (string), options (string[] optional), explanation (string optional).`
-  ].join("\n");
-
+  // 使用场景配置，场景配置中的 prompt 已经包含了润色要求
+  // 这里只需要传递题目内容，场景配置会自动应用
   const input = [
     `Language: ${locale}`,
     `Content: ${text.content}`,
@@ -139,8 +131,9 @@ export async function polishContent(params: {
   ].filter(Boolean).join("\n");
 
   const data = await askAi({
-    question: `${systemPrompt}\n\n${input}`,
-    lang: locale
+    question: input,
+    lang: locale,
+    scene: "question_polish" // 使用润色场景配置
   });
 
   let parsed: any = null;
