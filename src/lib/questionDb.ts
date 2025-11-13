@@ -486,6 +486,9 @@ export async function saveQuestionFile(
     questions: Question[];
     version?: string;
     aiAnswers?: Record<string, string>;
+    // 兼容扩展：多语言
+    questionsByLocale?: Record<string, Question[]>;
+    aiAnswersByLocale?: Record<string, Record<string, string>>;
   }
 ): Promise<void> {
   try {
@@ -500,11 +503,26 @@ export async function saveQuestionFile(
         correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
       }));
       
-      const unifiedData = {
+      const unifiedData: any = {
         questions: normalizedQuestions,
         version: data.version,
         aiAnswers: data.aiAnswers || {},
       };
+      // 扩展字段：多语言
+      if (data.questionsByLocale) {
+        // 为所有 locale 规范化答案
+        const normalizedByLocale: Record<string, Question[]> = {};
+        for (const [loc, list] of Object.entries(data.questionsByLocale)) {
+          normalizedByLocale[loc] = list.map((q) => ({
+            ...q,
+            correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
+          }));
+        }
+        unifiedData.questionsByLocale = normalizedByLocale;
+      }
+      if (data.aiAnswersByLocale) {
+        unifiedData.aiAnswersByLocale = data.aiAnswersByLocale;
+      }
       
       await fs.writeFile(unifiedFilePath, JSON.stringify(unifiedData, null, 2), "utf-8");
       
@@ -1155,34 +1173,33 @@ export async function updateAllJsonPackages(): Promise<{
     // 3. 获取所有题目的AI回答（从数据库，使用hash作为question_hash）
     // 批量查询所有AI回答，提高性能并支持多种locale格式
     const aiAnswers: Record<string, string> = {};
+    const aiAnswersByLocale: Record<string, Record<string, string>> = {};
     const questionHashes = questionsWithHash
       .map((q) => (q as any).hash)
       .filter((hash): hash is string => !!hash);
     
     if (questionHashes.length > 0) {
       try {
-        // 批量查询，同时支持 zh、zh-CN、zh_CN 格式（兼容历史数据）
-        const aiAnswersFromDb = await db
+        // 批量查询所有 locale
+        const allAnswers = await db
           .selectFrom("question_ai_answers")
           .select(["question_hash", "answer", "created_at", "locale"])
           .where("question_hash", "in", questionHashes)
-          .where((eb) =>
-            eb.or([
-              eb("locale", "=", "zh"),
-              eb("locale", "=", "zh-CN"),
-              eb("locale", "=", "zh_CN"),
-            ])
-          )
           .orderBy("question_hash", "asc")
           .orderBy("created_at", "desc")
           .execute();
 
-        // 构建映射（每个 question_hash 只保留最新的回答）
-        for (const aiAnswer of aiAnswersFromDb) {
-          if (!aiAnswers[aiAnswer.question_hash] && aiAnswer.answer) {
-            aiAnswers[aiAnswer.question_hash] = aiAnswer.answer;
+        // 每个 locale 构建映射（每个 question_hash 只保留最新的回答）
+        for (const row of allAnswers) {
+          const loc = row.locale || "zh";
+          if (!aiAnswersByLocale[loc]) aiAnswersByLocale[loc] = {};
+          if (!aiAnswersByLocale[loc][row.question_hash] && row.answer) {
+            aiAnswersByLocale[loc][row.question_hash] = row.answer;
           }
         }
+        // 兼容旧字段：默认中文
+        const zhMap = aiAnswersByLocale["zh"] || aiAnswersByLocale["zh-CN"] || aiAnswersByLocale["zh_CN"] || {};
+        Object.assign(aiAnswers, zhMap);
         
         console.log(`[updateAllJsonPackages] 从数据库批量查询到 ${Object.keys(aiAnswers).length} 个AI回答`);
       } catch (error) {
@@ -1336,11 +1353,65 @@ export async function updateAllJsonPackages(): Promise<{
       };
     }
 
-    // 7. 保存新版本号到数据库（包含完整JSON包内容）
-    const newPackageContent = {
-      questions: questionsWithHash,
+    // 6.1 读取启用的语言列表（用于生成 questionsByLocale）
+    let enabledLocales: string[] = [];
+    try {
+      const langs = await db
+        .selectFrom("languages")
+        .select(["locale"])
+        .where("enabled", "=", true)
+        .execute();
+      enabledLocales = langs.map((l) => l.locale);
+    } catch {
+      // 若无 languages 表记录，回退到至少包含 zh
+      enabledLocales = ["zh"];
+    }
+
+    // 6.2 生成各语言的题目列表（从 translations / base）
+    const questionsByLocale: Record<string, any[]> = {};
+    for (const loc of enabledLocales) {
+      if (loc.toLowerCase().startsWith("zh")) {
+        questionsByLocale[loc] = questionsWithHash;
+        continue;
+      }
+      // 读取该语言的翻译
+      const translations = await db
+        .selectFrom("question_translations")
+        .select(["content_hash", "content", "options", "explanation"])
+        .where("locale", "=", loc)
+        .execute();
+      const map = new Map<string, { content: string; options?: any; explanation?: string | null }>();
+      for (const t of translations) {
+        map.set(t.content_hash, {
+          content: t.content,
+          options: t.options,
+          explanation: t.explanation ?? null,
+        });
+      }
+      // 基于 base 问题构造该语言的问题（替换文案）
+      const localized = questionsWithHash.map((q) => {
+        const hash = (q as any).hash;
+        const t = hash ? map.get(hash) : undefined;
+        if (t) {
+          return {
+            ...q,
+            content: t.content,
+            options: Array.isArray(t.options) ? t.options : (t.options ? [t.options] : undefined),
+            explanation: t.explanation || undefined,
+          };
+        }
+        return q;
+      });
+      questionsByLocale[loc] = localized;
+    }
+
+    // 7. 保存新版本号到数据库（包含完整JSON包内容，多语言）
+    const newPackageContent: any = {
       version,
-      aiAnswers,
+      questions: questionsWithHash, // 兼容字段（中文）
+      aiAnswers,                    // 兼容字段（中文）
+      questionsByLocale,
+      aiAnswersByLocale,
     };
     await saveUnifiedVersion(
       version,
@@ -1349,7 +1420,7 @@ export async function updateAllJsonPackages(): Promise<{
       newPackageContent
     );
 
-    // 7. 保存到统一的questions.json（使用统一版本号）
+    // 7. 保存到统一的questions.json（使用统一版本号，包含多语言）
     try {
       // 按category分组保存（为了兼容旧逻辑，但实际保存到统一文件）
       const categoryGroups = new Map<string, Question[]>();
@@ -1367,7 +1438,11 @@ export async function updateAllJsonPackages(): Promise<{
         questions: questionsWithHash,
         version, // 使用统一版本号
         aiAnswers,
-      });
+        // @ts-expect-error 兼容扩展写入
+        questionsByLocale,
+        // @ts-expect-error 兼容扩展写入
+        aiAnswersByLocale,
+      } as any);
     } catch (error) {
       console.error(`[updateAllJsonPackages] Error saving unified package:`, error);
     }
