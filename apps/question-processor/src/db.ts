@@ -1,5 +1,5 @@
 import { Kysely, PostgresDialect, Generated, Selectable, Insertable } from "kysely";
-import { Pool } from "pg";
+import { Pool, PoolConfig } from "pg";
 
 interface QuestionTable {
   id: Generated<number>;
@@ -100,22 +100,59 @@ function getConnectionString(): string {
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL;
   if (!url) {
-    throw new Error(
-      "Missing database connection string. Please set QUESTION_PROCESSOR_DATABASE_URL, DATABASE_URL, or POSTGRES_URL environment variable."
-    );
+    const error = "Missing database connection string. Please set QUESTION_PROCESSOR_DATABASE_URL, DATABASE_URL, or POSTGRES_URL environment variable.";
+    console.error("[Question Processor DB] ❌", error);
+    throw new Error(error);
   }
+  
+  // 记录连接字符串（隐藏密码）
+  const maskedUrl = url.replace(/:([^:@]+)@/, ':***@');
+  console.log("[Question Processor DB] ✅ Using connection:", maskedUrl.substring(0, 80) + '...');
+  
   return url;
 }
 
 export function createDb(): DB {
-  const pool = new Pool({
-    connectionString: getConnectionString(),
+  const connectionString = getConnectionString();
+  
+  // 检测是否需要 SSL 连接（Supabase 必须使用 SSL）
+  const isSupabase = connectionString.includes('supabase.com');
+  
+  const poolConfig: PoolConfig = {
+    connectionString,
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+    connectionTimeoutMillis: 10000,
+  };
+  
+  // Supabase 必须使用 SSL
+  if (isSupabase) {
+    poolConfig.ssl = {
+      rejectUnauthorized: false, // Supabase 可能需要这个设置
+    };
+    console.log("[Question Processor DB] ✅ SSL enabled for Supabase connection");
+  } else {
+    console.log("[Question Processor DB] ℹ️  SSL not enabled (not Supabase connection)");
+  }
+  
+  const pool = new Pool(poolConfig);
+  
+  // 添加连接错误监听
+  pool.on('error', (err) => {
+    console.error("[Question Processor DB] ❌ Pool error:", err.message);
   });
+  
+  // 添加连接成功监听
+  pool.on('connect', () => {
+    console.log("[Question Processor DB] ✅ New client connected");
+  });
+  
   const dialect = new PostgresDialect({ pool });
-  return new Kysely<Database>({ dialect });
+  const db = new Kysely<Database>({ dialect });
+  
+  console.log("[Question Processor DB] ✅ Database instance created");
+  
+  return db;
 }
 
 export type QuestionRow = Selectable<QuestionTable>;
