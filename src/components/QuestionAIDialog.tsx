@@ -208,6 +208,20 @@ export default function QuestionAIDialog({
             },
           };
           setMessages((prev) => [...prev, newMessage]);
+          
+          // 如果题目有图片，添加提示消息
+          if (question.image) {
+            const tipMessage: Message = {
+              role: "assistant",
+              content: "💡 提示：由于AI无法直接查看图片，如果您在追问时描述图片中的内容（如标志、路况、车辆位置等），我可以为您提供更准确的解析。",
+              metadata: {
+                aiProvider: "system",
+                sourceType: "system-tip",
+              },
+            };
+            setMessages((prev) => [...prev, tipMessage]);
+          }
+          
           setIsLoading(false);
           setIsInitialLoading(false);
           return;
@@ -230,6 +244,20 @@ export default function QuestionAIDialog({
             },
           };
           setMessages((prev) => [...prev, newMessage]);
+          
+          // 如果题目有图片，添加提示消息
+          if (question.image) {
+            const tipMessage: Message = {
+              role: "assistant",
+              content: "💡 提示：由于AI无法直接查看图片，如果您在追问时描述图片中的内容（如标志、路况、车辆位置等），我可以为您提供更准确的解析。",
+              metadata: {
+                aiProvider: "system",
+                sourceType: "system-tip",
+              },
+            };
+            setMessages((prev) => [...prev, tipMessage]);
+          }
+          
           setIsLoading(false);
           setIsInitialLoading(false);
           return;
@@ -284,6 +312,19 @@ export default function QuestionAIDialog({
           },
         };
         setMessages((prev) => [...prev, newMessage]);
+        
+        // 如果是首次提问且题目有图片，添加提示消息
+        if (!isFollowUpQuestion && question.image) {
+          const tipMessage: Message = {
+            role: "assistant",
+            content: "💡 提示：由于AI无法直接查看图片，如果您在追问时描述图片中的内容（如标志、路况、车辆位置等），我可以为您提供更准确的解析。",
+            metadata: {
+              aiProvider: "system",
+              sourceType: "system-tip",
+            },
+          };
+          setMessages((prev) => [...prev, tipMessage]);
+        }
       } else {
         const errorMessage: Message = {
           role: "assistant",
