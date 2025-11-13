@@ -6,9 +6,9 @@ function getProcessorUrl(): string {
   return url.replace(/\/+$/, "");
 }
 
-export const POST = withAdminAuth(async (req: Request, { params }: { params: { id: string } }) => {
+export const POST = withAdminAuth(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
-    const id = params?.id;
+    const { id } = await params;
     if (!id) return badRequest("Missing id");
     const body = await req.json().catch(() => ({}));
     const upstream = await fetch(`${getProcessorUrl()}/reviews/${encodeURIComponent(id)}/reject`, {
