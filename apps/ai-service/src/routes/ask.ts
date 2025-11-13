@@ -180,19 +180,33 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 优先从请求头读取 X-AI-Provider，避免不必要的数据库查询
         const { getAiProviderFromConfig } = await import("../lib/configLoader.js");
         
-        const [safe, aiProviderResult] = await Promise.all([
+        // 获取 aiProvider（用于 RAG 检索）
+        // 注意：HTTP 头名称是大小写不敏感的，但 Fastify 会将其转换为小写
+        const headerProvider = (request.headers["x-ai-provider"] || request.headers["X-AI-Provider"]) as string | undefined;
+        const aiProviderPromise = (async (): Promise<"openai" | "openrouter"> => {
+          if (headerProvider === "openai" || headerProvider === "openrouter") {
+            console.log("[ASK ROUTE] AI provider from header", { 
+              aiProvider: headerProvider,
+              rawHeader: request.headers["x-ai-provider"] || request.headers["X-AI-Provider"],
+              allHeaders: Object.keys(request.headers).filter(k => k.toLowerCase().includes("ai-provider")),
+            });
+            return headerProvider;
+          }
+          console.log("[ASK ROUTE] AI provider not found in header, reading from config", {
+            headerProvider,
+            availableHeaders: Object.keys(request.headers).filter(k => k.toLowerCase().includes("ai") || k.toLowerCase().includes("provider")),
+          });
+          const provider = await getAiProviderFromConfig();
+          console.log("[ASK ROUTE] AI provider from config", { aiProvider: provider });
+          return provider;
+        })();
+        
+        // 并行执行：安全审查、RAG检索（需要aiProvider）、配置读取
+        const [safe, reference, aiProviderResult] = await Promise.all([
           checkSafety(question),
-          // 优先从请求头读取，否则从数据库读取
-          (async (): Promise<"openai" | "openrouter"> => {
-            const headerProvider = request.headers["x-ai-provider"] as string | undefined;
-            if (headerProvider === "openai" || headerProvider === "openrouter") {
-              console.log("[ASK ROUTE] AI provider from header", { aiProvider: headerProvider });
-              return headerProvider;
-            }
-            const provider = await getAiProviderFromConfig();
-            console.log("[ASK ROUTE] AI provider from config", { aiProvider: provider });
-            return provider;
-          })(),
+          // RAG 检索需要先获取 aiProvider，但可以并行执行
+          aiProviderPromise.then(provider => getRagContext(question, lang, config, provider).catch(() => "")),
+          aiProviderPromise,
         ]);
 
         // 处理安全审查结果
@@ -212,9 +226,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         }
 
         const aiProvider = aiProviderResult;
-
-        // 5) RAG 检索（可能为空，传递 aiProvider 避免重复查询）
-        const reference = await getRagContext(question, lang, config, aiProvider).catch(() => "");
 
         // 6) 调用 OpenAI
         let openai;
