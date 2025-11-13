@@ -346,9 +346,17 @@ function normalizeLocale(locale: string | undefined | null): string {
 }
 
 // ==== 辅助函数：构建系统提示（支持场景配置） ====
-async function buildSystemPrompt(lang: string, scene?: string | null): Promise<string> {
+async function buildSystemPrompt(lang: string, scene?: string | null, requestId?: string): Promise<string> {
+  const logPrefix = requestId ? `[${requestId}]` : "[buildSystemPrompt]";
+  
   // 如果指定了场景，尝试从数据库读取场景配置
   if (scene) {
+    console.log(`${logPrefix} [buildSystemPrompt] 开始读取场景配置`, {
+      scene: scene,
+      lang: lang,
+    });
+    const sceneStartTime = Date.now();
+    
     try {
       const sceneConfig = await (aiDb as any)
         .selectFrom("ai_scene_config")
@@ -357,21 +365,41 @@ async function buildSystemPrompt(lang: string, scene?: string | null): Promise<s
         .where("enabled", "=", true)
         .executeTakeFirst();
 
+      const sceneDuration = Date.now() - sceneStartTime;
+      console.log(`${logPrefix} [buildSystemPrompt] 场景配置查询完成`, {
+        scene: scene,
+        found: !!sceneConfig,
+        duration: `${sceneDuration}ms`,
+      });
+
       if (sceneConfig) {
         // 根据语言选择对应的 prompt
         if (lang === "ja" && sceneConfig.system_prompt_ja) {
+          console.log(`${logPrefix} [buildSystemPrompt] 使用日文 prompt`);
           return sceneConfig.system_prompt_ja;
         }
         if (lang === "en" && sceneConfig.system_prompt_en) {
+          console.log(`${logPrefix} [buildSystemPrompt] 使用英文 prompt`);
           return sceneConfig.system_prompt_en;
         }
         // 默认使用中文 prompt
         if (sceneConfig.system_prompt_zh) {
+          console.log(`${logPrefix} [buildSystemPrompt] 使用中文 prompt`);
           return sceneConfig.system_prompt_zh;
         }
+      } else {
+        console.warn(`${logPrefix} [buildSystemPrompt] 场景配置未找到或未启用`, {
+          scene: scene,
+        });
       }
     } catch (e) {
-      console.warn(`[buildSystemPrompt] Failed to load scene config for "${scene}":`, (e as Error).message);
+      const sceneDuration = Date.now() - sceneStartTime;
+      console.error(`${logPrefix} [buildSystemPrompt] 读取场景配置失败`, {
+        scene: scene,
+        error: (e as Error).message,
+        duration: `${sceneDuration}ms`,
+        stack: (e as Error).stack,
+      });
       // 如果读取失败，继续使用默认 prompt
     }
   }
@@ -795,6 +823,12 @@ export async function POST(req: NextRequest) {
       sceneFromRequest: body.scene,
       hasQuestionHash: !!body.questionHash,
       inferredScene: body.questionHash ? "question_explanation" : "chat",
+      requestBody: {
+        hasQuestion: !!body.question,
+        questionLength: body.question?.length || 0,
+        locale: body.locale,
+        scene: body.scene,
+      },
     });
     
     // 获取题目的hash值（如果前端传递了，直接使用，避免重复计算）
@@ -1060,7 +1094,7 @@ export async function POST(req: NextRequest) {
       
       // 构建系统提示（使用场景配置）
       const lang = locale || "zh";
-      const sysPrompt = await buildSystemPrompt(lang, scene);
+      const sysPrompt = await buildSystemPrompt(lang, scene, requestId);
       const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
       const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
       
@@ -1397,7 +1431,7 @@ export async function POST(req: NextRequest) {
       
       // 构建系统提示（使用场景配置）
       const lang = locale || "zh";
-      const sysPrompt = await buildSystemPrompt(lang, scene);
+      const sysPrompt = await buildSystemPrompt(lang, scene, requestId);
       const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
       const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
       

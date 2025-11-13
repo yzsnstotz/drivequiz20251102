@@ -197,31 +197,78 @@ export default function AdminAiScenesPage() {
     try {
       const base = getBaseUrl();
       const locale = (typeof navigator !== "undefined" && navigator.language) || "zh-CN";
+      const testId = `test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+      console.log(`[Scene Test] [${testId}] 开始测试场景`, {
+        sceneKey: scene.scene_key,
+        sceneName: scene.scene_name,
+        questionLength: testInput.length,
+        locale: locale,
+        baseUrl: base,
+      });
 
       // 测试功能使用匿名模式，不传递管理员 token
       // /api/ai/ask 会自动使用 anonymous 作为 userId
       // 添加超时控制（60秒）
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const timeoutId = setTimeout(() => {
+        console.error(`[Scene Test] [${testId}] 请求超时（60秒）`);
+        controller.abort();
+      }, 60000);
 
+      const requestBody = {
+        question: testInput,
+        locale: locale,
+        scene: scene.scene_key,
+      };
+
+      console.log(`[Scene Test] [${testId}] 发送请求`, {
+        url: `${base}/api/ai/ask`,
+        body: requestBody,
+      });
+
+      const fetchStartTime = Date.now();
       const response = await fetch(`${base}/api/ai/ask`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          question: testInput,
-          locale: locale,
-          scene: scene.scene_key,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
+      const fetchDuration = Date.now() - fetchStartTime;
+      console.log(`[Scene Test] [${testId}] 收到响应`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        duration: `${fetchDuration}ms`,
+      });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      console.log(`[Scene Test] [${testId}] 响应内容长度: ${responseText.length}`);
+
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+        console.log(`[Scene Test] [${testId}] 响应解析成功`, {
+          ok: data.ok,
+          hasAnswer: !!data.data?.answer,
+          hasError: !!data.message,
+        });
+      } catch (parseError) {
+        console.error(`[Scene Test] [${testId}] 响应解析失败`, {
+          error: parseError instanceof Error ? parseError.message : String(parseError),
+          responseText: responseText.substring(0, 200),
+        });
+        throw new Error(`响应解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+      }
 
       if (response.ok && data.ok && data.data?.answer) {
+        console.log(`[Scene Test] [${testId}] 测试成功`, {
+          answerLength: data.data.answer.length,
+        });
         setTestStates((prev) => ({
           ...prev,
           [scene.id]: {
@@ -233,6 +280,12 @@ export default function AdminAiScenesPage() {
           },
         }));
       } else {
+        console.error(`[Scene Test] [${testId}] 测试失败`, {
+          responseOk: response.ok,
+          dataOk: data.ok,
+          message: data.message,
+          errorCode: data.errorCode,
+        });
         setTestStates((prev) => ({
           ...prev,
           [scene.id]: {
@@ -240,11 +293,20 @@ export default function AdminAiScenesPage() {
             testing: false,
             testInput: testInput,
             testResult: null,
-            testError: data.message || "测试失败",
+            testError: data.message || data.errorCode || "测试失败",
           },
         }));
       }
     } catch (err) {
+      console.error(`[Scene Test] 测试异常`, {
+        sceneKey: scene.scene_key,
+        error: err instanceof Error ? {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+        } : String(err),
+      });
+
       let errorMessage = "测试失败";
       if (err instanceof Error) {
         if (err.name === "AbortError" || err.message.includes("timeout")) {
