@@ -41,11 +41,70 @@ function getAuthToken(): string | null {
 async function fetchScenes(): Promise<SceneConfigResp> {
   const base = getBaseUrl();
   const token = getAuthToken();
-  const res = await fetch(`${base}/api/admin/ai/scenes`, {
-    cache: "no-store",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  return res.json();
+  
+  try {
+    console.log("[fetchScenes] 开始获取场景配置", {
+      baseUrl: base,
+      hasToken: !!token,
+    });
+    
+    const res = await fetch(`${base}/api/admin/ai/scenes`, {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    
+    console.log("[fetchScenes] 收到响应", {
+      status: res.status,
+      statusText: res.statusText,
+      ok: res.ok,
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("[fetchScenes] 响应错误", {
+        status: res.status,
+        statusText: res.statusText,
+        errorText: errorText.substring(0, 200),
+      });
+      
+      let errorData: any;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { message: errorText || `HTTP ${res.status}: ${res.statusText}` };
+      }
+      
+      return {
+        ok: false,
+        message: errorData.message || `请求失败: ${res.status} ${res.statusText}`,
+      };
+    }
+    
+    const data = await res.json();
+    console.log("[fetchScenes] 解析成功", {
+      ok: data.ok,
+      scenesCount: data.data?.length || 0,
+    });
+    
+    return data;
+  } catch (error) {
+    console.error("[fetchScenes] 请求异常", {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } : String(error),
+    });
+    
+    return {
+      ok: false,
+      message: error instanceof Error 
+        ? (error.message.includes("Failed to fetch") 
+          ? "网络请求失败，请检查网络连接或服务器状态" 
+          : error.message)
+        : "获取场景配置失败",
+    };
+  }
 }
 
 async function saveScene(scene: Partial<SceneConfig> & { id?: number }): Promise<{ ok: boolean; message?: string }> {
@@ -100,9 +159,13 @@ export default function AdminAiScenesPage() {
       const resp = await fetchScenes();
       if (resp.ok && resp.data) {
         setScenes(resp.data);
+      } else {
+        console.error("Failed to load scenes:", resp.message);
+        alert(`加载场景配置失败: ${resp.message || "未知错误"}`);
       }
     } catch (err) {
       console.error("Failed to load scenes:", err);
+      alert(`加载场景配置失败: ${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
       setLoading(false);
     }

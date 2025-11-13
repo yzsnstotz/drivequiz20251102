@@ -3,16 +3,31 @@ import { badRequest, internalError, success } from "@/app/api/_lib/errors";
 import { aiDb } from "@/lib/aiDb";
 
 // GET /api/admin/ai/scenes - 获取所有场景配置
-export const GET = withAdminAuth(async () => {
+export const GET = withAdminAuth(async (req: Request) => {
+  const requestId = `scenes-get-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  
   try {
+    console.log(`[${requestId}] [GET /api/admin/ai/scenes] 开始获取场景配置`);
+    const startTime = Date.now();
+    
     const scenes = await aiDb
       .selectFrom("ai_scene_config")
       .selectAll()
       .orderBy("scene_key", "asc")
       .execute();
 
+    const duration = Date.now() - startTime;
+    console.log(`[${requestId}] [GET /api/admin/ai/scenes] 查询完成`, {
+      count: scenes.length,
+      duration: `${duration}ms`,
+    });
+
     return success(scenes);
   } catch (e: any) {
+    console.error(`[${requestId}] [GET /api/admin/ai/scenes] 查询失败`, {
+      error: e?.message,
+      stack: e?.stack,
+    });
     return internalError(e?.message || "Failed to fetch scene configs");
   }
 });
