@@ -29,7 +29,7 @@ const getStoredUserId = (): string | null => {
       }
     }
   } catch (error) {
-    console.warn("[QuestionAIDialog] Failed to read USER_ID from cookies:", error);
+    // Silent error handling
   }
   return null;
 };
@@ -99,12 +99,7 @@ export default function QuestionAIDialog({
         Object.entries(ai).forEach(([hash, answer]) => {
           memoryCache.set(hash, answer);
         });
-        
-        console.log("[QuestionAIDialog] 已加载本地aiAnswers，共", Object.keys(ai).length, "个", {
-          version: pkg?.version || "未知",
-        });
       } catch (error) {
-        console.warn("[QuestionAIDialog] 无法加载缓存aiAnswers:", error);
         setLocalAiAnswers({}); // 设置为空对象，表示已尝试加载但失败
       }
     };
@@ -197,7 +192,6 @@ export default function QuestionAIDialog({
         // 1. 优先检查内存缓存（理论上每次更新缓存都会和localStorage同步，所以缓存没有localStorage也应该没有）
         const memoryCachedAnswer = memoryCache.get(questionHash);
         if (memoryCachedAnswer) {
-          console.log("[QuestionAIDialog] 从内存缓存找到AI解析");
           const newMessage: Message = {
             role: "assistant",
             content: memoryCachedAnswer,
@@ -231,7 +225,6 @@ export default function QuestionAIDialog({
         // 如果localAiAnswers不为null（已加载完成），检查是否有对应的答案
         if (localAiAnswers !== null && localAiAnswers[questionHash]) {
           const cachedAnswer = localAiAnswers[questionHash];
-          console.log("[QuestionAIDialog] 从本地LocalStorage找到AI解析");
           // 存入内存缓存（与localStorage同步）
           memoryCache.set(questionHash, cachedAnswer);
           const newMessage: Message = {
@@ -267,7 +260,6 @@ export default function QuestionAIDialog({
         // （本地缓存会在下次打开对话框时生效）
       } else {
         // 用户追问：不检查缓存，直接调用AI服务
-        console.log("[QuestionAIDialog] 用户追问，跳过缓存检查，直接调用AI服务");
       }
       
       // 3. 请求后端（首次提问：如果缓存中没有；追问：直接请求）
@@ -333,7 +325,6 @@ export default function QuestionAIDialog({
         setMessages((prev) => [...prev, errorMessage]);
       }
     } catch (error) {
-      console.error("Failed to get AI explanation:", error);
       const errorMessage: Message = {
         role: "assistant",
         content: "Sorry, an error occurred while getting AI explanation. Please try again later.",
@@ -376,6 +367,7 @@ export default function QuestionAIDialog({
           <div className="flex items-center space-x-2">
             <Bot className="h-6 w-6 text-blue-600" />
             <h2 className="text-lg font-bold text-gray-900">AI智能助手</h2>
+            <span className="text-xs text-gray-500 ml-2">by Zalem</span>
           </div>
           <button
             onClick={onClose}
