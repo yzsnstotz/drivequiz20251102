@@ -283,6 +283,7 @@ export default function AdminAiScenesPage() {
         question: testInput,
         locale: locale,
         scene: scene.scene_key,
+        skipCache: true, // 测试场景禁用缓存，确保每次都能获得新结果
       };
 
       console.log(`[Scene Test] [${testId}] 发送请求`, {
