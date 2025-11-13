@@ -1707,6 +1707,58 @@ export async function POST(req: NextRequest) {
       if (upstreamError.name === "AbortError" || upstreamError.message.includes("timeout")) {
         errorDetails.errorType = "TIMEOUT";
         console.error(`[${requestId}] [STEP 5.2] 上游请求超时:`, errorDetails);
+        
+        // 超时后，检查数据库是否有已完成的答案（后台请求可能已完成）
+        if (questionHash) {
+          try {
+            const normalizedLocale = normalizeLocale(locale);
+            const completedAnswer = await getAIAnswerFromDb(questionHash, normalizedLocale);
+            if (completedAnswer) {
+              console.log(`[${requestId}] [STEP 5.2.1] 超时后从数据库找到已完成的答案`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: completedAnswer.length,
+              });
+              
+              // 存入用户内存缓存
+              if (forwardedUserId) {
+                setUserCachedAnswer(forwardedUserId, questionHash, completedAnswer);
+              }
+              
+              // 写入日志
+              void writeAiLogToDatabase({
+                userId: forwardedUserId,
+                question,
+                answer: completedAnswer,
+                locale,
+                model: "Cached",
+                ragHits: 0,
+                safetyFlag: "ok",
+                costEstUsd: null,
+                sources: [],
+                from: "question",
+                aiProvider: "cache",
+                cached: true,
+                cacheSource: "database",
+                createdAtIso: new Date().toISOString(),
+              }).catch((error) => {
+                console.error(`[${requestId}] [STEP 5.2.2] 写入缓存日志失败:`, (error as Error).message);
+              });
+              
+              // 返回数据库中的答案
+              return ok({
+                answer: completedAnswer,
+                cached: true,
+                aiProvider: "cache",
+                cacheSource: "database",
+              });
+            }
+          } catch (dbError) {
+            console.error(`[${requestId}] [STEP 5.2.1] 检查数据库失败:`, (dbError as Error).message);
+            // 数据库检查失败不影响，继续返回超时错误
+          }
+        }
+        
+        // 如果没有找到已完成的答案，返回超时错误
         return err("PROVIDER_ERROR", "AI service request timeout (30s)", 504);
       }
       
