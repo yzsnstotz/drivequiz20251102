@@ -704,7 +704,7 @@ function createDbInstance(): Kysely<Database> {
       if ((isDevelopment || !isVercel) && !hasTlsReject) {
         process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
         console.log('[DB Config] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL (development only)');
-      } else if (!isDevelopment && (process.env.NODE_ENV === 'production' || isVercel)) {
+      } else if (!isDevelopment && isVercel) {
         console.log('[DB Config] ℹ️  Using SSL with rejectUnauthorized: false (production mode, not setting NODE_TLS_REJECT_UNAUTHORIZED)');
       }
     } catch (e) {
