@@ -176,9 +176,26 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        // 4) 安全审查
-        const safe = await checkSafety(question);
-        // 映射 category 到 safetyFlag: 高风险类别视为 blocked，其他为 needs_human
+        // 4) 并行执行：安全审查、RAG检索、配置读取（优化性能）
+        // 优先从请求头读取 X-AI-Provider，避免不必要的数据库查询
+        const { getAiProviderFromConfig } = await import("../lib/configLoader.js");
+        
+        const [safe, aiProviderResult] = await Promise.all([
+          checkSafety(question),
+          // 优先从请求头读取，否则从数据库读取
+          (async (): Promise<"openai" | "openrouter"> => {
+            const headerProvider = request.headers["x-ai-provider"] as string | undefined;
+            if (headerProvider === "openai" || headerProvider === "openrouter") {
+              console.log("[ASK ROUTE] AI provider from header", { aiProvider: headerProvider });
+              return headerProvider;
+            }
+            const provider = await getAiProviderFromConfig();
+            console.log("[ASK ROUTE] AI provider from config", { aiProvider: provider });
+            return provider;
+          })(),
+        ]);
+
+        // 处理安全审查结果
         const blockedCategories: string[] = ["sexual", "violence", "hate", "illegal", "malware", "privacy"];
         const safetyFlag: "ok" | "needs_human" | "blocked" = safe.ok
           ? "ok"
@@ -194,17 +211,12 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        // 5) RAG 检索（可能为空）
-        const reference = await getRagContext(question, lang, config);
+        const aiProvider = aiProviderResult;
 
-        // 6) 从数据库读取 AI 提供商配置
-        const { getAiProviderFromConfig } = await import("../lib/configLoader.js");
-        const aiProvider = await getAiProviderFromConfig();
-        console.log("[ASK ROUTE] AI provider from config", {
-          aiProvider,
-        });
+        // 5) RAG 检索（可能为空，传递 aiProvider 避免重复查询）
+        const reference = await getRagContext(question, lang, config, aiProvider).catch(() => "");
 
-        // 7) 调用 OpenAI
+        // 6) 调用 OpenAI
         let openai;
         try {
           openai = getOpenAIClient(config, aiProvider);
