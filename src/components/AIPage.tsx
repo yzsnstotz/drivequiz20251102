@@ -214,20 +214,9 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
               }
             }
           } catch (e) {
-            console.error("[Frontend Debug] Cookie read error:", e);
+            // Silent error handling
           }
         }
-        
-        // 调试日志：检查 token 是否存在
-        console.log("[Frontend Debug] JWT Token Status:", {
-          hasToken: !!token,
-          tokenLength: token?.length || 0,
-          tokenPrefix: token?.substring(0, 30) || "N/A",
-          isActivationToken: token?.startsWith("act-") || false,
-          localStorageKeys: typeof window !== "undefined" ? Object.keys(localStorage) : [],
-          cookieAvailable: typeof document !== "undefined",
-          cookies: typeof document !== "undefined" ? document.cookie.split(";").map(c => c.trim().split("=")[0]) : [],
-        });
       }
 
       // 统一协议：{ question, locale?, messages? } → { ok, data: { answer, sources?, ... }, errorCode, message }
@@ -358,6 +347,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
             <ChevronLeft className="h-6 w-6" />
           </button>
           <h1 className="text-xl font-bold text-gray-900">AI 助手</h1>
+          <span className="text-xs text-gray-500 ml-2">by Zalem</span>
         </div>
         <button
           type="button"
