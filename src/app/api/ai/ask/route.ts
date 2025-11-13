@@ -60,6 +60,8 @@ type AskRequest = {
   scene?: string; // 场景标识：chat, question_explanation 等
   skipCache?: boolean; // 是否跳过缓存（用于测试场景）
   testMode?: boolean; // 测试模式：如果为true，优先使用直连模式以加快响应
+  sourceLanguage?: string; // 源语言（用于翻译场景，如 "zh", "ja", "en"）
+  targetLanguage?: string; // 目标语言（用于翻译场景，如 "zh", "ja", "en"）
 };
 
 type AiServiceResponse = {
@@ -348,7 +350,13 @@ function normalizeLocale(locale: string | undefined | null): string {
 }
 
 // ==== 辅助函数：构建系统提示（支持场景配置） ====
-async function buildSystemPrompt(lang: string, scene?: string | null, requestId?: string): Promise<string> {
+async function buildSystemPrompt(
+  lang: string,
+  scene?: string | null,
+  requestId?: string,
+  sourceLanguage?: string | null,
+  targetLanguage?: string | null
+): Promise<string> {
   const logPrefix = requestId ? `[${requestId}]` : "[buildSystemPrompt]";
   
   // 如果指定了场景，尝试从数据库读取场景配置
@@ -356,6 +364,8 @@ async function buildSystemPrompt(lang: string, scene?: string | null, requestId?
     console.log(`${logPrefix} [buildSystemPrompt] 开始读取场景配置`, {
       scene: scene,
       lang: lang,
+      sourceLanguage: sourceLanguage,
+      targetLanguage: targetLanguage,
     });
     const sceneStartTime = Date.now();
     
@@ -375,19 +385,35 @@ async function buildSystemPrompt(lang: string, scene?: string | null, requestId?
       });
 
       if (sceneConfig) {
+        let prompt: string | null = null;
         // 根据语言选择对应的 prompt
         if (lang === "ja" && sceneConfig.system_prompt_ja) {
           console.log(`${logPrefix} [buildSystemPrompt] 使用日文 prompt`);
-          return sceneConfig.system_prompt_ja;
-        }
-        if (lang === "en" && sceneConfig.system_prompt_en) {
+          prompt = sceneConfig.system_prompt_ja;
+        } else if (lang === "en" && sceneConfig.system_prompt_en) {
           console.log(`${logPrefix} [buildSystemPrompt] 使用英文 prompt`);
-          return sceneConfig.system_prompt_en;
-        }
-        // 默认使用中文 prompt
-        if (sceneConfig.system_prompt_zh) {
+          prompt = sceneConfig.system_prompt_en;
+        } else if (sceneConfig.system_prompt_zh) {
+          // 默认使用中文 prompt
           console.log(`${logPrefix} [buildSystemPrompt] 使用中文 prompt`);
-          return sceneConfig.system_prompt_zh;
+          prompt = sceneConfig.system_prompt_zh;
+        }
+        
+        // 如果是翻译场景，替换占位符
+        if (prompt && scene === "question_translation" && sourceLanguage && targetLanguage) {
+          prompt = prompt
+            .replace(/\{sourceLanguage\}/g, sourceLanguage)
+            .replace(/\{targetLanguage\}/g, targetLanguage)
+            .replace(/\{源语言\}/g, sourceLanguage)
+            .replace(/\{目标语言\}/g, targetLanguage);
+          console.log(`${logPrefix} [buildSystemPrompt] 已替换翻译场景的源语言和目标语言占位符`, {
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+          });
+        }
+        
+        if (prompt) {
+          return prompt;
         }
       } else {
         console.warn(`${logPrefix} [buildSystemPrompt] 场景配置未找到或未启用`, {
@@ -823,12 +849,16 @@ export async function POST(req: NextRequest) {
     const scene = body.scene?.trim() || (body.questionHash ? "question_explanation" : "chat");
     const skipCache = body.skipCache === true; // 是否跳过缓存
     const testMode = body.testMode === true; // 测试模式：优先使用直连模式以加快响应
+    const sourceLanguage = body.sourceLanguage?.trim() || null; // 源语言（用于翻译场景）
+    const targetLanguage = body.targetLanguage?.trim() || null; // 目标语言（用于翻译场景）
     console.log(`[${requestId}] [STEP 2.5.1] 场景标识: ${scene}`, {
       sceneFromRequest: body.scene,
       hasQuestionHash: !!body.questionHash,
       inferredScene: body.questionHash ? "question_explanation" : "chat",
       skipCache: skipCache,
       testMode: testMode,
+      sourceLanguage: sourceLanguage,
+      targetLanguage: targetLanguage,
       requestBody: {
         hasQuestion: !!body.question,
         questionLength: body.question?.length || 0,
@@ -836,6 +866,8 @@ export async function POST(req: NextRequest) {
         scene: body.scene,
         skipCache: body.skipCache,
         testMode: body.testMode,
+        sourceLanguage: body.sourceLanguage,
+        targetLanguage: body.targetLanguage,
       },
     });
     
@@ -1123,7 +1155,7 @@ export async function POST(req: NextRequest) {
       
       // 构建系统提示（使用场景配置）
       const lang = locale || "zh";
-      const sysPrompt = await buildSystemPrompt(lang, scene, requestId);
+      const sysPrompt = await buildSystemPrompt(lang, scene, requestId, sourceLanguage, targetLanguage);
       const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
       const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
       
@@ -1460,7 +1492,7 @@ export async function POST(req: NextRequest) {
       
       // 构建系统提示（使用场景配置）
       const lang = locale || "zh";
-      const sysPrompt = await buildSystemPrompt(lang, scene, requestId);
+      const sysPrompt = await buildSystemPrompt(lang, scene, requestId, sourceLanguage, targetLanguage);
       const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
       const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
       
