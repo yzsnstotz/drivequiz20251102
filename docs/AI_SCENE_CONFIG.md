@@ -194,3 +194,4 @@ psql $DATABASE_URL -f src/migrations/20251113_create_ai_scene_config.sql
 - `src/components/QuestionAIDialog.tsx` - 题目解析组件（已更新）
 - `src/components/AIPage.tsx` - 首页 AI 助手组件（已更新）
 
+
