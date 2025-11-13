@@ -12,9 +12,12 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), ".env.local") });
 
 // 处理 SSL 证书问题（仅用于开发环境）
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+// 在生产环境中不应禁用证书验证
+if ((process.env.NODE_ENV === 'development' || !process.env.VERCEL) && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-  console.log("[updateJsonPackageWithVersion] 已设置 NODE_TLS_REJECT_UNAUTHORIZED=0 以处理 SSL 证书问题");
+  console.log("[updateJsonPackageWithVersion] 已设置 NODE_TLS_REJECT_UNAUTHORIZED=0 以处理 SSL 证书问题（仅开发环境）");
+} else if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+  console.log("[updateJsonPackageWithVersion] 生产环境模式：使用 SSL 配置中的 rejectUnauthorized: false，不设置全局环境变量");
 }
 
 // 注意：这里直接使用 db，它会自动处理 SSL 连接
