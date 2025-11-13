@@ -121,15 +121,53 @@ export default function QuestionAIDialog({
         if (cached) {
           const parsedMessages = JSON.parse(cached) as Message[];
           if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-            setMessages(parsedMessages);
-            hasInitialized.current = true; // 标记为已初始化，避免重复加载AI解释
-            return;
+            // 检查是否有有效的AI回答（assistant消息且不是错误消息）
+            const hasValidAiAnswer = parsedMessages.some((msg) => {
+              if (msg.role !== "assistant") return false;
+              // 检查是否是错误消息（常见的错误消息关键词）
+              const errorKeywords = [
+                "Sorry",
+                "error",
+                "unavailable",
+                "failed",
+                "超时",
+                "失败",
+                "错误",
+                "无法",
+                "暂时",
+              ];
+              const contentLower = msg.content.toLowerCase();
+              // 如果消息很短（可能是错误消息）或包含错误关键词，认为是无效的
+              if (msg.content.length < 50 || errorKeywords.some((keyword) => contentLower.includes(keyword.toLowerCase()))) {
+                return false;
+              }
+              // 如果有metadata且sourceType是cached或ai-generated，认为是有效的
+              if (msg.metadata?.sourceType === "cached" || msg.metadata?.sourceType === "ai-generated") {
+                return true;
+              }
+              // 如果消息足够长且不包含错误关键词，也认为是有效的
+              return msg.content.length >= 50;
+            });
+            
+            if (hasValidAiAnswer) {
+              // 有有效的AI回答，使用缓存
+              setMessages(parsedMessages);
+              hasInitialized.current = true; // 标记为已初始化，避免重复加载AI解释
+              return;
+            } else {
+              // 没有有效的AI回答（可能是之前的调用失败或超时），清除缓存并重新请求
+              console.log("[QuestionAIDialog] 检测到缓存的对话历史中没有有效的AI回答，清除缓存并重新请求");
+              localStorage.removeItem(cacheKey);
+              hasInitialized.current = false;
+              return;
+            }
           }
         }
         // 如果没有缓存，重置hasInitialized，允许加载AI解释
         hasInitialized.current = false;
       } catch (error) {
         // 如果解析失败，忽略缓存，继续正常流程
+        console.error("[QuestionAIDialog] 解析缓存的对话历史失败:", error);
         hasInitialized.current = false;
       }
     }
