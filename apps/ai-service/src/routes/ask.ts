@@ -6,7 +6,6 @@ import { getOpenAIClient } from "../lib/openaiClient.js";
 import { cacheGet, cacheSet } from "../lib/cache.js";
 import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
-import { logAiInteraction } from "../lib/dbLogger.js";
 import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
 
 /** 请求体类型 */
@@ -147,19 +146,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const cacheKey = buildCacheKey(question, lang, model);
         const cached = await cacheGet<AskResult>(cacheKey);
         if (cached) {
-          // 异步记录日志（不阻断）
-          // 注意：使用当前配置的模型，而不是缓存中的模型（因为配置可能已更改）
-          void logAiInteraction({
-            userId,
-            question,
-            answer: cached.answer,
-            lang,
-            model: model, // 使用当前配置的模型，而不是缓存中的旧模型
-            ragHits: Array.isArray(cached.sources) ? cached.sources.length : (cached.reference ? 1 : 0),
-            safetyFlag: cached.safetyFlag || "ok",
-            costEstUsd: cached.costEstimate?.approxUsd ?? null,
-            createdAtIso: cached.time || new Date().toISOString(),
-          }).catch(() => {});
+          // 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
+          // 主路由会在 STEP 4.5.3 或 STEP 7 中写入日志
 
           // 返回标准响应结构（标记为缓存答案）
           reply.send({
@@ -386,18 +374,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const cacheTtl = await getCacheTtlFromConfig();
         void cacheSet(cacheKey, result, cacheTtl).catch(() => {});
 
-        // 8) 异步写 ai_logs（失败仅告警，不阻断）
-        void logAiInteraction({
-          userId,
-          question,
-          answer,
-          lang,
-          model,
-          ragHits,
-          safetyFlag,
-          costEstUsd: approxUsd,
-          createdAtIso: result.time,
-        }).catch(() => {});
+        // 8) 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
+        // 主路由会在 STEP 7 中写入日志
 
         // 9) 返回标准响应结构
         reply.send({
