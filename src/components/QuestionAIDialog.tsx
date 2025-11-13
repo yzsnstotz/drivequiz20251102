@@ -110,18 +110,54 @@ export default function QuestionAIDialog({
     }
   }, [isOpen]);
 
-  // 初始化AI解释
+  // 加载缓存的对话历史（每次打开对话框时）
   useEffect(() => {
-    if (isOpen && !hasInitialized.current && question) {
+    if (isOpen && question.hash) {
+      try {
+        const cacheKey = `question_ai_dialog_${question.hash}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsedMessages = JSON.parse(cached) as Message[];
+          if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
+            setMessages(parsedMessages);
+            hasInitialized.current = true; // 标记为已初始化，避免重复加载AI解释
+            return;
+          }
+        }
+        // 如果没有缓存，重置hasInitialized，允许加载AI解释
+        hasInitialized.current = false;
+      } catch (error) {
+        // 如果解析失败，忽略缓存，继续正常流程
+        hasInitialized.current = false;
+      }
+    }
+  }, [isOpen, question.hash]);
+
+  // 保存对话历史到localStorage（每次消息更新时）
+  useEffect(() => {
+    if (isOpen && question.hash && messages.length > 0) {
+      try {
+        const cacheKey = `question_ai_dialog_${question.hash}`;
+        localStorage.setItem(cacheKey, JSON.stringify(messages));
+      } catch (error) {
+        // 如果保存失败，忽略错误
+      }
+    }
+  }, [messages, isOpen, question.hash]);
+
+  // 初始化AI解释（仅在首次打开且没有缓存时）
+  useEffect(() => {
+    if (isOpen && !hasInitialized.current && question && messages.length === 0) {
       hasInitialized.current = true;
       setIsInitialLoading(true);
       fetchAIExplanation();
     }
-  }, [isOpen, question]);
+  }, [isOpen, question, messages.length]);
 
   // 重置状态当对话框关闭
   useEffect(() => {
     if (!isOpen) {
+      // 重置hasInitialized和清空messages（下次打开时会从缓存加载）
       hasInitialized.current = false;
       setMessages([]);
       setInputValue("");
