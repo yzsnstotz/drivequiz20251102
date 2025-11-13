@@ -939,96 +939,97 @@ export async function POST(req: NextRequest) {
           // questionHash 保持为 null，后续会直接调用AI服务
           questionHash = null;
         }
-      
-      // 2. 如果有了questionHash，按优先级检查：内存缓存 -> JSON包 -> 数据库
-      if (questionHash) {
-        // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
-        const normalizedLocale = normalizeLocale(locale);
         
-        // 2.1 优先检查内存缓存（最快）
-        if (forwardedUserId) {
-          cachedAnswer = getUserCachedAnswer(forwardedUserId, questionHash);
-          if (cachedAnswer) {
-            cacheSource = "localStorage"; // 内存缓存标记为localStorage（与前端保持一致）
-            console.log(`[${requestId}] [STEP 4.5.1] 从内存缓存中找到AI解析`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: cachedAnswer.length,
-            });
+        // 2. 如果有了questionHash，按优先级检查：内存缓存 -> JSON包 -> 数据库
+        if (questionHash) {
+          // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+          const normalizedLocale = normalizeLocale(locale);
+          
+          // 2.1 优先检查内存缓存（最快）
+          if (forwardedUserId) {
+            cachedAnswer = getUserCachedAnswer(forwardedUserId, questionHash);
+            if (cachedAnswer) {
+              cacheSource = "localStorage"; // 内存缓存标记为localStorage（与前端保持一致）
+              console.log(`[${requestId}] [STEP 4.5.1] 从内存缓存中找到AI解析`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: cachedAnswer.length,
+              });
+            }
           }
-        }
-        
-        // 2.2 如果内存缓存中没有，检查本地JSON包
-        if (!cachedAnswer) {
-          cachedAnswer = await getAIAnswerFromJson(null, questionHash);
-          if (cachedAnswer) {
-            cacheSource = "localStorage"; // 标记为从JSON包读取
-            console.log(`[${requestId}] [STEP 4.5.1] 从本地JSON包中找到AI解析`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: cachedAnswer.length,
-            });
-            // 存入用户内存缓存（虽然Serverless环境中不可靠，但同一实例的后续请求可能受益）
-            if (forwardedUserId) {
-              setUserCachedAnswer(forwardedUserId, questionHash, cachedAnswer);
-              console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户内存缓存（来源：JSON包）`);
+          
+          // 2.2 如果内存缓存中没有，检查本地JSON包
+          if (!cachedAnswer) {
+            cachedAnswer = await getAIAnswerFromJson(null, questionHash);
+            if (cachedAnswer) {
+              cacheSource = "localStorage"; // 标记为从JSON包读取
+              console.log(`[${requestId}] [STEP 4.5.1] 从本地JSON包中找到AI解析`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: cachedAnswer.length,
+              });
+              // 存入用户内存缓存（虽然Serverless环境中不可靠，但同一实例的后续请求可能受益）
+              if (forwardedUserId) {
+                setUserCachedAnswer(forwardedUserId, questionHash, cachedAnswer);
+                console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户内存缓存（来源：JSON包）`);
+              }
+            }
+          }
+          
+          // 2.3 如果JSON包中也没有，再查询数据库
+          if (!cachedAnswer) {
+            cachedAnswer = await getAIAnswerFromDb(questionHash, normalizedLocale);
+            if (cachedAnswer) {
+              cacheSource = "database"; // 标记为从数据库读取
+              console.log(`[${requestId}] [STEP 4.5.1] 从数据库中找到AI解析`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                answerLength: cachedAnswer.length,
+              });
+              // 存入用户内存缓存（虽然Serverless环境中不可靠，但同一实例的后续请求可能受益）
+              if (forwardedUserId) {
+                setUserCachedAnswer(forwardedUserId, questionHash, cachedAnswer);
+                console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户内存缓存（来源：数据库）`);
+              }
             }
           }
         }
         
-        // 2.3 如果JSON包中也没有，再查询数据库
-        if (!cachedAnswer) {
-          cachedAnswer = await getAIAnswerFromDb(questionHash, normalizedLocale);
-          if (cachedAnswer) {
-            cacheSource = "database"; // 标记为从数据库读取
-            console.log(`[${requestId}] [STEP 4.5.1] 从数据库中找到AI解析`, {
-              questionHash: questionHash.substring(0, 16) + "...",
-              answerLength: cachedAnswer.length,
-            });
-            // 存入用户内存缓存（虽然Serverless环境中不可靠，但同一实例的后续请求可能受益）
-            if (forwardedUserId) {
-              setUserCachedAnswer(forwardedUserId, questionHash, cachedAnswer);
-              console.log(`[${requestId}] [STEP 4.5.1.1] 已存入用户内存缓存（来源：数据库）`);
-            }
-          }
+        // 如果找到缓存的AI解析，直接返回（除非 skipCache 为 true）
+        if (cachedAnswer && !skipCache) {
+          console.log(`[${requestId}] [STEP 4.5.2] 使用缓存的AI解析，跳过AI服务调用`);
+          
+          // 使用记录的缓存来源（优先JSON包，其次数据库）
+          const finalCacheSource = cacheSource || "database";
+          
+          // 写入日志（标识为习题调用，缓存来源）
+          void writeAiLogToDatabase({
+            userId: forwardedUserId,
+            question,
+            answer: cachedAnswer,
+            locale,
+            model: "Cached", // 缓存时使用"Cached"作为模型名
+            ragHits: 0,
+            safetyFlag: "ok",
+            costEstUsd: null,
+            sources: [],
+            from: "question", // 标识为习题调用
+            aiProvider: "cache",
+            cached: true,
+            cacheSource: finalCacheSource, // 优先JSON包，其次数据库
+            createdAtIso: new Date().toISOString(),
+          }).catch((error) => {
+            console.error(`[${requestId}] [STEP 4.5.3] 写入缓存日志失败:`, (error as Error).message);
+          });
+          
+          return ok({
+            answer: cachedAnswer,
+            cached: true,
+            aiProvider: "cache",
+            cacheSource: finalCacheSource, // 返回前端时使用实际来源（JSON包或数据库）
+          });
         }
+      } catch (error) {
+        console.error(`[${requestId}] [STEP 4.5] 检查缓存失败:`, error);
+        // 如果检查失败，继续调用AI服务（不抛出错误，让流程继续）
       }
-      
-      // 如果找到缓存的AI解析，直接返回（除非 skipCache 为 true）
-      if (cachedAnswer && !skipCache) {
-        console.log(`[${requestId}] [STEP 4.5.2] 使用缓存的AI解析，跳过AI服务调用`);
-        
-        // 使用记录的缓存来源（优先JSON包，其次数据库）
-        const finalCacheSource = cacheSource || "database";
-        
-        // 写入日志（标识为习题调用，缓存来源）
-        void writeAiLogToDatabase({
-          userId: forwardedUserId,
-          question,
-          answer: cachedAnswer,
-          locale,
-          model: "Cached", // 缓存时使用"Cached"作为模型名
-          ragHits: 0,
-          safetyFlag: "ok",
-          costEstUsd: null,
-          sources: [],
-          from: "question", // 标识为习题调用
-          aiProvider: "cache",
-          cached: true,
-          cacheSource: finalCacheSource, // 优先JSON包，其次数据库
-          createdAtIso: new Date().toISOString(),
-        }).catch((error) => {
-          console.error(`[${requestId}] [STEP 4.5.3] 写入缓存日志失败:`, (error as Error).message);
-        });
-        
-        return ok({
-          answer: cachedAnswer,
-          cached: true,
-          aiProvider: "cache",
-          cacheSource: finalCacheSource, // 返回前端时使用实际来源（JSON包或数据库）
-        });
-      }
-    } catch (error) {
-      console.error(`[${requestId}] [STEP 4.5] 检查缓存失败:`, error);
-      // 如果检查失败，继续调用AI服务（不抛出错误，让流程继续）
     }
     
     // 如果是直连 OpenRouter 模式，直接调用 OpenRouter API，不通过 AI Service
