@@ -15,37 +15,61 @@ export interface TranslateResult {
   explanation?: string;
 }
 
-function getAiServiceUrl(): string {
-  const url = process.env.AI_SERVICE_URL || process.env.LOCAL_AI_SERVICE_URL;
-  if (!url) throw new Error("Missing AI_SERVICE_URL/LOCAL_AI_SERVICE_URL");
-  return url.replace(/\/+$/, "");
+/**
+ * 获取主站 API URL（用于调用 /api/ai/ask）
+ * 优先使用环境变量，如果没有则尝试从 Vercel 环境变量获取
+ */
+function getMainAppUrl(): string {
+  // 优先使用明确配置的主站 URL
+  const url = process.env.MAIN_APP_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
+  if (!url) {
+    throw new Error("Missing MAIN_APP_URL/NEXT_PUBLIC_APP_URL/VERCEL_URL. Please configure the main app URL for question-processor.");
+  }
+  
+  // 如果 URL 不包含协议，添加 https://
+  let fullUrl = url;
+  if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+    fullUrl = `https://${fullUrl}`;
+  }
+  
+  return fullUrl.replace(/\/+$/, "");
 }
 
-function getAiToken(): string | undefined {
-  return process.env.AI_SERVICE_TOKEN || process.env.LOCAL_AI_SERVICE_TOKEN;
-}
-
+/**
+ * 调用主站的 /api/ai/ask 路由
+ * 这样可以使用数据库中的 aiProvider 配置
+ */
 export async function askAi(body: AskBody): Promise<any> {
-  const url = `${getAiServiceUrl()}/ask`;
+  const mainAppUrl = getMainAppUrl();
+  const url = `${mainAppUrl}/api/ai/ask`;
+  
+  // 使用匿名请求（question-processor 作为内部服务）
   const res = await fetch(url, {
     method: "POST",
     headers: {
-      "content-type": "application/json",
-      ...(getAiToken() ? { authorization: `Bearer ${getAiToken()}` } : {})
+      "content-type": "application/json; charset=utf-8",
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify({
+      question: body.question,
+      locale: body.lang || "zh-CN",
+      // 不传递 userId，使用匿名模式
+    })
   });
+  
   const text = await res.text();
   let json: any;
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error(`AI service non-JSON: ${text.slice(0, 200)}`);
+    throw new Error(`Main app API returned non-JSON: ${text.slice(0, 200)}`);
   }
+  
   if (!res.ok || !json?.ok) {
-    throw new Error(`AI service error: ${res.status} ${text.slice(0, 200)}`);
+    throw new Error(`Main app API error: ${res.status} ${json?.message || text.slice(0, 200)}`);
   }
-  return json.data;
+  
+  // 主站 API 返回格式：{ ok: true, data: { answer: "...", ... } }
+  return json.data || json;
 }
 
 export async function translateWithPolish(params: {

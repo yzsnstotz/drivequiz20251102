@@ -1,6 +1,6 @@
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success } from "@/app/api/_lib/errors";
-import { getProcessorUrl } from "../../_lib/getProcessorUrl";
+import { getProcessorUrl } from "../../../_lib/getProcessorUrl";
 
 export const POST = withAdminAuth(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
