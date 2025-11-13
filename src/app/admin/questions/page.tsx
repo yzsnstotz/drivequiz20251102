@@ -174,7 +174,6 @@ export default function QuestionsPage() {
         const currentSource = search?.get("source") || DEFAULT_FILTERS.source;
         if (currentSource === "database") {
           const latestVersion = versionsList[0].version; // 版本号列表已按created_at降序排列，第一个是最新的
-          console.log(`[QuestionsPage] 设置默认题目源为最新JSON包版本: ${latestVersion}`);
           setFilters((prev) => ({
             ...prev,
             source: latestVersion,
@@ -307,12 +306,10 @@ export default function QuestionsPage() {
         const pag = newPagination as ListResponse["pagination"];
         if (pag && pag.hasNext !== undefined) {
           setHasMore(pag.hasNext);
-          console.log(`[loadData] page=${pag.page}, totalPages=${pag.totalPages || pag.pages || 0}, hasNext=${pag.hasNext}`);
         } else if (pag) {
           const totalPages = pag.totalPages || pag.pages || 0;
           const currentPage = pag.page || page;
           const hasMoreData = currentPage < totalPages;
-          console.log(`[loadData] currentPage=${currentPage}, totalPages=${totalPages}, hasMore=${hasMoreData}`);
           setHasMore(hasMoreData);
         } else {
           setHasMore(false);
@@ -347,7 +344,6 @@ export default function QuestionsPage() {
   // 无限滚动：加载更多
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore || !pagination) {
-      console.log(`[loadMore] Skipped: loadingMore=${loadingMore}, hasMore=${hasMore}, pagination=${!!pagination}`);
       return;
     }
     
@@ -357,7 +353,6 @@ export default function QuestionsPage() {
     const nextPage = pag.page + 1;
     // 使用 API 返回的 totalPages 字段（兼容 pages 字段）
     const totalPages = pag.totalPages || pag.pages || 0;
-    console.log(`[loadMore] Loading page ${nextPage} of ${totalPages} (current page: ${pag.page})`);
     
     // 如果使用 hasNext，则根据 hasNext 判断
     if (pag.hasNext !== undefined) {
@@ -381,9 +376,7 @@ export default function QuestionsPage() {
     const observer = new IntersectionObserver(
       (entries) => {
         const target = entries[0];
-        console.log(`[IntersectionObserver] isIntersecting=${target.isIntersecting}, hasMore=${hasMore}, loadingMore=${loadingMore}, loading=${loading}`);
         if (target.isIntersecting && hasMore && !loadingMore && !loading) {
-          console.log('[IntersectionObserver] Triggering loadMore()');
           loadMore();
         }
       },
@@ -396,7 +389,6 @@ export default function QuestionsPage() {
 
     const currentRef = loadMoreRef.current;
     if (currentRef) {
-      console.log('[IntersectionObserver] Observing ref');
       observer.observe(currentRef);
     }
 

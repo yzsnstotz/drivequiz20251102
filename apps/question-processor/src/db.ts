@@ -99,7 +99,11 @@ function getConnectionString(): string {
     process.env.QUESTION_PROCESSOR_DATABASE_URL ||
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL;
-  if (!url) throw new Error("Missing database connection string");
+  if (!url) {
+    throw new Error(
+      "Missing database connection string. Please set QUESTION_PROCESSOR_DATABASE_URL, DATABASE_URL, or POSTGRES_URL environment variable."
+    );
+  }
   return url;
 }
 

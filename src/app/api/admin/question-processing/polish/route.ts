@@ -20,13 +20,15 @@ export const POST = withAdminAuth(async (req: Request) => {
     });
     const text = await upstream.text();
     let json: any;
-    try { json = JSON.parse(text); } catch { return internalError("Processor non-JSON"); }
+    try { json = JSON.parse(text); } catch { 
+      return internalError(`Processor returned invalid JSON: ${text.substring(0, 200)}`);
+    }
     if (!upstream.ok || !json?.ok) {
       return internalError(json?.message || `Processor error: ${upstream.status}`);
     }
     return success(json.data || { ok: true });
-  } catch (e) {
-    return internalError("Polish failed");
+  } catch (e: any) {
+    return internalError(e?.message || "Polish failed");
   }
 });
 
