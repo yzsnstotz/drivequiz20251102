@@ -76,16 +76,41 @@ async function updateJsonPackageWithVersion(version?: string) {
     
     console.log(`[updateJsonPackageWithVersion] 已计算所有题目的hash`);
 
-    // 4. 获取所有题目的AI回答（从数据库）
+    // 4. 获取所有题目的AI回答（从数据库，含多语言）
     console.log(`[updateJsonPackageWithVersion] 开始获取AI回答...`);
     const aiAnswers: Record<string, string> = {};
+    const aiAnswersByLocale: Record<string, Record<string, string>> = {};
     let aiAnswerCount = 0;
-    for (const question of questionsWithHash) {
-      const questionHash = (question as any).hash || calculateQuestionHash(question);
-      const answer = await getAIAnswerFromDb(questionHash, "zh");
-      if (answer) {
-        aiAnswers[questionHash] = answer;
-        aiAnswerCount++;
+    const hashes = questionsWithHash.map((q) => (q as any).hash || calculateQuestionHash(q)).filter(Boolean) as string[];
+    if (hashes.length > 0) {
+      try {
+        const rows = await db
+          .selectFrom("question_ai_answers")
+          .select(["question_hash", "answer", "created_at", "locale"])
+          .where("question_hash", "in", hashes)
+          .orderBy("question_hash", "asc")
+          .orderBy("created_at", "desc")
+          .execute();
+        for (const r of rows) {
+          const loc = r.locale || "zh";
+          if (!aiAnswersByLocale[loc]) aiAnswersByLocale[loc] = {};
+          if (!aiAnswersByLocale[loc][r.question_hash] && r.answer) {
+            aiAnswersByLocale[loc][r.question_hash] = r.answer;
+          }
+        }
+        const zhMap = aiAnswersByLocale["zh"] || aiAnswersByLocale["zh-CN"] || aiAnswersByLocale["zh_CN"] || {};
+        Object.assign(aiAnswers, zhMap);
+        aiAnswerCount = Object.keys(aiAnswers).length;
+      } catch (e) {
+        // 回退到单语言查询
+        for (const question of questionsWithHash) {
+          const questionHash = (question as any).hash || calculateQuestionHash(question);
+          const answer = await getAIAnswerFromDb(questionHash, "zh");
+          if (answer) {
+            aiAnswers[questionHash] = answer;
+            aiAnswerCount++;
+          }
+        }
       }
     }
     
@@ -111,11 +136,48 @@ async function updateJsonPackageWithVersion(version?: string) {
     );
     console.log(`[updateJsonPackageWithVersion] 已保存版本号到数据库`);
 
+    // 6. 读取启用语言/生成多语言题目
+    const questionsByLocale: Record<string, Question[]> = {};
+    try {
+      const langs = await db.selectFrom("languages").select(["locale"]).where("enabled", "=", true).execute();
+      const locales = (langs.length ? langs.map(l => l.locale) : ["zh"]);
+      for (const loc of locales) {
+        if (loc.toLowerCase().startsWith("zh")) {
+          questionsByLocale[loc] = questionsWithHash;
+        } else {
+          const trs = await db
+            .selectFrom("question_translations")
+            .select(["content_hash", "content", "options", "explanation"])
+            .where("locale", "=", loc)
+            .execute();
+          const tmap = new Map<string, any>();
+          for (const t of trs) tmap.set(t.content_hash, t);
+          questionsByLocale[loc] = questionsWithHash.map((q) => {
+            const hash = (q as any).hash;
+            const t = hash ? tmap.get(hash) : undefined;
+            if (t) {
+              return {
+                ...q,
+                content: t.content,
+                options: Array.isArray(t.options) ? t.options : (t.options ? [t.options] : undefined),
+                explanation: t.explanation || undefined,
+              };
+            }
+            return q;
+          });
+        }
+      }
+    } catch {
+      // 忽略多语言生成错误
+    }
+
     // 7. 保存到统一的questions.json
-    const unifiedData = {
+    const unifiedData: any = {
       questions: questionsWithHash,
       version: finalVersion,
       aiAnswers: aiAnswers,
+      questionsByLocale,
+      aiAnswersByLocale,
     };
     
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(unifiedData, null, 2), "utf-8");

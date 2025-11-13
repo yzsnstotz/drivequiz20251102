@@ -475,6 +475,72 @@ interface QuestionPackageVersionTable {
 }
 
 // ------------------------------------------------------------
+// 1️⃣8️⃣ languages 表结构定义
+// ------------------------------------------------------------
+interface LanguageTable {
+  id: Generated<number>;
+  locale: string;
+  name: string;
+  enabled: boolean;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣9️⃣ question_translations 表结构定义
+// ------------------------------------------------------------
+interface QuestionTranslationsTable {
+  id: Generated<number>;
+  content_hash: string;
+  locale: string;
+  content: string;
+  options: any | null; // JSONB
+  explanation: string | null;
+  image: string | null;
+  source: string | null; // ai / human / import
+  created_by: string | null; // UUID
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 2️⃣0️⃣ question_polish_reviews 表结构定义
+// ------------------------------------------------------------
+interface QuestionPolishReviewsTable {
+  id: Generated<number>;
+  content_hash: string;
+  locale: string;
+  proposed_content: string;
+  proposed_options: any | null; // JSONB
+  proposed_explanation: string | null;
+  status: "pending" | "approved" | "rejected";
+  notes: string | null;
+  created_by: string | null; // UUID
+  reviewed_by: string | null; // UUID
+  created_at: Generated<Date>;
+  reviewed_at: Date | null;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 2️⃣1️⃣ question_polish_history 表结构定义
+// ------------------------------------------------------------
+interface QuestionPolishHistoryTable {
+  id: Generated<number>;
+  content_hash: string;
+  locale: string;
+  old_content: string | null;
+  old_options: any | null; // JSONB
+  old_explanation: string | null;
+  new_content: string;
+  new_options: any | null; // JSONB
+  new_explanation: string | null;
+  approved_by: string | null; // UUID
+  approved_at: Generated<Date>;
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
 // 1️⃣1️⃣ 数据库总接口定义
 // ------------------------------------------------------------
 interface Database {
@@ -505,6 +571,10 @@ interface Database {
   question_ai_answers: QuestionAiAnswerTable;
   question_ai_answer_pending_updates: QuestionAiAnswerPendingUpdateTable;
   question_package_versions: QuestionPackageVersionTable;
+  languages: LanguageTable;
+  question_translations: QuestionTranslationsTable;
+  question_polish_reviews: QuestionPolishReviewsTable;
+  question_polish_history: QuestionPolishHistoryTable;
 }
 
 // ------------------------------------------------------------

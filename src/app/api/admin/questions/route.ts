@@ -253,11 +253,14 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const source = query.get("source"); // 题目源：database（数据库）或版本号（历史JSON包）
     const sortBy = query.get("sortBy") || "id";
     const sortOrder = query.get("sortOrder") || "asc";
+    const locale = (query.get("locale") || "zh").trim();
 
     // 收集所有题目
     let allQuestions: Question[] = [];
     // 保存JSON包的aiAnswers对象（当数据源为JSON包时使用）
     let jsonPackageAiAnswers: Record<string, string> | null = null;
+    let jsonPackageAiAnswersByLocale: Record<string, Record<string, string>> | null = null;
+    let jsonPackageQuestionsByLocale: Record<string, Question[]> | null = null;
     
     // 如果指定了版本号（历史JSON包），从数据库读取历史版本内容
     if (source && source !== "database") {
@@ -270,18 +273,28 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           // 保存JSON包的aiAnswers对象
           jsonPackageAiAnswers = versionContent.aiAnswers || {};
           console.log(`[GET /api/admin/questions] 保存JSON包的aiAnswers，共 ${Object.keys(jsonPackageAiAnswers).length} 个AI回答`);
+          // 尝试读取多语言字段（如果存在）
+          jsonPackageAiAnswersByLocale = (versionContent as any).aiAnswersByLocale || null;
+          jsonPackageQuestionsByLocale = (versionContent as any).questionsByLocale || null;
           
           // 如果指定了category筛选，只添加匹配的题目
           if (category) {
-            const filteredQuestions = versionContent.questions.filter((q) => {
-              return q.category === category;
-            });
+            let base = versionContent.questions as Question[];
+            // 如果指定了locale且存在多语言包，替换为对应语言
+            if (locale && locale !== "zh" && jsonPackageQuestionsByLocale && jsonPackageQuestionsByLocale[locale]) {
+              base = jsonPackageQuestionsByLocale[locale] as any;
+            }
+            const filteredQuestions = base.filter((q) => q.category === category);
             console.log(`[GET /api/admin/questions] 按category筛选后题目数: ${filteredQuestions.length}`);
             allQuestions.push(...(filteredQuestions as Question[]));
           } else {
             // 没有category筛选，添加所有题目
-            console.log(`[GET /api/admin/questions] 添加所有题目: ${versionContent.questions.length}`);
-            allQuestions.push(...(versionContent.questions as Question[]));
+            let base = versionContent.questions as Question[];
+            if (locale && locale !== "zh" && jsonPackageQuestionsByLocale && jsonPackageQuestionsByLocale[locale]) {
+              base = jsonPackageQuestionsByLocale[locale] as any;
+            }
+            console.log(`[GET /api/admin/questions] 添加所有题目: ${base.length}（locale=${locale}）`);
+            allQuestions.push(...(base as Question[]));
           }
         } else {
           console.warn(`[GET /api/admin/questions] 数据库中没有找到版本 ${source} 的内容`);
@@ -345,6 +358,46 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         // 加载所有题目（只从数据库读取）
         allQuestions = await collectAllQuestions();
         console.log(`[GET /api/admin/questions] 从数据库读取所有题目，共 ${allQuestions.length} 个`);
+      }
+    }
+
+    // 多语言替换（当数据源为数据库时，对题目内容进行本地化）
+    if ((source === "database" || !source) && locale && locale !== "zh") {
+      try {
+        const hashes = allQuestions
+          .map((q) => (q as any).content_hash || (q as any).hash)
+          .filter(Boolean) as string[];
+        if (hashes.length > 0) {
+          const translations = await db
+            .selectFrom("question_translations")
+            .select(["content_hash", "content", "options", "explanation"])
+            .where("locale", "=", locale)
+            .where("content_hash", "in", hashes)
+            .execute();
+          const tmap = new Map<string, { content: string; options?: any; explanation?: string | null }>();
+          for (const t of translations) {
+            tmap.set(t.content_hash, {
+              content: t.content,
+              options: t.options,
+              explanation: t.explanation ?? null,
+            });
+          }
+          allQuestions = allQuestions.map((q) => {
+            const h = (q as any).content_hash || (q as any).hash;
+            const t = h ? tmap.get(h) : undefined;
+            if (t) {
+              return {
+                ...q,
+                content: t.content,
+                options: Array.isArray(t.options) ? t.options : (t.options ? [t.options] : undefined),
+                explanation: t.explanation || undefined,
+              };
+            }
+            return q;
+          });
+        }
+      } catch (e) {
+        console.error(`[GET /api/admin/questions] 本地化替换失败(locale=${locale})`, e);
       }
     }
 
@@ -416,13 +469,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             .selectFrom("question_ai_answers")
             .select(["question_hash", "answer", "created_at", "locale"])
             .where("question_hash", "in", questionHashes)
-            .where((eb) =>
-              eb.or([
-                eb("locale", "=", "zh"),
-                eb("locale", "=", "zh-CN"),
-                eb("locale", "=", "zh_CN"),
-              ])
-            )
+            .where("locale", "=", locale)
             .orderBy("question_hash", "asc")
             .orderBy("created_at", "desc")
             .execute();
@@ -461,8 +508,10 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         
         // 只从该JSON包的aiAnswers对象中读取
         let aiAnswer: string | null = null;
-        if (jsonPackageAiAnswers) {
-          aiAnswer = jsonPackageAiAnswers[questionHash] || null;
+        if (locale && jsonPackageAiAnswersByLocale && jsonPackageAiAnswersByLocale[locale]) {
+          aiAnswer = jsonPackageAiAnswersByLocale[locale][questionHash] || null;
+        } else if (jsonPackageAiAnswers) {
+          aiAnswer = jsonPackageAiAnswers[questionHash] || null; // 兼容旧字段
         }
         
         return {

@@ -20,6 +20,9 @@ export interface UnifiedPackage {
   version?: string;
   questions?: Question[];
   aiAnswers?: Record<string, string>;
+  // 扩展：多语言
+  questionsByLocale?: Record<string, Question[]>;
+  aiAnswersByLocale?: Record<string, Record<string, string>>;
 }
 
 const VERSION_ENDPOINT = "/api/questions/version";
@@ -277,6 +280,24 @@ export async function loadAllQuestions(): Promise<Question[]> {
 export async function loadAiAnswers(): Promise<Record<string, string>> {
   const pkg = await loadUnifiedQuestionsPackage();
   return pkg?.aiAnswers || {};
+}
+
+/**
+ * 获取指定语言的 AI 回答（优先多语言结构，回退到中文）
+ */
+export async function loadAiAnswersForLocale(locale: string): Promise<Record<string, string>> {
+  const pkg = await loadUnifiedQuestionsPackage();
+  if (!pkg) return {};
+  if (pkg.aiAnswersByLocale && pkg.aiAnswersByLocale[locale]) {
+    return pkg.aiAnswersByLocale[locale];
+  }
+  // 兼容 zh/zh-CN/zh_CN
+  if (pkg.aiAnswersByLocale) {
+    if (pkg.aiAnswersByLocale["zh"]) return pkg.aiAnswersByLocale["zh"];
+    if (pkg.aiAnswersByLocale["zh-CN"]) return pkg.aiAnswersByLocale["zh-CN"];
+    if (pkg.aiAnswersByLocale["zh_CN"]) return pkg.aiAnswersByLocale["zh_CN"];
+  }
+  return pkg.aiAnswers || {};
 }
 
 

@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { apiFetch } from "@/lib/apiClient.front";
-import { loadAiAnswers, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
+import { loadAiAnswersForLocale, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // 前端内存缓存（按题目hash存储）
 // 格式：Map<questionHash, answer>
@@ -74,6 +75,7 @@ export default function QuestionAIDialog({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
   const [localAiAnswers, setLocalAiAnswers] = useState<Record<string, string> | null>(null);
+  const { language } = useLanguage();
 
   // 滚动到底部
   const scrollToBottom = () => {
@@ -86,13 +88,13 @@ export default function QuestionAIDialog({
     }
   }, [isOpen, messages]);
 
-  // 加载本地/缓存JSON包中的aiAnswers（每次打开对话框时检查版本号并加载）
+  // 加载本地/缓存JSON包中的aiAnswers（每次打开或语言变化时检查版本号并加载）
   useEffect(() => {
     const loadLocalAiAnswers = async () => {
       try {
-        // 使用 loadUnifiedQuestionsPackage 会自动检查版本号并更新
-        const pkg = await loadUnifiedQuestionsPackage();
-        const ai = pkg?.aiAnswers || {};
+        // 先确保本地包版本最新
+        await loadUnifiedQuestionsPackage();
+        const ai = await loadAiAnswersForLocale(language);
         setLocalAiAnswers(ai);
         
         // 同步到内存缓存（理论上每次更新缓存都会和localStorage同步）
@@ -108,7 +110,7 @@ export default function QuestionAIDialog({
     if (isOpen) {
       loadLocalAiAnswers();
     }
-  }, [isOpen]);
+  }, [isOpen, language]);
 
   // 加载缓存的对话历史（每次打开对话框时）
   useEffect(() => {
@@ -314,7 +316,7 @@ export default function QuestionAIDialog({
         method: "POST",
         body: {
           question: questionText,
-          locale: "zh-CN",
+          locale: language,
           // 仅在首次提问时传递questionHash，追问时不传递（让后端知道这是追问，需要调用AI服务）
           ...(questionHash ? { questionHash } : {}),
         },
