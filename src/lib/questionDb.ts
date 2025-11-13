@@ -1438,9 +1438,7 @@ export async function updateAllJsonPackages(): Promise<{
         questions: questionsWithHash,
         version, // 使用统一版本号
         aiAnswers,
-        // @ts-expect-error 兼容扩展写入
         questionsByLocale,
-        // @ts-expect-error 兼容扩展写入
         aiAnswersByLocale,
       } as any);
     } catch (error) {
