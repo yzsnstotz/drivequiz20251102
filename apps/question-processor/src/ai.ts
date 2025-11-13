@@ -39,7 +39,7 @@ function getMainAppUrl(): string {
  * 调用主站的 /api/ai/ask 路由
  * 这样可以使用数据库中的 aiProvider 配置和场景配置
  */
-export async function askAi(body: AskBody & { scene?: string }): Promise<any> {
+export async function askAi(body: AskBody & { scene?: string; sourceLanguage?: string; targetLanguage?: string }): Promise<any> {
   const mainAppUrl = getMainAppUrl();
   const url = `${mainAppUrl}/api/ai/ask`;
   
@@ -53,6 +53,8 @@ export async function askAi(body: AskBody & { scene?: string }): Promise<any> {
       question: body.question,
       locale: body.lang || "zh-CN",
       scene: body.scene, // 传递场景标识，使用数据库中的场景配置
+      sourceLanguage: body.sourceLanguage, // 源语言（用于翻译场景）
+      targetLanguage: body.targetLanguage, // 目标语言（用于翻译场景）
       // 不传递 userId，使用匿名模式
     })
   });
@@ -80,10 +82,9 @@ export async function translateWithPolish(params: {
 }): Promise<TranslateResult> {
   const { source, from, to } = params;
   // 使用场景配置，场景配置中的 prompt 已经包含了翻译要求
+  // 源语言和目标语言通过 sourceLanguage 和 targetLanguage 参数传递，会在系统 prompt 中动态替换
   // 这里只需要传递题目内容，场景配置会自动应用
   const questionText = [
-    `Source language: ${from}`,
-    `Target language: ${to}`,
     `Content: ${source.content}`,
     source.options && source.options.length ? `Options:\n- ${source.options.join("\n- ")}` : ``,
     source.explanation ? `Explanation: ${source.explanation}` : ``
@@ -92,7 +93,9 @@ export async function translateWithPolish(params: {
   const data = await askAi({
     question: questionText,
     lang: to,
-    scene: "question_translation" // 使用翻译场景配置
+    scene: "question_translation", // 使用翻译场景配置
+    sourceLanguage: from, // 源语言（会在系统 prompt 中动态替换占位符）
+    targetLanguage: to // 目标语言（会在系统 prompt 中动态替换占位符）
   });
 
   // Try parse JSON content from the answer
