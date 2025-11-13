@@ -1501,20 +1501,76 @@ export default function QuestionsPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      const to = prompt("请输入目标语言（如 en/ja/zh-CN）：", "en") || "";
-                      if (!to.trim()) return;
-                      try {
-                        const payload: any = {
-                          from: filters.locale || "zh",
-                          to: to.trim(),
-                        };
-                        if (item.hash) payload.contentHash = item.hash;
-                        else payload.questionId = item.id;
-                        await apiPost("/api/admin/question-processing/translate", payload);
-                        alert("翻译任务已提交");
-                      } catch (e) {
-                        alert(e instanceof Error ? e.message : "翻译提交失败");
-                      }
+                      // 创建语言选择对话框
+                      const dialog = document.createElement("div");
+                      dialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                      dialog.innerHTML = `
+                        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                          <h3 class="text-lg font-semibold mb-4">选择翻译语言</h3>
+                          <div class="space-y-4">
+                            <div>
+                              <label class="block text-sm font-medium mb-2">源语言</label>
+                              <select id="translate-from" class="w-full border rounded px-3 py-2">
+                                <option value="zh" ${(filters.locale || "zh") === "zh" ? "selected" : ""}>中文 (zh)</option>
+                                <option value="ja" ${(filters.locale || "zh") === "ja" ? "selected" : ""}>日文 (ja)</option>
+                                <option value="en" ${(filters.locale || "zh") === "en" ? "selected" : ""}>英文 (en)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label class="block text-sm font-medium mb-2">目标语言</label>
+                              <select id="translate-to" class="w-full border rounded px-3 py-2">
+                                <option value="zh">中文 (zh)</option>
+                                <option value="ja" selected>日文 (ja)</option>
+                                <option value="en">英文 (en)</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div class="flex gap-3 mt-6">
+                            <button id="translate-confirm" class="flex-1 px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600">
+                              确认翻译
+                            </button>
+                            <button id="translate-cancel" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      `;
+                      document.body.appendChild(dialog);
+                      
+                      const confirmBtn = dialog.querySelector("#translate-confirm");
+                      const cancelBtn = dialog.querySelector("#translate-cancel");
+                      const fromSelect = dialog.querySelector("#translate-from") as HTMLSelectElement;
+                      const toSelect = dialog.querySelector("#translate-to") as HTMLSelectElement;
+                      
+                      const cleanup = () => {
+                        document.body.removeChild(dialog);
+                      };
+                      
+                      cancelBtn?.addEventListener("click", cleanup);
+                      confirmBtn?.addEventListener("click", async () => {
+                        const from = fromSelect?.value || filters.locale || "zh";
+                        const to = toSelect?.value || "ja";
+                        
+                        if (from === to) {
+                          alert("源语言和目标语言不能相同");
+                          return;
+                        }
+                        
+                        cleanup();
+                        
+                        try {
+                          const payload: any = {
+                            from: from,
+                            to: to,
+                          };
+                          if (item.hash) payload.contentHash = item.hash;
+                          else payload.questionId = item.id;
+                          await apiPost("/api/admin/question-processing/translate", payload);
+                          alert("翻译任务已提交");
+                        } catch (e) {
+                          alert(e instanceof Error ? e.message : "翻译提交失败");
+                        }
+                      });
                     }}
                     className="flex-1 text-center rounded-xl bg-indigo-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-indigo-600 active:bg-indigo-700 transition-colors shadow-sm"
                   >

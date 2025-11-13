@@ -138,6 +138,8 @@ type TestState = {
   testInput: string;
   testResult: string | null;
   testError: string | null;
+  sourceLanguage?: string; // 源语言（用于翻译场景）
+  targetLanguage?: string; // 目标语言（用于翻译场景）
 };
 
 export default function AdminAiScenesPage() {
@@ -279,13 +281,24 @@ export default function AdminAiScenesPage() {
         controller.abort();
       }, 60000);
 
-      const requestBody = {
+      const requestBody: any = {
         question: testInput,
         locale: locale,
         scene: scene.scene_key,
         skipCache: true, // 测试场景禁用缓存，确保每次都能获得新结果
         testMode: true, // 标记为测试模式，后端会优先使用直连模式以加快响应
       };
+
+      // 如果是翻译场景，添加源语言和目标语言参数
+      if (scene.scene_key === "question_translation") {
+        const testState = testStates[scene.id] || {};
+        if (testState.sourceLanguage) {
+          requestBody.sourceLanguage = testState.sourceLanguage;
+        }
+        if (testState.targetLanguage) {
+          requestBody.targetLanguage = testState.targetLanguage;
+        }
+      }
 
       console.log(`[Scene Test] [${testId}] 发送请求`, {
         url: `${base}/api/ai/ask`,
@@ -402,6 +415,16 @@ export default function AdminAiScenesPage() {
       [sceneId]: {
         ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
         testInput: input,
+      },
+    }));
+  };
+
+  const updateTestLanguage = (sceneId: number, field: "sourceLanguage" | "targetLanguage", value: string) => {
+    setTestStates((prev) => ({
+      ...prev,
+      [sceneId]: {
+        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
+        [field]: value,
       },
     }));
   };
@@ -688,12 +711,43 @@ export default function AdminAiScenesPage() {
                     {testState.testing ? "测试中..." : "测试"}
                   </button>
                 </div>
+                {/* 如果是翻译场景，显示源语言和目标语言选择器 */}
+                {scene.scene_key === "question_translation" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">源语言</label>
+                      <select
+                        value={testState.sourceLanguage || "zh"}
+                        onChange={(e) => updateTestLanguage(scene.id, "sourceLanguage", e.target.value)}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                        disabled={testState.testing}
+                      >
+                        <option value="zh">中文 (zh)</option>
+                        <option value="ja">日文 (ja)</option>
+                        <option value="en">英文 (en)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">目标语言</label>
+                      <select
+                        value={testState.targetLanguage || "ja"}
+                        onChange={(e) => updateTestLanguage(scene.id, "targetLanguage", e.target.value)}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                        disabled={testState.testing}
+                      >
+                        <option value="zh">中文 (zh)</option>
+                        <option value="ja">日文 (ja)</option>
+                        <option value="en">英文 (en)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">测试输入（模拟用户问题）</label>
                   <textarea
                     value={testState.testInput}
                     onChange={(e) => updateTestInput(scene.id, e.target.value)}
-                    placeholder="输入测试问题，例如：什么是交通标志？"
+                    placeholder={scene.scene_key === "question_translation" ? "输入题目内容，例如：\nContent: 这是什么标志？\nOptions:\n- 禁止通行\n- 注意行人\nExplanation: 这是禁止通行的标志" : "输入测试问题，例如：什么是交通标志？"}
                     rows={3}
                     className="w-full border rounded px-3 py-2 text-sm"
                     disabled={testState.testing}
