@@ -695,11 +695,13 @@ function createDbInstance(): Kysely<Database> {
     
     // 尝试通过测试连接验证 SSL 配置
     // 注意：这只是用于调试，不会实际建立连接
+    // 只在开发环境中设置 NODE_TLS_REJECT_UNAUTHORIZED（生产环境不应禁用证书验证）
     try {
-      // 在开发环境中，我们可以设置 NODE_TLS_REJECT_UNAUTHORIZED 作为后备
-      if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+      if ((process.env.NODE_ENV === 'development' || !process.env.VERCEL) && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
         process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        console.log('[DB Config] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL');
+        console.log('[DB Config] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL (development only)');
+      } else if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+        console.log('[DB Config] ℹ️  Using SSL with rejectUnauthorized: false (production mode, not setting NODE_TLS_REJECT_UNAUTHORIZED)');
       }
     } catch (e) {
       // 忽略错误

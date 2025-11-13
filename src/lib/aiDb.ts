@@ -177,9 +177,13 @@ function createAiDbInstance(): Kysely<AiDatabase> {
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
   
+  // 只在开发环境中设置 NODE_TLS_REJECT_UNAUTHORIZED（生产环境不应禁用证书验证）
   try {
-    if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+    if ((process.env.NODE_ENV === 'development' || !process.env.VERCEL) && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      console.log('[AI DB] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL (development only)');
+    } else if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+      console.log('[AI DB] ℹ️  Using SSL with rejectUnauthorized: false (production mode, not setting NODE_TLS_REJECT_UNAUTHORIZED)');
     }
   } catch (e) {
     console.error('[AI DB] Failed to set NODE_TLS_REJECT_UNAUTHORIZED:', e);
