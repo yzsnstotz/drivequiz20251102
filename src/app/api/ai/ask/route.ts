@@ -57,6 +57,7 @@ type AskRequest = {
   question: string;
   locale?: string;
   questionHash?: string; // 题目的hash值（从JSON包或数据库获取，避免重复计算）
+  scene?: string; // 场景标识：chat, question_explanation 等
 };
 
 type AiServiceResponse = {
@@ -344,8 +345,38 @@ function normalizeLocale(locale: string | undefined | null): string {
   return locale;
 }
 
-// ==== 辅助函数：构建系统提示 ====
-function buildSystemPrompt(lang: string): string {
+// ==== 辅助函数：构建系统提示（支持场景配置） ====
+async function buildSystemPrompt(lang: string, scene?: string | null): Promise<string> {
+  // 如果指定了场景，尝试从数据库读取场景配置
+  if (scene) {
+    try {
+      const sceneConfig = await (aiDb as any)
+        .selectFrom("ai_scene_config")
+        .selectAll()
+        .where("scene_key", "=", scene)
+        .where("enabled", "=", true)
+        .executeTakeFirst();
+
+      if (sceneConfig) {
+        // 根据语言选择对应的 prompt
+        if (lang === "ja" && sceneConfig.system_prompt_ja) {
+          return sceneConfig.system_prompt_ja;
+        }
+        if (lang === "en" && sceneConfig.system_prompt_en) {
+          return sceneConfig.system_prompt_en;
+        }
+        // 默认使用中文 prompt
+        if (sceneConfig.system_prompt_zh) {
+          return sceneConfig.system_prompt_zh;
+        }
+      }
+    } catch (e) {
+      console.warn(`[buildSystemPrompt] Failed to load scene config for "${scene}":`, (e as Error).message);
+      // 如果读取失败，继续使用默认 prompt
+    }
+  }
+
+  // 默认 prompt（向后兼容）
   const base =
     "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
   if (lang === "ja") {
@@ -755,6 +786,17 @@ export async function POST(req: NextRequest) {
       return err("VALIDATION_FAILED", "invalid locale.", 400);
     }
     
+    // 确定场景标识
+    // 1. 如果请求中指定了 scene，使用指定的 scene
+    // 2. 如果有 questionHash，推断为 question_explanation 场景
+    // 3. 否则使用 chat 场景（默认）
+    const scene = body.scene?.trim() || (body.questionHash ? "question_explanation" : "chat");
+    console.log(`[${requestId}] [STEP 2.5.1] 场景标识: ${scene}`, {
+      sceneFromRequest: body.scene,
+      hasQuestionHash: !!body.questionHash,
+      inferredScene: body.questionHash ? "question_explanation" : "chat",
+    });
+    
     // 获取题目的hash值（如果前端传递了，直接使用，避免重复计算）
     const questionHashFromRequest = body.questionHash?.trim() || null;
     
@@ -1016,9 +1058,9 @@ export async function POST(req: NextRequest) {
         console.warn(`[${requestId}] [STEP 5.4] RAG 检索失败:`, (e as Error).message);
       }
       
-      // 构建系统提示
+      // 构建系统提示（使用场景配置）
       const lang = locale || "zh";
-      const sysPrompt = buildSystemPrompt(lang);
+      const sysPrompt = await buildSystemPrompt(lang, scene);
       const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
       const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
       
@@ -1353,9 +1395,9 @@ export async function POST(req: NextRequest) {
         console.warn(`[${requestId}] [STEP 5.4] RAG 检索失败:`, (e as Error).message);
       }
       
-      // 构建系统提示
+      // 构建系统提示（使用场景配置）
       const lang = locale || "zh";
-      const sysPrompt = buildSystemPrompt(lang);
+      const sysPrompt = await buildSystemPrompt(lang, scene);
       const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
       const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
       

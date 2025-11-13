@@ -236,6 +236,8 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       const requestBody: Record<string, unknown> = {
         question: q,
         locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
+        // 显式指定场景为 chat（首页 AI 助手对话框）
+        scene: "chat",
       };
       
       // 传递对话历史（如果有）

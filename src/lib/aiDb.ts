@@ -104,6 +104,24 @@ interface AiConfigTable {
   updated_at: Date | null;
 }
 
+// ai_scene_config 表
+interface AiSceneConfigTable {
+  id: Generated<number>;
+  scene_key: string;
+  scene_name: string;
+  system_prompt_zh: string;
+  system_prompt_ja: string | null;
+  system_prompt_en: string | null;
+  output_format: string | null;
+  max_length: number;
+  temperature: number;
+  enabled: boolean;
+  description: string | null;
+  updated_by: number | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 // ------------------------------------------------------------
 // AI 数据库总接口定义
 // ------------------------------------------------------------
@@ -115,6 +133,7 @@ interface AiDatabase {
   ai_daily_summary: AiDailySummaryTable;
   ai_vectors: AiVectorsTable;
   ai_config: AiConfigTable;
+  ai_scene_config: AiSceneConfigTable;
 }
 
 // ------------------------------------------------------------

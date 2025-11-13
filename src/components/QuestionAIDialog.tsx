@@ -319,6 +319,8 @@ export default function QuestionAIDialog({
           locale: language,
           // 仅在首次提问时传递questionHash，追问时不传递（让后端知道这是追问，需要调用AI服务）
           ...(questionHash ? { questionHash } : {}),
+          // 显式指定场景为 question_explanation（后端会根据 questionHash 自动推断，但显式指定更清晰）
+          scene: "question_explanation",
         },
       });
 
