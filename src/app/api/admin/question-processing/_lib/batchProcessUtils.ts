@@ -327,10 +327,20 @@ export async function fillMissingContent(params: {
   let parsed: any = null;
   try {
     parsed = JSON.parse(data.answer);
-  } catch {
+  } catch (parseError) {
+    // 尝试从代码块中提取 JSON
     const m = data.answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (m) {
-      parsed = JSON.parse(m[1]);
+      try {
+        parsed = JSON.parse(m[1]);
+      } catch {
+        // 如果还是解析失败，记录原始响应用于调试
+        console.error(`[fillMissingContent] Failed to parse AI response: ${data.answer.substring(0, 200)}`);
+        throw new Error("AI fill missing response missing JSON body");
+      }
+    } else {
+      console.error(`[fillMissingContent] No JSON found in AI response: ${data.answer.substring(0, 200)}`);
+      throw new Error("AI fill missing response missing JSON body");
     }
   }
   if (!parsed || typeof parsed !== "object") {
