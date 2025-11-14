@@ -239,7 +239,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
           // 步骤3：准备批量插入和更新的数据
           const toInsert: Array<{
             content_hash: string;
-            type: string;
+            type: "single" | "multiple" | "truefalse";
             content: any;
             options: any;
             correct_answer: any;
@@ -252,7 +252,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
           }> = [];
           const toUpdate: Array<{
             id: number;
-            type: string;
+            type: "single" | "multiple" | "truefalse";
             content: any;
             options: any;
             correct_answer: any;
@@ -285,7 +285,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 // 准备更新数据
                 toUpdate.push({
                   id: existingId,
-                  type: question.type,
+                  type: question.type as "single" | "multiple" | "truefalse",
                   content: contentMultilang as any,
                   options: question.options ? (question.options as any) : null,
                   correct_answer: question.correctAnswer as any,
@@ -300,7 +300,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 // 准备插入数据
                 toInsert.push({
                   content_hash: hash,
-                  type: question.type,
+                  type: question.type as "single" | "multiple" | "truefalse",
                   content: contentMultilang as any,
                   options: question.options ? (question.options as any) : null,
                   correct_answer: question.correctAnswer as any,
