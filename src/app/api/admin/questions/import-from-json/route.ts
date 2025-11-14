@@ -247,7 +247,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
             explanation: any;
             license_types: any;
             category: string;
-            stage_tag: string | null;
+            stage_tag: "both" | "provisional" | "regular" | null;
             topic_tags: any;
           }> = [];
           const toUpdate: Array<{
@@ -260,7 +260,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
             explanation: any;
             license_types: any;
             category: string;
-            stage_tag: string | null;
+            stage_tag: "both" | "provisional" | "regular" | null;
             topic_tags: any;
           }> = [];
 
@@ -276,7 +276,10 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
               const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
                 ? question.license_tags 
                 : null;
-              const stageTag = question.stage_tag || null;
+              const stageTag: "both" | "provisional" | "regular" | null = 
+                (question.stage_tag === "both" || question.stage_tag === "provisional" || question.stage_tag === "regular")
+                  ? question.stage_tag
+                  : null;
               const topicTags = question.topic_tags || null;
 
               const existingId = hashToIdMap.get(hash);
