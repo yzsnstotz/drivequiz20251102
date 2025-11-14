@@ -3,9 +3,6 @@
  * 从 question-processor 提取的逻辑，用于内部调用
  */
 
-import { NextRequest } from "next/server";
-import { createDb } from "@/lib/db";
-
 export interface TranslateResult {
   content: string;
   options?: string[];
