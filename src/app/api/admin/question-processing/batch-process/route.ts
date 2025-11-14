@@ -1,5 +1,5 @@
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
-import { badRequest, internalError, success, conflict } from "@/app/api/_lib/errors";
+import { badRequest, internalError, success, conflict, notFound } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import {
@@ -502,7 +502,7 @@ export const GET = withAdminAuth(async (req: Request) => {
         .executeTakeFirst();
 
       if (!task) {
-        return internalError("Task not found", 404);
+        return notFound("Task not found");
       }
 
       return success(task);
