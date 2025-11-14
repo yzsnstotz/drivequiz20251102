@@ -91,6 +91,17 @@ export const POST = withAdminAuth(async (req: Request) => {
       return badRequest("Source content is empty");
     }
 
+    // 获取管理员 token，用于传递给 AI API 调用以跳过配额限制
+    let adminToken: string | undefined = undefined;
+    try {
+      const adminInfo = await getAdminInfo(req as any);
+      if (adminInfo) {
+        adminToken = adminInfo.token;
+      }
+    } catch (e) {
+      console.warn(`[API Translate] [${requestId}] Failed to get admin token:`, (e as Error).message);
+    }
+
     // 为每个目标语言执行翻译
     const results: any[] = [];
     console.log(`[API Translate] [${requestId}] Starting translation for ${targetLanguages.length} language(s):`, targetLanguages);
