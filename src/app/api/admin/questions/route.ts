@@ -27,6 +27,7 @@ import {
   normalizeCorrectAnswer,
   getUnifiedVersionContent,
 } from "@/lib/questionDb";
+import { getContentText } from "@/lib/questionContentUtils";
 import fs from "fs/promises";
 import path from "path";
 
