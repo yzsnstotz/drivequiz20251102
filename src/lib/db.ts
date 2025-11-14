@@ -561,6 +561,33 @@ interface QuestionPolishHistoryTable {
 }
 
 // ------------------------------------------------------------
+// 2️⃣0️⃣ batch_process_tasks 表结构定义
+// ------------------------------------------------------------
+interface BatchProcessTaskTable {
+  id: Generated<number>;
+  task_id: string;
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  operations: string[];
+  question_ids: number[] | null;
+  translate_options: any | null; // JSONB
+  polish_options: any | null; // JSONB
+  batch_size: number;
+  continue_on_error: boolean;
+  total_questions: number;
+  processed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  current_batch: number;
+  errors: any | null; // JSONB
+  details: any | null; // JSONB
+  created_by: string | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
 // 1️⃣1️⃣ 数据库总接口定义
 // ------------------------------------------------------------
 interface Database {
@@ -595,6 +622,7 @@ interface Database {
   question_translations: QuestionTranslationsTable;
   question_polish_reviews: QuestionPolishReviewsTable;
   question_polish_history: QuestionPolishHistoryTable;
+  batch_process_tasks: BatchProcessTaskTable;
 }
 
 // ------------------------------------------------------------
