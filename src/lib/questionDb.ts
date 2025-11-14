@@ -1449,33 +1449,9 @@ export async function updateAllJsonPackages(): Promise<{
         questionsByLocale[loc] = questionsWithHash;
         continue;
       }
-      // 读取该语言的翻译
-      const translations = await db
-        .selectFrom("question_translations")
-        .select(["content_hash", "content", "options", "explanation"])
-        .where("locale", "=", loc)
-        .execute();
-      const map = new Map<string, { content: string; options?: any; explanation?: string | null }>();
-      for (const t of translations) {
-        map.set(t.content_hash, {
-          content: t.content,
-          options: t.options,
-          explanation: t.explanation ?? null,
-        });
-      }
-      // 基于 base 问题构造该语言的问题（替换文案）
+      // 直接从 questions 表的 JSON 字段中提取对应语言（不再使用 question_translations 表）
+      // 基于 base 问题构造该语言的问题（从多语言对象中提取）
       const localized = questionsWithHash.map((q) => {
-        const hash = (q as any).hash;
-        const t = hash ? map.get(hash) : undefined;
-        if (t) {
-          // 如果数据库中有翻译，使用翻译
-          return {
-            ...q,
-            content: t.content,
-            options: Array.isArray(t.options) ? t.options : (t.options ? [t.options] : undefined),
-            explanation: t.explanation || undefined,
-          };
-        } else {
           // 如果数据库中没有翻译，从多语言对象中提取对应语言
           const localizedQ: any = { ...q };
           
@@ -1489,15 +1465,18 @@ export async function updateAllJsonPackages(): Promise<{
           if (typeof q.content === "object" && q.content !== null) {
             const contentObj = q.content as { [key: string]: string | undefined };
             const targetValue = contentObj[loc];
-            // 如果目标语言的值存在且不是占位符，使用它；否则回退到中文
+            // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
             if (targetValue && !isPlaceholder(targetValue)) {
               localizedQ.content = targetValue;
-            } else if (contentObj.zh) {
-              localizedQ.content = contentObj.zh; // 回退到中文
             } else {
-              // 回退到第一个非占位符的语言
-              const firstValidValue = Object.values(contentObj).find(v => v && !isPlaceholder(v));
-              localizedQ.content = firstValidValue || "";
+              localizedQ.content = null; // 没有翻译，返回null
+            }
+          } else {
+            // 如果content是字符串，对于非中文语言返回null
+            if (loc.toLowerCase().startsWith("zh")) {
+              localizedQ.content = q.content;
+            } else {
+              localizedQ.content = null;
             }
           }
           
@@ -1505,15 +1484,18 @@ export async function updateAllJsonPackages(): Promise<{
           if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
             const expObj = q.explanation as { [key: string]: string | undefined };
             const targetValue = expObj[loc];
-            // 如果目标语言的值存在且不是占位符，使用它；否则回退到中文
+            // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
             if (targetValue && !isPlaceholder(targetValue)) {
               localizedQ.explanation = targetValue;
-            } else if (expObj.zh) {
-              localizedQ.explanation = expObj.zh; // 回退到中文
             } else {
-              // 回退到第一个非占位符的语言
-              const firstValidValue = Object.values(expObj).find(v => v && !isPlaceholder(v));
-              localizedQ.explanation = firstValidValue || undefined;
+              localizedQ.explanation = null; // 没有翻译，返回null
+            }
+          } else if (q.explanation) {
+            // 如果explanation是字符串，对于非中文语言返回null
+            if (loc.toLowerCase().startsWith("zh")) {
+              localizedQ.explanation = q.explanation;
+            } else {
+              localizedQ.explanation = null;
             }
           }
           

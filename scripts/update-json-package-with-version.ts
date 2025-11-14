@@ -184,15 +184,18 @@ async function updateJsonPackageWithVersion(version?: string) {
               if (typeof q.content === "object" && q.content !== null) {
                 const contentObj = q.content as { [key: string]: string | undefined };
                 const targetValue = contentObj[loc];
-                // 如果目标语言的值存在且不是占位符，使用它；否则回退到中文
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
                 if (targetValue && !isPlaceholder(targetValue)) {
                   localizedQ.content = targetValue;
-                } else if (contentObj.zh) {
-                  localizedQ.content = contentObj.zh; // 回退到中文
                 } else {
-                  // 回退到第一个非占位符的语言
-                  const firstValidValue = Object.values(contentObj).find(v => v && !isPlaceholder(v));
-                  localizedQ.content = firstValidValue || "";
+                  localizedQ.content = null; // 没有翻译，返回null
+                }
+              } else {
+                // 如果content是字符串，对于非中文语言返回null
+                if (loc.toLowerCase().startsWith("zh")) {
+                  localizedQ.content = q.content;
+                } else {
+                  localizedQ.content = null;
                 }
               }
               
@@ -200,15 +203,18 @@ async function updateJsonPackageWithVersion(version?: string) {
               if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
                 const expObj = q.explanation as { [key: string]: string | undefined };
                 const targetValue = expObj[loc];
-                // 如果目标语言的值存在且不是占位符，使用它；否则回退到中文
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
                 if (targetValue && !isPlaceholder(targetValue)) {
                   localizedQ.explanation = targetValue;
-                } else if (expObj.zh) {
-                  localizedQ.explanation = expObj.zh; // 回退到中文
                 } else {
-                  // 回退到第一个非占位符的语言
-                  const firstValidValue = Object.values(expObj).find(v => v && !isPlaceholder(v));
-                  localizedQ.explanation = firstValidValue || undefined;
+                  localizedQ.explanation = null; // 没有翻译，返回null
+                }
+              } else if (q.explanation) {
+                // 如果explanation是字符串，对于非中文语言返回null
+                if (loc.toLowerCase().startsWith("zh")) {
+                  localizedQ.explanation = q.explanation;
+                } else {
+                  localizedQ.explanation = null;
                 }
               }
               
