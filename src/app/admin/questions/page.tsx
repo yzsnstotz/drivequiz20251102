@@ -17,6 +17,11 @@ type Question = {
   category?: string;
   hash?: string;
   aiAnswer?: string;
+  license_tags?: string[]; // 驾照类型标签
+  stage_tag?: "both" | "provisional" | "regular"; // 阶段标签
+  topic_tags?: string[]; // 主题标签数组
+  created_at?: string; // 创建时间
+  updated_at?: string; // 更新时间
 };
 
 type ListResponse = {
@@ -38,7 +43,7 @@ type Filters = {
   category: string;
   search: string;
   source: string; // 题目源：database（数据库）或版本号（历史JSON包）
-  sortBy: "id" | "content" | "category";
+  sortBy: "id" | "content" | "category" | "type" | "created_at" | "updated_at";
   sortOrder: "asc" | "desc";
   locale?: string;
 };
@@ -242,6 +247,16 @@ export default function QuestionsPage() {
     const href = qs ? `/admin/questions?${qs}` : `/admin/questions`;
     window.history.replaceState(null, "", href);
   }, [filters]);
+
+  // 处理排序
+  const handleSort = useCallback((field: Filters["sortBy"]) => {
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: field,
+      sortOrder: prev.sortBy === field && prev.sortOrder === "asc" ? "desc" : "asc",
+      page: 1, // 排序时重置到第一页
+    }));
+  }, []);
 
   // 加载数据函数
   const loadData = useCallback(async (page: number, append: boolean = false) => {
@@ -1325,17 +1340,46 @@ export default function QuestionsPage() {
         <div className="text-center py-8 text-gray-500 text-sm">暂无数据</div>
       ) : (
         <>
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full border-collapse">
+          <div className="hidden md:block overflow-x-auto relative">
+            <table className="w-full border-collapse min-w-[1200px]">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">ID</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">卷类</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">类型</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">题目内容</th>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort("id")}
+                  >
+                    ID {filters.sortBy === "id" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort("category")}
+                  >
+                    卷类 {filters.sortBy === "category" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort("type")}
+                  >
+                    类型 {filters.sortBy === "type" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort("content")}
+                  >
+                    题目内容 {filters.sortBy === "content" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">驾照标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">阶段标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">主题标签</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">Hash / AI回答</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">操作</th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort("created_at")}
+                  >
+                    创建时间 {filters.sortBy === "created_at" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 sticky right-0 bg-gray-50 z-10">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -1348,7 +1392,7 @@ export default function QuestionsPage() {
                         {item.type === "single" ? "单选" : item.type === "multiple" ? "多选" : "判断"}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-xs max-w-md truncate">
+                    <td className="py-2 px-3 text-xs max-w-md truncate" title={typeof item.content === 'string' ? item.content : (item.content?.zh || item.content?.en || item.content?.ja || '')}>
                       {typeof item.content === 'string' 
                         ? item.content 
                         : (item.content?.zh || item.content?.en || item.content?.ja || '')}
@@ -1357,6 +1401,49 @@ export default function QuestionsPage() {
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
                         : item.correctAnswer}
+                    </td>
+                    <td className="py-2 px-3 text-xs">
+                      {item.license_tags && item.license_tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {item.license_tags.map((tag, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-xs">
+                      {item.stage_tag ? (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                          item.stage_tag === "both" ? "bg-green-100 text-green-700" :
+                          item.stage_tag === "provisional" ? "bg-yellow-100 text-yellow-700" :
+                          "bg-blue-100 text-blue-700"
+                        }`}>
+                          {item.stage_tag === "both" ? "两阶段" :
+                           item.stage_tag === "provisional" ? "仮免" : "本免"}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-xs">
+                      {item.topic_tags && item.topic_tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {item.topic_tags.slice(0, 3).map((tag, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title={tag}>
+                              {tag}
+                            </span>
+                          ))}
+                          {item.topic_tags.length > 3 && (
+                            <span className="text-gray-400 text-[10px]">+{item.topic_tags.length - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-xs max-w-xs">
                       <div className="flex flex-col gap-0.5">
@@ -1375,7 +1462,10 @@ export default function QuestionsPage() {
                         )}
                       </div>
                     </td>
-                    <td className="py-2 px-3 text-xs">
+                    <td className="py-2 px-3 text-xs text-gray-500">
+                      {item.created_at ? new Date(item.created_at).toLocaleDateString('zh-CN') : "—"}
+                    </td>
+                    <td className="py-2 px-3 text-xs sticky right-0 bg-white z-10">
                       <button
                         onClick={() => handleEdit(item)}
                         className="text-blue-600 hover:underline mr-2"
