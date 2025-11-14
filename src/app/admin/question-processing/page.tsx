@@ -141,21 +141,18 @@ export default function QuestionProcessingPage() {
         payload
       );
 
-      if (response.ok) {
-        setShowCreateForm(false);
-        setFormData({
-          questionIds: "",
-          operations: [],
-          translateOptions: { from: "zh", to: "ja" },
-          polishOptions: { locale: "zh-CN" },
-          batchSize: 10,
-          continueOnError: true,
-        });
-        await loadTasks();
-        setAutoRefresh(true);
-      } else {
-        setError(response.message || "创建任务失败");
-      }
+      // apiPost 成功时返回 ApiSuccess，失败时抛出 ApiError
+      setShowCreateForm(false);
+      setFormData({
+        questionIds: "",
+        operations: [],
+        translateOptions: { from: "zh", to: "ja" },
+        polishOptions: { locale: "zh-CN" },
+        batchSize: 10,
+        continueOnError: true,
+      });
+      await loadTasks();
+      setAutoRefresh(true);
     } catch (err) {
       const apiErr = err as ApiError;
       setError(apiErr.message || "创建任务失败");
