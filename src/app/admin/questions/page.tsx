@@ -77,6 +77,7 @@ export default function QuestionsPage() {
       source: q("source", DEFAULT_FILTERS.source),
       sortBy: (q("sortBy", DEFAULT_FILTERS.sortBy) as Filters["sortBy"]) || "id",
       sortOrder: (q("sortOrder", DEFAULT_FILTERS.sortOrder) as Filters["sortOrder"]) || "asc",
+      locale: q("locale", DEFAULT_FILTERS.locale || "zh"),
     };
   });
 
