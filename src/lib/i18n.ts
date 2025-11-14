@@ -445,6 +445,7 @@ export const userTranslations: Translations = {
     'home.aiAssistant': 'AI 智能助手',
     'home.aiDescription': '随时解答你的驾考问题',
     'home.changeLanguage': '切换语言',
+    'home.subtitle': '开启你的学车之旅',
     
     // 题目
     'question.previous': '上一题',
@@ -491,6 +492,7 @@ export const userTranslations: Translations = {
     'home.aiAssistant': 'AI Assistant',
     'home.aiDescription': 'Answer your driving test questions anytime',
     'home.changeLanguage': 'Change Language',
+    'home.subtitle': 'Start your driving journey',
     
     // 题目
     'question.previous': 'Previous',
@@ -537,6 +539,7 @@ export const userTranslations: Translations = {
     'home.aiAssistant': 'AIアシスタント',
     'home.aiDescription': '運転免許試験の質問にいつでも答えます',
     'home.changeLanguage': '言語を変更',
+    'home.subtitle': 'あなたの運転学習の旅を始めましょう',
     
     // 题目
     'question.previous': '前へ',

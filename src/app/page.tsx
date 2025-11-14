@@ -268,7 +268,7 @@ export default function HomePage() {
               >
                 <Globe className="h-5 w-5" />
                 <span className="text-sm font-medium">
-                  {language === 'zh' ? '中文' : language === 'en' ? 'EN' : '日本語'}
+                  {language === 'zh' ? t('language.chinese') : language === 'en' ? t('language.english') : t('language.japanese')}
                 </span>
               </button>
               {showLanguageMenu && (
@@ -334,7 +334,7 @@ export default function HomePage() {
             <h2 className="text-lg font-bold text-gray-900">
               {t('home.welcome')}
             </h2>
-            <p className="text-gray-600 text-sm mt-1">开启你的学车之旅</p>
+            <p className="text-gray-600 text-sm mt-1">{t('home.subtitle')}</p>
           </div>
           <div className="relative">
             <div
