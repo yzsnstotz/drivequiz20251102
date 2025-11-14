@@ -44,6 +44,8 @@ export default function QuestionProcessingPage() {
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const detailRefreshRef = useRef<NodeJS.Timeout | null>(null);
+  const [currentAiLogs, setCurrentAiLogs] = useState<Array<{ question: string; answer: string; model: string; created_at: string }>>([]);
 
   // 创建任务表单状态
   const [formData, setFormData] = useState<{
@@ -96,6 +98,33 @@ export default function QuestionProcessingPage() {
     loadTasks();
   }, [statusFilter]);
 
+  // 加载当前任务的 AI 日志
+  const loadCurrentAiLogs = async (taskId: string) => {
+    try {
+      // 获取任务详情，找到当前正在处理的题目
+      const task = tasks.find(t => t.task_id === taskId);
+      if (!task || task.status !== "processing") {
+        setCurrentAiLogs([]);
+        return;
+      }
+
+      // 通过 API 获取最近的相关 AI 日志
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("ADMIN_TOKEN") : null;
+      const res = await fetch(`/api/admin/question-processing/task-ai-logs?taskId=${encodeURIComponent(taskId)}&limit=5`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && json.data?.logs) {
+          setCurrentAiLogs(json.data.logs);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load AI logs:", e);
+    }
+  };
+
   // 自动刷新正在处理的任务
   useEffect(() => {
     // 清理之前的 interval
@@ -109,6 +138,18 @@ export default function QuestionProcessingPage() {
     const checkAndRefresh = async () => {
       // 先加载最新任务列表
       const latestTasks = await loadTasks();
+      
+      // 如果任务详情窗口打开，更新选中的任务
+      if (selectedTask) {
+        const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
+        if (updatedTask) {
+          setSelectedTask(updatedTask);
+          // 如果任务正在处理，加载 AI 日志
+          if (updatedTask.status === "processing") {
+            loadCurrentAiLogs(updatedTask.task_id);
+          }
+        }
+      }
       
       // 检查是否有正在处理的任务
       const processingTasks = latestTasks.filter(
@@ -158,7 +199,55 @@ export default function QuestionProcessingPage() {
         intervalRef.current = null;
       }
     };
-  }, [autoRefresh]); // 移除 tasks 依赖，避免频繁重建 interval
+  }, [autoRefresh, selectedTask, tasks]);
+
+  // 当任务详情窗口打开时，自动刷新该任务
+  useEffect(() => {
+    if (!selectedTask) {
+      if (detailRefreshRef.current) {
+        clearInterval(detailRefreshRef.current);
+        detailRefreshRef.current = null;
+      }
+      setCurrentAiLogs([]);
+      return;
+    }
+
+    // 如果任务正在处理，设置定时刷新
+    if (selectedTask.status === "processing" || selectedTask.status === "pending") {
+      const refreshDetail = async () => {
+        try {
+          const latestTasks = await loadTasks();
+          const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
+          if (updatedTask) {
+            setSelectedTask(updatedTask);
+            // 加载 AI 日志
+            await loadCurrentAiLogs(updatedTask.task_id);
+          }
+        } catch (e) {
+          console.error("Failed to refresh task detail:", e);
+        }
+      };
+
+      // 立即刷新一次
+      refreshDetail();
+
+      // 每 3 秒刷新一次任务详情
+      detailRefreshRef.current = setInterval(refreshDetail, 3000);
+    } else {
+      if (detailRefreshRef.current) {
+        clearInterval(detailRefreshRef.current);
+        detailRefreshRef.current = null;
+      }
+      setCurrentAiLogs([]);
+    }
+
+    return () => {
+      if (detailRefreshRef.current) {
+        clearInterval(detailRefreshRef.current);
+        detailRefreshRef.current = null;
+      }
+    };
+  }, [selectedTask]); // 移除 tasks 依赖，避免频繁重建 interval
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -827,6 +916,36 @@ export default function QuestionProcessingPage() {
                         <p className="text-xs text-blue-600 mt-1">
                           正在处理第 {selectedTask.processed_count + 1} 个题目...
                         </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* AI 对话详情 */}
+                  {selectedTask.status === "processing" && currentAiLogs.length > 0 && (
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        AI 服务对话详情
+                      </label>
+                      <div className="mt-2 max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
+                        {currentAiLogs.map((log, idx) => (
+                          <div key={idx} className="mb-4 pb-4 border-b last:border-b-0">
+                            <div className="text-xs text-gray-500 mb-1">
+                              {new Date(log.created_at).toLocaleString()} · {log.model}
+                            </div>
+                            <div className="text-sm mb-2">
+                              <div className="font-semibold text-gray-700 mb-1">提问：</div>
+                              <div className="bg-white p-2 rounded border text-gray-800 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                {log.question}
+                              </div>
+                            </div>
+                            <div className="text-sm">
+                              <div className="font-semibold text-gray-700 mb-1">回答：</div>
+                              <div className="bg-blue-50 p-2 rounded border border-blue-200 text-gray-800 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                {log.answer}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

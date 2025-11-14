@@ -428,12 +428,17 @@ async function processBatchAsync(
                     ? (typeof result.explanation === "string" ? result.explanation : String(result.explanation))
                     : null;
 
+                  // 确保 options 是有效的 JSONB 格式
+                  const optionsJson = result.options && Array.isArray(result.options) && result.options.length > 0
+                    ? sql`${JSON.stringify(result.options)}::jsonb`
+                    : sql`null::jsonb`;
+
                   if (existing) {
                     await db
                       .updateTable("question_translations")
                       .set({
                         content: result.content,
-                        options: result.options ? (result.options as any) : null,
+                        options: optionsJson,
                         explanation: explanationStr,
                         updated_at: new Date(),
                       })
@@ -446,7 +451,7 @@ async function processBatchAsync(
                         content_hash: question.content_hash,
                         locale: targetLang,
                         content: result.content,
-                        options: result.options ? (result.options as any) : null,
+                        options: optionsJson,
                         explanation: explanationStr,
                         source: "ai",
                       })
@@ -510,13 +515,18 @@ async function processBatchAsync(
               }
 
               // 创建润色建议（待审核）
+              // 确保 options 是有效的 JSONB 格式
+              const proposedOptionsJson = result.options && Array.isArray(result.options) && result.options.length > 0
+                ? sql`${JSON.stringify(result.options)}::jsonb`
+                : sql`null::jsonb`;
+              
               await db
                 .insertInto("question_polish_reviews")
                 .values({
                   content_hash: question.content_hash,
                   locale: input.polishOptions.locale,
                   proposed_content: result.content,
-                  proposed_options: result.options ? (result.options as any) : null,
+                  proposed_options: proposedOptionsJson,
                   proposed_explanation: result.explanation || null,
                   status: "pending",
                 })
