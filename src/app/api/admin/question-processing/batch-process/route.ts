@@ -1,5 +1,5 @@
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
-import { badRequest, internalError, success } from "@/app/api/_lib/errors";
+import { badRequest, internalError, success, conflict } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import {
@@ -64,9 +64,8 @@ export const POST = withAdminAuth(async (req: Request) => {
 
     if (processingTask) {
       console.warn(`[API BatchProcess] [${requestId}] Another task is already processing: ${processingTask.task_id}`);
-      return internalError(
-        `Another task is already processing: ${processingTask.task_id}. Please wait for it to complete.`,
-        409
+      return conflict(
+        `Another task is already processing: ${processingTask.task_id}. Please wait for it to complete.`
       );
     }
 
