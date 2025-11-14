@@ -1889,89 +1889,156 @@ export async function POST(req: NextRequest) {
         apiKeyInUrl: true, // API Key 在 URL 中
       });
       
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
-        
-        const geminiResponse = await fetch(geminiUrl, {
-          method: "POST",
-          headers: geminiHeaders,
-          body: JSON.stringify(geminiBody),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!geminiResponse.ok) {
-          const errorText = await geminiResponse.text().catch(() => "");
-          let errorDetails: any = {};
-          try {
-            errorDetails = JSON.parse(errorText);
-          } catch {
-            errorDetails = { raw: errorText };
-          }
+      // 重试机制：最多重试3次，使用指数退避
+      const maxRetries = 3;
+      let lastError: any = null;
+      let geminiResponse: Response | null = null;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
           
-          console.error(`[${requestId}] [STEP 5.6] Google Gemini API 错误:`, {
-            status: geminiResponse.status,
-            statusText: geminiResponse.statusText,
-            error: errorText,
-            errorDetails,
-            apiKeyPrefix: GEMINI_API_KEY.substring(0, 10),
-            apiKeyLength: GEMINI_API_KEY.length,
-            model: model,
-            baseUrl: geminiBaseUrl,
-            url: geminiUrl.replace(GEMINI_API_KEY, "***"),
-            urlPattern: `${geminiBaseUrl}/models/{model}:generateContent?key=***`,
-            suggestion: "请检查：1) 模型名称是否正确（如 gemini-1.5-flash, gemini-1.5-pro）2) API Key 是否有效 3) 项目是否启用了 Gemini API",
+          geminiResponse = await fetch(geminiUrl, {
+            method: "POST",
+            headers: geminiHeaders,
+            body: JSON.stringify(geminiBody),
+            signal: controller.signal,
           });
           
-          // 如果是 404 错误，提供模型相关的诊断信息
-          if (geminiResponse.status === 404) {
-            const errorMessage = errorDetails.error?.message || errorText;
-            const diagnosticInfo = {
-              error: errorMessage,
+          clearTimeout(timeoutId);
+          
+          if (!geminiResponse.ok) {
+            const errorText = await geminiResponse.text().catch(() => "");
+            let errorDetails: any = {};
+            try {
+              errorDetails = JSON.parse(errorText);
+            } catch {
+              errorDetails = { raw: errorText };
+            }
+            
+            // 如果是429错误（Too Many Requests），进行重试
+            if (geminiResponse.status === 429 && attempt < maxRetries) {
+              const delay = Math.pow(2, attempt) * 1000; // 指数退避：2s, 4s, 8s
+              console.log(`[${requestId}] [STEP 5.6] Google Gemini API 429错误，等待 ${delay}ms 后重试 (尝试 ${attempt}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue; // 继续下一次重试
+            }
+            
+            console.error(`[${requestId}] [STEP 5.6] Google Gemini API 错误:`, {
+              status: geminiResponse.status,
+              statusText: geminiResponse.statusText,
+              error: errorText,
+              errorDetails,
+              apiKeyPrefix: GEMINI_API_KEY.substring(0, 10),
+              apiKeyLength: GEMINI_API_KEY.length,
               model: model,
               baseUrl: geminiBaseUrl,
+              url: geminiUrl.replace(GEMINI_API_KEY, "***"),
               urlPattern: `${geminiBaseUrl}/models/{model}:generateContent?key=***`,
-              possibleCauses: [
-                "模型名称不正确或已停用（v1 API 中应使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型 gemini-1.5-flash 已停用）",
-                "API 版本不匹配（已使用 v1，旧模型可能仅在 v1beta 中可用）",
-                "项目未启用 Gemini API 或 API Key 权限不足",
-                "区域限制（某些模型可能仅在特定区域可用）",
-              ],
-              suggestion: "请检查：1) 在 AI 配置中心确保模型名称正确（推荐使用 gemini-2.5-flash，旧模型会自动映射）2) 在 Google Cloud Console 确认已启用 Gemini API 3) 验证 API Key 是否有效",
-            };
+              attempt: attempt,
+              maxRetries: maxRetries,
+              suggestion: "请检查：1) 模型名称是否正确（如 gemini-1.5-flash, gemini-1.5-pro）2) API Key 是否有效 3) 项目是否启用了 Gemini API",
+            });
             
-            console.error(`[${requestId}] [STEP 5.6.2] Google Gemini 404 错误诊断`, diagnosticInfo);
+            // 如果是 404 错误，提供模型相关的诊断信息
+            if (geminiResponse.status === 404) {
+              const errorMessage = errorDetails.error?.message || errorText;
+              const diagnosticInfo = {
+                error: errorMessage,
+                model: model,
+                baseUrl: geminiBaseUrl,
+                urlPattern: `${geminiBaseUrl}/models/{model}:generateContent?key=***`,
+                possibleCauses: [
+                  "模型名称不正确或已停用（v1 API 中应使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型 gemini-1.5-flash 已停用）",
+                  "API 版本不匹配（已使用 v1，旧模型可能仅在 v1beta 中可用）",
+                  "项目未启用 Gemini API 或 API Key 权限不足",
+                  "区域限制（某些模型可能仅在特定区域可用）",
+                ],
+                suggestion: "请检查：1) 在 AI 配置中心确保模型名称正确（推荐使用 gemini-2.5-flash，旧模型会自动映射）2) 在 Google Cloud Console 确认已启用 Gemini API 3) 验证 API Key 是否有效",
+              };
+              
+              console.error(`[${requestId}] [STEP 5.6.2] Google Gemini 404 错误诊断`, diagnosticInfo);
+              
+              return err("PROVIDER_ERROR", `Google Gemini API 404 错误: 模型 "${model}" 未找到。请检查：1) 模型名称是否正确（v1 API 推荐使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型会自动映射）2) 是否在 Google Cloud Console 启用了 Gemini API 3) API Key 是否有效。错误详情: ${errorMessage}`, 404);
+            }
             
-            return err("PROVIDER_ERROR", `Google Gemini API 404 错误: 模型 "${model}" 未找到。请检查：1) 模型名称是否正确（v1 API 推荐使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型会自动映射）2) 是否在 Google Cloud Console 启用了 Gemini API 3) API Key 是否有效。错误详情: ${errorMessage}`, 404);
+            // 如果是 401 或 403 错误，提供更详细的错误信息
+            if (geminiResponse.status === 401 || geminiResponse.status === 403) {
+              const errorMessage = errorDetails.error?.message || errorText;
+              const originalLength = process.env.GEMINI_API_KEY?.length || 0;
+              const trimmedLength = GEMINI_API_KEY.length;
+              const hasWhitespace = originalLength !== trimmedLength;
+              const diagnosticInfo = {
+                error: errorMessage,
+                apiKeyPrefix: GEMINI_API_KEY.substring(0, 15),
+                apiKeyLength: GEMINI_API_KEY.length,
+                originalLength: originalLength,
+                trimmedLength: trimmedLength,
+                hasWhitespace: hasWhitespace,
+                suggestion: hasWhitespace
+                  ? "API Key 中检测到空白字符（已自动去除）。如果问题仍然存在，请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置，确保没有多余的空格或换行符，并验证 API Key 在 Google AI Studio 中仍然有效。"
+                  : "API Key 可能无效或已过期。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置，并确保 API Key 在 Google AI Studio 中仍然有效。建议：1) 验证 API Key 是否有效，2) 检查 Vercel 环境变量中是否有隐藏字符，3) 重新设置环境变量并重新部署。"
+              };
+              
+              console.error(`[${requestId}] [STEP 5.6.1] Google Gemini 认证错误诊断`, diagnosticInfo);
+              
+              return err("AUTH_REQUIRED", `Google Gemini API 认证失败: ${errorMessage}。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置。`, geminiResponse.status);
+            }
+            
+            // 如果是429错误且已经重试完所有次数，返回错误
+            if (geminiResponse.status === 429) {
+              return err("PROVIDER_ERROR", `Google Gemini API 速率限制 (429): 请求过于频繁，已重试 ${maxRetries} 次。请稍后再试。`, 429);
+            }
+            
+            // 其他错误，如果是最后一次尝试，返回错误
+            if (attempt === maxRetries) {
+              return err("PROVIDER_ERROR", `Google Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`, geminiResponse.status >= 500 ? 502 : geminiResponse.status);
+            }
+            
+            // 如果是5xx错误，也进行重试
+            if (geminiResponse.status >= 500 && attempt < maxRetries) {
+              const delay = Math.pow(2, attempt) * 1000;
+              console.log(`[${requestId}] [STEP 5.6] Google Gemini API 5xx错误，等待 ${delay}ms 后重试 (尝试 ${attempt}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+            
+            return err("PROVIDER_ERROR", `Google Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`, geminiResponse.status >= 500 ? 502 : geminiResponse.status);
           }
           
-          // 如果是 401 或 403 错误，提供更详细的错误信息
-          if (geminiResponse.status === 401 || geminiResponse.status === 403) {
-            const errorMessage = errorDetails.error?.message || errorText;
-            const originalLength = process.env.GEMINI_API_KEY?.length || 0;
-            const trimmedLength = GEMINI_API_KEY.length;
-            const hasWhitespace = originalLength !== trimmedLength;
-            const diagnosticInfo = {
-              error: errorMessage,
-              apiKeyPrefix: GEMINI_API_KEY.substring(0, 15),
-              apiKeyLength: GEMINI_API_KEY.length,
-              originalLength: originalLength,
-              trimmedLength: trimmedLength,
-              hasWhitespace: hasWhitespace,
-              suggestion: hasWhitespace
-                ? "API Key 中检测到空白字符（已自动去除）。如果问题仍然存在，请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置，确保没有多余的空格或换行符，并验证 API Key 在 Google AI Studio 中仍然有效。"
-                : "API Key 可能无效或已过期。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置，并确保 API Key 在 Google AI Studio 中仍然有效。建议：1) 验证 API Key 是否有效，2) 检查 Vercel 环境变量中是否有隐藏字符，3) 重新设置环境变量并重新部署。"
-            };
-            
-            console.error(`[${requestId}] [STEP 5.6.1] Google Gemini 认证错误诊断`, diagnosticInfo);
-            
-            return err("AUTH_REQUIRED", `Google Gemini API 认证失败: ${errorMessage}。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置。`, geminiResponse.status);
+          // 如果成功，跳出重试循环
+          break;
+        } catch (error: any) {
+          lastError = error;
+          
+          // 如果是最后一次尝试，抛出错误
+          if (attempt === maxRetries) {
+            break;
           }
           
-          return err("PROVIDER_ERROR", `Google Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`, geminiResponse.status >= 500 ? 502 : geminiResponse.status);
+          // 如果是网络错误或超时，进行重试
+          if (error.name === "AbortError" || error.message?.includes("timeout") || error.message?.includes("network")) {
+            const delay = Math.pow(2, attempt) * 1000;
+            console.log(`[${requestId}] [STEP 5.6] Google Gemini API 网络错误，等待 ${delay}ms 后重试 (尝试 ${attempt}/${maxRetries}):`, error.message);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          
+          // 其他错误直接抛出
+          throw error;
         }
+      }
+      
+      // 如果所有重试都失败，返回错误
+      if (!geminiResponse || !geminiResponse.ok) {
+        if (lastError) {
+          throw lastError;
+        }
+        return err("PROVIDER_ERROR", "Google Gemini API 调用失败，已重试所有次数", 502);
+      }
+      
+      try {
         
         const geminiData = await geminiResponse.json() as {
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
