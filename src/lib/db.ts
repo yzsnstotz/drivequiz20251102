@@ -748,20 +748,12 @@ function createDbInstance(): Kysely<Database> {
     
     // 尝试通过测试连接验证 SSL 配置
     // 注意：这只是用于调试，不会实际建立连接
-    // 只在开发环境中设置 NODE_TLS_REJECT_UNAUTHORIZED（生产环境不应禁用证书验证）
-    try {
-      const isDevelopment = process.env.NODE_ENV === 'development';
-      const isVercel = !!process.env.VERCEL;
-      const hasTlsReject = !!process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      
-      if ((isDevelopment || !isVercel) && !hasTlsReject) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        console.log('[DB Config] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL (development only)');
-      } else if (!isDevelopment && isVercel) {
-        console.log('[DB Config] ℹ️  Using SSL with rejectUnauthorized: false (production mode, not setting NODE_TLS_REJECT_UNAUTHORIZED)');
-      }
-    } catch (e) {
-      // 忽略错误
+    // 注意：我们只在数据库连接配置中使用 rejectUnauthorized: false
+    // 不设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量，以避免影响其他 HTTPS 请求
+    // 如果环境变量已经设置（例如在 package.json 的 dev 脚本中），这是可以接受的
+    // 但在生产环境中，应该依赖连接配置而不是全局环境变量
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+      console.log('[DB Config] ℹ️  Using SSL with rejectUnauthorized: false (production mode, relying on connection config only)');
     }
   }
 
