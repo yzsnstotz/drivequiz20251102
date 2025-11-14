@@ -318,30 +318,32 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
               if (typeof q.content === "object" && q.content !== null) {
                 const contentObj = q.content as { [key: string]: string | undefined };
                 const targetValue = contentObj[targetLocale];
-                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                // 如果目标语言的值存在且不是占位符，使用它；否则保留原始多语言对象
                 if (targetValue && !isPlaceholder(targetValue)) {
                   localized.content = targetValue;
                 } else {
-                  localized.content = null; // 没有翻译，返回null
+                  // 没有翻译，保留原始多语言对象
+                  localized.content = q.content;
                 }
               } else {
-                // 如果content是字符串，对于非中文语言返回null
-                localized.content = null;
+                // 如果content是字符串，保留原始值
+                localized.content = q.content;
               }
               
               // 处理explanation字段（如果也是多语言对象）
               if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
                 const expObj = q.explanation as { [key: string]: string | undefined };
                 const targetValue = expObj[targetLocale];
-                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为undefined
                 if (targetValue && !isPlaceholder(targetValue)) {
                   localized.explanation = targetValue;
                 } else {
-                  localized.explanation = null; // 没有翻译，返回null
+                  // 没有翻译，设为undefined（因为explanation是可选的）
+                  localized.explanation = undefined;
                 }
               } else if (q.explanation) {
-                // 如果explanation是字符串，对于非中文语言返回null
-                localized.explanation = null;
+                // 如果explanation是字符串，保留原始值
+                localized.explanation = q.explanation;
               }
               
               return localized;
@@ -406,30 +408,32 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
               if (typeof q.content === "object" && q.content !== null) {
                 const contentObj = q.content as { [key: string]: string | undefined };
                 const targetValue = contentObj[targetLocale];
-                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                // 如果目标语言的值存在且不是占位符，使用它；否则保留原始多语言对象
                 if (targetValue && !isPlaceholder(targetValue)) {
                   localized.content = targetValue;
                 } else {
-                  localized.content = null; // 没有翻译，返回null
+                  // 没有翻译，保留原始多语言对象
+                  localized.content = q.content;
                 }
               } else {
-                // 如果content是字符串，对于非中文语言返回null
-                localized.content = null;
+                // 如果content是字符串，保留原始值
+                localized.content = q.content;
               }
               
               // 处理explanation字段
               if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
                 const expObj = q.explanation as { [key: string]: string | undefined };
                 const targetValue = expObj[targetLocale];
-                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为undefined
                 if (targetValue && !isPlaceholder(targetValue)) {
                   localized.explanation = targetValue;
                 } else {
-                  localized.explanation = null; // 没有翻译，返回null
+                  // 没有翻译，设为undefined（因为explanation是可选的）
+                  localized.explanation = undefined;
                 }
               } else if (q.explanation) {
-                // 如果explanation是字符串，对于非中文语言返回null
-                localized.explanation = null;
+                // 如果explanation是字符串，保留原始值
+                localized.explanation = q.explanation;
               }
               
               return localized;
@@ -552,15 +556,16 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
             const expObj = q.explanation as { [key: string]: string | undefined };
             const targetValue = expObj[locale];
-            // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+            // 如果目标语言的值存在且不是占位符，使用它；否则设为undefined
             if (targetValue && !isPlaceholder(targetValue)) {
               localized.explanation = targetValue;
             } else {
-              localized.explanation = null; // 没有翻译，返回null
+              // 没有翻译，设为undefined（因为explanation是可选的）
+              localized.explanation = undefined;
             }
           } else if (q.explanation) {
-            // 如果explanation是字符串，对于非中文语言返回null
-            localized.explanation = null;
+            // 如果explanation是字符串，保留原始值
+            localized.explanation = q.explanation;
           }
           
           return localized;
