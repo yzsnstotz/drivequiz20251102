@@ -42,6 +42,7 @@ export default function QuestionProcessingPage() {
   const [selectedTask, setSelectedTask] = useState<BatchProcessTask | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 创建任务表单状态
@@ -269,7 +270,7 @@ export default function QuestionProcessingPage() {
 
     try {
       await apiDelete<{ taskId: string; status: string; message: string }>(
-        `/api/admin/question-processing/batch-process?taskId=${taskId}`
+        `/api/admin/question-processing/batch-process?taskId=${taskId}&action=cancel`
       );
       await loadTasks();
     } catch (err) {
@@ -277,6 +278,27 @@ export default function QuestionProcessingPage() {
       setError(apiErr.message || "取消任务失败");
     } finally {
       setCancellingTaskId(null);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("确定要删除这个任务吗？删除后无法恢复。")) {
+      return;
+    }
+
+    setDeletingTaskId(taskId);
+    setError(null);
+
+    try {
+      await apiDelete<{ taskId: string; status: string; message: string }>(
+        `/api/admin/question-processing/batch-process?taskId=${taskId}&action=delete`
+      );
+      await loadTasks();
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.message || "删除任务失败");
+    } finally {
+      setDeletingTaskId(null);
     }
   };
 
@@ -676,9 +698,18 @@ export default function QuestionProcessingPage() {
                         <button
                           onClick={() => handleCancelTask(task.task_id)}
                           disabled={cancellingTaskId === task.task_id}
-                          className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="text-orange-600 hover:text-orange-800 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {cancellingTaskId === task.task_id ? "取消中..." : "取消"}
+                        </button>
+                      )}
+                      {(task.status === "completed" || task.status === "failed" || task.status === "cancelled") && (
+                        <button
+                          onClick={() => handleDeleteTask(task.task_id)}
+                          disabled={deletingTaskId === task.task_id}
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {deletingTaskId === task.task_id ? "删除中..." : "删除"}
                         </button>
                       )}
                     </div>
