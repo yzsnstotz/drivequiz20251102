@@ -47,14 +47,14 @@ export default function QuestionProcessingPage() {
   const [formData, setFormData] = useState<{
     questionIds: string;
     operations: string[];
-    translateOptions: { from: string; to: string };
+    translateOptions: { from: string; to: string | string[] };
     polishOptions: { locale: string };
     batchSize: number;
     continueOnError: boolean;
   }>({
     questionIds: "",
     operations: [],
-    translateOptions: { from: "zh", to: "ja" },
+    translateOptions: { from: "zh", to: ["ja"] }, // 改为数组，支持多选
     polishOptions: { locale: "zh-CN" },
     batchSize: 10,
     continueOnError: true,
@@ -150,7 +150,7 @@ export default function QuestionProcessingPage() {
       setFormData({
         questionIds: "",
         operations: [],
-        translateOptions: { from: "zh", to: "ja" },
+        translateOptions: { from: "zh", to: ["ja"] },
         polishOptions: { locale: "zh-CN" },
         batchSize: 10,
         continueOnError: true,
@@ -279,10 +279,10 @@ export default function QuestionProcessingPage() {
               </label>
               <div className="space-y-2">
                 {[
-                  { value: "translate", label: "翻译" },
                   { value: "polish", label: "润色" },
                   { value: "fill_missing", label: "填漏" },
                   { value: "category_tags", label: "分类标签" },
+                  { value: "translate", label: "翻译" }, // 翻译放到最后
                 ].map((op) => (
                   <label key={op.value} className="flex items-center gap-2">
                     <input
@@ -330,10 +330,10 @@ export default function QuestionProcessingPage() {
               </p>
             </div>
 
-            {/* 翻译选项 */}
+            {/* 翻译选项 - 放在最后 */}
             {formData.operations.includes("translate") && (
-              <div className="border-l-4 border-blue-500 pl-4 space-y-3">
-                <h3 className="font-medium">翻译选项</h3>
+              <div className="border-l-4 border-blue-500 pl-4 space-y-3 mt-4">
+                <h3 className="font-medium text-blue-700">翻译选项（最后执行）</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium mb-1">源语言</label>
@@ -356,24 +356,60 @@ export default function QuestionProcessingPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">目标语言</label>
-                    <select
-                      value={formData.translateOptions.to}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          translateOptions: {
-                            ...formData.translateOptions,
-                            to: e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
-                    >
-                      <option value="zh">中文 (zh)</option>
-                      <option value="ja">日文 (ja)</option>
-                      <option value="en">英文 (en)</option>
-                    </select>
+                    <label className="block text-sm font-medium mb-1">
+                      目标语言 <span className="text-blue-600 font-semibold">(可多选)</span>
+                    </label>
+                    <div className="space-y-2 border-2 border-blue-300 rounded-lg px-3 py-3 min-h-[120px] max-h-[180px] overflow-y-auto bg-blue-50">
+                      {[
+                        { value: "zh", label: "中文 (zh)" },
+                        { value: "ja", label: "日文 (ja)" },
+                        { value: "en", label: "英文 (en)" },
+                      ].map((lang) => {
+                        const toArray = Array.isArray(formData.translateOptions.to)
+                          ? formData.translateOptions.to
+                          : [formData.translateOptions.to];
+                        const isChecked = toArray.includes(lang.value);
+                        return (
+                          <label key={lang.value} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-blue-100 rounded">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const currentTo = Array.isArray(formData.translateOptions.to)
+                                  ? formData.translateOptions.to
+                                  : [formData.translateOptions.to];
+                                let newTo: string[];
+                                if (e.target.checked) {
+                                  // 添加语言
+                                  newTo = [...currentTo, lang.value];
+                                } else {
+                                  // 移除语言，但至少保留一个
+                                  newTo = currentTo.filter((l) => l !== lang.value);
+                                  if (newTo.length === 0) {
+                                    // 如果全部取消，至少保留一个
+                                    newTo = [lang.value];
+                                  }
+                                }
+                                setFormData({
+                                  ...formData,
+                                  translateOptions: {
+                                    ...formData.translateOptions,
+                                    to: newTo,
+                                  },
+                                });
+                              }}
+                              className="rounded w-4 h-4 text-blue-600"
+                            />
+                            <span className="text-sm font-medium">{lang.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-blue-600 font-medium mt-2">
+                      ✓ 已选择: {Array.isArray(formData.translateOptions.to) 
+                        ? formData.translateOptions.to.join(", ")
+                        : formData.translateOptions.to}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -663,6 +699,19 @@ export default function QuestionProcessingPage() {
                       {selectedTask.processed_count} / {selectedTask.total_questions} (
                       {getProgress(selectedTask)}%)
                     </p>
+                    {selectedTask.status === "processing" && (
+                      <div className="mt-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full transition-all"
+                            style={{ width: `${getProgress(selectedTask)}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          当前批次: {selectedTask.current_batch} / {Math.ceil(selectedTask.total_questions / 10)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700">
@@ -672,6 +721,34 @@ export default function QuestionProcessingPage() {
                       {selectedTask.succeeded_count} / {selectedTask.failed_count}
                     </p>
                   </div>
+                  {selectedTask.status === "processing" && (
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        当前操作步骤
+                      </label>
+                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded">
+                        <p className="text-sm text-blue-800">
+                          {selectedTask.operations.map((op, idx) => {
+                            const opNames: Record<string, string> = {
+                              translate: "翻译",
+                              polish: "润色",
+                              fill_missing: "填漏",
+                              category_tags: "分类标签",
+                            };
+                            return (
+                              <span key={op}>
+                                {idx > 0 && " → "}
+                                <span className="font-semibold">{opNames[op] || op}</span>
+                              </span>
+                            );
+                          }).join("")}
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          正在处理第 {selectedTask.processed_count + 1} 个题目...
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <label className="text-sm font-medium text-gray-700">
                       创建时间
