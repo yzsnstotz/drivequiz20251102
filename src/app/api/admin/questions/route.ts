@@ -27,7 +27,7 @@ import {
   normalizeCorrectAnswer,
   getUnifiedVersionContent,
 } from "@/lib/questionDb";
-import { getContentText } from "@/lib/questionContentUtils";
+import { getContentText, getContentPreview } from "@/lib/questionContentUtils";
 import fs from "fs/promises";
 import path from "path";
 
@@ -806,7 +806,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       await logCreate(req, "question", newQuestion.id, {
         category: targetCategory,
         type,
-        content: getContentText(content).substring(0, 50),
+        content: getContentPreview(content, 50),
       });
     } catch (logErr) {
       console.error("[POST /api/admin/questions] Log error:", logErr);
