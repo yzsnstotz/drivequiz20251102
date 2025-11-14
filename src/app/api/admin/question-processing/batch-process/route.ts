@@ -19,7 +19,6 @@ export const POST = withAdminAuth(async (req: Request) => {
   let taskId: string | null = null;
 
   try {
-    console.log(`[API BatchProcess] [${requestId}] Request received`);
     const body = await req.json().catch(() => ({}));
 
     const schema = z.object({
@@ -43,12 +42,6 @@ export const POST = withAdminAuth(async (req: Request) => {
     const input = schema.parse(body);
     const adminId = (req as any).adminId || null;
 
-    console.log(`[API BatchProcess] [${requestId}] Input validated:`, {
-      questionIdsCount: input.questionIds?.length || 0,
-      operations: input.operations,
-      batchSize: input.batchSize,
-    });
-
     // 验证操作选项
     if (input.operations.includes("translate") && !input.translateOptions) {
       return badRequest("translateOptions is required when 'translate' operation is included");
@@ -67,7 +60,6 @@ export const POST = withAdminAuth(async (req: Request) => {
       .executeTakeFirst();
 
     if (processingTask) {
-      console.warn(`[API BatchProcess] [${requestId}] Another task is already processing: ${processingTask.task_id}`);
       return conflict(
         `Another task is already processing: ${processingTask.task_id}. Please wait for it to complete.`
       );
@@ -75,7 +67,6 @@ export const POST = withAdminAuth(async (req: Request) => {
 
     // 创建任务记录
     taskId = `task-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    console.log(`[API BatchProcess] [${requestId}] Creating task: ${taskId}`);
 
     const taskRecord = await db
       .insertInto("batch_process_tasks")
@@ -249,10 +240,7 @@ async function processBatchAsync(
   const batchSize = input.batchSize || 10;
   const totalBatches = Math.ceil(questions.length / batchSize);
 
-  console.log(`[API BatchProcess] [${requestId}] ========== STARTING BATCH PROCESSING ==========`);
-  console.log(`[API BatchProcess] [${requestId}] Task ID: ${taskId}`);
-  console.log(`[API BatchProcess] [${requestId}] Questions: ${questions.length}, Batches: ${totalBatches}, Batch size: ${batchSize}`);
-  console.log(`[API BatchProcess] [${requestId}] Operations: ${input.operations.join(", ")}`);
+  console.log(`[BatchProcess] Task ${taskId} started: ${questions.length} questions, operations: ${input.operations.join(", ")}`);
   
   try {
 
@@ -280,11 +268,9 @@ async function processBatchAsync(
 
     // 检查任务是否已被取消
     if (await checkCancelled()) {
-      console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping processing at batch ${currentBatch}`);
+      console.log(`[BatchProcess] Task ${taskId} cancelled at batch ${currentBatch}`);
       return;
     }
-
-    console.log(`[API BatchProcess] [${requestId}] Processing batch ${currentBatch}/${totalBatches} (${batch.length} questions)`);
 
     // 更新当前批次
     await db
@@ -299,11 +285,9 @@ async function processBatchAsync(
     for (const question of batch) {
       // 在处理每个题目前检查任务是否已被取消
       if (await checkCancelled()) {
-        console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping processing at question ${question.id}`);
+        console.log(`[BatchProcess] Task ${taskId} cancelled at question ${question.id}`);
         return;
       }
-
-      console.log(`[API BatchProcess] [${requestId}] Processing question ${question.id}`);
       const questionResult = {
         questionId: question.id,
         operations: [] as string[],
@@ -348,7 +332,6 @@ async function processBatchAsync(
         for (const operation of sortedOperations) {
           // 在执行每个操作前检查是否已取消
           if (await checkCancelled()) {
-            console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping operation ${operation} for question ${question.id}`);
             throw new Error("Task has been cancelled");
           }
 
@@ -358,10 +341,6 @@ async function processBatchAsync(
               const targetLanguages = Array.isArray(input.translateOptions.to)
                 ? input.translateOptions.to
                 : [input.translateOptions.to];
-
-              console.log(
-                `[API BatchProcess] [${requestId}] Translating question ${question.id}: ${input.translateOptions.from} -> ${targetLanguages.join(", ")}`
-              );
 
               const sourceContent = {
                 content,
@@ -373,13 +352,9 @@ async function processBatchAsync(
               for (const targetLang of targetLanguages) {
                 // 在每次翻译前检查是否已取消
                 if (await checkCancelled()) {
-                  console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping translation to ${targetLang} for question ${question.id}`);
                   throw new Error("Task has been cancelled");
                 }
 
-                console.log(
-                  `[API BatchProcess] [${requestId}] Translating question ${question.id} to ${targetLang}`
-                );
                 try {
                   const result = await translateWithPolish({
                     source: sourceContent,
@@ -406,9 +381,6 @@ async function processBatchAsync(
                       })
                       .where("id", "=", existing.id)
                       .execute();
-                    console.log(
-                      `[API BatchProcess] [${requestId}] Updated translation for question ${question.id} to ${targetLang}`
-                    );
                   } else {
                     await db
                       .insertInto("question_translations")
@@ -421,14 +393,10 @@ async function processBatchAsync(
                         source: "ai",
                       })
                       .execute();
-                    console.log(
-                      `[API BatchProcess] [${requestId}] Created translation for question ${question.id} to ${targetLang}`
-                    );
                   }
                 } catch (translateError: any) {
                   console.error(
-                    `[API BatchProcess] [${requestId}] Translation to ${targetLang} failed for question ${question.id}:`,
-                    translateError.message
+                    `[BatchProcess] Translation failed: Q${question.id} -> ${targetLang}: ${translateError.message}`
                   );
                   if (!input.continueOnError) {
                     throw translateError;
@@ -439,7 +407,6 @@ async function processBatchAsync(
             }
 
             if (operation === "polish" && input.polishOptions) {
-              console.log(`[API BatchProcess] [${requestId}] Polishing question ${question.id}`);
               const text = {
                 content,
                 options: options || undefined,
@@ -462,7 +429,6 @@ async function processBatchAsync(
                 if (result.explanation) {
                   explanation = result.explanation;
                 }
-                console.log(`[API BatchProcess] [${requestId}] Updated in-memory content after polish for question ${question.id} (will be used for translation)`);
               }
 
               // 创建润色建议（待审核）
@@ -481,21 +447,15 @@ async function processBatchAsync(
             }
 
             if (operation === "fill_missing") {
-              console.log(`[API BatchProcess] [${requestId}] Filling missing content for question ${question.id}`);
-              console.log(`[API BatchProcess] [${requestId}] Current state - content: ${!!content}, options: ${!!options}, explanation: ${!!explanation}`);
-              
               const result = await fillMissingContent({
                 content,
                 options: options || null,
                 explanation: explanation || null,
               });
 
-              console.log(`[API BatchProcess] [${requestId}] Fill missing result received for question ${question.id}`);
-
               // 更新题目内容（如果原内容缺失）
               const needsUpdate = !content || !options || !explanation;
               if (needsUpdate) {
-                console.log(`[API BatchProcess] [${requestId}] Updating question ${question.id} with filled content`);
                 
                 let updatedContent: any;
                 if (typeof question.content === "object" && question.content !== null) {
@@ -525,8 +485,6 @@ async function processBatchAsync(
                   }
                 }
 
-                console.log(`[API BatchProcess] [${requestId}] Updating question ${question.id} - explanation type: ${typeof updatedExplanation}, value: ${JSON.stringify(updatedExplanation)}`);
-
                 await db
                   .updateTable("questions")
                   .set({
@@ -537,16 +495,11 @@ async function processBatchAsync(
                   })
                   .where("id", "=", question.id)
                   .execute();
-                
-                console.log(`[API BatchProcess] [${requestId}] Question ${question.id} updated successfully`);
-              } else {
-                console.log(`[API BatchProcess] [${requestId}] Question ${question.id} does not need update (all fields present)`);
               }
               questionResult.operations.push("fill_missing");
             }
 
             if (operation === "category_tags") {
-              console.log(`[API BatchProcess] [${requestId}] Generating category and tags for question ${question.id}`);
               const result = await generateCategoryAndTags({
                 content,
                 options: options || null,
@@ -567,21 +520,8 @@ async function processBatchAsync(
               questionResult.operations.push("category_tags");
             }
           } catch (opError: any) {
-            console.error(
-              `[API BatchProcess] [${requestId}] Operation ${operation} failed for question ${question.id}:`,
-              {
-                message: opError.message,
-                name: opError.name,
-                stack: opError.stack?.substring(0, 500),
-              }
-            );
-            
-            // 如果是超时错误（AbortError），记录更详细的信息
-            if (opError.name === "AbortError" || opError.message?.includes("aborted") || opError.message?.includes("timeout")) {
-              console.error(
-                `[API BatchProcess] [${requestId}] Operation ${operation} timed out for question ${question.id}. This may be due to AI API timeout or rate limiting.`
-              );
-            }
+            const errorMsg = opError.message || opError.name || "Unknown error";
+            console.error(`[BatchProcess] Operation ${operation} failed: Q${question.id} - ${errorMsg}`);
             
             if (!input.continueOnError) {
               throw opError;
@@ -591,26 +531,25 @@ async function processBatchAsync(
             questionResult.status = "failed";
             results.errors.push({
               questionId: question.id,
-              error: `${operation}: ${opError.message || opError.name || "Unknown error"}`,
+              error: `${operation}: ${errorMsg}`,
             });
-            
-            console.log(`[API BatchProcess] [${requestId}] Operation ${operation} failed, but continuing with other operations (continueOnError=true)`);
           }
         }
 
         results.processed++;
         if (questionResult.status === "success") {
           results.succeeded++;
-          console.log(`[API BatchProcess] [${requestId}] Question ${question.id} processed successfully: ${questionResult.operations.join(", ")}`);
         } else {
           results.failed++;
-          console.log(`[API BatchProcess] [${requestId}] Question ${question.id} processed with errors`);
         }
         results.details.push(questionResult);
 
-        // 实时更新任务进度
-        console.log(`[API BatchProcess] [${requestId}] Updating task progress: ${results.processed}/${results.total} (succeeded: ${results.succeeded}, failed: ${results.failed})`);
-        const progressUpdateResult = await db
+        // 实时更新任务进度（每10个题目或最后一个题目时输出日志）
+        if (results.processed % 10 === 0 || results.processed === results.total) {
+          console.log(`[BatchProcess] Progress: ${results.processed}/${results.total} (✓${results.succeeded} ✗${results.failed})`);
+        }
+        
+        await db
           .updateTable("batch_process_tasks")
           .set({
             processed_count: results.processed,
@@ -622,22 +561,8 @@ async function processBatchAsync(
           })
           .where("task_id", "=", taskId)
           .execute();
-        console.log(`[API BatchProcess] [${requestId}] Task progress updated, rows affected: ${progressUpdateResult.length || 0}`);
-        
-        // 验证更新是否成功
-        const verifyTask = await db
-          .selectFrom("batch_process_tasks")
-          .select(["processed_count", "succeeded_count", "failed_count", "status"])
-          .where("task_id", "=", taskId)
-          .executeTakeFirst();
-        console.log(`[API BatchProcess] [${requestId}] Verified task state:`, {
-          processed: verifyTask?.processed_count,
-          succeeded: verifyTask?.succeeded_count,
-          failed: verifyTask?.failed_count,
-          status: verifyTask?.status,
-        });
       } catch (error: any) {
-        console.error(`[API BatchProcess] [${requestId}] Question ${question.id} processing failed:`, error.message);
+        console.error(`[BatchProcess] Question ${question.id} processing failed: ${error.message}`);
         results.processed++;
         results.failed++;
         results.errors.push({
@@ -679,13 +604,10 @@ async function processBatchAsync(
     .executeTakeFirst();
 
   if (finalCheck?.status === "cancelled") {
-    console.log(`[API BatchProcess] [${requestId}] Task ${taskId} was cancelled, not marking as completed`);
     return;
   }
 
     // 更新任务状态为已完成
-    console.log(`[API BatchProcess] [${requestId}] ========== ALL BATCHES COMPLETED ==========`);
-    console.log(`[API BatchProcess] [${requestId}] Final stats: ${results.processed}/${results.total} (succeeded: ${results.succeeded}, failed: ${results.failed})`);
     await db
       .updateTable("batch_process_tasks")
       .set({
@@ -700,12 +622,8 @@ async function processBatchAsync(
       })
       .where("task_id", "=", taskId)
       .execute();
-
-    console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to completed`);
   } catch (error: any) {
-    console.error(`[API BatchProcess] [${requestId}] ========== BATCH PROCESSING ERROR ==========`);
-    console.error(`[API BatchProcess] [${requestId}] Error:`, error.message);
-    console.error(`[API BatchProcess] [${requestId}] Stack:`, error.stack);
+    console.error(`[BatchProcess] Task ${taskId} failed: ${error.message}`);
     
     // 更新任务状态为失败
     try {
@@ -723,9 +641,8 @@ async function processBatchAsync(
         })
         .where("task_id", "=", taskId)
         .execute();
-      console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to failed`);
-    } catch (updateError) {
-      console.error(`[API BatchProcess] [${requestId}] Failed to update task status:`, updateError);
+      } catch (updateError) {
+      console.error(`[BatchProcess] Failed to update task status:`, updateError);
     }
     
     // 重新抛出错误，让外层的 catch 处理
@@ -745,7 +662,6 @@ export const GET = withAdminAuth(async (req: Request) => {
 
     // 如果提供了taskId，查询单个任务
     if (taskId) {
-      console.log(`[API BatchProcess] [${requestId}] Fetching task: ${taskId}`);
       const task = await db
         .selectFrom("batch_process_tasks")
         .selectAll()
@@ -760,7 +676,6 @@ export const GET = withAdminAuth(async (req: Request) => {
     }
 
     // 否则查询所有任务
-    console.log(`[API BatchProcess] [${requestId}] Fetching tasks`, { status, limit, offset });
     let query = db
       .selectFrom("batch_process_tasks")
       .selectAll()
