@@ -305,7 +305,7 @@ async function processBatchAsync(
           content = "";
         }
 
-        const options = Array.isArray(question.options)
+        let options = Array.isArray(question.options)
           ? question.options
           : question.options
             ? [String(question.options)]
