@@ -41,7 +41,12 @@ export interface Question {
   options?: string[];
   correctAnswer: string | string[];
   image?: string;
-  explanation?: string;
+  explanation?: string | {
+    zh: string;
+    en?: string;
+    ja?: string;
+    [key: string]: string | undefined; // 支持其他语言
+  }; // 支持单语言字符串或多语言对象
   category?: string; // 卷类,如 "仮免-1", "免许-1" 等
   hash?: string; // 题目hash
   license_tags?: string[]; // 驾照类型标签

@@ -431,7 +431,12 @@ interface QuestionTable {
   options: any | null; // JSONB
   correct_answer: any | null; // JSONB
   image: string | null;
-  explanation: string | null;
+  explanation: {
+    zh: string;
+    en?: string;
+    ja?: string;
+    [key: string]: string | undefined; // 支持其他语言
+  } | null; // JSONB - 多语言解析对象
   license_types: string[] | null;
   category: string | null; // 题目分类（如 "12"）
   stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签

@@ -150,6 +150,18 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
       contentMultilang = question.content;
     }
 
+    // 规范化explanation字段：如果是字符串，转换为多语言对象
+    let explanationMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null = null;
+    if (question.explanation) {
+      if (typeof question.explanation === "string") {
+        // 兼容旧格式：单语言字符串转换为多语言对象
+        explanationMultilang = { zh: question.explanation };
+      } else {
+        // 新格式：多语言对象
+        explanationMultilang = question.explanation;
+      }
+    }
+
     // 规范化license_types：从license_tags或category获取
     let licenseTypes: string[] | null = null;
     if (question.license_tags && question.license_tags.length > 0) {
@@ -175,7 +187,7 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
           options: question.options ? (question.options as any) : null,
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
-          explanation: question.explanation || null,
+          explanation: explanationMultilang as any,
           license_types: licenseTypes,
           category: question.category || null,
           stage_tag: question.stage_tag || null,
@@ -197,7 +209,7 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
           options: question.options ? (question.options as any) : null,
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
-          explanation: question.explanation || null,
+          explanation: explanationMultilang as any,
           license_types: licenseTypes,
           category: question.category || null,
           stage_tag: question.stage_tag || null,

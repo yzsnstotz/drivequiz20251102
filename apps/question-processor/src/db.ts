@@ -14,7 +14,12 @@ interface QuestionTable {
   options: any | null;
   correct_answer: any | null;
   image: string | null;
-  explanation: string | null;
+  explanation: {
+    zh: string;
+    en?: string;
+    ja?: string;
+    [key: string]: string | undefined; // 支持其他语言
+  } | null; // JSONB - 多语言解析对象
   license_types: string[] | null;
   category: string | null; // 题目分类（如 "12"）
   stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签
@@ -103,6 +108,30 @@ interface QuestionAiAnswerTable {
   updated_at: Generated<Date>;
 }
 
+interface BatchProcessTasksTable {
+  id: Generated<number>;
+  task_id: string;
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  operations: string[];
+  question_ids: number[] | null;
+  translate_options: any | null;
+  polish_options: any | null;
+  batch_size: number;
+  continue_on_error: boolean;
+  total_questions: number;
+  processed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  current_batch: number;
+  errors: any | null;
+  details: any | null;
+  created_by: string | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 interface Database {
   questions: QuestionTable;
   languages: LanguageTable;
@@ -110,6 +139,7 @@ interface Database {
   question_polish_reviews: QuestionPolishReviewsTable;
   question_polish_history: QuestionPolishHistoryTable;
   question_ai_answers: QuestionAiAnswerTable;
+  batch_process_tasks: BatchProcessTasksTable;
 }
 
 export type DB = Kysely<Database>;
@@ -180,5 +210,7 @@ export type QuestionTranslationRow = Selectable<QuestionTranslationsTable>;
 export type InsertQuestionTranslation = Insertable<QuestionTranslationsTable>;
 export type InsertPolishReview = Insertable<QuestionPolishReviewsTable>;
 export type PolishReviewRow = Selectable<QuestionPolishReviewsTable>;
+export type BatchProcessTaskRow = Selectable<BatchProcessTasksTable>;
+export type InsertBatchProcessTask = Insertable<BatchProcessTasksTable>;
 
 
