@@ -65,7 +65,7 @@ export default function QuestionProcessingPage() {
         `/api/admin/question-processing/batch-process?${params.toString()}`
       );
 
-      if (response.ok && response.data) {
+      if (response.data) {
         setTasks(response.data.tasks || []);
       } else {
         setError("加载任务列表失败");
