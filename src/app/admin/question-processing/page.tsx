@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { apiFetch, apiPost, apiDelete, ApiError } from "@/lib/apiClient";
 
 type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
@@ -42,6 +42,7 @@ export default function QuestionProcessingPage() {
   const [selectedTask, setSelectedTask] = useState<BatchProcessTask | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 创建任务表单状态
   const [formData, setFormData] = useState<{
@@ -60,7 +61,7 @@ export default function QuestionProcessingPage() {
     continueOnError: true,
   });
 
-  const loadTasks = async () => {
+  const loadTasks = async (): Promise<BatchProcessTask[]> => {
     setLoading(true);
     setError(null);
     try {
@@ -74,13 +75,17 @@ export default function QuestionProcessingPage() {
       );
 
       if (response.data) {
-        setTasks(response.data.tasks || []);
+        const loadedTasks = response.data.tasks || [];
+        setTasks(loadedTasks);
+        return loadedTasks;
       } else {
         setError("加载任务列表失败");
+        return [];
       }
     } catch (err) {
       const apiErr = err as ApiError;
       setError(apiErr.message || "加载任务列表失败");
+      return [];
     } finally {
       setLoading(false);
     }
@@ -92,22 +97,67 @@ export default function QuestionProcessingPage() {
 
   // 自动刷新正在处理的任务
   useEffect(() => {
-    if (!autoRefresh) return;
-
-    const hasProcessing = tasks.some(
-      (t) => t.status === "pending" || t.status === "processing"
-    );
-    if (!hasProcessing) {
-      setAutoRefresh(false);
-      return;
+    // 清理之前的 interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
 
-    const interval = setInterval(() => {
-      loadTasks();
-    }, 3000); // 每3秒刷新一次
+    if (!autoRefresh) return;
 
-    return () => clearInterval(interval);
-  }, [autoRefresh, tasks]);
+    const checkAndRefresh = async () => {
+      // 先加载最新任务列表
+      const latestTasks = await loadTasks();
+      
+      // 检查是否有正在处理的任务
+      const processingTasks = latestTasks.filter(
+        (t) => t.status === "pending" || t.status === "processing"
+      );
+
+      if (processingTasks.length === 0) {
+        // 没有正在处理的任务，停止自动刷新
+        setAutoRefresh(false);
+        return;
+      }
+
+      // 检查是否有任务长时间没有更新（超过 5 分钟）
+      const now = Date.now();
+      const STUCK_TIMEOUT = 5 * 60 * 1000; // 5 分钟
+      
+      const hasStuckTasks = processingTasks.some((task) => {
+        const taskUpdatedAt = task.updated_at ? new Date(task.updated_at).getTime() : now;
+        const timeSinceTaskUpdate = now - taskUpdatedAt;
+        
+        // 如果任务更新时间超过 5 分钟，认为任务卡住了
+        if (timeSinceTaskUpdate > STUCK_TIMEOUT) {
+          return true;
+        }
+        
+        return false;
+      });
+
+      if (hasStuckTasks) {
+        console.warn("[BatchProcess] 检测到任务可能卡住（超过 5 分钟未更新），停止自动刷新");
+        setAutoRefresh(false);
+        return;
+      }
+    };
+
+    // 立即执行一次检查
+    checkAndRefresh();
+
+    // 设置定时器，每 5 秒刷新一次（减少频率）
+    intervalRef.current = setInterval(() => {
+      checkAndRefresh();
+    }, 5000); // 改为 5 秒刷新一次
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [autoRefresh]); // 移除 tasks 依赖，避免频繁重建 interval
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
