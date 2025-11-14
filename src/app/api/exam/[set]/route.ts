@@ -13,7 +13,6 @@ import path from "path";
 import type { PaginationMeta } from "@/types/db";
 import { db } from "@/lib/db";
 import { normalizeCorrectAnswer } from "@/lib/questionDb";
-import { sql } from "kysely";
 
 /**
  * 统一成功响应
@@ -83,165 +82,108 @@ export async function GET(
       return err("VALIDATION_FAILED", "排序方向必须是 asc 或 desc", 400);
     }
 
-    // 加载题目：优先从数据库读取，如果数据库没有，再从文件系统读取
+    // 加载题目：优先从最新的JSON包读取，如果JSON包没有，再从数据库读取
     let allQuestions: any[] = [];
     
-    // 步骤1：优先从数据库读取（智能匹配category字段）
+    // 步骤1：优先从最新的JSON包（questions.json）读取
+    const questionsDir = path.join(process.cwd(), "src/data/questions/zh");
+    const unifiedFilePath = path.join(questionsDir, "questions.json");
+    
     try {
-      // 根据setId和licenseType推断可能的category值
-      // setId可能是: "provisional-1", "license-1", "仮免-1", "免许-1" 等
-      // 需要尝试多种匹配方式
-      let possibleCategories: string[] = [setId];
-      
-      // 如果setId是 "provisional-1" 格式，尝试转换为 "仮免-1"
-      if (setId.startsWith("provisional-")) {
-        const num = setId.replace("provisional-", "");
-        possibleCategories.push(`仮免-${num}`);
-        possibleCategories.push(`provisional-${num}`);
-      }
-      
-      // 如果setId是 "license-1" 格式，尝试转换为 "免许-1"
-      if (setId.startsWith("license-")) {
-        const num = setId.replace("license-", "");
-        possibleCategories.push(`免许-${num}`);
-        possibleCategories.push(`license-${num}`);
-      }
-      
-      // 如果setId是 "foreign-1" 格式
-      if (setId.startsWith("foreign-")) {
-        const num = setId.replace("foreign-", "");
-        possibleCategories.push(`外国切替-${num}`);
-        possibleCategories.push(`foreign-${num}`);
-      }
-      
-      // 如果setId是 "second-1" 格式
-      if (setId.startsWith("second-")) {
-        const num = setId.replace("second-", "");
-        possibleCategories.push(`二種-${num}`);
-        possibleCategories.push(`second-${num}`);
-      }
-      
-      // 如果setId是 "renewal-1" 格式
-      if (setId.startsWith("renewal-")) {
-        const num = setId.replace("renewal-", "");
-        possibleCategories.push(`再取得-${num}`);
-        possibleCategories.push(`renewal-${num}`);
-      }
-      
-      // 去重
-      possibleCategories = [...new Set(possibleCategories)];
-      
-      console.log(`[Exam API] 尝试从数据库匹配 category，可能的值为: ${possibleCategories.join(", ")}`);
-      
-      // 查询数据库：匹配category或license_types
-      // 构建查询条件：匹配category字段或license_types数组
-      const dbQuestions = await db
-        .selectFrom("questions")
-        .selectAll()
-        .where((eb) => {
-          const conditions = [
-            // 匹配category字段
-            eb("category", "in", possibleCategories),
-          ];
-          
-          // 为每个可能的category值添加license_types数组匹配条件
-          for (const cat of possibleCategories) {
-            conditions.push(
-              sql<boolean>`${eb.ref("license_types")} @> ARRAY[${sql.literal(cat)}]::text[]`
-            );
-          }
-          
-          return eb.or(conditions);
-        })
-        .orderBy("id", "asc")
-        .execute();
-
-      if (dbQuestions.length > 0) {
-        // 转换为前端格式
-        allQuestions = dbQuestions.map((q) => {
-          // 处理content字段：保持原格式（可能是字符串或多语言对象）
-          let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
-          if (typeof q.content === "string") {
-            content = q.content;
-          } else {
-            content = q.content || { zh: "" };
-          }
-
-          // 处理explanation字段：支持多语言对象或字符串
-          let explanation: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null = null;
-          if (q.explanation) {
-            if (typeof q.explanation === "string") {
-              explanation = q.explanation;
-            } else {
-              explanation = q.explanation;
-            }
-          }
-
-          return {
-            id: q.id,
-            type: q.type,
-            content,
-            options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : []),
-            correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
-            image: q.image || null,
-            explanation,
-            category: q.category || setId,
-          };
+      if (fs.existsSync(unifiedFilePath)) {
+        const unifiedContent = fs.readFileSync(unifiedFilePath, "utf-8");
+        const unifiedData = JSON.parse(unifiedContent);
+        const allQuestionsFromUnified = Array.isArray(unifiedData) ? unifiedData : (unifiedData.questions || []);
+        
+        // 根据setId筛选题目（setId对应category字段，直接匹配）
+        allQuestions = allQuestionsFromUnified.filter((q: any) => {
+          return q.category === setId;
         });
         
-        console.log(`[Exam API] 从数据库读取到 ${allQuestions.length} 个题目 (setId=${setId}, 匹配的category: ${possibleCategories.join(", ")})`);
-      } else {
-        console.log(`[Exam API] 数据库中没有找到匹配的题目 (setId=${setId}, 尝试的category: ${possibleCategories.join(", ")})`);
+        if (allQuestions.length > 0) {
+          console.log(`[Exam API] 从JSON包读取到 ${allQuestions.length} 个题目 (category=${setId})`);
+        }
       }
-    } catch (dbError) {
-      console.error("[Exam API] 从数据库读取题目失败:", dbError);
-      // 继续尝试从文件系统读取
+    } catch (jsonError) {
+      console.error("[Exam API] 读取JSON包失败:", jsonError);
     }
     
-    // 步骤2：如果数据库没有找到题目，从文件系统读取（兼容旧逻辑）
+    // 步骤2：如果JSON包没有找到题目，从数据库读取（直接按category匹配）
     if (allQuestions.length === 0) {
-      const questionsDir = path.join(process.cwd(), "src/data/questions/zh");
-      const unifiedFilePath = path.join(questionsDir, "questions.json");
-      
-      // 优先尝试从统一的questions.json读取
       try {
-        if (fs.existsSync(unifiedFilePath)) {
-          const unifiedContent = fs.readFileSync(unifiedFilePath, "utf-8");
-          const unifiedData = JSON.parse(unifiedContent);
-          const allQuestionsFromUnified = Array.isArray(unifiedData) ? unifiedData : (unifiedData.questions || []);
-          
-          // 根据setId筛选题目（setId对应category字段）
-          allQuestions = allQuestionsFromUnified.filter((q: any) => {
-            return q.category === setId;
-          });
-        }
-      } catch (unifiedError) {
-        console.error("[Exam API] 读取统一文件失败:", unifiedError);
-      }
-      
-      // 如果从统一文件读取但没有找到题目，尝试从指定文件读取（兼容旧逻辑）
-      if (allQuestions.length === 0) {
-        let fileName = setId;
-        
-        // 如果setId包含licenseType信息，直接使用；否则根据licenseType推断
-        if (licenseType === "学科講習") {
-          fileName = setId.startsWith("學科講習") ? setId : `學科講習-${setId}`;
-        } else if (licenseType === "provisional") {
-          fileName = setId.startsWith("仮免") ? setId : `仮免-${setId}`;
-        } else if (licenseType === "regular") {
-          fileName = setId.startsWith("免许") ? setId : `免许-${setId}`;
-        }
+        const dbQuestions = await db
+          .selectFrom("questions")
+          .selectAll()
+          .where("category", "=", setId)
+          .orderBy("id", "asc")
+          .execute();
 
-        const filePath = path.join(questionsDir, `${fileName}.json`);
-        if (fs.existsSync(filePath)) {
+        if (dbQuestions.length > 0) {
+          // 转换为前端格式
+          allQuestions = dbQuestions.map((q) => {
+            // 处理content字段：保持原格式（可能是字符串或多语言对象）
+            let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+            if (typeof q.content === "string") {
+              content = q.content;
+            } else {
+              content = q.content || { zh: "" };
+            }
+
+            // 处理explanation字段：支持多语言对象或字符串
+            let explanation: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null = null;
+            if (q.explanation) {
+              if (typeof q.explanation === "string") {
+                explanation = q.explanation;
+              } else {
+                explanation = q.explanation;
+              }
+            }
+
+            return {
+              id: q.id,
+              type: q.type,
+              content,
+              options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : []),
+              correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+              image: q.image || null,
+              explanation,
+              category: q.category || setId,
+            };
+          });
+          
+          console.log(`[Exam API] 从数据库读取到 ${allQuestions.length} 个题目 (category=${setId})`);
+        }
+      } catch (dbError) {
+        console.error("[Exam API] 从数据库读取题目失败:", dbError);
+      }
+    }
+    
+    // 步骤3：如果JSON包和数据库都没有，尝试从指定文件读取（兼容旧逻辑）
+    if (allQuestions.length === 0) {
+      let fileName = setId;
+      
+      // 如果setId包含licenseType信息，直接使用；否则根据licenseType推断
+      if (licenseType === "学科講習") {
+        fileName = setId.startsWith("學科講習") ? setId : `學科講習-${setId}`;
+      } else if (licenseType === "provisional") {
+        fileName = setId.startsWith("仮免") ? setId : `仮免-${setId}`;
+      } else if (licenseType === "regular") {
+        fileName = setId.startsWith("免许") ? setId : `免许-${setId}`;
+      }
+
+      const filePath = path.join(questionsDir, `${fileName}.json`);
+      if (fs.existsSync(filePath)) {
+        try {
           const fileContent = fs.readFileSync(filePath, "utf-8");
           const questionData = JSON.parse(fileContent);
           allQuestions = questionData.questions || [];
+          
+          if (allQuestions.length > 0) {
+            console.log(`[Exam API] 从文件系统读取到 ${allQuestions.length} 个题目 (fileName=${fileName})`);
+          }
+        } catch (fileError) {
+          console.error("[Exam API] 读取文件失败:", fileError);
         }
-      }
-      
-      if (allQuestions.length > 0) {
-        console.log(`[Exam API] 从文件系统读取到 ${allQuestions.length} 个题目 (setId=${setId})`);
       }
     }
     
