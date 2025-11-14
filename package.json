@@ -9,7 +9,10 @@
     "lint": "next lint",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "check:build": "./scripts/check-build.sh",
+    "check:types": "tsc --noEmit",
+    "fix:build": "tsx scripts/auto-fix-build-errors.ts"
   },
   "dependencies": {
     "jose": "^6.1.0",

@@ -484,7 +484,7 @@ export default function QuestionAIDialog({
           )}
           {question.options && question.options.length > 0 && (
             <div className="mt-2 text-sm text-gray-600">
-              {question.options.map((option, index) => {
+              {getQuestionOptions(question.options, language).map((option, index) => {
                 const label = String.fromCharCode(65 + index);
                 return (
                   <div key={index} className="mb-1">
