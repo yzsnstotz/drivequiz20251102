@@ -733,18 +733,17 @@ export const GET = withAdminAuth(async (req: Request) => {
   }
 });
 
-// DELETE /api/admin/question-processing/batch-process - 取消任务
+// DELETE /api/admin/question-processing/batch-process - 取消或删除任务
 export const DELETE = withAdminAuth(async (req: Request) => {
   const requestId = `api-batch-process-delete-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   try {
     const url = new URL(req.url);
     const taskId = url.searchParams.get("taskId");
+    const action = url.searchParams.get("action") || "cancel"; // cancel 或 delete
 
     if (!taskId) {
       return badRequest("taskId is required");
     }
-
-    console.log(`[API BatchProcess] [${requestId}] Cancelling task: ${taskId}`);
 
     // 查询任务当前状态
     const task = await db
@@ -757,33 +756,59 @@ export const DELETE = withAdminAuth(async (req: Request) => {
       return notFound("Task not found");
     }
 
-    // 只有 pending 或 processing 状态的任务才能取消
-    if (task.status !== "pending" && task.status !== "processing") {
-      return badRequest(
-        `Task cannot be cancelled. Current status: ${task.status}. Only pending or processing tasks can be cancelled.`
-      );
-    }
+    if (action === "delete") {
+      // 删除任务：只能删除已完成、失败或已取消的任务
+      if (task.status === "pending" || task.status === "processing") {
+        return badRequest(
+          `Task cannot be deleted. Current status: ${task.status}. Please cancel the task first, or wait for it to complete.`
+        );
+      }
 
-    // 更新任务状态为已取消
-    await db
-      .updateTable("batch_process_tasks")
-      .set({
+      console.log(`[API BatchProcess] [${requestId}] Deleting task: ${taskId}`);
+
+      await db
+        .deleteFrom("batch_process_tasks")
+        .where("task_id", "=", taskId)
+        .execute();
+
+      console.log(`[API BatchProcess] [${requestId}] Task ${taskId} deleted successfully`);
+
+      return success({
+        taskId,
+        status: "deleted",
+        message: "Task deleted successfully",
+      });
+    } else {
+      // 取消任务：只能取消 pending 或 processing 状态的任务
+      if (task.status !== "pending" && task.status !== "processing") {
+        return badRequest(
+          `Task cannot be cancelled. Current status: ${task.status}. Only pending or processing tasks can be cancelled.`
+        );
+      }
+
+      console.log(`[API BatchProcess] [${requestId}] Cancelling task: ${taskId}`);
+
+      // 更新任务状态为已取消
+      await db
+        .updateTable("batch_process_tasks")
+        .set({
+          status: "cancelled",
+          completed_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where("task_id", "=", taskId)
+        .execute();
+
+      console.log(`[API BatchProcess] [${requestId}] Task ${taskId} cancelled successfully`);
+
+      return success({
+        taskId,
         status: "cancelled",
-        completed_at: new Date(),
-        updated_at: new Date(),
-      })
-      .where("task_id", "=", taskId)
-      .execute();
-
-    console.log(`[API BatchProcess] [${requestId}] Task ${taskId} cancelled successfully`);
-
-    return success({
-      taskId,
-      status: "cancelled",
-      message: "Task cancelled successfully",
-    });
+        message: "Task cancelled successfully",
+      });
+    }
   } catch (e: any) {
     console.error(`[API BatchProcess] [${requestId}] Error:`, e?.message, e?.stack);
-    return internalError(e?.message || "Failed to cancel batch process task");
+    return internalError(e?.message || "Failed to cancel/delete batch process task");
   }
 });
