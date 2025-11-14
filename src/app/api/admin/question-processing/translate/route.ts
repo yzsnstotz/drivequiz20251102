@@ -97,6 +97,13 @@ export const POST = withAdminAuth(async (req: Request) => {
         });
 
         // 保存翻译结果
+        console.log(`[API Translate] [${requestId}] Saving translation to ${targetLang}`, {
+          contentHash: question.content_hash,
+          contentLength: result.content?.length || 0,
+          hasOptions: !!result.options,
+          hasExplanation: !!result.explanation,
+        });
+        
         const existing = await db
           .selectFrom("question_translations")
           .select(["id"])
@@ -105,6 +112,7 @@ export const POST = withAdminAuth(async (req: Request) => {
           .executeTakeFirst();
 
         if (existing) {
+          console.log(`[API Translate] [${requestId}] Updating existing translation (id: ${existing.id})`);
           await db
             .updateTable("question_translations")
             .set({
@@ -115,7 +123,9 @@ export const POST = withAdminAuth(async (req: Request) => {
             })
             .where("id", "=", existing.id)
             .execute();
+          console.log(`[API Translate] [${requestId}] Translation updated successfully`);
         } else {
+          console.log(`[API Translate] [${requestId}] Inserting new translation`);
           await db
             .insertInto("question_translations")
             .values({
@@ -127,8 +137,26 @@ export const POST = withAdminAuth(async (req: Request) => {
               source: "ai",
             })
             .execute();
+          console.log(`[API Translate] [${requestId}] Translation inserted successfully`);
         }
 
+        // 验证保存是否成功
+        const saved = await db
+          .selectFrom("question_translations")
+          .select(["id", "content"])
+          .where("content_hash", "=", question.content_hash)
+          .where("locale", "=", targetLang)
+          .executeTakeFirst();
+        
+        if (!saved || !saved.content) {
+          throw new Error(`Failed to save translation: saved record not found or content is empty`);
+        }
+        
+        console.log(`[API Translate] [${requestId}] Translation to ${targetLang} saved and verified`, {
+          translationId: saved.id,
+          contentLength: saved.content?.length || 0,
+        });
+        
         results.push({ locale: targetLang, success: true });
         console.log(`[API Translate] [${requestId}] Translation to ${targetLang} completed`);
       } catch (error: any) {
