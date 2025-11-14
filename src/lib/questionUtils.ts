@@ -28,13 +28,17 @@ export function getQuestionContent(
   }
   
   // 新格式：多语言对象
-  // 优先返回目标语言（必须是有效的非空字符串），如果没有则返回中文，最后返回第一个可用的语言
+  // 优先返回目标语言（必须是有效的非空字符串，且不是占位符），如果没有则返回中文，最后返回第一个可用的语言
   const targetLangValue = content[locale];
-  if (targetLangValue && typeof targetLangValue === 'string' && targetLangValue.trim().length > 0) {
+  // 检查是否是占位符（以 [EN] 或 [JA] 开头）
+  const isPlaceholder = targetLangValue && typeof targetLangValue === 'string' && 
+    (targetLangValue.trim().startsWith('[EN]') || targetLangValue.trim().startsWith('[JA]'));
+  
+  if (targetLangValue && typeof targetLangValue === 'string' && targetLangValue.trim().length > 0 && !isPlaceholder) {
     return targetLangValue;
   }
   
-  // 如果目标语言不存在或为空，回退到中文
+  // 如果目标语言不存在、为空或是占位符，回退到中文
   if (content.zh && typeof content.zh === 'string' && content.zh.trim().length > 0) {
     return content.zh;
   }
