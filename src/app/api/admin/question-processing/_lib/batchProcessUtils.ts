@@ -25,6 +25,7 @@ async function callAiAskInternal(params: {
   scene?: string;
   sourceLanguage?: string;
   targetLanguage?: string;
+  adminToken?: string; // 管理员 token，用于跳过配额限制
 }, retries: number = 3): Promise<{ answer: string }> {
   // 在 Vercel 环境中，使用绝对 URL
   // 优先使用 VERCEL_URL（Vercel 自动提供），否则使用 NEXT_PUBLIC_APP_URL
@@ -63,11 +64,17 @@ async function callAiAskInternal(params: {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), singleRequestTimeout);
       
+      // 构建请求头，如果有管理员 token 则添加 Authorization header
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (params.adminToken) {
+        headers["Authorization"] = `Bearer ${params.adminToken}`;
+      }
+
       const response = await fetch(apiUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           question: params.question,
           locale: params.locale || "zh-CN",
@@ -170,8 +177,9 @@ export async function translateWithPolish(params: {
   source: { content: string; options?: string[]; explanation?: string };
   from: string;
   to: string;
+  adminToken?: string; // 管理员 token，用于跳过配额限制
 }): Promise<TranslateResult> {
-  const { source, from, to } = params;
+  const { source, from, to, adminToken } = params;
   const questionText = [
     `Content: ${source.content}`,
     source.options && source.options.length ? `Options:\n- ${source.options.join("\n- ")}` : ``,
@@ -186,6 +194,7 @@ export async function translateWithPolish(params: {
     scene: "question_translation",
     sourceLanguage: from,
     targetLanguage: to,
+    adminToken,
   });
 
   // 解析 JSON 响应
@@ -214,6 +223,7 @@ export async function translateWithPolish(params: {
 export async function polishContent(params: {
   text: { content: string; options?: string[]; explanation?: string };
   locale: string;
+  adminToken?: string; // 管理员 token，用于跳过配额限制
 }): Promise<TranslateResult> {
   const { text, locale } = params;
   const input = [
@@ -229,6 +239,7 @@ export async function polishContent(params: {
     question: input,
     locale: locale,
     scene: "question_polish",
+    adminToken: params.adminToken,
   });
 
   let parsed: any = null;
@@ -258,6 +269,7 @@ export async function generateCategoryAndTags(params: {
   options?: string[] | null;
   explanation?: string | null;
   locale?: string;
+  adminToken?: string; // 管理员 token，用于跳过配额限制
 }): Promise<CategoryAndTagsResult> {
   const { content, options, explanation, locale = "zh-CN" } = params;
 
@@ -273,6 +285,7 @@ export async function generateCategoryAndTags(params: {
     question: input,
     locale: locale,
     scene: "question_category_tags",
+    adminToken: params.adminToken,
   });
 
   let parsed: any = null;
@@ -307,6 +320,7 @@ export async function fillMissingContent(params: {
   options?: string[] | null;
   explanation?: string | null;
   locale?: string;
+  adminToken?: string; // 管理员 token，用于跳过配额限制
 }): Promise<TranslateResult> {
   const { content, options, explanation, locale = "zh-CN" } = params;
 
@@ -322,6 +336,7 @@ export async function fillMissingContent(params: {
     question: input,
     locale: locale,
     scene: "question_fill_missing",
+    adminToken: params.adminToken,
   });
 
   let parsed: any = null;
