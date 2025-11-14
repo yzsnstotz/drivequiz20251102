@@ -17,16 +17,30 @@ const UNIFIED_FILE = path.join(QUESTIONS_DIR, "questions.json");
 
 export async function GET() {
   try {
-    const content = await fs.readFile(UNIFIED_FILE, "utf-8").catch(() => null);
-    if (!content) {
+    console.log(`[GET /api/questions/package] 开始读取文件: ${UNIFIED_FILE}`);
+    
+    // 检查文件是否存在
+    try {
+      await fs.access(UNIFIED_FILE);
+    } catch (accessError) {
+      console.error(`[GET /api/questions/package] 文件不存在: ${UNIFIED_FILE}`, accessError);
       return notFound("Unified questions.json not found");
     }
+    
+    const content = await fs.readFile(UNIFIED_FILE, "utf-8");
+    if (!content) {
+      console.error(`[GET /api/questions/package] 文件内容为空: ${UNIFIED_FILE}`);
+      return notFound("Unified questions.json is empty");
+    }
+    
     const data = JSON.parse(content);
+    console.log(`[GET /api/questions/package] 成功读取，题目数量: ${Array.isArray(data) ? data.length : (data.questions?.length || 0)}`);
     return success(data);
   } catch (err: any) {
     console.error("[GET /api/questions/package] Error:", err);
-    return internalError("Failed to read questions package");
+    return internalError(`Failed to read questions package: ${err.message || String(err)}`);
   }
 }
+
 
 
