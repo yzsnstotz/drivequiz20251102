@@ -43,9 +43,16 @@ export default function QuestionProcessingPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
 
   // 创建任务表单状态
-  const [formData, setFormData] = useState({
-    questionIds: "" as string | number[],
-    operations: [] as string[],
+  const [formData, setFormData] = useState<{
+    questionIds: string;
+    operations: string[];
+    translateOptions: { from: string; to: string };
+    polishOptions: { locale: string };
+    batchSize: number;
+    continueOnError: boolean;
+  }>({
+    questionIds: "",
+    operations: [],
     translateOptions: { from: "zh", to: "ja" },
     polishOptions: { locale: "zh-CN" },
     batchSize: 10,
@@ -115,16 +122,12 @@ export default function QuestionProcessingPage() {
 
       // 处理题目ID
       if (formData.questionIds) {
-        if (typeof formData.questionIds === "string") {
-          const ids = formData.questionIds
-            .split(",")
-            .map((id) => parseInt(id.trim()))
-            .filter((id) => !isNaN(id));
-          if (ids.length > 0) {
-            payload.questionIds = ids;
-          }
-        } else {
-          payload.questionIds = formData.questionIds;
+        const ids = formData.questionIds
+          .split(",")
+          .map((id) => parseInt(id.trim()))
+          .filter((id) => !isNaN(id));
+        if (ids.length > 0) {
+          payload.questionIds = ids;
         }
       }
 
