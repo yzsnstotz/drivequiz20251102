@@ -241,23 +241,32 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
               const batch = questionsToImport.slice(i, i + BATCH_SIZE);
               const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
               const totalBatches = Math.ceil(totalQuestions / BATCH_SIZE);
+              const startIndex = i;
+              const endIndex = Math.min(i + BATCH_SIZE, totalQuestions);
               
-              console.log(`[import-from-json] 处理批次 ${batchNumber}/${totalBatches}，包含 ${batch.length} 个题目`);
+              console.log(`[import-from-json] ========== 开始处理批次 ${batchNumber}/${totalBatches} ==========`);
+              console.log(`[import-from-json] 批次范围: ${startIndex + 1} - ${endIndex} (共 ${batch.length} 个题目)`);
+              console.log(`[import-from-json] 当前已处理: ${totalProcessed}/${totalQuestions}`);
+              console.log(`[import-from-json] 当前统计 - 新增: ${totalImported}, 更新: ${totalUpdated}, 错误: ${totalErrors}`);
 
               try {
                 // 步骤1：批量计算所有题目的hash
+                console.log(`[import-from-json] 批次 ${batchNumber}: 开始计算hash...`);
                 const questionHashes = batch.map(q => ({
                   question: q,
                   hash: calculateQuestionHash(q),
                 }));
+                console.log(`[import-from-json] 批次 ${batchNumber}: 完成hash计算，共 ${questionHashes.length} 个hash`);
 
                 // 步骤2：批量查询所有已存在的题目（一次性查询）
                 const hashes = questionHashes.map(qh => qh.hash);
+                console.log(`[import-from-json] 批次 ${batchNumber}: 开始查询已存在的题目，查询 ${hashes.length} 个hash...`);
                 const existingQuestions = await db
                   .selectFrom("questions")
                   .select(["id", "content_hash"])
                   .where("content_hash", "in", hashes)
                   .execute();
+                console.log(`[import-from-json] 批次 ${batchNumber}: 查询完成，找到 ${existingQuestions.length} 个已存在的题目`);
 
                 // 创建hash到id的映射
                 const hashToIdMap = new Map<string, number>();
@@ -294,9 +303,17 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 }> = [];
 
                 // 步骤4：处理每个题目，准备批量操作数据
+                console.log(`[import-from-json] 批次 ${batchNumber}: 开始处理 ${questionHashes.length} 个题目，准备插入/更新数据...`);
+                let processedInBatch = 0;
                 for (const { question, hash } of questionHashes) {
                   try {
                     totalProcessed++;
+                    processedInBatch++;
+                    
+                    // 特别记录346条记录附近的情况
+                    if (totalProcessed >= 340 && totalProcessed <= 350) {
+                      console.log(`[import-from-json] ⚠️  处理第 ${totalProcessed} 条记录 (题目ID: ${question.id || 'unknown'}, Hash: ${hash.substring(0, 16)}...)`);
+                    }
 
                     const contentMultilang = normalizeContent(question);
                     const explanationMultilang = normalizeExplanation(question);
@@ -345,21 +362,47 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     totalErrors++;
                     const errorMsg = `准备题目 ${question.id || 'unknown'} (${packageInfo.name}) 失败: ${error.message || String(error)}`;
                     errors.push(errorMsg);
+                    console.error(`[import-from-json] ❌ 准备题目失败 (第 ${totalProcessed} 条):`, {
+                      questionId: question.id,
+                      error: error.message,
+                      stack: error.stack?.substring(0, 300),
+                    });
                   }
                 }
+                console.log(`[import-from-json] 批次 ${batchNumber}: 完成数据准备，待插入: ${toInsert.length}, 待更新: ${toUpdate.length}`);
 
                 // 步骤5：批量插入新题目
                 if (toInsert.length > 0) {
+                  console.log(`[import-from-json] 批次 ${batchNumber}: 开始批量插入 ${toInsert.length} 个新题目...`);
+                  const insertStartTime = Date.now();
                   try {
                     await db.transaction().execute(async (trx) => {
                       const INSERT_BATCH_SIZE = 50;
+                      const insertSubBatches = Math.ceil(toInsert.length / INSERT_BATCH_SIZE);
+                      console.log(`[import-from-json] 批次 ${batchNumber}: 将分 ${insertSubBatches} 个子批次插入`);
                       for (let j = 0; j < toInsert.length; j += INSERT_BATCH_SIZE) {
                         const insertBatch = toInsert.slice(j, j + INSERT_BATCH_SIZE);
+                        const subBatchNum = Math.floor(j / INSERT_BATCH_SIZE) + 1;
+                        console.log(`[import-from-json] 批次 ${batchNumber}: 插入子批次 ${subBatchNum}/${insertSubBatches} (${insertBatch.length} 条)...`);
+                        const subBatchStartTime = Date.now();
                         await trx.insertInto("questions").values(insertBatch).execute();
+                        const subBatchDuration = Date.now() - subBatchStartTime;
+                        console.log(`[import-from-json] 批次 ${batchNumber}: 子批次 ${subBatchNum} 插入完成，耗时 ${subBatchDuration}ms`);
                       }
                     });
                     totalImported += toInsert.length;
+                    const insertDuration = Date.now() - insertStartTime;
+                    console.log(`[import-from-json] ✅ 批次 ${batchNumber}: 批量插入完成，共 ${toInsert.length} 个，耗时 ${insertDuration}ms`);
                   } catch (error: any) {
+                    const insertDuration = Date.now() - insertStartTime;
+                    console.error(`[import-from-json] ❌ 批次 ${batchNumber}: 批量插入失败，耗时 ${insertDuration}ms`, {
+                      error: error.message,
+                      code: error.code,
+                      detail: error.detail,
+                      constraint: error.constraint,
+                      stack: error.stack?.substring(0, 500),
+                    });
+                    console.log(`[import-from-json] 批次 ${batchNumber}: 开始逐个插入（带重试）...`);
                     // 逐个插入（带重试）
                     for (let idx = 0; idx < toInsert.length; idx++) {
                       const item = toInsert[idx];
@@ -367,28 +410,48 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                       const maxRetries = 3;
                       let success = false;
                       
+                      // 特别记录346条记录附近的插入情况
+                      if (totalProcessed >= 340 && totalProcessed <= 350) {
+                        console.log(`[import-from-json] ⚠️  逐个插入第 ${idx + 1}/${toInsert.length} 条 (总第 ${totalProcessed} 条)`);
+                      }
+                      
                       while (retryCount < maxRetries && !success) {
                         try {
                           await db.insertInto("questions").values(item).execute();
                           totalImported++;
                           success = true;
+                          if (retryCount > 0) {
+                            console.log(`[import-from-json] 批次 ${batchNumber}: 题目 ${idx + 1} 重试 ${retryCount} 次后成功`);
+                          }
                         } catch (singleError: any) {
                           retryCount++;
                           if (retryCount >= maxRetries) {
                             totalErrors++;
-                            errors.push(`插入题目失败: ${singleError.message || String(singleError)}`);
+                            const errorMsg = `插入题目失败 (批次 ${batchNumber}, 索引 ${idx + 1}): ${singleError.message || String(singleError)}`;
+                            errors.push(errorMsg);
+                            console.error(`[import-from-json] ${errorMsg}`, {
+                              code: singleError.code,
+                              detail: singleError.detail,
+                              constraint: singleError.constraint,
+                              hash: item.content_hash?.substring(0, 16),
+                            });
                           } else {
-                            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                            const waitTime = 1000 * retryCount;
+                            console.warn(`[import-from-json] 批次 ${batchNumber}: 题目 ${idx + 1} 插入失败，${waitTime}ms 后重试 (${retryCount}/${maxRetries})...`);
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
                           }
                         }
                       }
                     }
+                    console.log(`[import-from-json] 批次 ${batchNumber}: 逐个插入完成`);
                   }
                 }
 
                 // 步骤6：批量更新现有题目
                 if (toUpdate.length > 0) {
-                  const updatePromises = toUpdate.map(async (item) => {
+                  console.log(`[import-from-json] 批次 ${batchNumber}: 开始批量更新 ${toUpdate.length} 个现有题目...`);
+                  const updateStartTime = Date.now();
+                  const updatePromises = toUpdate.map(async (item, idx) => {
                     try {
                       await db
                         .updateTable("questions")
@@ -409,6 +472,11 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         .execute();
                       return true;
                     } catch (error: any) {
+                      console.error(`[import-from-json] 批次 ${batchNumber}: 更新题目 ${item.id} 失败 (索引 ${idx + 1}):`, {
+                        error: error.message,
+                        code: error.code,
+                        detail: error.detail,
+                      });
                       return false;
                     }
                   });
@@ -416,12 +484,17 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   const updateResults = await Promise.all(updatePromises);
                   const successCount = updateResults.filter(r => r === true).length;
                   totalUpdated += successCount;
+                  const updateDuration = Date.now() - updateStartTime;
+                  console.log(`[import-from-json] ✅ 批次 ${batchNumber}: 批量更新完成，成功 ${successCount}/${toUpdate.length}，耗时 ${updateDuration}ms`);
                   if (successCount < toUpdate.length) {
                     totalErrors += (toUpdate.length - successCount);
+                    console.warn(`[import-from-json] ⚠️  批次 ${batchNumber}: ${toUpdate.length - successCount} 个更新失败`);
                   }
                 }
 
                 // 发送进度更新
+                console.log(`[import-from-json] ========== 批次 ${batchNumber}/${totalBatches} 处理完成 ==========`);
+                console.log(`[import-from-json] 累计统计 - 已处理: ${totalProcessed}/${totalQuestions}, 新增: ${totalImported}, 更新: ${totalUpdated}, 错误: ${totalErrors}`);
                 sendProgress({
                   processed: totalProcessed,
                   total: totalQuestions,
@@ -432,8 +505,27 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   totalBatches: totalBatches,
                 });
               } catch (error: any) {
-                console.error(`[import-from-json] 批次 ${batchNumber} 处理失败:`, error);
+                console.error(`[import-from-json] ❌❌❌ 批次 ${batchNumber} 处理失败 ❌❌❌`, {
+                  error: error.message,
+                  code: error.code,
+                  detail: error.detail,
+                  constraint: error.constraint,
+                  stack: error.stack,
+                  batchNumber,
+                  batchSize: batch.length,
+                  totalProcessed,
+                });
                 totalErrors += batch.length;
+                // 发送错误进度更新
+                sendProgress({
+                  processed: totalProcessed,
+                  total: totalQuestions,
+                  imported: totalImported,
+                  updated: totalUpdated,
+                  errors: totalErrors,
+                  currentBatch: batchNumber,
+                  totalBatches: totalBatches,
+                });
               }
             }
 
