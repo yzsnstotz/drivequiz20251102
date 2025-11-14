@@ -13,7 +13,7 @@ import { NextRequest } from "next/server";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError, forbidden } from "@/app/api/_lib/errors";
 import { requireDefaultAdmin } from "@/app/api/_lib/withAdminAuth";
-import { calculateQuestionHash } from "@/lib/questionHash";
+import { calculateQuestionHash, Question } from "@/lib/questionHash";
 import { saveQuestionToDb, loadQuestionFile } from "@/lib/questionDb";
 import { db } from "@/lib/db";
 import fs from "fs/promises";
