@@ -3,13 +3,15 @@ import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Bot } from 'lucide-react';
 import QuestionAIDialog from './QuestionAIDialog';
 import { loadUnifiedQuestionsPackage } from '@/lib/questionsLoader';
+import { useLanguage } from '@/lib/i18n';
+import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 
 interface Question {
   id: number;
   type: 'single' | 'multiple' | 'truefalse';
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
   image?: string;
-  options?: string[];
+  options?: string[] | Array<{ zh: string; en?: string; ja?: string; [key: string]: string | undefined }>;
   correctAnswer: string | string[];
   explanation?: string;
 }
@@ -24,6 +26,7 @@ interface QuestionPageProps {
 }
 
 function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
+  const { language, t } = useLanguage();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | string[]>('');
   const [showAnswer, setShowAnswer] = useState(false);
@@ -99,7 +102,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
           <h1 className="text-xl font-bold text-gray-900">{questionSet.title}</h1>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">加载题目中...</p>
+          <p className="text-gray-600">{t('question.loading')}</p>
         </div>
       </div>
     );
@@ -242,12 +245,12 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
+          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content, language)}</p>
           {currentQuestion.image && (
             <div className="mb-4">
               <Image
                 src={currentQuestion.image.trim()}
-                alt="题目图片"
+                alt={t('question.image')}
                 width={800}
                 height={600}
                 className="max-w-full rounded-lg shadow-sm"
@@ -267,13 +270,13 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
                       : 'bg-gray-50 border-2 border-transparent'
                   }`}
                 >
-                  {option === 'true' ? '正确' : '错误'}
+                  {option === 'true' ? t('question.correct') : t('question.incorrect')}
                 </button>
               ))}
             </div>
           ) : (
             <div className="space-y-3">
-              {currentQuestion.options?.map((option, index) => {
+              {getQuestionOptions(currentQuestion.options, language).map((option, index) => {
                 const optionLabel = String.fromCharCode(65 + index);
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
@@ -308,12 +311,12 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
             }`}
           >
             <ChevronLeft className="h-5 w-5" />
-            <span>上一题</span>
+            <span>{t('question.previous')}</span>
           </button>
 
           {/* {showAnswer && (
             <div className={`text-${isCorrect() ? 'green' : 'red'}-600 font-medium`}>
-              {isCorrect() ? '回答正确！' : '回答错误'}
+              {isCorrect() ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </div>
           )} */}
 
@@ -326,7 +329,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <span>下一题</span>
+            <span>{t('question.next')}</span>
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
@@ -334,10 +337,10 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
         {showAnswer && (
           <div className="mt-6 p-4 rounded-lg border bg-blue-50 border-blue-200 animate-fadeIn">
             <h3 className="text-gray-800 font-medium mb-2">
-              {isCorrect() ? '答对了！' : '答错了...'}
+              {isCorrect() ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{currentQuestion.explanation}</p>
+              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language)}</p>
             )}
           </div>
         )}

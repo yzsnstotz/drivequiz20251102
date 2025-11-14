@@ -140,18 +140,36 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 .where("content_hash", "=", contentHash)
                 .executeTakeFirst();
 
+              // 规范化content字段：如果是字符串，转换为多语言对象
+              let contentMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+              if (typeof question.content === "string") {
+                // 兼容旧格式：单语言字符串转换为多语言对象
+                contentMultilang = { zh: question.content };
+              } else {
+                // 新格式：多语言对象
+                contentMultilang = question.content;
+              }
+
+              // 规范化category和其他标签字段
+              const questionCategory = question.category || category;
+              const stageTag = question.stage_tag || null;
+              const topicTags = question.topic_tags || null;
+
               if (existing) {
                 // 更新现有题目
                 await db
                   .updateTable("questions")
                   .set({
                     type: question.type,
-                    content: question.content,
+                    content: contentMultilang as any,
                     options: question.options ? (question.options as any) : null,
                     correct_answer: question.correctAnswer as any,
                     image: question.image || null,
                     explanation: question.explanation || null,
                     license_types: [category],
+                    category: questionCategory,
+                    stage_tag: stageTag,
+                    topic_tags: topicTags,
                     updated_at: new Date(),
                   })
                   .where("id", "=", existing.id)
@@ -166,12 +184,15 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   .values({
                     content_hash: contentHash,
                     type: question.type,
-                    content: question.content,
+                    content: contentMultilang as any,
                     options: question.options ? (question.options as any) : null,
                     correct_answer: question.correctAnswer as any,
                     image: question.image || null,
                     explanation: question.explanation || null,
                     license_types: [category],
+                    category: questionCategory,
+                    stage_tag: stageTag,
+                    topic_tags: topicTags,
                   })
                   .execute();
 
@@ -217,18 +238,28 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 .where("locale", "=", "zh")
                 .executeTakeFirst();
 
+              // 从questions表获取标签信息（用于同步标签字段）
+              const questionInfo = await db
+                .selectFrom("questions")
+                .select(["category", "stage_tag", "topic_tags"])
+                .where("content_hash", "=", questionHash)
+                .executeTakeFirst();
+
               if (existing) {
-                // 更新现有回答
+                // 更新现有回答（同时更新标签字段）
                 await db
                   .updateTable("question_ai_answers")
                   .set({
                     answer,
+                    category: questionInfo?.category || null,
+                    stage_tag: questionInfo?.stage_tag || null,
+                    topic_tags: questionInfo?.topic_tags || null,
                     updated_at: new Date(),
                   })
                   .where("id", "=", existing.id)
                   .execute();
               } else {
-                // 插入新回答
+                // 插入新回答（包含标签字段）
                 await db
                   .insertInto("question_ai_answers")
                   .values({
@@ -236,6 +267,9 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     locale: "zh",
                     answer,
                     view_count: 0,
+                    category: questionInfo?.category || null,
+                    stage_tag: questionInfo?.stage_tag || null,
+                    topic_tags: questionInfo?.topic_tags || null,
                   })
                   .execute();
               }

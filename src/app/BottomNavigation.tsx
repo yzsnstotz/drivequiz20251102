@@ -10,33 +10,35 @@ import {
   Truck, 
   User 
 } from 'lucide-react';
+import { useLanguage } from '@/lib/i18n';
 
 export default function BottomNavigation() {
   const pathname = usePathname();
+  const { t } = useLanguage();
   
   const navItems = [
     { 
       href: '/', 
       icon: Home, 
-      label: '首页',
+      label: t('nav.home'),
       active: pathname === '/'
     },
     { 
       href: '/study', 
       icon: Book, 
-      label: '驾照',
+      label: t('nav.study'),
       active: pathname === '/study'
     },
     { 
       href: '/nearby', 
       icon: UtensilsCrossed, 
-      label: '服务',
+      label: t('nav.services'),
       active: pathname === '/nearby'
     },
     { 
       href: '/profile', 
       icon: User, 
-      label: '我的',
+      label: t('nav.profile'),
       active: pathname === '/profile'
     }
   ];

@@ -1,0 +1,303 @@
+[
+  {
+    "id": 1,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["safety_driving", "basic_rules"]
+  },
+  {
+    "id": 2,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["intersection", "basic_rules"]
+  },
+  {
+    "id": 3,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["intersection", "basic_rules"]
+  },
+  {
+    "id": 4,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["intersection", "basic_rules"]
+  },
+  {
+    "id": 5,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 6,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign"]
+  },
+  {
+    "id": 7,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign", "basic_rules"]
+  },
+  {
+    "id": 8,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign", "parking_stopping"]
+  },
+  {
+    "id": 9,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign"]
+  },
+  {
+    "id": 10,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign"]
+  },
+  {
+    "id": 11,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign", "basic_rules"]
+  },
+  {
+    "id": 12,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign"]
+  },
+  {
+    "id": 13,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 14,
+    "license_tags": ["passenger"],
+    "stage_tag": "honmen",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 15,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 16,
+    "license_tags": ["moped"],
+    "stage_tag": "both",
+    "topic_tags": ["moped_only", "basic_rules"]
+  },
+  {
+    "id": 17,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["safety_driving", "basic_rules"]
+  },
+  {
+    "id": 18,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 19,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "safety_driving"]
+  },
+  {
+    "id": 20,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "safety_driving"]
+  },
+  {
+    "id": 21,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "safety_driving", "parking_stopping"]
+  },
+  {
+    "id": 22,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 23,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "safety_driving"]
+  },
+  {
+    "id": 24,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["safety_driving", "basic_rules"]
+  },
+  {
+    "id": 25,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 26,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["intersection", "basic_rules"]
+  },
+  {
+    "id": 27,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 28,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 29,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 30,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 31,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["intersection", "basic_rules"]
+  },
+  {
+    "id": 32,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["traffic_sign", "basic_rules"]
+  },
+  {
+    "id": 33,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["safety_driving", "basic_rules"]
+  },
+  {
+    "id": 34,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["safety_driving", "basic_rules"]
+  },
+  {
+    "id": 35,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 36,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 37,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["basic_rules"]
+  },
+  {
+    "id": 38,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["intersection", "basic_rules"]
+  },
+  {
+    "id": 39,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["intersection", "basic_rules"]
+  },
+  {
+    "id": 40,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "safety_driving"]
+  },
+  {
+    "id": 41,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 42,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 43,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 44,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 45,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 46,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 47,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 48,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 49,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  },
+  {
+    "id": 50,
+    "license_tags": ["all"],
+    "stage_tag": "both",
+    "topic_tags": ["pedestrian", "basic_rules"]
+  }
+]
+

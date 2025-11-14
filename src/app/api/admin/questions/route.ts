@@ -36,12 +36,16 @@ export type QuestionType = "single" | "multiple" | "truefalse";
 export interface Question {
   id: number;
   type: QuestionType;
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   options?: string[];
   correctAnswer: string | string[];
   image?: string;
   explanation?: string;
   category?: string; // 卷类,如 "仮免-1", "免许-1" 等
+  hash?: string; // 题目hash
+  license_tags?: string[]; // 驾照类型标签
+  stage_tag?: "both" | "provisional" | "regular"; // 阶段标签
+  topic_tags?: string[]; // 主题标签数组
 }
 
 export interface QuestionFile {
@@ -202,14 +206,25 @@ async function collectAllQuestions(): Promise<(Question & { content_hash?: strin
     // 转换为前端格式（保留 content_hash）
     const allQuestions = allDbQuestions.map((q) => {
       // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
-      const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
-        ? q.license_types[0]
-        : "其他";
+      const category = q.category || 
+        (Array.isArray(q.license_types) && q.license_types.length > 0
+          ? q.license_types[0]
+          : "其他");
+
+      // 处理content字段：保持原格式（可能是字符串或多语言对象）
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+      if (typeof q.content === "string") {
+        // 兼容旧格式：单语言字符串
+        content = q.content;
+      } else {
+        // 新格式：多语言对象
+        content = q.content;
+      }
 
       return {
         id: q.id,
         type: q.type,
-        content: q.content,
+        content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
         correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
         image: q.image || undefined,
@@ -336,17 +351,27 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 }
                 return false;
               })
-              .map((q) => ({
-                id: q.id,
-                type: q.type,
-                content: q.content,
-                options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-                correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
-                image: q.image || undefined,
-                explanation: q.explanation || undefined,
-                category: category,
-                content_hash: q.content_hash, // 保留 content_hash 字段
-              }));
+              .map((q) => {
+                // 处理content字段：保持原格式
+                let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+                if (typeof q.content === "string") {
+                  content = q.content;
+                } else {
+                  content = q.content;
+                }
+
+                return {
+                  id: q.id,
+                  type: q.type,
+                  content,
+                  options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
+                  correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+                  image: q.image || undefined,
+                  explanation: q.explanation || undefined,
+                  category: q.category || category,
+                  content_hash: q.content_hash, // 保留 content_hash 字段
+                };
+              });
             
             console.log(`[GET /api/admin/questions] 直接查询后筛选，找到 ${allQuestions.length} 个题目`);
           }
@@ -406,7 +431,16 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       const searchLower = search.toLowerCase();
       allQuestions = allQuestions.filter((q) => {
         // 搜索题目内容、选项、解释
-        const contentMatch = q.content?.toLowerCase().includes(searchLower);
+        // 处理多语言content字段
+        let contentText = '';
+        if (typeof q.content === 'string') {
+          contentText = q.content.toLowerCase();
+        } else if (q.content && typeof q.content === 'object') {
+          // 多语言对象，使用指定语言或中文
+          const targetLang = locale && locale !== 'zh' ? locale : 'zh';
+          contentText = (q.content[targetLang] || q.content.zh || '').toLowerCase();
+        }
+        const contentMatch = contentText.includes(searchLower);
         const explanationMatch = q.explanation?.toLowerCase().includes(searchLower);
         const optionsMatch = q.options?.some((opt) =>
           opt.toLowerCase().includes(searchLower)
@@ -424,8 +458,9 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         aVal = a.id;
         bVal = b.id;
       } else if (sortBy === "content") {
-        aVal = a.content || "";
-        bVal = b.content || "";
+        // 处理多语言content字段
+        aVal = getContentText(a.content, locale as any) || "";
+        bVal = getContentText(b.content, locale as any) || "";
       } else if (sortBy === "category") {
         aVal = a.category || "";
         bVal = b.category || "";
@@ -608,7 +643,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       await logCreate(req, "question", newQuestion.id, {
         category: targetCategory,
         type,
-        content: content.substring(0, 50),
+        content: getContentText(content).substring(0, 50),
       });
     } catch (logErr) {
       console.error("[POST /api/admin/questions] Log error:", logErr);

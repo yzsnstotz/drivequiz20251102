@@ -170,16 +170,26 @@ export async function GET(
     const paginatedQuestions = sortedQuestions.slice(offset, offset + limit);
 
     // 格式化题目数据（确保字段与前台已用结构对齐）
-    const formattedQuestions = paginatedQuestions.map((q: any) => ({
-      id: q.id,
-      type: q.type || "single",
-      content: q.content || "",
-      options: q.options || [],
-      correctAnswer: q.correctAnswer,
-      image: q.image || null,
-      explanation: q.explanation || null,
-      category: q.category || null,
-    }));
+    const formattedQuestions = paginatedQuestions.map((q: any) => {
+      // 处理content字段：保持原格式（可能是字符串或多语言对象）
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+      if (typeof q.content === "string") {
+        content = q.content || "";
+      } else {
+        content = q.content || { zh: "" };
+      }
+
+      return {
+        id: q.id,
+        type: q.type || "single",
+        content,
+        options: q.options || [],
+        correctAnswer: q.correctAnswer,
+        image: q.image || null,
+        explanation: q.explanation || null,
+        category: q.category || null,
+      };
+    });
 
     // 开发环境下记录响应时间
     if (process.env.NODE_ENV === "development") {

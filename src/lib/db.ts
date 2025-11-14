@@ -422,12 +422,20 @@ interface QuestionTable {
   id: Generated<number>;
   content_hash: string;
   type: "single" | "multiple" | "truefalse";
-  content: string;
+  content: {
+    zh: string;
+    en?: string;
+    ja?: string;
+    [key: string]: string | undefined; // 支持其他语言
+  }; // JSONB - 多语言内容对象
   options: any | null; // JSONB
   correct_answer: any | null; // JSONB
   image: string | null;
   explanation: string | null;
   license_types: string[] | null;
+  category: string | null; // 题目分类（如 "12"）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签
+  topic_tags: string[] | null; // 主题标签数组（如 ['traffic_sign']）
   version: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
@@ -445,6 +453,9 @@ interface QuestionAiAnswerTable {
   model: string | null;
   created_by: string | null; // UUID
   view_count: number;
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -499,6 +510,9 @@ interface QuestionTranslationsTable {
   image: string | null;
   source: string | null; // ai / human / import
   created_by: string | null; // UUID
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -517,6 +531,9 @@ interface QuestionPolishReviewsTable {
   notes: string | null;
   created_by: string | null; // UUID
   reviewed_by: string | null; // UUID
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
   created_at: Generated<Date>;
   reviewed_at: Date | null;
   updated_at: Generated<Date>;
@@ -536,6 +553,9 @@ interface QuestionPolishHistoryTable {
   new_options: any | null; // JSONB
   new_explanation: string | null;
   approved_by: string | null; // UUID
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
   approved_at: Generated<Date>;
   created_at: Generated<Date>;
 }
