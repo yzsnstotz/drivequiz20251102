@@ -6,6 +6,7 @@ import Image from "next/image";
 import { apiFetch } from "@/lib/apiClient.front";
 import { loadAiAnswersForLocale, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getQuestionOptions } from "@/lib/questionUtils";
 
 // 前端内存缓存（按题目hash存储）
 // 格式：Map<questionHash, answer>
@@ -40,7 +41,7 @@ interface Question {
   type: "single" | "multiple" | "truefalse";
   content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   image?: string;
-  options?: string[];
+  options?: string[] | Array<{ zh: string; en?: string; ja?: string; [key: string]: string | undefined }>; // 支持单语言字符串数组或多语言对象数组
   correctAnswer: string | string[];
   explanation?: string;
   hash?: string; // 题目的hash值（与数据库的content_hash是同一个值）
@@ -211,9 +212,11 @@ export default function QuestionAIDialog({
       : (question.content?.zh || '');
     let questionText = `题目：${contentText}\n\n`;
     
-    if (question.options && question.options.length > 0) {
+    // 处理多语言options字段
+    const options = getQuestionOptions(question.options, language);
+    if (options && options.length > 0) {
       questionText += "选项：\n";
-      question.options.forEach((option, index) => {
+      options.forEach((option, index) => {
         const label = String.fromCharCode(65 + index);
         questionText += `${label}. ${option}\n`;
       });
