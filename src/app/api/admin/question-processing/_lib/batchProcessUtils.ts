@@ -49,8 +49,6 @@ async function callAiAskInternal(params: {
   const overallTimeout = isBatchProcessing ? 250000 : 55000; // 批量处理：250秒，单次调用：55秒
   const startTime = Date.now();
   
-  console.log(`[callAiAskInternal] Starting AI call with overall timeout: ${overallTimeout}ms, scene: ${params.scene}`);
-  
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       // 检查是否已经超过总体超时时间
@@ -63,10 +61,7 @@ async function callAiAskInternal(params: {
       // 批量处理场景需要更长的超时时间，因为AI可能需要更长时间处理
       const singleRequestTimeout = isBatchProcessing ? 120000 : 30000; // 批量处理：120秒，单次调用：30秒
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.log(`[callAiAskInternal] Request timeout after ${singleRequestTimeout}ms, aborting...`);
-        controller.abort();
-      }, singleRequestTimeout);
+      const timeoutId = setTimeout(() => controller.abort(), singleRequestTimeout);
       
       const response = await fetch(apiUrl, {
         method: "POST",
@@ -106,7 +101,6 @@ async function callAiAskInternal(params: {
             throw new Error(`AI API call timeout: insufficient time for retry (remaining: ${remainingTime}ms)`);
           }
           
-          console.log(`[callAiAskInternal] Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt}/${retries}, remaining: ${remainingTime}ms)`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -131,7 +125,6 @@ async function callAiAskInternal(params: {
               throw new Error(`AI API call timeout: insufficient time for retry (remaining: ${remainingTime}ms)`);
             }
             
-            console.log(`[callAiAskInternal] Provider rate limit (429), retrying in ${delay}ms (attempt ${attempt}/${retries}, remaining: ${remainingTime}ms)`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
@@ -158,7 +151,6 @@ async function callAiAskInternal(params: {
           throw error; // 如果剩余时间不足或已经是最后一次尝试，直接抛出错误
         }
         
-        console.log(`[callAiAskInternal] Error (${error.message}), retrying in ${delay}ms (attempt ${attempt}/${retries}, remaining: ${remainingTime}ms)`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
