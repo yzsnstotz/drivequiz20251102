@@ -43,9 +43,13 @@ async function callAiAskInternal(params: {
   const apiUrl = `${baseUrl}/api/ai/ask`;
 
   // 内部调用（使用 fetch），带重试机制
-  // 设置总体超时时间（60秒），避免在重试时超过Vercel函数超时限制
-  const overallTimeout = 55000; // 55秒，留5秒缓冲
+  // 设置总体超时时间（根据场景调整）
+  // 对于批量处理，需要更长的超时时间，因为可能涉及多个操作
+  const isBatchProcessing = process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_ENV === 'production';
+  const overallTimeout = isBatchProcessing ? 250000 : 55000; // 批量处理：250秒，单次调用：55秒
   const startTime = Date.now();
+  
+  console.log(`[callAiAskInternal] Starting AI call with overall timeout: ${overallTimeout}ms, scene: ${params.scene}`);
   
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -55,9 +59,14 @@ async function callAiAskInternal(params: {
         throw new Error(`AI API call timeout: exceeded ${overallTimeout}ms total time`);
       }
       
-      // 为每次请求设置超时（30秒）
+      // 为每次请求设置超时（根据场景调整）
+      // 批量处理场景需要更长的超时时间，因为AI可能需要更长时间处理
+      const singleRequestTimeout = isBatchProcessing ? 120000 : 30000; // 批量处理：120秒，单次调用：30秒
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => {
+        console.log(`[callAiAskInternal] Request timeout after ${singleRequestTimeout}ms, aborting...`);
+        controller.abort();
+      }, singleRequestTimeout);
       
       const response = await fetch(apiUrl, {
         method: "POST",
