@@ -325,24 +325,40 @@ export async function fillMissingContent(params: {
   });
 
   let parsed: any = null;
+  let rawAnswer = data.answer;
+  
+  // 尝试从代码块中提取 JSON（优先处理）
+  const codeBlockMatch = rawAnswer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch) {
+    rawAnswer = codeBlockMatch[1].trim();
+  }
+  
   try {
-    parsed = JSON.parse(data.answer);
+    parsed = JSON.parse(rawAnswer);
   } catch (parseError) {
-    // 尝试从代码块中提取 JSON
-    const m = data.answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (m) {
-      try {
-        parsed = JSON.parse(m[1]);
-      } catch {
-        // 如果还是解析失败，记录原始响应用于调试
-        console.error(`[fillMissingContent] Failed to parse AI response: ${data.answer.substring(0, 200)}`);
-        throw new Error("AI fill missing response missing JSON body");
+    // 如果 JSON 解析失败，尝试修复常见的 JSON 格式问题
+    // 例如：不完整的 JSON（缺少闭合括号）
+    try {
+      // 尝试添加缺失的闭合括号
+      let fixedJson = rawAnswer.trim();
+      if (!fixedJson.endsWith("}")) {
+        // 计算缺失的闭合括号
+        const openBraces = (fixedJson.match(/\{/g) || []).length;
+        const closeBraces = (fixedJson.match(/\}/g) || []).length;
+        const missingBraces = openBraces - closeBraces;
+        if (missingBraces > 0) {
+          fixedJson += "\n" + "}".repeat(missingBraces);
+        }
       }
-    } else {
-      console.error(`[fillMissingContent] No JSON found in AI response: ${data.answer.substring(0, 200)}`);
+      parsed = JSON.parse(fixedJson);
+    } catch {
+      // 如果修复后仍然失败，记录完整响应用于调试
+      console.error(`[fillMissingContent] Failed to parse AI response. Full response length: ${data.answer.length}`);
+      console.error(`[fillMissingContent] Response preview: ${data.answer.substring(0, 500)}`);
       throw new Error("AI fill missing response missing JSON body");
     }
   }
+  
   if (!parsed || typeof parsed !== "object") {
     throw new Error("AI fill missing response missing JSON body");
   }
