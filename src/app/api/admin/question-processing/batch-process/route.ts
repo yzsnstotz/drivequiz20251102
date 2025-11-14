@@ -624,12 +624,14 @@ async function processBatchAsync(
                     explanationType: updatedExplanation === null ? "null" : typeof updatedExplanation,
                   });
 
+                  // 直接传递对象，Kysely 会自动处理 JSONB 序列化
+                  // 确保所有字段都是纯 JavaScript 对象/数组/null
                   await db
                     .updateTable("questions")
                     .set({
-                      content: updatedContent,
-                      options: updatedOptions,
-                      explanation: updatedExplanation,
+                      content: updatedContent as any,
+                      options: updatedOptions as any,
+                      explanation: updatedExplanation as any,
                       updated_at: new Date(),
                     })
                     .where("id", "=", question.id)

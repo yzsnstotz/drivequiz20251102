@@ -324,7 +324,14 @@ async function verifyJwt(authorization?: string): Promise<{ userId: string } | n
     // 如果不是 UUID 格式，返回 null（将被视为匿名用户）
     return null;
   } catch (e) {
-    console.error("[JWT] JWT verification failed", (e as Error).message);
+    // 在开发/预览环境中，JWT 验证失败是正常的（会回退到匿名用户）
+    // 只在生产环境或明确需要验证时才记录为错误
+    if (isProduction() && USER_JWT_SECRET) {
+      console.error("[JWT] JWT verification failed", (e as Error).message);
+    } else {
+      // 开发/预览环境：JWT 验证失败是预期的，降级为警告
+      console.warn("[JWT] JWT verification failed, using anonymous user", (e as Error).message);
+    }
     return null;
   }
 }
