@@ -157,157 +157,255 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       let packageUpdated = 0;
       let packageErrors = 0;
 
-      // 批量处理：每批50个题目，避免一次性处理过多导致超时
-      const BATCH_SIZE = 50;
+      // 批量处理：每批100个题目，使用批量查询和批量插入/更新优化性能
+      const BATCH_SIZE = 100;
       const totalQuestions = questionsToImport.length;
       
       console.log(`[import-from-json] 开始导入包 ${packageInfo.name}（来源：${packageInfo.source}），共 ${totalQuestions} 个题目，将分 ${Math.ceil(totalQuestions / BATCH_SIZE)} 批处理`);
 
+      // 辅助函数：规范化content字段
+      const normalizeContent = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } => {
+        if (typeof question.content === "string") {
+          return { zh: question.content };
+        } else {
+          const contentObj = question.content as { [key: string]: string | undefined };
+          const isPlaceholder = (value: string | undefined): boolean => {
+            return value !== undefined && typeof value === 'string' && 
+              (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+          };
+          
+          const result: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } = { zh: contentObj.zh || "" };
+          if (contentObj.en && !isPlaceholder(contentObj.en)) {
+            result.en = contentObj.en;
+          }
+          if (contentObj.ja && !isPlaceholder(contentObj.ja)) {
+            result.ja = contentObj.ja;
+          }
+          return result;
+        }
+      };
+
+      // 辅助函数：规范化explanation字段
+      const normalizeExplanation = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | string | null => {
+        if (!question.explanation) return null;
+        if (typeof question.explanation === "string") {
+          return question.explanation;
+        } else {
+          const expObj = question.explanation as { [key: string]: string | undefined };
+          const isPlaceholder = (value: string | undefined): boolean => {
+            return value !== undefined && typeof value === 'string' && 
+              (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+          };
+          
+          const result: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } = { zh: expObj.zh || "" };
+          if (expObj.en && !isPlaceholder(expObj.en)) {
+            result.en = expObj.en;
+          }
+          if (expObj.ja && !isPlaceholder(expObj.ja)) {
+            result.ja = expObj.ja;
+          }
+          return result;
+        }
+      };
+
       for (let i = 0; i < totalQuestions; i += BATCH_SIZE) {
         const batch = questionsToImport.slice(i, i + BATCH_SIZE);
-          const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-          const totalBatches = Math.ceil(totalQuestions / BATCH_SIZE);
-          
-          console.log(`[import-from-json] 处理批次 ${batchNumber}/${totalBatches}，包含 ${batch.length} 个题目`);
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(totalQuestions / BATCH_SIZE);
+        
+        console.log(`[import-from-json] 处理批次 ${batchNumber}/${totalBatches}，包含 ${batch.length} 个题目`);
 
-          // 导入每个题目
-          for (const question of batch) {
+        try {
+          // 步骤1：批量计算所有题目的hash
+          const questionHashes = batch.map(q => ({
+            question: q,
+            hash: calculateQuestionHash(q),
+          }));
+
+          // 步骤2：批量查询所有已存在的题目（一次性查询）
+          const hashes = questionHashes.map(qh => qh.hash);
+          const existingQuestions = await db
+            .selectFrom("questions")
+            .select(["id", "content_hash"])
+            .where("content_hash", "in", hashes)
+            .execute();
+
+          // 创建hash到id的映射
+          const hashToIdMap = new Map<string, number>();
+          for (const eq of existingQuestions) {
+            hashToIdMap.set(eq.content_hash, eq.id);
+          }
+
+          // 步骤3：准备批量插入和更新的数据
+          const toInsert: Array<{
+            content_hash: string;
+            type: string;
+            content: any;
+            options: any;
+            correct_answer: any;
+            image: string | null;
+            explanation: any;
+            license_types: any;
+            category: string;
+            stage_tag: string | null;
+            topic_tags: any;
+          }> = [];
+          const toUpdate: Array<{
+            id: number;
+            type: string;
+            content: any;
+            options: any;
+            correct_answer: any;
+            image: string | null;
+            explanation: any;
+            license_types: any;
+            category: string;
+            stage_tag: string | null;
+            topic_tags: any;
+          }> = [];
+
+          // 步骤4：处理每个题目，准备批量操作数据
+          for (const { question, hash } of questionHashes) {
             try {
               packageProcessed++;
               totalProcessed++;
 
-              // 计算题目hash
-              const contentHash = calculateQuestionHash(question);
-
-              // 检查数据库中是否已存在
-              const existing = await db
-                .selectFrom("questions")
-                .select(["id"])
-                .where("content_hash", "=", contentHash)
-                .executeTakeFirst();
-
-              // 规范化content字段：如果是字符串，转换为多语言对象
-              // 同时过滤掉占位符字段（[EN] 和 [JA] 开头的值）
-              let contentMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
-              if (typeof question.content === "string") {
-                // 兼容旧格式：单语言字符串转换为多语言对象
-                contentMultilang = { zh: question.content };
-              } else {
-                // 新格式：多语言对象，过滤掉占位符
-                const contentObj = question.content as { [key: string]: string | undefined };
-                const isPlaceholder = (value: string | undefined): boolean => {
-                  return value !== undefined && typeof value === 'string' && 
-                    (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
-                };
-                
-                // 只保留非占位符的字段，优先保留zh
-                contentMultilang = { zh: contentObj.zh || "" };
-                if (contentObj.en && !isPlaceholder(contentObj.en)) {
-                  contentMultilang.en = contentObj.en;
-                }
-                if (contentObj.ja && !isPlaceholder(contentObj.ja)) {
-                  contentMultilang.ja = contentObj.ja;
-                }
-              }
-
-              // 规范化explanation字段：如果是多语言对象，过滤掉占位符
-              let explanationMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | string | null = null;
-              if (question.explanation) {
-                if (typeof question.explanation === "string") {
-                  explanationMultilang = question.explanation;
-                } else {
-                  // 多语言对象，过滤掉占位符
-                  const expObj = question.explanation as { [key: string]: string | undefined };
-                  const isPlaceholder = (value: string | undefined): boolean => {
-                    return value !== undefined && typeof value === 'string' && 
-                      (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
-                  };
-                  
-                  // 只保留非占位符的字段，优先保留zh
-                  explanationMultilang = { zh: expObj.zh || "" };
-                  if (expObj.en && !isPlaceholder(expObj.en)) {
-                    explanationMultilang.en = expObj.en;
-                  }
-                  if (expObj.ja && !isPlaceholder(expObj.ja)) {
-                    explanationMultilang.ja = expObj.ja;
-                  }
-                }
-              }
-
-              // 规范化category和其他标签字段
+              const contentMultilang = normalizeContent(question);
+              const explanationMultilang = normalizeExplanation(question);
               const questionCategory = question.category || "其他";
-              // license_types应该从license_tags字段获取
               const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
                 ? question.license_tags 
                 : null;
               const stageTag = question.stage_tag || null;
               const topicTags = question.topic_tags || null;
 
-              if (existing) {
-                // 更新现有题目
-                await db
-                  .updateTable("questions")
-                  .set({
-                    type: question.type,
-                    content: contentMultilang as any,
-                    options: question.options ? (question.options as any) : null,
-                    correct_answer: question.correctAnswer as any,
-                    image: question.image || null,
-                    explanation: explanationMultilang as any,
-                    license_types: licenseTypes,
-                    category: questionCategory,
-                    stage_tag: stageTag,
-                    topic_tags: topicTags,
-                    updated_at: new Date(),
-                  })
-                  .where("id", "=", existing.id)
-                  .execute();
-
-                packageUpdated++;
-                totalUpdated++;
-              } else {
-                // 插入新题目
-                await db
-                  .insertInto("questions")
-                  .values({
-                    content_hash: contentHash,
-                    type: question.type,
-                    content: contentMultilang as any,
-                    options: question.options ? (question.options as any) : null,
-                    correct_answer: question.correctAnswer as any,
-                    image: question.image || null,
-                    explanation: explanationMultilang as any,
-                    license_types: licenseTypes,
-                    category: questionCategory,
-                    stage_tag: stageTag,
-                    topic_tags: topicTags,
-                  })
-                  .execute();
-
-                packageImported++;
-                totalImported++;
-              }
-          } catch (error: any) {
-            packageErrors++;
-            totalErrors++;
-            const errorMsg = `导入题目 ${question.id || 'unknown'} (${packageInfo.name}) 失败: ${error.message || String(error)}`;
-            errors.push(errorMsg);
-            console.error("[import-from-json] Error importing question:", {
-              questionId: question.id,
-              packageName: packageInfo.name,
-              error: error.message || String(error),
-              stack: error.stack,
-            });
+              const existingId = hashToIdMap.get(hash);
               
-              // 如果是数据库连接错误或超时，记录更详细的信息
-              if (error.message?.includes("timeout") || error.message?.includes("aborted") || error.message?.includes("signal")) {
-                console.error("[import-from-json] 检测到超时或中断错误，可能是请求超时或数据库连接问题");
+              if (existingId) {
+                // 准备更新数据
+                toUpdate.push({
+                  id: existingId,
+                  type: question.type,
+                  content: contentMultilang as any,
+                  options: question.options ? (question.options as any) : null,
+                  correct_answer: question.correctAnswer as any,
+                  image: question.image || null,
+                  explanation: explanationMultilang as any,
+                  license_types: licenseTypes,
+                  category: questionCategory,
+                  stage_tag: stageTag,
+                  topic_tags: topicTags,
+                });
+              } else {
+                // 准备插入数据
+                toInsert.push({
+                  content_hash: hash,
+                  type: question.type,
+                  content: contentMultilang as any,
+                  options: question.options ? (question.options as any) : null,
+                  correct_answer: question.correctAnswer as any,
+                  image: question.image || null,
+                  explanation: explanationMultilang as any,
+                  license_types: licenseTypes,
+                  category: questionCategory,
+                  stage_tag: stageTag,
+                  topic_tags: topicTags,
+                });
+              }
+            } catch (error: any) {
+              packageErrors++;
+              totalErrors++;
+              const errorMsg = `准备题目 ${question.id || 'unknown'} (${packageInfo.name}) 失败: ${error.message || String(error)}`;
+              errors.push(errorMsg);
+              console.error("[import-from-json] Error preparing question:", {
+                questionId: question.id,
+                packageName: packageInfo.name,
+                error: error.message || String(error),
+              });
+            }
+          }
+
+          // 步骤5：批量插入新题目
+          if (toInsert.length > 0) {
+            try {
+              await db
+                .insertInto("questions")
+                .values(toInsert)
+                .execute();
+              packageImported += toInsert.length;
+              totalImported += toInsert.length;
+              console.log(`[import-from-json] 批次 ${batchNumber} 批量插入 ${toInsert.length} 个新题目`);
+            } catch (error: any) {
+              console.error(`[import-from-json] 批次 ${batchNumber} 批量插入失败:`, error);
+              // 如果批量插入失败，尝试逐个插入
+              for (const item of toInsert) {
+                try {
+                  await db.insertInto("questions").values(item).execute();
+                  packageImported++;
+                  totalImported++;
+                } catch (singleError: any) {
+                  packageErrors++;
+                  totalErrors++;
+                  errors.push(`插入题目失败: ${singleError.message || String(singleError)}`);
+                }
               }
             }
           }
 
-        // 每批处理完后，记录进度
-        console.log(`[import-from-json] 批次 ${batchNumber}/${totalBatches} 完成，已处理 ${packageProcessed}/${totalQuestions} 个题目`);
+          // 步骤6：批量更新现有题目（使用事务或逐个更新）
+          if (toUpdate.length > 0) {
+            // Kysely 不支持批量更新，需要逐个更新，但使用 Promise.all 并行执行
+            const updatePromises = toUpdate.map(async (item) => {
+              try {
+                await db
+                  .updateTable("questions")
+                  .set({
+                    type: item.type,
+                    content: item.content,
+                    options: item.options,
+                    correct_answer: item.correct_answer,
+                    image: item.image,
+                    explanation: item.explanation,
+                    license_types: item.license_types,
+                    category: item.category,
+                    stage_tag: item.stage_tag,
+                    topic_tags: item.topic_tags,
+                    updated_at: new Date(),
+                  })
+                  .where("id", "=", item.id)
+                  .execute();
+                return true;
+              } catch (error: any) {
+                console.error(`[import-from-json] 更新题目 ${item.id} 失败:`, error);
+                return false;
+              }
+            });
+
+            const updateResults = await Promise.all(updatePromises);
+            const successCount = updateResults.filter(r => r === true).length;
+            packageUpdated += successCount;
+            totalUpdated += successCount;
+            if (successCount < toUpdate.length) {
+              packageErrors += (toUpdate.length - successCount);
+              totalErrors += (toUpdate.length - successCount);
+            }
+            console.log(`[import-from-json] 批次 ${batchNumber} 批量更新 ${successCount}/${toUpdate.length} 个题目`);
+          }
+
+          // 每批处理完后，记录进度
+          console.log(`[import-from-json] 批次 ${batchNumber}/${totalBatches} 完成，已处理 ${packageProcessed}/${totalQuestions} 个题目（新增 ${packageImported}，更新 ${packageUpdated}，错误 ${packageErrors}）`);
+        } catch (error: any) {
+          // 批次级别的错误处理
+          console.error(`[import-from-json] 批次 ${batchNumber} 处理失败:`, error);
+          if (error.message?.includes("timeout") || error.message?.includes("aborted") || error.message?.includes("signal")) {
+            console.error("[import-from-json] 检测到超时或中断错误，可能是请求超时或数据库连接问题");
+            // 如果是因为超时，抛出错误以便上层处理
+            throw error;
+          }
+          // 其他错误继续处理下一批
+          packageErrors += batch.length;
+          totalErrors += batch.length;
+        }
       }
 
       // 如果有AI回答，也导入到数据库（失败不影响主流程）
