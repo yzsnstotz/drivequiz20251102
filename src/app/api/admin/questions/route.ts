@@ -596,7 +596,18 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           contentText = (q.content[targetLang] || q.content.zh || '').toLowerCase();
         }
         const contentMatch = contentText.includes(searchLower);
-        const explanationMatch = q.explanation?.toLowerCase().includes(searchLower);
+        // 处理多语言explanation字段
+        let explanationText = '';
+        if (q.explanation) {
+          if (typeof q.explanation === 'string') {
+            explanationText = q.explanation.toLowerCase();
+          } else if (typeof q.explanation === 'object') {
+            // 多语言对象，使用指定语言或中文
+            const targetLang = locale && locale !== 'zh' ? locale : 'zh';
+            explanationText = (q.explanation[targetLang] || q.explanation.zh || '').toLowerCase();
+          }
+        }
+        const explanationMatch = explanationText.includes(searchLower);
         const optionsMatch = q.options?.some((opt) =>
           opt.toLowerCase().includes(searchLower)
         );
