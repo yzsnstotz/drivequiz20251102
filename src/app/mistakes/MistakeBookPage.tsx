@@ -53,7 +53,7 @@ function MistakeBookPage() {
 
   const getQuestionIcon = (question: Question) => {
     // 处理多语言content字段
-    const contentText = getContentText(question.content, 'zh');
+    const contentText = getContentText(question.content, 'zh') || '';
     
     if (question.fromExam) {
       return <CheckSquare className="h-5 w-5 text-purple-600" />;
