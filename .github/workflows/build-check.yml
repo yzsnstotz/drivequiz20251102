@@ -1,0 +1,146 @@
+name: 构建检查和自动修复
+
+on:
+  push:
+    branches: [ feat/language-system, main, master ]
+  pull_request:
+    branches: [ feat/language-system, main, master ]
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: 安装依赖
+      run: npm ci
+      
+    - name: 运行 TypeScript 类型检查
+      id: typecheck
+      continue-on-error: true
+      run: |
+        npx tsc --noEmit 2>&1 | tee typecheck-errors.log
+        if [ $? -eq 0 ]; then
+          echo "typecheck_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "typecheck_status=failed" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: 运行构建检查
+      id: build
+      continue-on-error: true
+      run: |
+        npm run build 2>&1 | tee build-errors.log
+        if [ $? -eq 0 ]; then
+          echo "build_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "build_status=failed" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: 上传构建日志
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          typecheck-errors.log
+          build-errors.log
+        retention-days: 7
+        
+    - name: 分析错误并创建 Issue
+      if: steps.build.outputs.build_status == 'failed' || steps.typecheck.outputs.typecheck_status == 'failed'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          
+          // 读取构建日志
+          let buildLog = '';
+          let typecheckLog = '';
+          
+          try {
+            buildLog = fs.readFileSync('build-errors.log', 'utf8');
+          } catch (e) {
+            console.log('无法读取 build-errors.log');
+          }
+          
+          try {
+            typecheckLog = fs.readFileSync('typecheck-errors.log', 'utf8');
+          } catch (e) {
+            console.log('无法读取 typecheck-errors.log');
+          }
+          
+          // 提取错误信息
+          const errors = [];
+          
+          // 从构建日志中提取 TypeScript 错误
+          const buildErrorMatch = buildLog.match(/Type error:.*?\n.*?(\d+:\d+)/s);
+          if (buildErrorMatch) {
+            errors.push({
+              type: 'TypeScript 类型错误',
+              message: buildErrorMatch[0].substring(0, 500),
+              file: buildErrorMatch[1] || '未知文件'
+            });
+          }
+          
+          // 从类型检查日志中提取错误
+          const typecheckErrors = typecheckLog.match(/error TS\d+.*/g);
+          if (typecheckErrors) {
+            typecheckErrors.slice(0, 5).forEach(err => {
+              errors.push({
+                type: 'TypeScript 编译错误',
+                message: err.substring(0, 200)
+              });
+            });
+          }
+          
+          // 创建 Issue
+          if (errors.length > 0) {
+            const issueBody = `## 🚨 构建失败报告
+            
+            **分支**: ${{ github.ref }}
+            **提交**: ${{ github.sha }}
+            **触发者**: ${{ github.actor }}
+            
+            ### 发现的错误
+            
+            ${errors.map((err, i) => `
+            #### 错误 ${i + 1}: ${err.type}
+            \`\`\`
+            ${err.message}
+            \`\`\`
+            `).join('\n')}
+            
+            ### 完整日志
+            
+            请查看 [构建日志 Artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            ---
+            *此 Issue 由 GitHub Actions 自动创建*
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 构建失败: ${context.ref.replace('refs/heads/', '')} - ${new Date().toLocaleString('zh-CN')}`,
+              body: issueBody,
+              labels: ['bug', 'build-error', 'automated']
+            });
+          }
+          
+    - name: 构建失败通知
+      if: steps.build.outputs.build_status == 'failed'
+      run: |
+        echo "❌ 构建失败！请检查日志。"
+        exit 1
+
