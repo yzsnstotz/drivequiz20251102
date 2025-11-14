@@ -63,7 +63,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
     // 2. 验证超级管理员密码
     const body = await req.json();
-    const { password, packageName } = body;
+    const { password, packageName, source, version } = body;
 
     if (!password || typeof password !== "string") {
       return badRequest("超级管理员密码不能为空");
@@ -74,14 +74,40 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       return forbidden("超级管理员密码错误");
     }
 
-    // 3. 确定要导入的包
-    const categories = packageName ? [packageName] : await getAllCategories();
-    
-    if (categories.length === 0) {
-      return badRequest("没有找到可导入的JSON包");
+    // 3. 确定要导入的包和源
+    let questionsToImport: Question[] = [];
+    let packageInfo: { name: string; source: string } | null = null;
+
+    if (source === "database" && version) {
+      // 从数据库packages_version表读取
+      const { getUnifiedVersionContent } = await import("@/lib/questionDb");
+      const versionContent = await getUnifiedVersionContent(version);
+      if (!versionContent || !versionContent.questions || versionContent.questions.length === 0) {
+        return badRequest(`数据库中没有找到版本 ${version} 的JSON包内容`);
+      }
+      questionsToImport = versionContent.questions;
+      packageInfo = { name: version, source: "database" };
+      console.log(`[import-from-json] 从数据库版本 ${version} 读取，共 ${questionsToImport.length} 个题目`);
+    } else {
+      // 从文件系统读取（默认行为）
+      const categories = packageName ? [packageName] : await getAllCategories();
+      
+      if (categories.length === 0) {
+        return badRequest("没有找到可导入的JSON包");
+      }
+
+      // 加载第一个包（如果指定了packageName，只加载该包）
+      const category = categories[0];
+      const file = await loadQuestionFile(category);
+      if (!file || !file.questions || file.questions.length === 0) {
+        return badRequest(`JSON包 ${category} 不存在或为空`);
+      }
+      questionsToImport = file.questions;
+      packageInfo = { name: category, source: "filesystem" };
+      console.log(`[import-from-json] 从文件系统读取包 ${category}，共 ${questionsToImport.length} 个题目`);
     }
 
-    // 4. 导入每个包
+    // 4. 导入题目
     let totalProcessed = 0;
     let totalImported = 0;
     let totalUpdated = 0;
@@ -95,30 +121,24 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       errors: number;
     }> = [];
 
-    for (const category of categories) {
-      try {
-        // 加载JSON包
-        const file = await loadQuestionFile(category);
-        if (!file || !file.questions || file.questions.length === 0) {
-          if (packageName) {
-            return badRequest(`JSON包 ${packageName} 不存在或为空`);
-          }
-          continue;
-        }
+    if (!packageInfo || questionsToImport.length === 0) {
+      return badRequest("没有可导入的题目");
+    }
 
-        let packageProcessed = 0;
-        let packageImported = 0;
-        let packageUpdated = 0;
-        let packageErrors = 0;
+    try {
+      let packageProcessed = 0;
+      let packageImported = 0;
+      let packageUpdated = 0;
+      let packageErrors = 0;
 
-        // 批量处理：每批50个题目，避免一次性处理过多导致超时
-        const BATCH_SIZE = 50;
-        const totalQuestions = file.questions.length;
-        
-        console.log(`[import-from-json] 开始导入包 ${category}，共 ${totalQuestions} 个题目，将分 ${Math.ceil(totalQuestions / BATCH_SIZE)} 批处理`);
+      // 批量处理：每批50个题目，避免一次性处理过多导致超时
+      const BATCH_SIZE = 50;
+      const totalQuestions = questionsToImport.length;
+      
+      console.log(`[import-from-json] 开始导入包 ${packageInfo.name}（来源：${packageInfo.source}），共 ${totalQuestions} 个题目，将分 ${Math.ceil(totalQuestions / BATCH_SIZE)} 批处理`);
 
-        for (let i = 0; i < totalQuestions; i += BATCH_SIZE) {
-          const batch = file.questions.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < totalQuestions; i += BATCH_SIZE) {
+        const batch = questionsToImport.slice(i, i + BATCH_SIZE);
           const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
           const totalBatches = Math.ceil(totalQuestions / BATCH_SIZE);
           
@@ -151,7 +171,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
               }
 
               // 规范化category和其他标签字段
-              const questionCategory = question.category || category;
+              const questionCategory = question.category || "其他";
+              const category = questionCategory; // 用于license_types
               const stageTag = question.stage_tag || null;
               const topicTags = question.topic_tags || null;
 
@@ -199,17 +220,17 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 packageImported++;
                 totalImported++;
               }
-            } catch (error: any) {
-              packageErrors++;
-              totalErrors++;
-              const errorMsg = `导入题目 ${question.id} (${category}) 失败: ${error.message || String(error)}`;
-              errors.push(errorMsg);
-              console.error("[import-from-json] Error importing question:", {
-                questionId: question.id,
-                category,
-                error: error.message || String(error),
-                stack: error.stack,
-              });
+          } catch (error: any) {
+            packageErrors++;
+            totalErrors++;
+            const errorMsg = `导入题目 ${question.id || 'unknown'} (${packageInfo.name}) 失败: ${error.message || String(error)}`;
+            errors.push(errorMsg);
+            console.error("[import-from-json] Error importing question:", {
+              questionId: question.id,
+              packageName: packageInfo.name,
+              error: error.message || String(error),
+              stack: error.stack,
+            });
               
               // 如果是数据库连接错误或超时，记录更详细的信息
               if (error.message?.includes("timeout") || error.message?.includes("aborted") || error.message?.includes("signal")) {
@@ -218,12 +239,45 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
             }
           }
 
-          // 每批处理完后，记录进度
-          console.log(`[import-from-json] 批次 ${batchNumber}/${totalBatches} 完成，已处理 ${packageProcessed}/${totalQuestions} 个题目`);
-        }
+        // 每批处理完后，记录进度
+        console.log(`[import-from-json] 批次 ${batchNumber}/${totalBatches} 完成，已处理 ${packageProcessed}/${totalQuestions} 个题目`);
+      }
 
-        // 如果有AI回答，也导入到数据库（失败不影响主流程）
-        if (file.aiAnswers) {
+      // 如果有AI回答，也导入到数据库（失败不影响主流程）
+      // 注意：从数据库版本导入时，AI回答已经在package_content中，这里暂时跳过
+      // 如果需要导入AI回答，可以从versionContent.aiAnswers获取
+      console.log(`[import-from-json] 包 ${packageInfo.name} 处理完成`);
+      
+      results.push({
+        packageName: packageInfo.name,
+        processed: packageProcessed,
+        imported: packageImported,
+        updated: packageUpdated,
+        errors: packageErrors,
+      });
+    } catch (error: any) {
+      const errorMsg = `导入包 ${packageInfo?.name || 'unknown'} 失败: ${error.message || String(error)}`;
+      errors.push(errorMsg);
+      console.error("[import-from-json] Error importing package:", {
+        packageName: packageInfo?.name,
+        error: error.message || String(error),
+      });
+      
+      results.push({
+        packageName: packageInfo?.name || 'unknown',
+        processed: 0,
+        imported: 0,
+        updated: 0,
+        errors: 1,
+      });
+    }
+
+    // 如果是从文件系统导入，尝试导入AI回答（从文件读取）
+    if (packageInfo?.source === "filesystem") {
+      try {
+        const category = packageInfo.name;
+        const file = await loadQuestionFile(category);
+        if (file && file.aiAnswers) {
           console.log(`[import-from-json] 开始导入AI回答，共 ${Object.keys(file.aiAnswers).length} 个`);
           let aiAnswerSuccess = 0;
           let aiAnswerErrors = 0;
@@ -283,37 +337,18 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
           
           console.log(`[import-from-json] AI回答导入完成：成功 ${aiAnswerSuccess} 个，失败 ${aiAnswerErrors} 个`);
         }
-
-        results.push({
-          packageName: category,
-          processed: packageProcessed,
-          imported: packageImported,
-          updated: packageUpdated,
-          errors: packageErrors,
-        });
-
-        console.log(`[import-from-json] Imported package ${category}:`, {
-          processed: packageProcessed,
-          imported: packageImported,
-          updated: packageUpdated,
-          errors: packageErrors,
-        });
       } catch (error: any) {
-        totalErrors++;
-        const errorMsg = `导入包 ${category} 失败: ${error.message || String(error)}`;
-        errors.push(errorMsg);
-        console.error("[import-from-json] Error importing package:", {
-          category,
-          error: error.message || String(error),
-          stack: error.stack,
-        });
-        
-        // 如果是超时或中断错误，提供更明确的提示
-        if (error.message?.includes("timeout") || error.message?.includes("aborted") || error.message?.includes("signal")) {
-          console.error("[import-from-json] 检测到超时或中断错误，建议：1) 检查数据库连接；2) 增加超时时间；3) 减少批量大小");
-        }
+        console.error(`[import-from-json] Error importing AI answers:`, error);
+        // AI回答导入失败不影响主流程
       }
     }
+
+    console.log(`[import-from-json] 导入完成:`, {
+      totalProcessed,
+      totalImported,
+      totalUpdated,
+      totalErrors,
+    });
 
     // 5. 返回结果
     return success({

@@ -106,6 +106,8 @@ export default function QuestionsPage() {
   const [importingFromJson, setImportingFromJson] = useState(false);
   const [showImportFromJsonModal, setShowImportFromJsonModal] = useState(false);
   const [superAdminPassword, setSuperAdminPassword] = useState("");
+  const [importSource, setImportSource] = useState<"filesystem" | "database">("filesystem");
+  const [importVersion, setImportVersion] = useState<string>("");
   const [importFromJsonResult, setImportFromJsonResult] = useState<{
     totalProcessed: number;
     totalImported: number;
@@ -382,7 +384,7 @@ export default function QuestionsPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder]);
+  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder, filters.locale]);
 
   // 初始加载或筛选条件改变时重置
   useEffect(() => {
@@ -390,7 +392,7 @@ export default function QuestionsPage() {
     setHasMore(true);
     loadData(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder]);
+  }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder, filters.locale]);
 
   // 无限滚动：加载更多
   const loadMore = useCallback(() => {
@@ -906,6 +908,9 @@ export default function QuestionsPage() {
         }>;
       }>("/api/admin/questions/import-from-json", {
         password: superAdminPassword,
+        source: importSource,
+        version: importSource === "database" ? importVersion : undefined,
+        packageName: importSource === "filesystem" ? undefined : undefined,
       }, {
         timeoutMs: 300_000, // 5分钟超时
       });
@@ -1093,6 +1098,43 @@ export default function QuestionsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  数据源
+                </label>
+                <select
+                  value={importSource}
+                  onChange={(e) => {
+                    setImportSource(e.target.value as "filesystem" | "database");
+                    setImportVersion("");
+                  }}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={importingFromJson}
+                >
+                  <option value="filesystem">文件系统</option>
+                  <option value="database">数据库版本</option>
+                </select>
+              </div>
+              {importSource === "database" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    选择版本
+                  </label>
+                  <select
+                    value={importVersion}
+                    onChange={(e) => setImportVersion(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={importingFromJson}
+                  >
+                    <option value="">请选择版本</option>
+                    {versions.map((v) => (
+                      <option key={v.version} value={v.version}>
+                        {v.version} ({v.totalQuestions}题, {new Date(v.createdAt).toLocaleString("zh-CN")})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   超级管理员密码
                 </label>
                 <input
@@ -1147,7 +1189,7 @@ export default function QuestionsPage() {
             <div className="flex items-center gap-3 mt-6">
               <button
                 onClick={handleImportFromJson}
-                disabled={importingFromJson || !superAdminPassword.trim()}
+                disabled={importingFromJson || !superAdminPassword.trim() || (importSource === "database" && !importVersion)}
                 className="flex-1 inline-flex items-center justify-center rounded-md bg-red-500 text-white text-sm px-4 py-2 hover:bg-red-600 active:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {importingFromJson ? "导入中..." : "确认导入"}
@@ -1156,6 +1198,8 @@ export default function QuestionsPage() {
                 onClick={() => {
                   setShowImportFromJsonModal(false);
                   setSuperAdminPassword("");
+                  setImportSource("filesystem");
+                  setImportVersion("");
                   setFormError(null);
                   setImportFromJsonResult(null);
                 }}
