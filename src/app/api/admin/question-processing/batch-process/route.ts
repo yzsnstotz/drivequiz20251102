@@ -24,7 +24,7 @@ export const POST = withAdminAuth(async (req: Request) => {
       translateOptions: z
         .object({
           from: z.string(),
-          to: z.string(),
+          to: z.union([z.string(), z.array(z.string())]), // 支持单个语言或语言数组
         })
         .optional(),
       polishOptions: z
@@ -210,7 +210,7 @@ async function processBatchAsync(
   }>,
   input: {
     operations: ("translate" | "polish" | "fill_missing" | "category_tags")[];
-    translateOptions?: { from: string; to: string };
+    translateOptions?: { from: string; to: string | string[] };
     polishOptions?: { locale: string };
     batchSize: number;
     continueOnError: boolean;
@@ -227,11 +227,37 @@ async function processBatchAsync(
   const batchSize = input.batchSize || 10;
   const totalBatches = Math.ceil(questions.length / batchSize);
 
+  console.log(`[API BatchProcess] [${requestId}] Starting batch processing: ${questions.length} questions, ${totalBatches} batches, batch size: ${batchSize}`);
+
+  // 辅助函数：检查任务是否已被取消，如果已取消则更新状态并返回 true
+  let cancelledFlag = false; // 本地标志，避免重复查询
+  const checkCancelled = async (): Promise<boolean> => {
+    if (cancelledFlag) return true; // 如果已经标记为取消，直接返回
+    
+    const task = await db
+      .selectFrom("batch_process_tasks")
+      .select(["status"])
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+    
+    if (task?.status === "cancelled") {
+      cancelledFlag = true;
+      return true;
+    }
+    return false;
+  };
+
   for (let i = 0; i < questions.length; i += batchSize) {
     const batch = questions.slice(i, i + batchSize);
     const currentBatch = Math.floor(i / batchSize) + 1;
 
-    console.log(`[API BatchProcess] [${requestId}] Processing batch ${currentBatch}/${totalBatches}`);
+    // 检查任务是否已被取消
+    if (await checkCancelled()) {
+      console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping processing at batch ${currentBatch}`);
+      return;
+    }
+
+    console.log(`[API BatchProcess] [${requestId}] Processing batch ${currentBatch}/${totalBatches} (${batch.length} questions)`);
 
     // 更新当前批次
     await db
@@ -244,6 +270,13 @@ async function processBatchAsync(
       .execute();
 
     for (const question of batch) {
+      // 在处理每个题目前检查任务是否已被取消
+      if (await checkCancelled()) {
+        console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping processing at question ${question.id}`);
+        return;
+      }
+
+      console.log(`[API BatchProcess] [${requestId}] Processing question ${question.id}`);
       const questionResult = {
         questionId: question.id,
         operations: [] as string[],
@@ -278,55 +311,102 @@ async function processBatchAsync(
           }
         }
 
-        // 执行各种操作
-        for (const operation of input.operations) {
+        // 执行各种操作（将 translate 放到最后）
+        const sortedOperations = [...input.operations].sort((a, b) => {
+          if (a === "translate") return 1; // translate 放到最后
+          if (b === "translate") return -1;
+          return 0;
+        });
+
+        for (const operation of sortedOperations) {
+          // 在执行每个操作前检查是否已取消
+          if (await checkCancelled()) {
+            console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping operation ${operation} for question ${question.id}`);
+            throw new Error("Task has been cancelled");
+          }
+
           try {
             if (operation === "translate" && input.translateOptions) {
+              // 支持多语言翻译：to 可以是字符串或字符串数组
+              const targetLanguages = Array.isArray(input.translateOptions.to)
+                ? input.translateOptions.to
+                : [input.translateOptions.to];
+
               console.log(
-                `[API BatchProcess] [${requestId}] Translating question ${question.id}: ${input.translateOptions.from} -> ${input.translateOptions.to}`
+                `[API BatchProcess] [${requestId}] Translating question ${question.id}: ${input.translateOptions.from} -> ${targetLanguages.join(", ")}`
               );
+
               const sourceContent = {
                 content,
                 options: options || undefined,
                 explanation: explanation || undefined,
               };
-              const result = await translateWithPolish({
-                source: sourceContent,
-                from: input.translateOptions.from,
-                to: input.translateOptions.to,
-              });
 
-              // 保存翻译结果
-              const existing = await db
-                .selectFrom("question_translations")
-                .select(["id"])
-                .where("content_hash", "=", question.content_hash)
-                .where("locale", "=", input.translateOptions.to)
-                .executeTakeFirst();
+              // 为每个目标语言执行翻译
+              for (const targetLang of targetLanguages) {
+                // 在每次翻译前检查是否已取消
+                if (await checkCancelled()) {
+                  console.log(`[API BatchProcess] [${requestId}] Task ${taskId} has been cancelled, stopping translation to ${targetLang} for question ${question.id}`);
+                  throw new Error("Task has been cancelled");
+                }
 
-              if (existing) {
-                await db
-                  .updateTable("question_translations")
-                  .set({
-                    content: result.content,
-                    options: result.options ? (result.options as any) : null,
-                    explanation: result.explanation || null,
-                    updated_at: new Date(),
-                  })
-                  .where("id", "=", existing.id)
-                  .execute();
-              } else {
-                await db
-                  .insertInto("question_translations")
-                  .values({
-                    content_hash: question.content_hash,
-                    locale: input.translateOptions.to,
-                    content: result.content,
-                    options: result.options ? (result.options as any) : null,
-                    explanation: result.explanation || null,
-                    source: "ai",
-                  })
-                  .execute();
+                console.log(
+                  `[API BatchProcess] [${requestId}] Translating question ${question.id} to ${targetLang}`
+                );
+                try {
+                  const result = await translateWithPolish({
+                    source: sourceContent,
+                    from: input.translateOptions!.from,
+                    to: targetLang,
+                  });
+
+                  // 保存翻译结果
+                  const existing = await db
+                    .selectFrom("question_translations")
+                    .select(["id"])
+                    .where("content_hash", "=", question.content_hash)
+                    .where("locale", "=", targetLang)
+                    .executeTakeFirst();
+
+                  if (existing) {
+                    await db
+                      .updateTable("question_translations")
+                      .set({
+                        content: result.content,
+                        options: result.options ? (result.options as any) : null,
+                        explanation: result.explanation || null,
+                        updated_at: new Date(),
+                      })
+                      .where("id", "=", existing.id)
+                      .execute();
+                    console.log(
+                      `[API BatchProcess] [${requestId}] Updated translation for question ${question.id} to ${targetLang}`
+                    );
+                  } else {
+                    await db
+                      .insertInto("question_translations")
+                      .values({
+                        content_hash: question.content_hash,
+                        locale: targetLang,
+                        content: result.content,
+                        options: result.options ? (result.options as any) : null,
+                        explanation: result.explanation || null,
+                        source: "ai",
+                      })
+                      .execute();
+                    console.log(
+                      `[API BatchProcess] [${requestId}] Created translation for question ${question.id} to ${targetLang}`
+                    );
+                  }
+                } catch (translateError: any) {
+                  console.error(
+                    `[API BatchProcess] [${requestId}] Translation to ${targetLang} failed for question ${question.id}:`,
+                    translateError.message
+                  );
+                  if (!input.continueOnError) {
+                    throw translateError;
+                  }
+                }
               }
               questionResult.operations.push("translate");
             }
@@ -360,15 +440,21 @@ async function processBatchAsync(
 
             if (operation === "fill_missing") {
               console.log(`[API BatchProcess] [${requestId}] Filling missing content for question ${question.id}`);
+              console.log(`[API BatchProcess] [${requestId}] Current state - content: ${!!content}, options: ${!!options}, explanation: ${!!explanation}`);
+              
               const result = await fillMissingContent({
                 content,
                 options: options || null,
                 explanation: explanation || null,
               });
 
+              console.log(`[API BatchProcess] [${requestId}] Fill missing result received for question ${question.id}`);
+
               // 更新题目内容（如果原内容缺失）
               const needsUpdate = !content || !options || !explanation;
               if (needsUpdate) {
+                console.log(`[API BatchProcess] [${requestId}] Updating question ${question.id} with filled content`);
+                
                 let updatedContent: any;
                 if (typeof question.content === "object" && question.content !== null) {
                   updatedContent = { ...question.content, zh: result.content || content };
@@ -376,18 +462,28 @@ async function processBatchAsync(
                   updatedContent = result.content || content;
                 }
 
-                // 处理 explanation：如果是字符串，转换为多语言对象
+                // 处理 explanation：确保始终是有效的 JSONB 对象或 null
                 let updatedExplanation: any = null;
                 if (result.explanation) {
-                  updatedExplanation = { zh: result.explanation };
+                  // 确保 result.explanation 是字符串，然后构建 JSONB 对象
+                  const explanationStr = String(result.explanation).trim();
+                  if (explanationStr) {
+                    updatedExplanation = { zh: explanationStr };
+                  }
                 } else if (question.explanation) {
                   // 保持原有的 explanation（可能是多语言对象或字符串）
                   if (typeof question.explanation === "string") {
-                    updatedExplanation = { zh: question.explanation };
-                  } else {
+                    const explanationStr = String(question.explanation).trim();
+                    if (explanationStr) {
+                      updatedExplanation = { zh: explanationStr };
+                    }
+                  } else if (typeof question.explanation === "object" && question.explanation !== null) {
+                    // 已经是 JSONB 对象，直接使用
                     updatedExplanation = question.explanation;
                   }
                 }
+
+                console.log(`[API BatchProcess] [${requestId}] Updating question ${question.id} - explanation type: ${typeof updatedExplanation}, value: ${JSON.stringify(updatedExplanation)}`);
 
                 await db
                   .updateTable("questions")
@@ -399,6 +495,10 @@ async function processBatchAsync(
                   })
                   .where("id", "=", question.id)
                   .execute();
+                
+                console.log(`[API BatchProcess] [${requestId}] Question ${question.id} updated successfully`);
+              } else {
+                console.log(`[API BatchProcess] [${requestId}] Question ${question.id} does not need update (all fields present)`);
               }
               questionResult.operations.push("fill_missing");
             }
@@ -443,12 +543,15 @@ async function processBatchAsync(
         results.processed++;
         if (questionResult.status === "success") {
           results.succeeded++;
+          console.log(`[API BatchProcess] [${requestId}] Question ${question.id} processed successfully: ${questionResult.operations.join(", ")}`);
         } else {
           results.failed++;
+          console.log(`[API BatchProcess] [${requestId}] Question ${question.id} processed with errors`);
         }
         results.details.push(questionResult);
 
         // 实时更新任务进度
+        console.log(`[API BatchProcess] [${requestId}] Updating task progress: ${results.processed}/${results.total} (succeeded: ${results.succeeded}, failed: ${results.failed})`);
         await db
           .updateTable("batch_process_tasks")
           .set({
@@ -461,6 +564,7 @@ async function processBatchAsync(
           })
           .where("task_id", "=", taskId)
           .execute();
+        console.log(`[API BatchProcess] [${requestId}] Task progress updated`);
       } catch (error: any) {
         console.error(`[API BatchProcess] [${requestId}] Question ${question.id} processing failed:`, error.message);
         results.processed++;
@@ -496,7 +600,20 @@ async function processBatchAsync(
     }
   }
 
+  // 最终检查任务是否已被取消（可能在最后一批处理时被取消）
+  const finalCheck = await db
+    .selectFrom("batch_process_tasks")
+    .select(["status"])
+    .where("task_id", "=", taskId)
+    .executeTakeFirst();
+
+  if (finalCheck?.status === "cancelled") {
+    console.log(`[API BatchProcess] [${requestId}] Task ${taskId} was cancelled, not marking as completed`);
+    return;
+  }
+
   // 更新任务状态为已完成
+  console.log(`[API BatchProcess] [${requestId}] All batches completed. Final stats: ${results.processed}/${results.total} (succeeded: ${results.succeeded}, failed: ${results.failed})`);
   await db
     .updateTable("batch_process_tasks")
     .set({
@@ -569,5 +686,60 @@ export const GET = withAdminAuth(async (req: Request) => {
   } catch (e: any) {
     console.error(`[API BatchProcess] [${requestId}] Error:`, e?.message, e?.stack);
     return internalError(e?.message || "Failed to fetch batch process tasks");
+  }
+});
+
+// DELETE /api/admin/question-processing/batch-process - 取消任务
+export const DELETE = withAdminAuth(async (req: Request) => {
+  const requestId = `api-batch-process-delete-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  try {
+    const url = new URL(req.url);
+    const taskId = url.searchParams.get("taskId");
+
+    if (!taskId) {
+      return badRequest("taskId is required");
+    }
+
+    console.log(`[API BatchProcess] [${requestId}] Cancelling task: ${taskId}`);
+
+    // 查询任务当前状态
+    const task = await db
+      .selectFrom("batch_process_tasks")
+      .select(["task_id", "status"])
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+
+    if (!task) {
+      return notFound("Task not found");
+    }
+
+    // 只有 pending 或 processing 状态的任务才能取消
+    if (task.status !== "pending" && task.status !== "processing") {
+      return badRequest(
+        `Task cannot be cancelled. Current status: ${task.status}. Only pending or processing tasks can be cancelled.`
+      );
+    }
+
+    // 更新任务状态为已取消
+    await db
+      .updateTable("batch_process_tasks")
+      .set({
+        status: "cancelled",
+        completed_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where("task_id", "=", taskId)
+      .execute();
+
+    console.log(`[API BatchProcess] [${requestId}] Task ${taskId} cancelled successfully`);
+
+    return success({
+      taskId,
+      status: "cancelled",
+      message: "Task cancelled successfully",
+    });
+  } catch (e: any) {
+    console.error(`[API BatchProcess] [${requestId}] Error:`, e?.message, e?.stack);
+    return internalError(e?.message || "Failed to cancel batch process task");
   }
 });
