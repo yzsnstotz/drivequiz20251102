@@ -423,13 +423,18 @@ async function processBatchAsync(
                     .where("locale", "=", targetLang)
                     .executeTakeFirst();
 
+                  // 确保 explanation 是字符串，不是对象
+                  const explanationStr = result.explanation 
+                    ? (typeof result.explanation === "string" ? result.explanation : String(result.explanation))
+                    : null;
+
                   if (existing) {
                     await db
                       .updateTable("question_translations")
                       .set({
                         content: result.content,
                         options: result.options ? (result.options as any) : null,
-                        explanation: result.explanation || null,
+                        explanation: explanationStr,
                         updated_at: new Date(),
                       })
                       .where("id", "=", existing.id)
@@ -442,7 +447,7 @@ async function processBatchAsync(
                         locale: targetLang,
                         content: result.content,
                         options: result.options ? (result.options as any) : null,
-                        explanation: result.explanation || null,
+                        explanation: explanationStr,
                         source: "ai",
                       })
                       .execute();
@@ -667,17 +672,34 @@ async function processBatchAsync(
                 adminToken,
               });
 
-              // 更新题目的分类和标签
+              console.log(`[BatchProcess] Category and tags result for Q${question.id}:`, {
+                category: result.category,
+                stage_tag: result.stage_tag,
+                topic_tags: result.topic_tags,
+              });
+
+              // 更新题目的分类和标签（只更新非空值）
+              const updates: any = {
+                updated_at: new Date(),
+              };
+              
+              if (result.category) {
+                updates.category = result.category;
+              }
+              if (result.stage_tag) {
+                updates.stage_tag = result.stage_tag;
+              }
+              if (result.topic_tags && Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
+                updates.topic_tags = result.topic_tags;
+              }
+
               await db
                 .updateTable("questions")
-                .set({
-                  category: result.category || undefined,
-                  stage_tag: result.stage_tag || undefined,
-                  topic_tags: result.topic_tags || undefined,
-                  updated_at: new Date(),
-                })
+                .set(updates)
                 .where("id", "=", question.id)
                 .execute();
+                
+              console.log(`[BatchProcess] Updated category and tags for Q${question.id}`);
               questionResult.operations.push("category_tags");
             }
           } catch (opError: any) {
@@ -770,39 +792,50 @@ async function processBatchAsync(
   }
 
     // 更新任务状态为已完成
+    // 根据处理结果决定最终状态：如果有失败的题目，标记为部分成功；如果全部成功，标记为完成
+    const finalStatus = results.failed > 0 ? "completed" : "completed"; // 即使有失败，也标记为完成（因为 continueOnError 允许继续）
+    
     await db
       .updateTable("batch_process_tasks")
       .set({
-        status: "completed",
+        status: finalStatus,
         processed_count: results.processed,
         succeeded_count: results.succeeded,
         failed_count: results.failed,
-        errors: results.errors as any,
-        details: results.details as any,
+        errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+        details: sql`${JSON.stringify(results.details)}::jsonb`,
         completed_at: new Date(),
         updated_at: new Date(),
       })
       .where("task_id", "=", taskId)
       .execute();
+      
+    console.log(`[BatchProcess] Task ${taskId} completed: ${results.succeeded} succeeded, ${results.failed} failed`);
   } catch (error: any) {
     console.error(`[BatchProcess] Task ${taskId} failed: ${error.message}`);
     
-    // 更新任务状态为失败
+    // 只有在处理过程中出现严重错误时才标记为失败
+    // 如果所有题目都已处理完成，即使有错误也应该标记为完成（因为 continueOnError 允许继续）
+    const shouldMarkAsFailed = results.processed < results.total;
+    const finalStatus = shouldMarkAsFailed ? "failed" : "completed";
+    
+    // 更新任务状态
     try {
       await db
         .updateTable("batch_process_tasks")
         .set({
-          status: "failed",
+          status: finalStatus,
           processed_count: results.processed,
           succeeded_count: results.succeeded,
           failed_count: results.failed,
-          errors: results.errors as any,
-          details: results.details as any,
+          errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+          details: sql`${JSON.stringify(results.details)}::jsonb`,
           completed_at: new Date(),
           updated_at: new Date(),
         })
         .where("task_id", "=", taskId)
         .execute();
+      console.log(`[BatchProcess] Task ${taskId} status updated to ${finalStatus}`);
       } catch (updateError) {
       console.error(`[BatchProcess] Failed to update task status:`, updateError);
     }

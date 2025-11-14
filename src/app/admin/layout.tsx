@@ -40,6 +40,7 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.users", href: "/admin/users", match: (p: string) => p.startsWith("/admin/users"), permission: "users" },
   { key: "nav.questions", href: "/admin/questions", match: (p: string) => p.startsWith("/admin/questions"), permission: "questions" },
   { key: "nav.questionProcessing", href: "/admin/question-processing", match: (p: string) => p.startsWith("/admin/question-processing"), permission: "questions" },
+  { key: "nav.polishReviews", href: "/admin/polish-reviews", match: (p: string) => p.startsWith("/admin/polish-reviews"), permission: "questions" },
   { key: "nav.admins", href: "/admin/admins", match: (p: string) => p.startsWith("/admin/admins"), requireDefaultAdmin: true, permission: "admins" },
   { key: "nav.operationLogs", href: "/admin/operation-logs", match: (p: string) => p.startsWith("/admin/operation-logs"), permission: "operation_logs" },
   { key: "nav.stats", href: "/admin/stats", match: (p: string) => p.startsWith("/admin/stats"), permission: "stats" },
