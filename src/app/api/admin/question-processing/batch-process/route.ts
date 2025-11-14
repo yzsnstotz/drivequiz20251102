@@ -104,7 +104,12 @@ export const POST = withAdminAuth(async (req: Request) => {
       content_hash: string;
       content: any;
       options: any;
-      explanation: string | null;
+      explanation: {
+        zh: string;
+        en?: string;
+        ja?: string;
+        [key: string]: string | undefined;
+      } | string | null; // 支持多语言对象或字符串（向后兼容）
     }> = [];
 
     if (input.questionIds && input.questionIds.length > 0) {
