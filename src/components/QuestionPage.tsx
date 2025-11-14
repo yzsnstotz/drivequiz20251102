@@ -253,7 +253,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content, language) || currentQuestion.content?.zh || ''}</p>
+          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content, language) || ''}</p>
           {currentQuestion.image && (
             <div className="mb-4">
               <Image
