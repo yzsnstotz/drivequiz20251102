@@ -70,11 +70,13 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
   handler: T
 ): T {
   return (async (req: NextRequest, ...rest: any[]) => {
+    const requestPath = req.url || req.nextUrl?.pathname || "unknown";
+    console.log(`[AdminAuth] Request received: ${req.method} ${requestPath}`);
     const authHeader = req.headers.get("authorization");
     
     // 如果没有 Authorization header，返回 401 AUTH_REQUIRED
     if (!authHeader) {
-      console.warn("[AdminAuth] Missing Authorization header");
+      console.warn(`[AdminAuth] Missing Authorization header for ${requestPath}`);
       return unauthorized("Missing Authorization header");
     }
 
@@ -107,6 +109,7 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
       };
       adminInfoCache.set(req, adminInfo);
 
+      console.log(`[AdminAuth] Authentication successful for ${requestPath}, admin: ${admin.username}`);
       return handler(req, ...rest);
     } catch (error) {
       console.error("[AdminAuth] Database error:", error);
