@@ -1468,14 +1468,43 @@ export async function updateAllJsonPackages(): Promise<{
         const hash = (q as any).hash;
         const t = hash ? map.get(hash) : undefined;
         if (t) {
+          // 如果数据库中有翻译，使用翻译
           return {
             ...q,
             content: t.content,
             options: Array.isArray(t.options) ? t.options : (t.options ? [t.options] : undefined),
             explanation: t.explanation || undefined,
           };
+        } else {
+          // 如果数据库中没有翻译，从多语言对象中提取对应语言
+          const localizedQ: any = { ...q };
+          
+          // 处理content字段：从多语言对象中提取对应语言
+          if (typeof q.content === "object" && q.content !== null) {
+            const contentObj = q.content as { [key: string]: string | undefined };
+            if (contentObj[loc]) {
+              localizedQ.content = contentObj[loc];
+            } else if (contentObj.zh) {
+              localizedQ.content = contentObj.zh; // 回退到中文
+            } else {
+              localizedQ.content = Object.values(contentObj)[0] || ""; // 回退到第一个可用语言
+            }
+          }
+          
+          // 处理explanation字段：从多语言对象中提取对应语言
+          if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
+            const expObj = q.explanation as { [key: string]: string | undefined };
+            if (expObj[loc]) {
+              localizedQ.explanation = expObj[loc];
+            } else if (expObj.zh) {
+              localizedQ.explanation = expObj.zh; // 回退到中文
+            } else {
+              localizedQ.explanation = Object.values(expObj)[0] || undefined; // 回退到第一个可用语言
+            }
+          }
+          
+          return localizedQ;
         }
-        return q;
       });
       questionsByLocale[loc] = localized;
     }
