@@ -1,3 +1,7 @@
+// Vercel Serverless Function 配置
+export const runtime = "nodejs";
+export const maxDuration = 300; // 300秒超时（Vercel Pro计划最多300秒，批量处理需要更长时间）
+
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success, conflict, notFound } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
@@ -151,8 +155,26 @@ export const POST = withAdminAuth(async (req: Request) => {
     };
 
     // 分批处理（异步执行，不阻塞响应）
-    processBatchAsync(requestId, taskId, questions, input, results).catch((error) => {
+    processBatchAsync(requestId, taskId, questions, input, results).catch(async (error) => {
       console.error(`[API BatchProcess] [${requestId}] Async batch processing failed:`, error);
+      // 如果异步处理失败，更新任务状态为失败
+      try {
+        await db
+          .updateTable("batch_process_tasks")
+          .set({
+            status: "failed",
+            failed_count: results.failed,
+            errors: results.errors as any,
+            details: results.details as any,
+            completed_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where("task_id", "=", taskId)
+          .execute();
+        console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to failed`);
+      } catch (updateError) {
+        console.error(`[API BatchProcess] [${requestId}] Failed to update task status to failed:`, updateError);
+      }
     });
 
     // 立即返回任务ID，不等待处理完成
@@ -227,7 +249,12 @@ async function processBatchAsync(
   const batchSize = input.batchSize || 10;
   const totalBatches = Math.ceil(questions.length / batchSize);
 
-  console.log(`[API BatchProcess] [${requestId}] Starting batch processing: ${questions.length} questions, ${totalBatches} batches, batch size: ${batchSize}`);
+  console.log(`[API BatchProcess] [${requestId}] ========== STARTING BATCH PROCESSING ==========`);
+  console.log(`[API BatchProcess] [${requestId}] Task ID: ${taskId}`);
+  console.log(`[API BatchProcess] [${requestId}] Questions: ${questions.length}, Batches: ${totalBatches}, Batch size: ${batchSize}`);
+  console.log(`[API BatchProcess] [${requestId}] Operations: ${input.operations.join(", ")}`);
+  
+  try {
 
   // 辅助函数：检查任务是否已被取消，如果已取消则更新状态并返回 true
   let cancelledFlag = false; // 本地标志，避免重复查询
@@ -552,7 +579,7 @@ async function processBatchAsync(
 
         // 实时更新任务进度
         console.log(`[API BatchProcess] [${requestId}] Updating task progress: ${results.processed}/${results.total} (succeeded: ${results.succeeded}, failed: ${results.failed})`);
-        await db
+        const progressUpdateResult = await db
           .updateTable("batch_process_tasks")
           .set({
             processed_count: results.processed,
@@ -564,7 +591,20 @@ async function processBatchAsync(
           })
           .where("task_id", "=", taskId)
           .execute();
-        console.log(`[API BatchProcess] [${requestId}] Task progress updated`);
+        console.log(`[API BatchProcess] [${requestId}] Task progress updated, rows affected: ${progressUpdateResult.length || 0}`);
+        
+        // 验证更新是否成功
+        const verifyTask = await db
+          .selectFrom("batch_process_tasks")
+          .select(["processed_count", "succeeded_count", "failed_count", "status"])
+          .where("task_id", "=", taskId)
+          .executeTakeFirst();
+        console.log(`[API BatchProcess] [${requestId}] Verified task state:`, {
+          processed: verifyTask?.processed_count,
+          succeeded: verifyTask?.succeeded_count,
+          failed: verifyTask?.failed_count,
+          status: verifyTask?.status,
+        });
       } catch (error: any) {
         console.error(`[API BatchProcess] [${requestId}] Question ${question.id} processing failed:`, error.message);
         results.processed++;
@@ -612,24 +652,54 @@ async function processBatchAsync(
     return;
   }
 
-  // 更新任务状态为已完成
-  console.log(`[API BatchProcess] [${requestId}] All batches completed. Final stats: ${results.processed}/${results.total} (succeeded: ${results.succeeded}, failed: ${results.failed})`);
-  await db
-    .updateTable("batch_process_tasks")
-    .set({
-      status: "completed",
-      processed_count: results.processed,
-      succeeded_count: results.succeeded,
-      failed_count: results.failed,
-      errors: results.errors as any,
-      details: results.details as any,
-      completed_at: new Date(),
-      updated_at: new Date(),
-    })
-    .where("task_id", "=", taskId)
-    .execute();
+    // 更新任务状态为已完成
+    console.log(`[API BatchProcess] [${requestId}] ========== ALL BATCHES COMPLETED ==========`);
+    console.log(`[API BatchProcess] [${requestId}] Final stats: ${results.processed}/${results.total} (succeeded: ${results.succeeded}, failed: ${results.failed})`);
+    await db
+      .updateTable("batch_process_tasks")
+      .set({
+        status: "completed",
+        processed_count: results.processed,
+        succeeded_count: results.succeeded,
+        failed_count: results.failed,
+        errors: results.errors as any,
+        details: results.details as any,
+        completed_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where("task_id", "=", taskId)
+      .execute();
 
-  console.log(`[API BatchProcess] [${requestId}] Batch processing completed for task ${taskId}`);
+    console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to completed`);
+  } catch (error: any) {
+    console.error(`[API BatchProcess] [${requestId}] ========== BATCH PROCESSING ERROR ==========`);
+    console.error(`[API BatchProcess] [${requestId}] Error:`, error.message);
+    console.error(`[API BatchProcess] [${requestId}] Stack:`, error.stack);
+    
+    // 更新任务状态为失败
+    try {
+      await db
+        .updateTable("batch_process_tasks")
+        .set({
+          status: "failed",
+          processed_count: results.processed,
+          succeeded_count: results.succeeded,
+          failed_count: results.failed,
+          errors: results.errors as any,
+          details: results.details as any,
+          completed_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where("task_id", "=", taskId)
+        .execute();
+      console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to failed`);
+    } catch (updateError) {
+      console.error(`[API BatchProcess] [${requestId}] Failed to update task status:`, updateError);
+    }
+    
+    // 重新抛出错误，让外层的 catch 处理
+    throw error;
+  }
 }
 
 // GET /api/admin/question-processing/batch-process - 查询任务状态
