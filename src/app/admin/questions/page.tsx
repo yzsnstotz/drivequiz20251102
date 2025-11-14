@@ -137,8 +137,16 @@ export default function QuestionsPage() {
     data?: any;
   } | null>(null);
   const [languageOptions] = useState<string[]>(["zh", "en", "ja"]);
+  const [filesystemFiles, setFilesystemFiles] = useState<Array<{
+    filename: string;
+    category: string;
+    questionCount: number;
+    modifiedAt: string;
+    size: number;
+  }>>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
 
-  // 加载卷类列表
+  // 加载卷类列表（按类别分组）
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -158,6 +166,33 @@ export default function QuestionsPage() {
       mounted = false;
     };
   }, []);
+
+  // 加载文件系统文件列表
+  const loadFilesystemFiles = useCallback(async () => {
+    setLoadingFiles(true);
+    try {
+      const response = await apiFetch<Array<{
+        filename: string;
+        category: string;
+        questionCount: number;
+        modifiedAt: string;
+        size: number;
+      }>>("/api/admin/questions/filesystem", {
+        method: "GET",
+      });
+      setFilesystemFiles(response.data || []);
+    } catch (e) {
+      console.error("Failed to load filesystem files:", e);
+      setFilesystemFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  }, []);
+
+  // 初始加载文件系统文件列表
+  useEffect(() => {
+    loadFilesystemFiles();
+  }, [loadFilesystemFiles]);
 
   // 加载统一版本号列表（历史版本）
   const loadVersions = useCallback(async (setDefaultSource: boolean = false) => {
@@ -1185,11 +1220,32 @@ export default function QuestionsPage() {
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           >
             <option value="">全部卷类</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
+            {(() => {
+              // 按类别分组卷类
+              const grouped: Record<string, string[]> = {};
+              categories.forEach((cat) => {
+                // 提取类别前缀（如"免许-1" -> "免许"）
+                const match = cat.match(/^([^-]+)/);
+                const prefix = match ? match[1] : "其他";
+                if (!grouped[prefix]) {
+                  grouped[prefix] = [];
+                }
+                grouped[prefix].push(cat);
+              });
+              
+              // 按类别排序
+              const sortedGroups = Object.keys(grouped).sort();
+              
+              return sortedGroups.map((prefix) => (
+                <optgroup key={prefix} label={prefix}>
+                  {grouped[prefix].sort().map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </optgroup>
+              ));
+            })()}
           </select>
         </div>
         <div className="flex-1 min-w-[160px]">
@@ -1227,11 +1283,20 @@ export default function QuestionsPage() {
               className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
             >
               <option value="database">数据库</option>
-              {versions.map((v) => (
-                <option key={v.version} value={v.version}>
-                  {v.version} ({v.totalQuestions}题, {new Date(v.createdAt).toLocaleString("zh-CN")})
-                </option>
-              ))}
+              <optgroup label="历史版本">
+                {versions.map((v) => (
+                  <option key={v.version} value={v.version}>
+                    {v.version} ({v.totalQuestions}题, {new Date(v.createdAt).toLocaleString("zh-CN")})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="文件系统">
+                {filesystemFiles.map((file) => (
+                  <option key={file.filename} value={`filesystem:${file.filename}`}>
+                    {file.category} ({file.questionCount}题, {new Date(file.modifiedAt).toLocaleDateString("zh-CN")})
+                  </option>
+                ))}
+              </optgroup>
             </select>
             {/* 删除按钮列表 */}
             {versions.length > 0 && (

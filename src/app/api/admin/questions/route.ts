@@ -278,8 +278,52 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     let jsonPackageAiAnswersByLocale: Record<string, Record<string, string>> | null = null;
     let jsonPackageQuestionsByLocale: Record<string, Question[]> | null = null;
     
+    // 如果指定了文件系统源（格式：filesystem:filename）
+    if (source && source.startsWith("filesystem:")) {
+      const filename = source.replace("filesystem:", "");
+      console.log(`[GET /api/admin/questions] 从文件系统读取: ${filename}`);
+      
+      try {
+        const filePath = path.join(QUESTIONS_DIR, filename);
+        const content = await fs.readFile(filePath, "utf-8");
+        const data = JSON.parse(content);
+        
+        // 兼容多种格式
+        let questions: Question[] = [];
+        if (Array.isArray(data)) {
+          questions = data;
+        } else {
+          questions = data.questions || [];
+        }
+        
+        // 如果指定了category筛选，只添加匹配的题目
+        if (category) {
+          questions = questions.filter((q) => q.category === category);
+        }
+        
+        // 如果指定了locale且存在多语言包，替换为对应语言
+        if (locale && locale !== "zh" && data.questionsByLocale && data.questionsByLocale[locale]) {
+          questions = data.questionsByLocale[locale] as Question[];
+          if (category) {
+            questions = questions.filter((q) => q.category === category);
+          }
+        }
+        
+        allQuestions = questions;
+        
+        // 保存JSON包的aiAnswers对象
+        jsonPackageAiAnswers = data.aiAnswers || {};
+        jsonPackageAiAnswersByLocale = data.aiAnswersByLocale || null;
+        jsonPackageQuestionsByLocale = data.questionsByLocale || null;
+        
+        console.log(`[GET /api/admin/questions] 从文件系统读取 ${filename}，题目数: ${allQuestions.length}`);
+      } catch (fileError) {
+        console.error(`[GET /api/admin/questions] 从文件系统读取失败:`, fileError);
+        allQuestions = [];
+      }
+    }
     // 如果指定了版本号（历史JSON包），从数据库读取历史版本内容
-    if (source && source !== "database") {
+    else if (source && source !== "database") {
       // source是版本号，从数据库读取历史版本内容
       try {
         const versionContent = await getUnifiedVersionContent(source);
