@@ -1500,7 +1500,6 @@ export async function updateAllJsonPackages(): Promise<{
           }
           
           return localizedQ;
-        }
       });
       questionsByLocale[loc] = localized;
     }
