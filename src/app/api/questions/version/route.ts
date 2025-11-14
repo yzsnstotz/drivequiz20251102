@@ -4,6 +4,10 @@
 // 公开接口，无需管理员权限
 // ============================================================
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 import { success, notFound, internalError } from "@/app/api/_lib/errors";
 import { getLatestUnifiedVersion } from "@/lib/questionDb";
 import fs from "fs/promises";
