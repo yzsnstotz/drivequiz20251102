@@ -621,8 +621,9 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       let bVal: any = b[sortBy as keyof Question];
       
       if (sortBy === "id") {
-        aVal = a.id;
-        bVal = b.id;
+        // 确保ID按数字排序，而不是字符串排序
+        aVal = typeof a.id === "number" ? a.id : parseInt(String(a.id), 10) || 0;
+        bVal = typeof b.id === "number" ? b.id : parseInt(String(b.id), 10) || 0;
       } else if (sortBy === "content") {
         // 处理多语言content字段
         aVal = getContentText(a.content, locale as any) || "";

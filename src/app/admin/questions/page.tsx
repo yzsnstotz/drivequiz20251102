@@ -1695,23 +1695,75 @@ export default function QuestionsPage() {
                       <span className="mx-1 text-gray-300">|</span>
                       <button
                         onClick={async () => {
-                          const to = prompt("请输入目标语言（如 en/ja/zh-CN）：", "en") || "";
-                          if (!to.trim()) return;
-                          try {
-                            const payload: any = {
-                              from: filters.locale || "zh",
-                              to: to.trim(),
-                            };
-                            if (item.hash) payload.contentHash = item.hash;
-                            else payload.questionId = item.id;
-                            await apiPost("/api/admin/question-processing/translate", payload);
-                            alert("翻译任务已提交");
-                          } catch (e) {
-                            alert(e instanceof Error ? e.message : "翻译提交失败");
-                          }
+                          // 创建多选语言对话框
+                          const languages = [
+                            { value: "zh", label: "中文 (zh)" },
+                            { value: "ja", label: "日文 (ja)" },
+                            { value: "en", label: "英文 (en)" },
+                          ];
+                          
+                          // 使用简单的多选对话框
+                          const selectedLangs: string[] = [];
+                          const dialog = document.createElement("div");
+                          dialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                          dialog.innerHTML = `
+                            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                              <h3 class="text-lg font-semibold mb-4">选择目标语言（可多选）</h3>
+                              <div class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                                ${languages.map(lang => `
+                                  <label class="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-50 rounded">
+                                    <input type="checkbox" value="${lang.value}" class="rounded" />
+                                    <span>${lang.label}</span>
+                                  </label>
+                                `).join("")}
+                              </div>
+                              <div class="flex gap-2 justify-end">
+                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" id="cancel-btn">取消</button>
+                                <button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" id="confirm-btn">确定</button>
+                              </div>
+                            </div>
+                          `;
+                          document.body.appendChild(dialog);
+                          
+                          const checkboxes = dialog.querySelectorAll("input[type='checkbox']");
+                          const cancelBtn = dialog.querySelector("#cancel-btn");
+                          const confirmBtn = dialog.querySelector("#confirm-btn");
+                          
+                          const cleanup = () => document.body.removeChild(dialog);
+                          
+                          cancelBtn?.addEventListener("click", cleanup);
+                          confirmBtn?.addEventListener("click", () => {
+                            checkboxes.forEach((cb: any) => {
+                              if (cb.checked) selectedLangs.push(cb.value);
+                            });
+                            cleanup();
+                            
+                            if (selectedLangs.length === 0) {
+                              alert("请至少选择一个目标语言");
+                              return;
+                            }
+                            
+                            // 执行翻译
+                            (async () => {
+                              try {
+                                const payload: any = {
+                                  from: filters.locale || "zh",
+                                  to: selectedLangs.length === 1 ? selectedLangs[0] : selectedLangs,
+                                };
+                                if (item.hash) payload.contentHash = item.hash;
+                                else payload.questionId = item.id;
+                                await apiPost("/api/admin/question-processing/translate", payload);
+                                alert(`翻译任务已提交，目标语言: ${selectedLangs.join(", ")}`);
+                                // 刷新列表
+                                window.location.reload();
+                              } catch (e) {
+                                alert(e instanceof Error ? e.message : "翻译提交失败");
+                              }
+                            })();
+                          });
                         }}
                         className="text-indigo-600 hover:underline mr-2"
-                        title="翻译并润色到指定语言"
+                        title="翻译并润色到指定语言（可多选）"
                       >
                         翻译到...
                       </button>
