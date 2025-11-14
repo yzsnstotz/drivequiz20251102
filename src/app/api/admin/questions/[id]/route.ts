@@ -22,7 +22,7 @@ import { db } from "@/lib/db";
 import fs from "fs/promises";
 import path from "path";
 import type { Question, QuestionFile } from "../route";
-import { getContentText } from "@/lib/questionContentUtils";
+import { getContentText, getContentPreview } from "@/lib/questionContentUtils";
 
 // 题目数据目录
 const QUESTIONS_DIR = path.join(process.cwd(), "src/data/questions/zh");
@@ -237,12 +237,12 @@ export const PUT = withAdminAuth(
             {
               category: oldCategory,
               type: oldQuestion.type,
-              content: getContentText(oldQuestion.content).substring(0, 50),
+              content: getContentPreview(oldQuestion.content, 50),
             },
             {
               category: targetCategory,
               type: updatedQuestion.type,
-              content: getContentText(updatedQuestion.content).substring(0, 50),
+              content: getContentPreview(updatedQuestion.content, 50),
             },
             `卷类变更: ${oldCategory} → ${targetCategory}`
           );
@@ -291,12 +291,12 @@ export const PUT = withAdminAuth(
             {
               category: targetCategory,
               type: oldQuestion.type,
-              content: getContentText(oldQuestion.content).substring(0, 50),
+              content: getContentPreview(oldQuestion.content, 50),
             },
             {
               category: targetCategory,
               type: updatedQuestion.type,
-              content: getContentText(updatedQuestion.content).substring(0, 50),
+              content: getContentPreview(updatedQuestion.content, 50),
             }
           );
         } catch (logErr) {
@@ -352,7 +352,7 @@ export const DELETE = withAdminAuth(
         await logDelete(req, "question", id, {
           category,
           type: question.type,
-          content: getContentText(question.content).substring(0, 50),
+          content: getContentPreview(question.content, 50),
         });
       } catch (logErr) {
         console.error("[DELETE /api/admin/questions/:id] Log error:", logErr);
