@@ -25,7 +25,7 @@ async function callAiAskInternal(params: {
   scene?: string;
   sourceLanguage?: string;
   targetLanguage?: string;
-}): Promise<{ answer: string }> {
+}, retries: number = 3): Promise<{ answer: string }> {
   // 在 Vercel 环境中，使用绝对 URL
   // 优先使用 VERCEL_URL（Vercel 自动提供），否则使用 NEXT_PUBLIC_APP_URL
   let baseUrl = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_APP_URL;
@@ -42,33 +42,82 @@ async function callAiAskInternal(params: {
 
   const apiUrl = `${baseUrl}/api/ai/ask`;
 
-  // 内部调用（使用 fetch）
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      question: params.question,
-      locale: params.locale || "zh-CN",
-      scene: params.scene,
-      sourceLanguage: params.sourceLanguage,
-      targetLanguage: params.targetLanguage,
-    }),
-  });
+  // 内部调用（使用 fetch），带重试机制
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: params.question,
+          locale: params.locale || "zh-CN",
+          scene: params.scene,
+          sourceLanguage: params.sourceLanguage,
+          targetLanguage: params.targetLanguage,
+        }),
+      });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`AI API call failed: ${response.status} ${errorText.substring(0, 200)}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData: any = null;
+        try {
+          errorData = errorText ? JSON.parse(errorText) : null;
+        } catch {
+          // 忽略JSON解析错误
+        }
+        
+        // 如果是429错误（Too Many Requests），进行重试
+        if (response.status === 429 && attempt < retries) {
+          const delay = Math.pow(2, attempt) * 1000; // 指数退避：2s, 4s, 8s
+          console.log(`[callAiAskInternal] Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt}/${retries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        throw new Error(`AI API call failed: ${response.status} ${errorText.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.ok) {
+        // 如果是429错误，进行重试
+        if ((data.errorCode === "PROVIDER_ERROR" && data.message?.includes("429")) || 
+            data.message?.includes("429") || 
+            data.message?.includes("Too Many Requests")) {
+          if (attempt < retries) {
+            const delay = Math.pow(2, attempt) * 1000;
+            console.log(`[callAiAskInternal] Provider rate limit (429), retrying in ${delay}ms (attempt ${attempt}/${retries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        throw new Error(data.message || "AI call failed");
+      }
+
+      return { answer: data.data.answer };
+    } catch (error: any) {
+      // 如果是最后一次尝试，抛出错误
+      if (attempt === retries) {
+        throw error;
+      }
+      
+      // 如果是网络错误或429错误，等待后重试
+      if (error.message?.includes("429") || error.message?.includes("rate limit") || error.message?.includes("Too Many Requests")) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`[callAiAskInternal] Error (${error.message}), retrying in ${delay}ms (attempt ${attempt}/${retries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // 其他错误直接抛出
+      throw error;
+    }
   }
-
-  const data = await response.json();
-
-  if (!data.ok) {
-    throw new Error(data.message || "AI call failed");
-  }
-
-  return { answer: data.data.answer };
+  
+  throw new Error("AI API call failed after retries");
 }
 
 /**

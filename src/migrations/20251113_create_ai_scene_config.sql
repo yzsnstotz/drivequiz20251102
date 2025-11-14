@@ -3,6 +3,8 @@
 -- 文件名: 20251113_create_ai_scene_config.sql
 -- 说明: 创建 ai_scene_config 表用于存储不同 AI 场景的 prompt 和格式配置
 -- 日期: 2025-11-13
+-- 数据库: AI Service 数据库
+-- 注意: 此迁移文件必须在 AI Service 数据库中运行（使用 AI_DATABASE_URL）
 -- ============================================================
 
 BEGIN;

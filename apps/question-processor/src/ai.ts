@@ -158,4 +158,100 @@ export async function polishContent(params: {
   };
 }
 
+export interface CategoryAndTagsResult {
+  category?: string | null;
+  stage_tag?: "both" | "provisional" | "regular" | null;
+  topic_tags?: string[] | null;
+}
+
+/**
+ * 使用AI生成题目的分类和标签
+ */
+export async function generateCategoryAndTags(params: {
+  content: string;
+  options?: string[] | null;
+  explanation?: string | null;
+  locale?: string;
+}): Promise<CategoryAndTagsResult> {
+  const { content, options, explanation, locale = "zh-CN" } = params;
+  
+  const input = [
+    `Content: ${content}`,
+    options && options.length ? `Options:\n- ${options.join("\n- ")}` : ``,
+    explanation ? `Explanation: ${explanation}` : ``
+  ].filter(Boolean).join("\n");
+
+  const data = await askAi({
+    question: input,
+    lang: locale,
+    scene: "question_category_tags" // 使用分类标签场景配置
+  });
+
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(data.answer);
+  } catch {
+    const m = data.answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (m) {
+      parsed = JSON.parse(m[1]);
+    }
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("AI category/tags response missing JSON body");
+  }
+  
+  return {
+    category: parsed.category ? String(parsed.category) : null,
+    stage_tag: parsed.stage_tag && ["both", "provisional", "regular"].includes(parsed.stage_tag) 
+      ? parsed.stage_tag 
+      : null,
+    topic_tags: Array.isArray(parsed.topic_tags) 
+      ? parsed.topic_tags.map((s: any) => String(s)).filter(Boolean)
+      : null
+  };
+}
+
+/**
+ * 使用AI填充缺失的内容（填漏）
+ */
+export async function fillMissingContent(params: {
+  content: string;
+  options?: string[] | null;
+  explanation?: string | null;
+  locale?: string;
+}): Promise<TranslateResult> {
+  const { content, options, explanation, locale = "zh-CN" } = params;
+  
+  const input = [
+    `Content: ${content || "[缺失]"}`,
+    options && options.length ? `Options:\n- ${options.join("\n- ")}` : `Options: [缺失]`,
+    explanation ? `Explanation: ${explanation}` : `Explanation: [缺失]`
+  ].filter(Boolean).join("\n");
+
+  const data = await askAi({
+    question: input,
+    lang: locale,
+    scene: "question_fill_missing" // 使用填漏场景配置
+  });
+
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(data.answer);
+  } catch {
+    const m = data.answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (m) {
+      parsed = JSON.parse(m[1]);
+    }
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("AI fill missing response missing JSON body");
+  }
+  
+  return {
+    content: String(parsed.content ?? content ?? "").trim(),
+    options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : (options || undefined),
+    explanation: parsed.explanation ? String(parsed.explanation) : (explanation || undefined)
+  };
+}
+
 
