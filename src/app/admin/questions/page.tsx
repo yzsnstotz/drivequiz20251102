@@ -108,6 +108,15 @@ export default function QuestionsPage() {
   const [superAdminPassword, setSuperAdminPassword] = useState("");
   const [importSource, setImportSource] = useState<"filesystem" | "database">("filesystem");
   const [importVersion, setImportVersion] = useState<string>("");
+  const [importProgress, setImportProgress] = useState<{
+    processed: number;
+    total: number;
+    imported: number;
+    updated: number;
+    errors: number;
+    currentBatch?: number;
+    totalBatches?: number;
+  } | null>(null);
   const [importFromJsonResult, setImportFromJsonResult] = useState<{
     totalProcessed: number;
     totalImported: number;
@@ -889,43 +898,102 @@ export default function QuestionsPage() {
 
     setImportingFromJson(true);
     setImportFromJsonResult(null);
+    setImportProgress(null);
     setFormError(null);
 
     try {
-      // JSON入库可能需要较长时间，设置5分钟超时
-      const data = await apiPost<{
-        totalProcessed: number;
-        totalImported: number;
-        totalUpdated: number;
-        totalErrors: number;
-        errors: string[];
-        results: Array<{
-          packageName: string;
-          processed: number;
-          imported: number;
-          updated: number;
-          errors: number;
-        }>;
-      }>("/api/admin/questions/import-from-json", {
-        password: superAdminPassword,
-        source: importSource,
-        version: importSource === "database" ? importVersion : undefined,
-        packageName: importSource === "filesystem" ? undefined : undefined,
-      }, {
-        timeoutMs: 300_000, // 5分钟超时
+      // 使用流式响应获取实时进度
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("ADMIN_TOKEN") : null;
+      const response = await fetch("/api/admin/questions/import-from-json", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          password: superAdminPassword,
+          source: importSource,
+          version: importSource === "database" ? importVersion : undefined,
+          packageName: importSource === "filesystem" ? undefined : undefined,
+          useStreaming: true,
+        }),
       });
 
-      setImportFromJsonResult(data);
-      setShowImportFromJsonModal(false);
-      setSuperAdminPassword("");
-      
-      // 重新加载数据
-      setItems([]);
-      setHasMore(true);
-      loadData(1, false);
-      loadVersions();
-      
-      alert(`JSON包入库完成：处理了 ${data.totalProcessed} 个题目，新增 ${data.totalImported} 个，更新 ${data.totalUpdated} 个，${data.totalErrors} 个错误`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "请求失败" }));
+        throw new ApiError({
+          status: response.status,
+          errorCode: errorData.errorCode || "UNKNOWN_ERROR",
+          message: errorData.message || "JSON包入库失败",
+        });
+      }
+
+      // 处理流式响应
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("无法读取响应流");
+      }
+
+      let buffer = "";
+      let finalResult: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === "progress") {
+                setImportProgress({
+                  processed: data.processed || 0,
+                  total: data.total || 0,
+                  imported: data.imported || 0,
+                  updated: data.updated || 0,
+                  errors: data.errors || 0,
+                  currentBatch: data.currentBatch,
+                  totalBatches: data.totalBatches,
+                });
+              } else if (data.type === "complete") {
+                finalResult = data;
+              } else if (data.type === "error") {
+                throw new Error(data.message || "导入过程中发生错误");
+              }
+            } catch (e) {
+              console.error("解析进度数据失败:", e, line);
+            }
+          }
+        }
+      }
+
+      if (finalResult) {
+        setImportFromJsonResult({
+          totalProcessed: finalResult.totalProcessed || 0,
+          totalImported: finalResult.totalImported || 0,
+          totalUpdated: finalResult.totalUpdated || 0,
+          totalErrors: finalResult.totalErrors || 0,
+          errors: finalResult.errors || [],
+          results: [],
+        });
+        setShowImportFromJsonModal(false);
+        setSuperAdminPassword("");
+        setImportProgress(null);
+        
+        // 重新加载数据
+        setItems([]);
+        setHasMore(true);
+        loadData(1, false);
+        loadVersions();
+        
+        alert(`JSON包入库完成：处理了 ${finalResult.totalProcessed} 个题目，新增 ${finalResult.totalImported} 个，更新 ${finalResult.totalUpdated} 个，${finalResult.totalErrors} 个错误`);
+      }
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 403) {
@@ -1154,6 +1222,42 @@ export default function QuestionsPage() {
               </div>
               {formError && (
                 <div className="text-sm text-red-600">{formError}</div>
+              )}
+              {importProgress && (
+                <div className="space-y-2 p-4 bg-blue-50 rounded-lg">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-gray-700">导入进度</span>
+                    <span className="text-blue-600">
+                      {importProgress.processed} / {importProgress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-blue-500 h-3 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${importProgress.total > 0 ? (importProgress.processed / importProgress.total) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                  {importProgress.totalBatches && importProgress.currentBatch && (
+                    <div className="text-xs text-gray-600">
+                      批次: {importProgress.currentBatch} / {importProgress.totalBatches}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="text-green-600">
+                      新增: {importProgress.imported}
+                    </div>
+                    <div className="text-orange-600">
+                      更新: {importProgress.updated}
+                    </div>
+                    {importProgress.errors > 0 && (
+                      <div className="text-red-600 col-span-2">
+                        错误: {importProgress.errors}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
               {importFromJsonResult && (
                 <div className="text-sm space-y-1">
