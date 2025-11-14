@@ -94,17 +94,12 @@ function ExamPage() {
     // Load questions from the same source as study page
     const loadQuestions = async () => {
       try {
-        // 优先通过统一加载器读取题目
-        let allQuestions: Question[] = await loadAllQuestions();
+        // 通过统一加载器读取题目
+        const allQuestions: Question[] = await loadAllQuestions();
         if (!allQuestions || allQuestions.length === 0) {
-          try {
-            const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
-            const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-            allQuestions = questions as unknown as Question[];
-          } catch {
-            const response = await import(`../../data/questions/zh/仮免-1.json`);
-            allQuestions = (response.questions || response.default?.questions || []) as unknown as Question[];
-          }
+          console.error('加载题目失败：未找到题目数据');
+          setIsLoading(false);
+          return;
         }
         
         // Randomly select questions for the exam
