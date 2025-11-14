@@ -903,47 +903,75 @@ export async function POST(req: NextRequest) {
     }
 
     // 3) 配额检查（用户维度 10次/日）
-    console.log(`[${requestId}] [STEP 3] 开始配额检查`);
-    touchResetIfNeeded();
-    const k = session.userId;
-    const nowKey = lastDayKey;
-    const c = counters.get(k);
-    if (!c || c.dayKey !== nowKey) {
-      counters.set(k, { count: 1, dayKey: nowKey });
-      console.log(`[${requestId}] [STEP 3.1] 配额检查通过（新用户/新日期）`, {
-        userId: k,
-        count: 1,
-        dayKey: nowKey,
-      });
-    } else {
-      if (c.count >= DAILY_LIMIT) {
-        console.warn(`[${requestId}] [STEP 3.2] 配额已超限`, {
+    // 检查是否为管理员请求，如果是则跳过配额限制
+    let isAdminRequest = false;
+    try {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice("Bearer ".length).trim();
+        // 检查是否为管理员 token
+        const { db } = await import("@/lib/db");
+        const admin = await db
+          .selectFrom("admins")
+          .select(["id"])
+          .where("token", "=", token)
+          .where("is_active", "=", true)
+          .executeTakeFirst();
+        if (admin) {
+          isAdminRequest = true;
+          console.log(`[${requestId}] [STEP 3.0] 管理员请求，跳过配额限制`);
+        }
+      }
+    } catch (e) {
+      // 忽略管理员检查错误，继续正常流程
+      console.warn(`[${requestId}] [STEP 3.0] 管理员检查失败:`, (e as Error).message);
+    }
+
+    if (!isAdminRequest) {
+      console.log(`[${requestId}] [STEP 3] 开始配额检查`);
+      touchResetIfNeeded();
+      const k = session.userId;
+      const nowKey = lastDayKey;
+      const c = counters.get(k);
+      if (!c || c.dayKey !== nowKey) {
+        counters.set(k, { count: 1, dayKey: nowKey });
+        console.log(`[${requestId}] [STEP 3.1] 配额检查通过（新用户/新日期）`, {
+          userId: k,
+          count: 1,
+          dayKey: nowKey,
+        });
+      } else {
+        if (c.count >= DAILY_LIMIT) {
+          console.warn(`[${requestId}] [STEP 3.2] 配额已超限`, {
+            userId: k,
+            count: c.count,
+            limit: DAILY_LIMIT,
+          });
+          return err("RATE_LIMIT_EXCEEDED", "Daily ask limit exceeded.", 429, {
+            limit: DAILY_LIMIT,
+            resetAt: new Date(
+              Date.UTC(
+                new Date().getUTCFullYear(),
+                new Date().getUTCMonth(),
+                new Date().getUTCDate() + 1,
+                0,
+                0,
+                0,
+                0,
+              ),
+            ).toISOString(),
+          });
+        }
+        c.count += 1;
+        counters.set(k, c);
+        console.log(`[${requestId}] [STEP 3.3] 配额检查通过`, {
           userId: k,
           count: c.count,
           limit: DAILY_LIMIT,
         });
-        return err("RATE_LIMIT_EXCEEDED", "Daily ask limit exceeded.", 429, {
-          limit: DAILY_LIMIT,
-          resetAt: new Date(
-            Date.UTC(
-              new Date().getUTCFullYear(),
-              new Date().getUTCMonth(),
-              new Date().getUTCDate() + 1,
-              0,
-              0,
-              0,
-              0,
-            ),
-          ).toISOString(),
-        });
       }
-      c.count += 1;
-      counters.set(k, c);
-      console.log(`[${requestId}] [STEP 3.3] 配额检查通过`, {
-        userId: k,
-        count: c.count,
-        limit: DAILY_LIMIT,
-      });
+    } else {
+      console.log(`[${requestId}] [STEP 3] 管理员请求，跳过配额检查`);
     }
 
     // 4) 处理userId转发（act-格式直接使用，因为userid字段本身就是act-{activationId}格式）

@@ -2,7 +2,7 @@
 export const runtime = "nodejs";
 export const maxDuration = 60; // 60秒超时（Vercel Pro计划最多300秒，这里设置为60秒以支持重试）
 
-import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
+import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
 import { translateWithPolish } from "../_lib/batchProcessUtils";
@@ -112,6 +112,7 @@ export const POST = withAdminAuth(async (req: Request) => {
           },
           from,
           to: targetLang,
+          adminToken,
         });
         console.log(`[API Translate] [${requestId}] translateWithPolish completed`, {
           contentLength: result.content?.length || 0,

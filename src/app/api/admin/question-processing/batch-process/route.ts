@@ -2,7 +2,7 @@
 export const runtime = "nodejs";
 export const maxDuration = 300; // 300秒超时（Vercel Pro计划最多300秒，批量处理需要更长时间）
 
-import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
+import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success, conflict, notFound } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
 import { sql } from "kysely";
@@ -42,6 +42,17 @@ export const POST = withAdminAuth(async (req: Request) => {
 
     const input = schema.parse(body);
     const adminId = (req as any).adminId || null;
+    
+    // 获取管理员 token，用于传递给 AI API 调用以跳过配额限制
+    let adminToken: string | undefined = undefined;
+    try {
+      const adminInfo = await getAdminInfo(req as any);
+      if (adminInfo) {
+        adminToken = adminInfo.token;
+      }
+    } catch (e) {
+      console.warn(`[API BatchProcess] [${requestId}] Failed to get admin token:`, (e as Error).message);
+    }
 
     // 验证操作选项
     if (input.operations.includes("translate") && !input.translateOptions) {
@@ -147,7 +158,7 @@ export const POST = withAdminAuth(async (req: Request) => {
     };
 
     // 分批处理（异步执行，不阻塞响应）
-    processBatchAsync(requestId, taskId, questions, input, results).catch(async (error) => {
+    processBatchAsync(requestId, taskId, questions, input, results, adminToken).catch(async (error) => {
       console.error(`[API BatchProcess] [${requestId}] Async batch processing failed:`, error);
       // 如果异步处理失败，更新任务状态为失败
       try {
@@ -262,7 +273,8 @@ async function processBatchAsync(
     failed: number;
     errors: Array<{ questionId: number; error: string }>;
     details: Array<{ questionId: number; operations: string[]; status: string }>;
-  }
+  },
+  adminToken?: string // 管理员 token，用于跳过配额限制
 ) {
   const batchSize = input.batchSize || 10;
   const totalBatches = Math.ceil(questions.length / batchSize);
@@ -387,6 +399,7 @@ async function processBatchAsync(
                     source: sourceContent,
                     from: input.translateOptions!.from,
                     to: targetLang,
+                    adminToken,
                   });
 
                   // 保存翻译结果
@@ -442,6 +455,7 @@ async function processBatchAsync(
               const result = await polishContent({
                 text,
                 locale: input.polishOptions.locale,
+                adminToken,
               });
 
               // 在批量处理中，如果后续有翻译操作，直接应用润色结果到内存变量
@@ -478,6 +492,7 @@ async function processBatchAsync(
                 content,
                 options: options || null,
                 explanation: explanation || null,
+                adminToken,
               });
 
               // 更新题目内容（如果原内容缺失）
@@ -531,6 +546,7 @@ async function processBatchAsync(
                 content,
                 options: options || null,
                 explanation: explanation || null,
+                adminToken,
               });
 
               // 更新题目的分类和标签
