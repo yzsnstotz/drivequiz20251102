@@ -57,7 +57,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   metadata?: {
-    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached" | "system";
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct" | "cached" | "system";
     model?: string;
     sourceType?: "ai-generated" | "cached" | "knowledge-base" | "system-tip";
     cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
@@ -353,7 +353,7 @@ export default function QuestionAIDialog({
           url: string;
           snippet?: string;
         }>;
-        aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct";
+        aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct";
         model?: string;
         cached?: boolean;
         cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
@@ -566,6 +566,14 @@ export default function QuestionAIDialog({
                               <>
                                 <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
                                 <span>OpenRouter (Direct)</span>
+                                {message.metadata.model && (
+                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "gemini_direct" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                                <span>Google Gemini (Direct)</span>
                                 {message.metadata.model && (
                                   <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
                                 )}

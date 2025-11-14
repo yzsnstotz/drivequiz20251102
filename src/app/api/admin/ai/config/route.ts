@@ -88,7 +88,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           model?: string;
           cacheTtl?: number;
           costAlertUsdThreshold?: number;
-          aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
+          aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
         }
       | null;
 
@@ -144,9 +144,10 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         body.aiProvider !== "local" &&
         body.aiProvider !== "openrouter" &&
         body.aiProvider !== "openrouter_direct" &&
-        body.aiProvider !== "openai_direct"
+        body.aiProvider !== "openai_direct" &&
+        body.aiProvider !== "gemini_direct"
       ) {
-        return badRequest("aiProvider must be either 'openai', 'local', 'openrouter', 'openrouter_direct', or 'openai_direct'.");
+        return badRequest("aiProvider must be either 'openai', 'local', 'openrouter', 'openrouter_direct', 'openai_direct', or 'gemini_direct'.");
       }
       updates.push({ key: "aiProvider", value: body.aiProvider });
     }

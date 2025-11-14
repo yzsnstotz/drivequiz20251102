@@ -111,6 +111,10 @@ const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME?.trim();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim();
 
+// 直连 Google Gemini 配置
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
+const GEMINI_BASE_URL = process.env.GEMINI_BASE_URL?.trim() || "https://generativelanguage.googleapis.com/v1beta";
+
 // 在模块加载时记录环境变量（仅在开发环境）
 if (process.env.NODE_ENV === "development") {
   console.log("[ENV MODULE] 环境变量配置", {
@@ -120,7 +124,7 @@ if (process.env.NODE_ENV === "development") {
   });
 }
 
-type AiProviderValue = "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
+type AiProviderValue = "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
 
 function requireEnvVar(key: string): string {
   const raw = process.env[key];
@@ -147,6 +151,9 @@ function normalizeAiProviderValue(value: string | null | undefined): AiProviderV
     case "openai-direct":
     case "openai_direct":
       return "openai_direct";
+    case "gemini-direct":
+    case "gemini_direct":
+      return "gemini_direct";
     default:
       return null;
   }
@@ -573,7 +580,7 @@ export async function POST(req: NextRequest) {
     console.log(`[${requestId}] [STEP 0] 开始选择AI服务`);
     let selectedAiServiceUrl: string | undefined;
     let selectedAiServiceToken: string | undefined;
-    let aiServiceMode: "local" | "openai" | "openrouter" | "openrouter_direct" | "openai_direct";
+    let aiServiceMode: "local" | "openai" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
     
     // 记录环境变量状态
     console.log(`[${requestId}] [ENV CHECK] 环境变量检查`, {
@@ -680,13 +687,16 @@ export async function POST(req: NextRequest) {
           ) },
         );
       }
-      // 如果是 openrouter_direct 或 openai_direct，不通过 AI Service，直接调用 API
+      // 如果是 openrouter_direct、openai_direct 或 gemini_direct，不通过 AI Service，直接调用 API
       if (aiProviderFromDb === "openrouter_direct") {
         aiServiceMode = "openrouter_direct";
         console.log(`[${requestId}] [STEP 0.4] 已选择直连OpenRouter模式（不通过AI Service）`);
       } else if (aiProviderFromDb === "openai_direct") {
         aiServiceMode = "openai_direct";
         console.log(`[${requestId}] [STEP 0.4] 已选择直连OpenAI模式（不通过AI Service）`);
+      } else if (aiProviderFromDb === "gemini_direct") {
+        aiServiceMode = "gemini_direct";
+        console.log(`[${requestId}] [STEP 0.4] 已选择直连Google Gemini模式（不通过AI Service）`);
       } else {
       selectedAiServiceUrl = AI_SERVICE_URL;
       selectedAiServiceToken = AI_SERVICE_TOKEN;
@@ -698,10 +708,10 @@ export async function POST(req: NextRequest) {
     
     console.log(`[${requestId}] [STEP 0.5] AI服务选择完成`, {
       mode: aiServiceMode,
-      url: (aiServiceMode === "openrouter_direct" || aiServiceMode === "openai_direct") 
-        ? (aiServiceMode === "openrouter_direct" ? "直连OpenRouter" : "直连OpenAI")
+      url: (aiServiceMode === "openrouter_direct" || aiServiceMode === "openai_direct" || aiServiceMode === "gemini_direct") 
+        ? (aiServiceMode === "openrouter_direct" ? "直连OpenRouter" : aiServiceMode === "openai_direct" ? "直连OpenAI" : "直连Google Gemini")
         : (selectedAiServiceUrl ? `${selectedAiServiceUrl.substring(0, 30)}...` : "(empty)"),
-      hasToken: (aiServiceMode === "openrouter_direct" || aiServiceMode === "openai_direct") ? "N/A" : !!selectedAiServiceToken,
+      hasToken: (aiServiceMode === "openrouter_direct" || aiServiceMode === "openai_direct" || aiServiceMode === "gemini_direct") ? "N/A" : !!selectedAiServiceToken,
     });
 
     // 1) 用户鉴权（JWT）- 支持多种方式：Bearer header、Cookie、query 参数
@@ -1742,8 +1752,330 @@ export async function POST(req: NextRequest) {
       }
     }
     
+    // 如果是直连 Google Gemini 模式，直接调用 Gemini API，不通过 AI Service
+    if (aiServiceMode === "gemini_direct") {
+      console.log(`[${requestId}] [STEP 5] 开始直连Google Gemini处理`);
+      
+      // 检查环境变量
+      if (!GEMINI_API_KEY) {
+        console.error(`[${requestId}] [STEP 5.1] GEMINI_API_KEY 未设置`);
+        return err("INTERNAL_ERROR", "GEMINI_API_KEY is not set. Please set GEMINI_API_KEY environment variable.", 500);
+      }
+      
+      // 调试：检查 API Key 格式（不打印完整内容）
+      const originalLength = process.env.GEMINI_API_KEY?.length || 0;
+      const trimmedLength = GEMINI_API_KEY.length;
+      const hasWhitespace = originalLength !== trimmedLength;
+      const apiKeyPrefix = GEMINI_API_KEY.substring(0, 10);
+      const apiKeyLength = GEMINI_API_KEY.length;
+      console.log(`[${requestId}] [STEP 5.1.1] API Key 检查`, {
+        prefix: apiKeyPrefix,
+        length: apiKeyLength,
+        originalLength: originalLength,
+        trimmedLength: trimmedLength,
+        hasWhitespace: hasWhitespace,
+        hasValue: !!GEMINI_API_KEY,
+        warning: hasWhitespace ? "检测到 API Key 中有空白字符，已自动去除" : undefined,
+      });
+      
+      const geminiBaseUrl = GEMINI_BASE_URL;
+      
+      // 从数据库读取模型配置
+      let model: string | null = null;
+      try {
+        const modelRow = await (aiDb as any)
+          .selectFrom("ai_config")
+          .select(["value"])
+          .where("key", "=", "model")
+          .executeTakeFirst();
+        if (modelRow && modelRow.value && modelRow.value.trim()) {
+          model = modelRow.value.trim();
+        }
+      } catch (e) {
+        console.warn(`[${requestId}] [STEP 5.2] 读取模型配置失败:`, (e as Error).message);
+      }
+
+      if (!model) {
+        console.error(`[${requestId}] [STEP 5.2] 无法确定直连 Google Gemini 的模型`);
+        return err("INTERNAL_ERROR", "Google Gemini model is not configured.", 500);
+      }
+      
+      // 安全审查（简化版，使用本地规则）
+      const safetyCheck = checkSafetySimple(question);
+      if (!safetyCheck.pass) {
+        console.warn(`[${requestId}] [STEP 5.3] 安全审查未通过:`, safetyCheck.reason);
+        return err("FORBIDDEN", safetyCheck.reason || "Content blocked by safety policy", 403);
+      }
+      
+      // RAG 检索（简化版，如果配置了 Supabase 则使用）
+      let ragContext = "";
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (supabaseUrl && supabaseServiceKey) {
+          // 这里可以调用 RAG 检索，但为了简化，暂时跳过
+          // 如果需要完整的 RAG 功能，可以复用 apps/ai-service/src/lib/rag.ts 的逻辑
+          console.log(`[${requestId}] [STEP 5.4] RAG 检索已配置，但直连模式下暂时跳过`);
+        }
+      } catch (e) {
+        console.warn(`[${requestId}] [STEP 5.4] RAG 检索失败:`, (e as Error).message);
+      }
+      
+      // 构建系统提示（使用场景配置）
+      const lang = locale || "zh";
+      const sysPrompt = await buildSystemPrompt(lang, scene, requestId, sourceLanguage, targetLanguage);
+      const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
+      const refPrefix = lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
+      
+      // 调用 Google Gemini API
+      console.log(`[${requestId}] [STEP 5.5] 开始调用Google Gemini API`, {
+        model,
+        baseUrl: geminiBaseUrl,
+        questionLength: question.length,
+        hasRagContext: !!ragContext,
+      });
+      
+      // Google Gemini API 使用不同的格式
+      // URL: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}
+      const geminiUrl = `${geminiBaseUrl}/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      
+      // Gemini API 使用 contents 格式，而不是 messages
+      const geminiBody = {
+        contents: [
+          {
+            parts: [
+              {
+                text: `${sysPrompt}\n\n${userPrefix} ${question}\n\n${refPrefix}\n${ragContext || "（無/None）"}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: ANSWER_CHAR_LIMIT * 2, // 估算 token 数量
+        },
+      };
+      
+      const geminiHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      
+      // 调试：检查 headers
+      console.log(`[${requestId}] [STEP 5.5.1] Google Gemini Headers 检查`, {
+        contentType: geminiHeaders["Content-Type"],
+        apiKeyInUrl: true, // API Key 在 URL 中
+      });
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+        
+        const geminiResponse = await fetch(geminiUrl, {
+          method: "POST",
+          headers: geminiHeaders,
+          body: JSON.stringify(geminiBody),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!geminiResponse.ok) {
+          const errorText = await geminiResponse.text().catch(() => "");
+          let errorDetails: any = {};
+          try {
+            errorDetails = JSON.parse(errorText);
+          } catch {
+            errorDetails = { raw: errorText };
+          }
+          
+          console.error(`[${requestId}] [STEP 5.6] Google Gemini API 错误:`, {
+            status: geminiResponse.status,
+            statusText: geminiResponse.statusText,
+            error: errorText,
+            errorDetails,
+            apiKeyPrefix: GEMINI_API_KEY.substring(0, 10),
+            apiKeyLength: GEMINI_API_KEY.length,
+            url: geminiUrl.replace(GEMINI_API_KEY, "***"),
+          });
+          
+          // 如果是 401 或 403 错误，提供更详细的错误信息
+          if (geminiResponse.status === 401 || geminiResponse.status === 403) {
+            const errorMessage = errorDetails.error?.message || errorText;
+            const originalLength = process.env.GEMINI_API_KEY?.length || 0;
+            const trimmedLength = GEMINI_API_KEY.length;
+            const hasWhitespace = originalLength !== trimmedLength;
+            const diagnosticInfo = {
+              error: errorMessage,
+              apiKeyPrefix: GEMINI_API_KEY.substring(0, 15),
+              apiKeyLength: GEMINI_API_KEY.length,
+              originalLength: originalLength,
+              trimmedLength: trimmedLength,
+              hasWhitespace: hasWhitespace,
+              suggestion: hasWhitespace
+                ? "API Key 中检测到空白字符（已自动去除）。如果问题仍然存在，请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置，确保没有多余的空格或换行符，并验证 API Key 在 Google AI Studio 中仍然有效。"
+                : "API Key 可能无效或已过期。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置，并确保 API Key 在 Google AI Studio 中仍然有效。建议：1) 验证 API Key 是否有效，2) 检查 Vercel 环境变量中是否有隐藏字符，3) 重新设置环境变量并重新部署。"
+            };
+            
+            console.error(`[${requestId}] [STEP 5.6.1] Google Gemini 认证错误诊断`, diagnosticInfo);
+            
+            return err("AUTH_REQUIRED", `Google Gemini API 认证失败: ${errorMessage}。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置。`, geminiResponse.status);
+          }
+          
+          return err("PROVIDER_ERROR", `Google Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`, geminiResponse.status >= 500 ? 502 : geminiResponse.status);
+        }
+        
+        const geminiData = await geminiResponse.json() as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+        };
+        
+        const answer = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+        if (!answer) {
+          console.error(`[${requestId}] [STEP 5.7] Google Gemini API 返回空答案`);
+          return err("PROVIDER_ERROR", "Google Gemini API returned empty answer", 502);
+        }
+        
+        // 截断答案（如果超过限制）
+        const truncatedAnswer = answer.length > ANSWER_CHAR_LIMIT 
+          ? answer.substring(0, ANSWER_CHAR_LIMIT) + "..."
+          : answer;
+        
+        // 计算成本估算（简化版）
+        const inputTokens = geminiData.usageMetadata?.promptTokenCount || 0;
+        const outputTokens = geminiData.usageMetadata?.candidatesTokenCount || 0;
+        const costEstimate = {
+          inputTokens,
+          outputTokens,
+          approxUsd: 0, // 简化版，不计算具体成本
+        };
+        
+        console.log(`[${requestId}] [STEP 5.8] Google Gemini API 调用成功`, {
+          model: model,
+          answerLength: truncatedAnswer.length,
+          inputTokens,
+          outputTokens,
+        });
+        
+        // 判断是否是习题调用（如果之前找到了匹配的题目）
+        const isQuestionCall = !!questionHash;
+        
+        // 写入 ai_logs 表（异步，不阻塞响应）
+        void writeAiLogToDatabase({
+          userId: forwardedUserId,
+          question,
+          answer: truncatedAnswer,
+          locale,
+          model: model,
+          ragHits: 0, // 直连模式下暂时没有 RAG
+          safetyFlag: "ok",
+          costEstUsd: costEstimate.approxUsd,
+          sources: [], // 直连模式下暂时不返回 RAG 来源
+          from: isQuestionCall ? "question" : null, // 如果是习题调用，标识为"question"
+          aiProvider: "gemini_direct",
+          cached: false,
+          cacheSource: null,
+          createdAtIso: new Date().toISOString(),
+        }).catch((error) => {
+          console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
+        });
+        
+        // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
+        if (questionHash) {
+          // 规范化 locale：将 zh-CN、zh_CN 等格式转换为 zh（与查询逻辑保持一致）
+          const localeStr = normalizeLocale(locale);
+          console.log(`[${requestId}] [STEP 5.8.2] 开始检查并写入 question_ai_answers 表（直连Google Gemini模式）`, {
+            questionHash: questionHash.substring(0, 16) + "...",
+            locale: localeStr,
+            originalLocale: locale,
+          });
+          
+          // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+          try {
+            // 检查是否已存在（防止并发请求重复写入）
+            const existing = await getAIAnswerFromDb(questionHash, localeStr);
+            if (existing) {
+              console.log(`[${requestId}] [STEP 5.8.2.1] 数据库已有AI解析，跳过写入（避免覆盖）`, {
+                questionHash: questionHash.substring(0, 16) + "...",
+                existingAnswerLength: existing.length,
+              });
+            } else {
+              // 只有在数据库中没有时才写入新回答
+              const savedId = await saveAIAnswerToDb(
+                questionHash,
+                truncatedAnswer,
+                localeStr,
+                model,
+                [], // 直连模式下暂时没有 RAG 来源
+                forwardedUserId || undefined
+              );
+              
+              if (savedId > 0) {
+                console.log(`[${requestId}] [STEP 5.8.2.2] 成功写入 question_ai_answers 表（新回答）`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  savedId,
+                  locale: localeStr,
+                });
+                
+                // 存入用户缓存
+                if (forwardedUserId) {
+                  setUserCachedAnswer(forwardedUserId, questionHash, truncatedAnswer);
+                  console.log(`[${requestId}] [STEP 5.8.2.3] 已存入用户缓存（来源：AI解析）`, {
+                    userId: forwardedUserId,
+                    questionHash: questionHash.substring(0, 16) + "...",
+                  });
+                }
+              } else {
+                console.error(`[${requestId}] [STEP 5.8.2.2] 写入 question_ai_answers 表返回ID为0，可能写入失败`, {
+                  questionHash: questionHash.substring(0, 16) + "...",
+                  answerLength: truncatedAnswer.length,
+                  locale: localeStr,
+                });
+              }
+            }
+          } catch (error) {
+            const errorObj = error as Error;
+            console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
+              error: errorObj.message,
+              name: errorObj.name,
+              stack: errorObj.stack,
+              questionHash: questionHash.substring(0, 16) + "...",
+              locale: localeStr,
+            });
+          }
+        } else {
+          console.warn(`[${requestId}] [STEP 5.8.2] questionHash 为 null，跳过写入 question_ai_answers 表（直连Google Gemini模式）`);
+        }
+        
+        console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连Google Gemini模式）`);
+        
+        // 返回结果
+        return ok({
+          answer: truncatedAnswer,
+          sources: [], // 直连模式下暂时不返回 RAG 来源
+          model: model,
+          safetyFlag: "ok" as const,
+          costEstimate,
+          aiProvider: "gemini_direct",
+        });
+      } catch (error) {
+        const errorObj = error as Error;
+        console.error(`[${requestId}] [STEP 5.9] Google Gemini API 调用失败:`, {
+          error: errorObj.message,
+          name: errorObj.name,
+          stack: errorObj.stack,
+        });
+        
+        if (errorObj.name === "AbortError" || errorObj.message.includes("timeout")) {
+          return err("PROVIDER_ERROR", "Google Gemini API request timeout (30s)", 504);
+        }
+        
+        return err("PROVIDER_ERROR", `Failed to call Google Gemini API: ${errorObj.message}`, 502);
+      }
+    }
+    
     // 确保 selectedAiServiceUrl 不重复 /v1 路径（仅在非直连模式下）
-    // 注意：openrouter_direct 和 openai_direct 模式已经在上面处理并返回了，不会到达这里
+    // 注意：openrouter_direct、openai_direct 和 gemini_direct 模式已经在上面处理并返回了，不会到达这里
     if (!selectedAiServiceUrl || !selectedAiServiceToken) {
       console.error(`[${requestId}] [STEP 5] AI服务配置不完整`, {
         hasUrl: !!selectedAiServiceUrl,

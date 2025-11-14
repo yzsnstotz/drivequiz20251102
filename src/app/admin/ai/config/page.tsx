@@ -8,7 +8,7 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
-  aiProvider: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
+  aiProvider: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
 };
 
 type ConfigResp = {
@@ -103,7 +103,8 @@ export default function AdminAiConfigPage() {
             data.aiProvider === "openai" ||
             data.aiProvider === "openrouter" ||
             data.aiProvider === "openrouter_direct" ||
-            data.aiProvider === "openai_direct"
+            data.aiProvider === "openai_direct" ||
+            data.aiProvider === "gemini_direct"
               ? data.aiProvider
               : "openai",
         });
@@ -210,6 +211,13 @@ export default function AdminAiConfigPage() {
                     <option value="gpt-4-turbo">gpt-4-turbo</option>
                     <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                   </>
+                ) : config.aiProvider === "gemini_direct" ? (
+                  <>
+                    <option value="gemini-pro">Gemini Pro</option>
+                    <option value="gemini-pro-1.5">Gemini Pro 1.5</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                  </>
                 ) : (config.aiProvider === "openrouter" || config.aiProvider === "openrouter_direct") ? (
                   <>
                     <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>
@@ -244,6 +252,8 @@ export default function AdminAiConfigPage() {
                   ? "当前使用的 OpenAI 模型（通过 Render）"
                   : config.aiProvider === "openai_direct"
                   ? "当前使用的 OpenAI 模型（直连，不通过 Render）"
+                  : config.aiProvider === "gemini_direct"
+                  ? "当前使用的 Google Gemini 模型（直连，不通过 Render）"
                   : config.aiProvider === "openrouter"
                   ? "当前使用的 OpenRouter 模型（通过 Render，支持多种 AI 服务商）"
                   : config.aiProvider === "openrouter_direct"
@@ -301,11 +311,13 @@ export default function AdminAiConfigPage() {
               <select
                 value={config.aiProvider}
                 onChange={(e) => {
-                  const newProvider = e.target.value as "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
+                  const newProvider = e.target.value as "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
                   // 切换服务提供商时，自动设置对应的默认模型
                   const defaultModel = 
                     newProvider === "openai" || newProvider === "openai_direct"
                       ? "gpt-4o-mini"
+                      : newProvider === "gemini_direct"
+                      ? "gemini-pro"
                       : (newProvider === "openrouter" || newProvider === "openrouter_direct")
                       ? "openai/gpt-4o-mini"
                     : "llama3.2:3b";
@@ -315,6 +327,7 @@ export default function AdminAiConfigPage() {
               >
                 <option value="openai">OpenAI（通过 Render）</option>
                 <option value="openai_direct">直连 OpenAI</option>
+                <option value="gemini_direct">直连 Google Gemini</option>
                 <option value="openrouter">OpenRouter（通过 Render）</option>
                 <option value="openrouter_direct">直连 OpenRouter</option>
                 <option value="local">本地 AI（Ollama）</option>
@@ -324,6 +337,8 @@ export default function AdminAiConfigPage() {
                   ? "使用 OpenAI 服务（通过 Render），需要配置 AI_SERVICE_URL 和 AI_SERVICE_TOKEN"
                   : config.aiProvider === "openai_direct"
                   ? "使用 OpenAI 服务（直连，不通过 Render），需要配置 OPENAI_API_KEY 和 OPENAI_BASE_URL"
+                  : config.aiProvider === "gemini_direct"
+                  ? "使用 Google Gemini 服务（直连，不通过 Render），需要配置 GEMINI_API_KEY 和 GEMINI_BASE_URL（可选，默认为 https://generativelanguage.googleapis.com/v1beta）"
                   : config.aiProvider === "openrouter"
                   ? "使用 OpenRouter 服务（通过 Render），需要配置 OPENROUTER_API_KEY 和 OPENROUTER_BASE_URL"
                   : config.aiProvider === "openrouter_direct"

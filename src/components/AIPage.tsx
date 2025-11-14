@@ -14,7 +14,7 @@ interface ChatMessage {
   createdAt: number; // epoch ms
   // AI reply metadata (only for AI messages)
   metadata?: {
-    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached"; // AI service provider
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct" | "cached"; // AI service provider
     model?: string; // Model name
     sources?: Array<{
       title: string;
@@ -54,7 +54,7 @@ interface AiAskResponse {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
-    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached"; // AI service provider
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct" | "cached"; // AI service provider
   };
   errorCode?: string;
   message?: string;
@@ -439,6 +439,14 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                           <>
                             <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
                             <span>OpenRouter (Direct)</span>
+                            {m.metadata.model && (
+                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            )}
+                          </>
+                        ) : m.metadata.aiProvider === "gemini_direct" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                            <span>Google Gemini (Direct)</span>
                             {m.metadata.model && (
                               <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
                             )}
