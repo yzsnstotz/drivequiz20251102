@@ -1479,27 +1479,41 @@ export async function updateAllJsonPackages(): Promise<{
           // 如果数据库中没有翻译，从多语言对象中提取对应语言
           const localizedQ: any = { ...q };
           
+          // 检查是否是占位符的辅助函数
+          const isPlaceholder = (value: string | undefined): boolean => {
+            return value !== undefined && typeof value === 'string' && 
+              (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+          };
+          
           // 处理content字段：从多语言对象中提取对应语言
           if (typeof q.content === "object" && q.content !== null) {
             const contentObj = q.content as { [key: string]: string | undefined };
-            if (contentObj[loc]) {
-              localizedQ.content = contentObj[loc];
+            const targetValue = contentObj[loc];
+            // 如果目标语言的值存在且不是占位符，使用它；否则回退到中文
+            if (targetValue && !isPlaceholder(targetValue)) {
+              localizedQ.content = targetValue;
             } else if (contentObj.zh) {
               localizedQ.content = contentObj.zh; // 回退到中文
             } else {
-              localizedQ.content = Object.values(contentObj)[0] || ""; // 回退到第一个可用语言
+              // 回退到第一个非占位符的语言
+              const firstValidValue = Object.values(contentObj).find(v => v && !isPlaceholder(v));
+              localizedQ.content = firstValidValue || "";
             }
           }
           
           // 处理explanation字段：从多语言对象中提取对应语言
           if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
             const expObj = q.explanation as { [key: string]: string | undefined };
-            if (expObj[loc]) {
-              localizedQ.explanation = expObj[loc];
+            const targetValue = expObj[loc];
+            // 如果目标语言的值存在且不是占位符，使用它；否则回退到中文
+            if (targetValue && !isPlaceholder(targetValue)) {
+              localizedQ.explanation = targetValue;
             } else if (expObj.zh) {
               localizedQ.explanation = expObj.zh; // 回退到中文
             } else {
-              localizedQ.explanation = Object.values(expObj)[0] || undefined; // 回退到第一个可用语言
+              // 回退到第一个非占位符的语言
+              const firstValidValue = Object.values(expObj).find(v => v && !isPlaceholder(v));
+              localizedQ.explanation = firstValidValue || undefined;
             }
           }
           

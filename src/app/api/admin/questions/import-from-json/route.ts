@@ -187,13 +187,51 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 .executeTakeFirst();
 
               // 规范化content字段：如果是字符串，转换为多语言对象
+              // 同时过滤掉占位符字段（[EN] 和 [JA] 开头的值）
               let contentMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
               if (typeof question.content === "string") {
                 // 兼容旧格式：单语言字符串转换为多语言对象
                 contentMultilang = { zh: question.content };
               } else {
-                // 新格式：多语言对象
-                contentMultilang = question.content;
+                // 新格式：多语言对象，过滤掉占位符
+                const contentObj = question.content as { [key: string]: string | undefined };
+                const isPlaceholder = (value: string | undefined): boolean => {
+                  return value !== undefined && typeof value === 'string' && 
+                    (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+                };
+                
+                // 只保留非占位符的字段，优先保留zh
+                contentMultilang = { zh: contentObj.zh || "" };
+                if (contentObj.en && !isPlaceholder(contentObj.en)) {
+                  contentMultilang.en = contentObj.en;
+                }
+                if (contentObj.ja && !isPlaceholder(contentObj.ja)) {
+                  contentMultilang.ja = contentObj.ja;
+                }
+              }
+
+              // 规范化explanation字段：如果是多语言对象，过滤掉占位符
+              let explanationMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | string | null = null;
+              if (question.explanation) {
+                if (typeof question.explanation === "string") {
+                  explanationMultilang = question.explanation;
+                } else {
+                  // 多语言对象，过滤掉占位符
+                  const expObj = question.explanation as { [key: string]: string | undefined };
+                  const isPlaceholder = (value: string | undefined): boolean => {
+                    return value !== undefined && typeof value === 'string' && 
+                      (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+                  };
+                  
+                  // 只保留非占位符的字段，优先保留zh
+                  explanationMultilang = { zh: expObj.zh || "" };
+                  if (expObj.en && !isPlaceholder(expObj.en)) {
+                    explanationMultilang.en = expObj.en;
+                  }
+                  if (expObj.ja && !isPlaceholder(expObj.ja)) {
+                    explanationMultilang.ja = expObj.ja;
+                  }
+                }
               }
 
               // 规范化category和其他标签字段
@@ -215,7 +253,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     options: question.options ? (question.options as any) : null,
                     correct_answer: question.correctAnswer as any,
                     image: question.image || null,
-                    explanation: question.explanation || null,
+                    explanation: explanationMultilang as any,
                     license_types: licenseTypes,
                     category: questionCategory,
                     stage_tag: stageTag,
@@ -238,7 +276,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     options: question.options ? (question.options as any) : null,
                     correct_answer: question.correctAnswer as any,
                     image: question.image || null,
-                    explanation: question.explanation || null,
+                    explanation: explanationMultilang as any,
                     license_types: licenseTypes,
                     category: questionCategory,
                     stage_tag: stageTag,
