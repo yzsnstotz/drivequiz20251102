@@ -204,6 +204,32 @@ export const POST = withAdminAuth(async (req: Request) => {
 });
 
 /**
+ * 清理错误信息，确保可以安全地存储到 JSONB 字段
+ */
+function sanitizeError(error: any): string {
+  if (!error) return "Unknown error";
+  
+  let errorMsg = "";
+  if (typeof error === "string") {
+    errorMsg = error;
+  } else if (error?.message) {
+    errorMsg = String(error.message);
+  } else if (error?.name) {
+    errorMsg = String(error.name);
+  } else {
+    errorMsg = "Unknown error";
+  }
+  
+  // 移除可能导致 JSON 解析错误的特殊字符，限制长度
+  errorMsg = errorMsg
+    .replace(/[\x00-\x1F\x7F]/g, "") // 移除控制字符
+    .replace(/\\/g, "/") // 将反斜杠替换为斜杠
+    .substring(0, 500); // 限制长度
+  
+  return errorMsg;
+}
+
+/**
  * 异步批量处理函数（不阻塞响应）
  */
 async function processBatchAsync(
@@ -520,7 +546,7 @@ async function processBatchAsync(
               questionResult.operations.push("category_tags");
             }
           } catch (opError: any) {
-            const errorMsg = opError.message || opError.name || "Unknown error";
+            const errorMsg = sanitizeError(opError);
             console.error(`[BatchProcess] Operation ${operation} failed: Q${question.id} - ${errorMsg}`);
             
             if (!input.continueOnError) {
@@ -562,12 +588,13 @@ async function processBatchAsync(
           .where("task_id", "=", taskId)
           .execute();
       } catch (error: any) {
-        console.error(`[BatchProcess] Question ${question.id} processing failed: ${error.message}`);
+        const errorMsg = sanitizeError(error);
+        console.error(`[BatchProcess] Question ${question.id} processing failed: ${errorMsg}`);
         results.processed++;
         results.failed++;
         results.errors.push({
           questionId: question.id,
-          error: error.message || "Unknown error",
+          error: errorMsg,
         });
         results.details.push({
           questionId: question.id,
