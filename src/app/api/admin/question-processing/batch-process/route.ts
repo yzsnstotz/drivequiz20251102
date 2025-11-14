@@ -233,9 +233,15 @@ function sanitizeError(error: any): string {
   }
   
   // 移除可能导致 JSON 解析错误的特殊字符，限制长度
+  // 注意：不要移除引号，因为 JSON.stringify 会自动转义
   errorMsg = errorMsg
     .replace(/[\x00-\x1F\x7F]/g, "") // 移除控制字符
-    .replace(/\\/g, "/") // 将反斜杠替换为斜杠
+    .replace(/\r\n/g, " ") // 将换行符替换为空格
+    .replace(/\n/g, " ") // 将换行符替换为空格
+    .replace(/\r/g, " ") // 将回车符替换为空格
+    .replace(/\t/g, " ") // 将制表符替换为空格
+    .replace(/\s+/g, " ") // 将多个空格替换为单个空格
+    .trim()
     .substring(0, 500); // 限制长度
   
   return errorMsg;
@@ -624,14 +630,18 @@ async function processBatchAsync(
                     explanationType: updatedExplanation === null ? "null" : typeof updatedExplanation,
                   });
 
-                  // 直接传递对象，Kysely 会自动处理 JSONB 序列化
-                  // 确保所有字段都是纯 JavaScript 对象/数组/null
+                  // 使用 sql 模板确保 JSONB 字段正确序列化
+                  // 直接使用 JSON.stringify，Kysely 会正确处理参数化查询
                   await db
                     .updateTable("questions")
                     .set({
-                      content: updatedContent as any,
-                      options: updatedOptions as any,
-                      explanation: updatedExplanation as any,
+                      content: sql`${JSON.stringify(updatedContent)}::jsonb`,
+                      options: updatedOptions !== null 
+                        ? sql`${JSON.stringify(updatedOptions)}::jsonb` 
+                        : sql`null::jsonb`,
+                      explanation: updatedExplanation !== null 
+                        ? sql`${JSON.stringify(updatedExplanation)}::jsonb` 
+                        : sql`null::jsonb`,
                       updated_at: new Date(),
                     })
                     .where("id", "=", question.id)
