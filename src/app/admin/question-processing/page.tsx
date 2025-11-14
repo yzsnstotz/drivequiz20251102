@@ -68,7 +68,7 @@ export default function QuestionProcessingPage() {
       if (response.ok && response.data) {
         setTasks(response.data.tasks || []);
       } else {
-        setError(response.message || "加载任务列表失败");
+        setError("加载任务列表失败");
       }
     } catch (err) {
       const apiErr = err as ApiError;
