@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { apiFetch, apiPost, ApiError } from "@/lib/apiClient";
+import { apiFetch, apiPost, apiDelete, ApiError } from "@/lib/apiClient";
 
 type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
@@ -41,6 +41,7 @@ export default function QuestionProcessingPage() {
   const [creating, setCreating] = useState(false);
   const [selectedTask, setSelectedTask] = useState<BatchProcessTask | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
 
   // 创建任务表单状态
   const [formData, setFormData] = useState<{
@@ -206,6 +207,27 @@ export default function QuestionProcessingPage() {
   const getProgress = (task: BatchProcessTask) => {
     if (task.total_questions === 0) return 0;
     return Math.round((task.processed_count / task.total_questions) * 100);
+  };
+
+  const handleCancelTask = async (taskId: string) => {
+    if (!confirm("确定要取消这个任务吗？")) {
+      return;
+    }
+
+    setCancellingTaskId(taskId);
+    setError(null);
+
+    try {
+      await apiDelete<{ taskId: string; status: string; message: string }>(
+        `/api/admin/question-processing/batch-process?taskId=${taskId}`
+      );
+      await loadTasks();
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.message || "取消任务失败");
+    } finally {
+      setCancellingTaskId(null);
+    }
   };
 
   return (
@@ -557,12 +579,23 @@ export default function QuestionProcessingPage() {
                     {formatDate(task.created_at)}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <button
-                      onClick={() => setSelectedTask(task)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      查看详情
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedTask(task)}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        查看详情
+                      </button>
+                      {(task.status === "pending" || task.status === "processing") && (
+                        <button
+                          onClick={() => handleCancelTask(task.task_id)}
+                          disabled={cancellingTaskId === task.task_id}
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {cancellingTaskId === task.task_id ? "取消中..." : "取消"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
