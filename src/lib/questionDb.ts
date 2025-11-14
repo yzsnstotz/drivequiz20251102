@@ -1052,6 +1052,37 @@ export async function getUnifiedVersionContent(
 }
 
 /**
+ * 从数据库获取最新版本的完整JSON包内容（从package_content字段读取）
+ * @returns 如果找到，返回JSON包内容；否则返回null
+ */
+export async function getLatestUnifiedVersionContent(): Promise<{ questions: Question[]; version: string; aiAnswers: Record<string, string> } | null> {
+  try {
+    const result = await db
+      .selectFrom("question_package_versions")
+      .select(["package_content", "version"])
+      .where("package_name", "=", "__unified__")
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    if (!result || !result.package_content) {
+      console.log(`[getLatestUnifiedVersionContent] 数据库中没有找到最新版本的JSON包内容`);
+      return null;
+    }
+
+    const content = result.package_content as any;
+    return {
+      questions: content.questions || [],
+      version: result.version,
+      aiAnswers: content.aiAnswers || {},
+    };
+  } catch (error) {
+    console.error(`[getLatestUnifiedVersionContent] Error:`, error);
+    return null;
+  }
+}
+
+/**
  * 删除统一版本号（从数据库删除指定版本号的记录）
  */
 export async function deleteUnifiedVersion(version: string): Promise<void> {
