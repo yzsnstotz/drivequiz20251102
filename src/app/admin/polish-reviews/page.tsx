@@ -13,6 +13,15 @@ interface Review {
   created_at: string;
 }
 
+function getAdminToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem("ADMIN_TOKEN");
+  } catch {
+    return null;
+  }
+}
+
 export default function PolishReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,7 +32,11 @@ export default function PolishReviewsPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`/api/admin/question-processing/reviews${statusFilter ? `?status=${statusFilter}` : ""}`, { cache: "no-store" });
+      const token = getAdminToken();
+      const res = await fetch(`/api/admin/question-processing/reviews${statusFilter ? `?status=${statusFilter}` : ""}`, {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const json = await res.json();
       if (!res.ok || !json?.ok) {
         throw new Error(json?.message || "加载失败");
@@ -41,15 +54,23 @@ export default function PolishReviewsPage() {
   }, [statusFilter]);
 
   const approve = async (id: number) => {
-    const res = await fetch(`/api/admin/question-processing/reviews/${id}/approve`, { method: "POST" });
+    const token = getAdminToken();
+    const res = await fetch(`/api/admin/question-processing/reviews/${id}/approve`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (res.ok) load();
   };
 
   const reject = async (id: number) => {
     const notes = prompt("请输入驳回原因（可选）") || "";
+    const token = getAdminToken();
     const res = await fetch(`/api/admin/question-processing/reviews/${id}/reject`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ notes })
     });
     if (res.ok) load();
