@@ -387,7 +387,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         topic_tags: topicTags,
                       });
                     } else {
-                      toInsert.push({
+                      // 插入新题目 - 确保不包含id字段，让数据库自动生成
+                      const insertData: any = {
                         content_hash: hash,
                         type: question.type as "single" | "multiple" | "truefalse",
                         content: contentMultilang as any,
@@ -399,7 +400,10 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         category: questionCategory,
                         stage_tag: stageTag,
                         topic_tags: topicTags,
-                      });
+                      };
+                      // 明确排除id字段（如果存在）
+                      delete insertData.id;
+                      toInsert.push(insertData);
                     }
                   } catch (error: any) {
                     totalErrors++;
@@ -418,13 +422,20 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 if (toInsert.length > 0) {
                   console.log(`[import-from-json] 批次 ${batchNumber}: 开始批量插入 ${toInsert.length} 个新题目...`);
                   const insertStartTime = Date.now();
+                  // 确保所有插入数据都不包含id字段
+                  const cleanInsertData = toInsert.map(item => {
+                    const clean: any = { ...item };
+                    delete clean.id; // 明确删除id字段
+                    return clean;
+                  });
+                  
                   try {
                     await db.transaction().execute(async (trx) => {
                       const INSERT_BATCH_SIZE = 50;
-                      const insertSubBatches = Math.ceil(toInsert.length / INSERT_BATCH_SIZE);
+                      const insertSubBatches = Math.ceil(cleanInsertData.length / INSERT_BATCH_SIZE);
                       console.log(`[import-from-json] 批次 ${batchNumber}: 将分 ${insertSubBatches} 个子批次插入`);
-                      for (let j = 0; j < toInsert.length; j += INSERT_BATCH_SIZE) {
-                        const insertBatch = toInsert.slice(j, j + INSERT_BATCH_SIZE);
+                      for (let j = 0; j < cleanInsertData.length; j += INSERT_BATCH_SIZE) {
+                        const insertBatch = cleanInsertData.slice(j, j + INSERT_BATCH_SIZE);
                         const subBatchNum = Math.floor(j / INSERT_BATCH_SIZE) + 1;
                         console.log(`[import-from-json] 批次 ${batchNumber}: 插入子批次 ${subBatchNum}/${insertSubBatches} (${insertBatch.length} 条)...`);
                         const subBatchStartTime = Date.now();
@@ -449,18 +460,22 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     // 逐个插入（带重试）
                     for (let idx = 0; idx < toInsert.length; idx++) {
                       const item = toInsert[idx];
+                      // 确保不包含id字段
+                      const cleanItem: any = { ...item };
+                      delete cleanItem.id;
+                      
                       let retryCount = 0;
                       const maxRetries = 3;
                       let success = false;
                       
                       // 特别记录346条记录附近的插入情况
                       if (totalProcessed >= 340 && totalProcessed <= 350) {
-                        console.log(`[import-from-json] ⚠️  逐个插入第 ${idx + 1}/${toInsert.length} 条 (总第 ${totalProcessed} 条)`);
+                        console.log(`[import-from-json] ⚠️  逐个插入第 ${idx + 1}/${toInsert.length} 条 (总第 ${totalProcessed} 条, Hash: ${cleanItem.content_hash?.substring(0, 16)}...)`);
                       }
                       
                       while (retryCount < maxRetries && !success) {
                         try {
-                          await db.insertInto("questions").values(item).execute();
+                          await db.insertInto("questions").values(cleanItem).execute();
                           totalImported++;
                           success = true;
                           if (retryCount > 0) {
@@ -476,7 +491,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                               code: singleError.code,
                               detail: singleError.detail,
                               constraint: singleError.constraint,
-                              hash: item.content_hash?.substring(0, 16),
+                              hash: cleanItem.content_hash?.substring(0, 16),
+                              hasId: 'id' in cleanItem,
                             });
                           } else {
                             const waitTime = 1000 * retryCount;
@@ -796,8 +812,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   topic_tags: topicTags,
                 });
               } else {
-                // 准备插入数据
-                toInsert.push({
+                // 准备插入数据 - 确保不包含id字段，让数据库自动生成
+                const insertData: any = {
                   content_hash: hash,
                   type: question.type as "single" | "multiple" | "truefalse",
                   content: contentMultilang as any,
@@ -809,7 +825,10 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   category: questionCategory,
                   stage_tag: stageTag,
                   topic_tags: topicTags,
-                });
+                };
+                // 明确排除id字段（如果存在）
+                delete insertData.id;
+                toInsert.push(insertData);
               }
             } catch (error: any) {
               packageErrors++;
@@ -826,13 +845,20 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
           // 步骤5：批量插入新题目
           if (toInsert.length > 0) {
+            // 确保所有插入数据都不包含id字段
+            const cleanInsertData = toInsert.map(item => {
+              const clean: any = { ...item };
+              delete clean.id; // 明确删除id字段
+              return clean;
+            });
+            
             try {
               // 使用事务确保数据一致性
               await db.transaction().execute(async (trx) => {
                 // 分批插入，避免单次插入过多数据导致超时
                 const INSERT_BATCH_SIZE = 50; // 减小批量插入大小
-                for (let j = 0; j < toInsert.length; j += INSERT_BATCH_SIZE) {
-                  const insertBatch = toInsert.slice(j, j + INSERT_BATCH_SIZE);
+                for (let j = 0; j < cleanInsertData.length; j += INSERT_BATCH_SIZE) {
+                  const insertBatch = cleanInsertData.slice(j, j + INSERT_BATCH_SIZE);
                   await trx
                     .insertInto("questions")
                     .values(insertBatch)
@@ -853,8 +879,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 stack: error.stack?.substring(0, 500),
               });
               // 如果批量插入失败，尝试逐个插入（带重试）
-              for (let idx = 0; idx < toInsert.length; idx++) {
-                const item = toInsert[idx];
+              for (let idx = 0; idx < cleanInsertData.length; idx++) {
+                const item = cleanInsertData[idx];
                 let retryCount = 0;
                 const maxRetries = 3;
                 let success = false;
@@ -879,6 +905,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         code: singleError.code,
                         detail: singleError.detail,
                         constraint: singleError.constraint,
+                        hash: item.content_hash?.substring(0, 16),
+                        hasId: 'id' in item,
                       });
                     } else {
                       // 等待后重试
