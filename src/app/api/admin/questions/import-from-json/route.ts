@@ -209,11 +209,12 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
               }
             };
 
-            // 辅助函数：规范化explanation字段
-            const normalizeExplanation = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | string | null => {
+            // 辅助函数：规范化explanation字段（确保返回有效的JSON对象或null）
+            const normalizeExplanation = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null => {
               if (!question.explanation) return null;
               if (typeof question.explanation === "string") {
-                return question.explanation;
+                // 如果是字符串，转换为对象格式
+                return { zh: question.explanation };
               } else {
                 const expObj = question.explanation as { [key: string]: string | undefined };
                 const isPlaceholder = (value: string | undefined): boolean => {
@@ -230,6 +231,46 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 }
                 return result;
               }
+            };
+
+            // 辅助函数：规范化options字段（确保是有效的JSON格式）
+            const normalizeOptions = (options: any): any | null => {
+              if (!options) return null;
+              // 如果已经是数组，直接返回
+              if (Array.isArray(options)) {
+                return options;
+              }
+              // 如果是字符串，转换为数组
+              if (typeof options === "string") {
+                return [options];
+              }
+              // 如果是对象，尝试转换为数组或保持对象
+              if (typeof options === "object") {
+                return options;
+              }
+              // 其他情况返回null
+              return null;
+            };
+
+            // 辅助函数：规范化correct_answer字段（确保是有效的JSON格式）
+            const normalizeCorrectAnswer = (correctAnswer: any, questionType: "single" | "multiple" | "truefalse"): any => {
+              if (correctAnswer === null || correctAnswer === undefined) {
+                return null;
+              }
+              // 如果是字符串，根据题目类型处理
+              if (typeof correctAnswer === "string") {
+                if (questionType === "multiple") {
+                  // 多选题应该是数组
+                  return [correctAnswer];
+                }
+                return correctAnswer;
+              }
+              // 如果是数组，直接返回
+              if (Array.isArray(correctAnswer)) {
+                return correctAnswer;
+              }
+              // 其他情况返回原值
+              return correctAnswer;
             };
 
             let totalProcessed = 0;
@@ -317,6 +358,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
                     const contentMultilang = normalizeContent(question);
                     const explanationMultilang = normalizeExplanation(question);
+                    const optionsNormalized = normalizeOptions(question.options);
+                    const correctAnswerNormalized = normalizeCorrectAnswer(question.correctAnswer, question.type as "single" | "multiple" | "truefalse");
                     const questionCategory = question.category || "其他";
                     const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
                       ? question.license_tags 
@@ -334,8 +377,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         id: existingId,
                         type: question.type as "single" | "multiple" | "truefalse",
                         content: contentMultilang as any,
-                        options: question.options ? (question.options as any) : null,
-                        correct_answer: question.correctAnswer as any,
+                        options: optionsNormalized,
+                        correct_answer: correctAnswerNormalized,
                         image: question.image || null,
                         explanation: explanationMultilang as any,
                         license_types: licenseTypes,
@@ -348,8 +391,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         content_hash: hash,
                         type: question.type as "single" | "multiple" | "truefalse",
                         content: contentMultilang as any,
-                        options: question.options ? (question.options as any) : null,
-                        correct_answer: question.correctAnswer as any,
+                        options: optionsNormalized,
+                        correct_answer: correctAnswerNormalized,
                         image: question.image || null,
                         explanation: explanationMultilang as any,
                         license_types: licenseTypes,
@@ -595,11 +638,12 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         }
       };
 
-      // 辅助函数：规范化explanation字段
-      const normalizeExplanation = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | string | null => {
+      // 辅助函数：规范化explanation字段（确保返回有效的JSON对象或null）
+      const normalizeExplanation = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null => {
         if (!question.explanation) return null;
         if (typeof question.explanation === "string") {
-          return question.explanation;
+          // 如果是字符串，转换为对象格式
+          return { zh: question.explanation };
         } else {
           const expObj = question.explanation as { [key: string]: string | undefined };
           const isPlaceholder = (value: string | undefined): boolean => {
@@ -616,6 +660,46 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
           }
           return result;
         }
+      };
+
+      // 辅助函数：规范化options字段（确保是有效的JSON格式）
+      const normalizeOptions = (options: any): any | null => {
+        if (!options) return null;
+        // 如果已经是数组，直接返回
+        if (Array.isArray(options)) {
+          return options;
+        }
+        // 如果是字符串，转换为数组
+        if (typeof options === "string") {
+          return [options];
+        }
+        // 如果是对象，尝试转换为数组或保持对象
+        if (typeof options === "object") {
+          return options;
+        }
+        // 其他情况返回null
+        return null;
+      };
+
+      // 辅助函数：规范化correct_answer字段（确保是有效的JSON格式）
+      const normalizeCorrectAnswer = (correctAnswer: any, questionType: "single" | "multiple" | "truefalse"): any => {
+        if (correctAnswer === null || correctAnswer === undefined) {
+          return null;
+        }
+        // 如果是字符串，根据题目类型处理
+        if (typeof correctAnswer === "string") {
+          if (questionType === "multiple") {
+            // 多选题应该是数组
+            return [correctAnswer];
+          }
+          return correctAnswer;
+        }
+        // 如果是数组，直接返回
+        if (Array.isArray(correctAnswer)) {
+          return correctAnswer;
+        }
+        // 其他情况返回原值
+        return correctAnswer;
       };
 
       for (let i = 0; i < totalQuestions; i += BATCH_SIZE) {
@@ -682,6 +766,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
               const contentMultilang = normalizeContent(question);
               const explanationMultilang = normalizeExplanation(question);
+              const optionsNormalized = normalizeOptions(question.options);
+              const correctAnswerNormalized = normalizeCorrectAnswer(question.correctAnswer, question.type as "single" | "multiple" | "truefalse");
               const questionCategory = question.category || "其他";
               const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
                 ? question.license_tags 
@@ -700,8 +786,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   id: existingId,
                   type: question.type as "single" | "multiple" | "truefalse",
                   content: contentMultilang as any,
-                  options: question.options ? (question.options as any) : null,
-                  correct_answer: question.correctAnswer as any,
+                  options: optionsNormalized,
+                  correct_answer: correctAnswerNormalized,
                   image: question.image || null,
                   explanation: explanationMultilang as any,
                   license_types: licenseTypes,
@@ -715,8 +801,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   content_hash: hash,
                   type: question.type as "single" | "multiple" | "truefalse",
                   content: contentMultilang as any,
-                  options: question.options ? (question.options as any) : null,
-                  correct_answer: question.correctAnswer as any,
+                  options: optionsNormalized,
+                  correct_answer: correctAnswerNormalized,
                   image: question.image || null,
                   explanation: explanationMultilang as any,
                   license_types: licenseTypes,
