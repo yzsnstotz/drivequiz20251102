@@ -38,7 +38,7 @@ const getStoredUserId = (): string | null => {
 interface Question {
   id: number;
   type: "single" | "multiple" | "truefalse";
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   image?: string;
   options?: string[];
   correctAnswer: string | string[];
@@ -205,7 +205,11 @@ export default function QuestionAIDialog({
   }, [isOpen]);
 
   const formatQuestionForAI = () => {
-    let questionText = `题目：${question.content}\n\n`;
+    // 处理多语言content字段
+    const contentText = typeof question.content === 'string' 
+      ? question.content 
+      : (question.content?.zh || '');
+    let questionText = `题目：${contentText}\n\n`;
     
     if (question.options && question.options.length > 0) {
       questionText += "选项：\n";
@@ -459,7 +463,11 @@ export default function QuestionAIDialog({
         {/* 题目显示区域 */}
         <div className="p-4 border-b bg-gray-50 max-h-48 overflow-y-auto">
           <div className="text-sm font-medium text-gray-700 mb-2">当前题目：</div>
-          <div className="text-gray-900 mb-2">{question.content}</div>
+          <div className="text-gray-900 mb-2">
+            {typeof question.content === 'string' 
+              ? question.content 
+              : (question.content?.zh || '')}
+          </div>
           {question.image && (
             <div className="mt-2 relative w-full h-32">
               <Image

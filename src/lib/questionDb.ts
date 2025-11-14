@@ -81,7 +81,7 @@ export function normalizeCorrectAnswer(
  */
 export async function getQuestionsFromDb(packageName: string): Promise<Question[]> {
   try {
-    // 从数据库读取题目（通过license_types匹配）
+    // 从数据库读取题目（通过license_types或category匹配）
     // 注意：这里简化处理，实际可能需要更复杂的匹配逻辑
     const questions = await db
       .selectFrom("questions")
@@ -91,6 +91,8 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
           // 检查license_types数组是否包含packageName
           // 使用 sql 模板确保正确的 PostgreSQL 数组格式
           sql<boolean>`${eb.ref("license_types")} @> ARRAY[${sql.literal(packageName)}]::text[]`,
+          // 或者通过category匹配
+          eb("category", "=", packageName),
           // 或者通过version匹配（如果version字段存储了包名）
           eb("version", "=", packageName),
         ])
@@ -99,17 +101,32 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       .execute();
 
     // 转换为前端格式（保留 content_hash）
-    return questions.map((q) => ({
-      id: q.id,
-      type: q.type,
-      content: q.content,
-      options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-      correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
-      image: q.image || undefined,
-      explanation: q.explanation || undefined,
-      category: packageName,
-      content_hash: q.content_hash, // 保留 content_hash 字段
-    }));
+    return questions.map((q) => {
+      // 处理content字段：如果是多语言对象，提取zh作为默认内容；如果是字符串，直接使用
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+      if (typeof q.content === "string") {
+        // 兼容旧格式：单语言字符串
+        content = q.content;
+      } else {
+        // 新格式：多语言对象
+        content = q.content;
+      }
+
+      return {
+        id: q.id,
+        type: q.type,
+        content,
+        options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
+        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+        image: q.image || undefined,
+        explanation: q.explanation || undefined,
+        category: q.category || packageName,
+        hash: q.content_hash, // 使用 content_hash 作为 hash
+        license_tags: q.license_types || undefined,
+        stage_tag: q.stage_tag || undefined,
+        topic_tags: q.topic_tags || undefined,
+      };
+    });
   } catch (error) {
     console.error(`[getQuestionsFromDb] Error loading ${packageName}:`, error);
     return [];
@@ -121,8 +138,26 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
  */
 export async function saveQuestionToDb(question: Question): Promise<number> {
   try {
-    const contentHash = calculateQuestionHash(question);
+    const contentHash = question.hash || calculateQuestionHash(question);
     
+    // 规范化content字段：如果是字符串，转换为多语言对象
+    let contentMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+    if (typeof question.content === "string") {
+      // 兼容旧格式：单语言字符串转换为多语言对象
+      contentMultilang = { zh: question.content };
+    } else {
+      // 新格式：多语言对象
+      contentMultilang = question.content;
+    }
+
+    // 规范化license_types：从license_tags或category获取
+    let licenseTypes: string[] | null = null;
+    if (question.license_tags && question.license_tags.length > 0) {
+      licenseTypes = question.license_tags;
+    } else if (question.category) {
+      licenseTypes = [question.category];
+    }
+
     // 检查是否已存在
     const existing = await db
       .selectFrom("questions")
@@ -136,12 +171,15 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
         .updateTable("questions")
         .set({
           type: question.type,
-          content: question.content,
+          content: contentMultilang as any,
           options: question.options ? (question.options as any) : null,
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
           explanation: question.explanation || null,
-          license_types: question.category ? [question.category] : null,
+          license_types: licenseTypes,
+          category: question.category || null,
+          stage_tag: question.stage_tag || null,
+          topic_tags: question.topic_tags || null,
           updated_at: new Date(),
         })
         .where("id", "=", existing.id)
@@ -155,12 +193,15 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
         .values({
           content_hash: contentHash,
           type: question.type,
-          content: question.content,
+          content: contentMultilang as any,
           options: question.options ? (question.options as any) : null,
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
           explanation: question.explanation || null,
-          license_types: question.category ? [question.category] : null,
+          license_types: licenseTypes,
+          category: question.category || null,
+          stage_tag: question.stage_tag || null,
+          topic_tags: question.topic_tags || null,
         })
         .returning("id")
         .executeTakeFirst();
@@ -249,6 +290,13 @@ export async function saveAIAnswerToDb(
       console.log(`[saveAIAnswerToDb] 数据库已有AI回答，跳过更新（ID: ${existing.id}）`);
       return existing.id;
     } else {
+      // 从questions表获取标签信息（用于同步标签字段）
+      const questionInfo = await db
+        .selectFrom("questions")
+        .select(["category", "stage_tag", "topic_tags"])
+        .where("content_hash", "=", questionHash)
+        .executeTakeFirst();
+
       // 插入新回答（只有在数据库中没有时才插入）
       const result = await db
         .insertInto("question_ai_answers")
@@ -260,6 +308,9 @@ export async function saveAIAnswerToDb(
           model: model || null,
           created_by: normalizedCreatedBy,
           view_count: 0,
+          category: questionInfo?.category || null,
+          stage_tag: questionInfo?.stage_tag || null,
+          topic_tags: questionInfo?.topic_tags || null,
         })
         .returning("id")
         .executeTakeFirst();
@@ -319,6 +370,13 @@ export async function updateAIAnswerToDb(
       console.log(`[updateAIAnswerToDb] 成功更新AI回答（ID: ${existing.id}）`);
       return existing.id;
     } else {
+      // 从questions表获取标签信息（用于同步标签字段）
+      const questionInfo = await db
+        .selectFrom("questions")
+        .select(["category", "stage_tag", "topic_tags"])
+        .where("content_hash", "=", questionHash)
+        .executeTakeFirst();
+
       // 插入新回答
       const result = await db
         .insertInto("question_ai_answers")
@@ -330,6 +388,9 @@ export async function updateAIAnswerToDb(
           model: model || null,
           created_by: normalizedCreatedBy,
           view_count: 0,
+          category: questionInfo?.category || null,
+          stage_tag: questionInfo?.stage_tag || null,
+          topic_tags: questionInfo?.topic_tags || null,
         })
         .returning("id")
         .executeTakeFirst();
@@ -1152,21 +1213,35 @@ export async function updateAllJsonPackages(): Promise<{
 
     // 转换为前端格式（使用content_hash作为hash，不重新计算）
     const questionsWithHash = allDbQuestions.map((q) => {
-      // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
-      const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
-        ? q.license_types[0]
-        : "其他";
+      // 优先使用category字段，如果没有则从license_types数组中获取（取第一个，如果没有则使用"其他"）
+      const category = q.category || 
+        (Array.isArray(q.license_types) && q.license_types.length > 0
+          ? q.license_types[0]
+          : "其他");
+
+      // 处理content字段：保持多语言对象格式
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+      if (typeof q.content === "string") {
+        // 兼容旧格式：单语言字符串
+        content = q.content;
+      } else {
+        // 新格式：多语言对象
+        content = q.content;
+      }
 
       return {
         id: q.id,
         type: q.type,
-        content: q.content,
+        content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
         correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category,
         hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
+        license_tags: q.license_types || undefined,
+        stage_tag: q.stage_tag || undefined,
+        topic_tags: q.topic_tags || undefined,
       };
     });
     

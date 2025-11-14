@@ -9,7 +9,7 @@ type QuestionType = "single" | "multiple" | "truefalse";
 type Question = {
   id: number;
   type: QuestionType;
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   options?: string[];
   correctAnswer: string | string[];
   image?: string;
@@ -1348,7 +1348,11 @@ export default function QuestionsPage() {
                         {item.type === "single" ? "单选" : item.type === "multiple" ? "多选" : "判断"}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-xs max-w-md truncate">{item.content}</td>
+                    <td className="py-2 px-3 text-xs max-w-md truncate">
+                      {typeof item.content === 'string' 
+                        ? item.content 
+                        : (item.content?.zh || item.content?.en || item.content?.ja || '')}
+                    </td>
                     <td className="py-2 px-3 text-xs">
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
@@ -1449,7 +1453,11 @@ export default function QuestionsPage() {
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 mb-1">题目内容</div>
-                  <div className="text-sm">{item.content}</div>
+                  <div className="text-sm">
+                    {typeof item.content === 'string' 
+                      ? item.content 
+                      : (item.content?.zh || item.content?.en || item.content?.ja || '')}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 mb-1">正确答案</div>
@@ -1701,7 +1709,9 @@ function QuestionForm({
           name="content"
           required
           rows={3}
-          defaultValue={question?.content || ""}
+          defaultValue={typeof question?.content === 'string' 
+            ? question.content 
+            : (question?.content?.zh || "")}
           className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           placeholder="请输入题目内容..."
         />

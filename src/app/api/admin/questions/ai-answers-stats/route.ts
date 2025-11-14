@@ -43,14 +43,23 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
     // 转换为前端格式并计算hash
     const questionsWithHash = allDbQuestions.map((q) => {
-      const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
-        ? q.license_types[0]
-        : "其他";
+      const category = q.category || 
+        (Array.isArray(q.license_types) && q.license_types.length > 0)
+          ? q.license_types[0]
+          : "其他";
+
+      // 处理content字段：保持原格式
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+      if (typeof q.content === "string") {
+        content = q.content;
+      } else {
+        content = q.content;
+      }
 
       const question = {
         id: q.id,
         type: q.type,
-        content: q.content,
+        content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
         correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
         image: q.image || undefined,

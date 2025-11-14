@@ -427,9 +427,161 @@ export const adminTranslations: Translations = {
   },
 };
 
+// 用户端翻译
+export const userTranslations: Translations = {
+  zh: {
+    // 导航
+    'nav.home': '首页',
+    'nav.study': '驾照',
+    'nav.services': '服务',
+    'nav.profile': '我的',
+    
+    // 首页
+    'home.welcome': '欢迎使用 ZALEM',
+    'home.study': '课程学习',
+    'home.exam': '模拟考试',
+    'home.mistakes': '错题本',
+    'home.royalbattle': '大乱斗',
+    'home.aiAssistant': 'AI 智能助手',
+    'home.aiDescription': '随时解答你的驾考问题',
+    'home.changeLanguage': '切换语言',
+    
+    // 题目
+    'question.previous': '上一题',
+    'question.next': '下一题',
+    'question.correct': '正确',
+    'question.incorrect': '错误',
+    'question.correctAnswer': '答对了！',
+    'question.wrongAnswer': '答错了...',
+    'question.loading': '加载中...',
+    'question.loadError': '加载题目失败',
+    'question.image': '题目图片',
+    'question.current': '当前题目：',
+    
+    // 通用
+    'common.loading': '加载中...',
+    'common.error': '错误',
+    'common.back': '返回',
+    'common.close': '关闭',
+    'common.confirm': '确认',
+    'common.cancel': '取消',
+    'common.save': '保存',
+    'common.submit': '提交',
+    
+    // 语言
+    'language.title': '选择语言',
+    'language.chinese': '中文',
+    'language.english': 'English',
+    'language.japanese': '日本語',
+    'language.save': '保存',
+  },
+  en: {
+    // 导航
+    'nav.home': 'Home',
+    'nav.study': 'License',
+    'nav.services': 'Services',
+    'nav.profile': 'Profile',
+    
+    // 首页
+    'home.welcome': 'Welcome to ZALEM',
+    'home.study': 'Study',
+    'home.exam': 'Exam',
+    'home.mistakes': 'Mistakes',
+    'home.royalbattle': 'Battle',
+    'home.aiAssistant': 'AI Assistant',
+    'home.aiDescription': 'Answer your driving test questions anytime',
+    'home.changeLanguage': 'Change Language',
+    
+    // 题目
+    'question.previous': 'Previous',
+    'question.next': 'Next',
+    'question.correct': 'Correct',
+    'question.incorrect': 'Incorrect',
+    'question.correctAnswer': 'Correct!',
+    'question.wrongAnswer': 'Wrong...',
+    'question.loading': 'Loading...',
+    'question.loadError': 'Failed to load questions',
+    'question.image': 'Question Image',
+    'question.current': 'Current Question:',
+    
+    // 通用
+    'common.loading': 'Loading...',
+    'common.error': 'Error',
+    'common.back': 'Back',
+    'common.close': 'Close',
+    'common.confirm': 'Confirm',
+    'common.cancel': 'Cancel',
+    'common.save': 'Save',
+    'common.submit': 'Submit',
+    
+    // 语言
+    'language.title': 'Select Language',
+    'language.chinese': 'Chinese',
+    'language.english': 'English',
+    'language.japanese': 'Japanese',
+    'language.save': 'Save',
+  },
+  ja: {
+    // 导航
+    'nav.home': 'ホーム',
+    'nav.study': '免許',
+    'nav.services': 'サービス',
+    'nav.profile': 'マイページ',
+    
+    // 首页
+    'home.welcome': 'ZALEMへようこそ',
+    'home.study': '学習',
+    'home.exam': '試験',
+    'home.mistakes': '間違い',
+    'home.royalbattle': 'バトル',
+    'home.aiAssistant': 'AIアシスタント',
+    'home.aiDescription': '運転免許試験の質問にいつでも答えます',
+    'home.changeLanguage': '言語を変更',
+    
+    // 题目
+    'question.previous': '前へ',
+    'question.next': '次へ',
+    'question.correct': '正しい',
+    'question.incorrect': '間違い',
+    'question.correctAnswer': '正解です！',
+    'question.wrongAnswer': '不正解です...',
+    'question.loading': '読み込み中...',
+    'question.loadError': '問題の読み込みに失敗しました',
+    'question.image': '問題画像',
+    'question.current': '現在の問題：',
+    
+    // 通用
+    'common.loading': '読み込み中...',
+    'common.error': 'エラー',
+    'common.back': '戻る',
+    'common.close': '閉じる',
+    'common.confirm': '確認',
+    'common.cancel': 'キャンセル',
+    'common.save': '保存',
+    'common.submit': '送信',
+    
+    // 语言
+    'language.title': '言語を選択',
+    'language.chinese': '中国語',
+    'language.english': '英語',
+    'language.japanese': '日本語',
+    'language.save': '保存',
+  },
+};
+
 export function getTranslation(key: string, lang: Language): string {
-  const translations = adminTranslations[lang];
-  return translations[key] || adminTranslations.zh[key] || key;
+  // 优先查找用户端翻译
+  const userTrans = userTranslations[lang];
+  if (userTrans && userTrans[key]) {
+    return userTrans[key];
+  }
+  // 回退到管理后台翻译
+  const adminTrans = adminTranslations[lang];
+  if (adminTrans && adminTrans[key]) {
+    return adminTrans[key];
+  }
+  // 最后回退到中文
+  return userTranslations.zh[key] || adminTranslations.zh[key] || key;
 }
 
 // 语言存储键名

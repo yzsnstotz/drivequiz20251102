@@ -51,11 +51,16 @@ function MistakeBookPage() {
   };
 
   const getQuestionIcon = (question: Question) => {
+    // 处理多语言content字段
+    const contentText = typeof question.content === 'string' 
+      ? question.content 
+      : (question.content?.zh || '');
+    
     if (question.fromExam) {
       return <CheckSquare className="h-5 w-5 text-purple-600" />;
-    } else if (question.content.includes('学科') || question.content.includes('讲习')) {
+    } else if (contentText.includes('学科') || contentText.includes('讲习')) {
       return <BookOpen className="h-5 w-5 text-blue-600" />;
-    } else if (question.content.includes('仮免')) {
+    } else if (contentText.includes('仮免')) {
       return <Car className="h-5 w-5 text-green-600" />;
     } else {
       return <Shield className="h-5 w-5 text-orange-600" />;
@@ -234,7 +239,9 @@ function MistakeBookPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-gray-900 line-clamp-2">
-                      {index + 1}. {question.content}
+                      {index + 1}. {typeof question.content === 'string' 
+                        ? question.content 
+                        : (question.content?.zh || '')}
                     </h3>
                     <button
                       onClick={(e) => {
