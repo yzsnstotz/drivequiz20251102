@@ -90,21 +90,47 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       console.log(`[import-from-json] 从数据库版本 ${version} 读取，共 ${questionsToImport.length} 个题目`);
     } else {
       // 从文件系统读取（默认行为）
-      const categories = packageName ? [packageName] : await getAllCategories();
-      
-      if (categories.length === 0) {
-        return badRequest("没有找到可导入的JSON包");
-      }
+      if (packageName) {
+        // 如果指定了packageName，直接读取该文件（不经过loadQuestionFile的questions.json优先逻辑）
+        const filePath = path.join(QUESTIONS_DIR, `${packageName}.json`);
+        try {
+          const fileContent = await fs.readFile(filePath, "utf-8");
+          const fileData = JSON.parse(fileContent);
+          
+          // 兼容多种格式
+          if (Array.isArray(fileData)) {
+            questionsToImport = fileData;
+          } else {
+            questionsToImport = fileData.questions || [];
+          }
+          
+          if (questionsToImport.length === 0) {
+            return badRequest(`JSON包 ${packageName} 不存在或为空`);
+          }
+          
+          packageInfo = { name: packageName, source: "filesystem" };
+          console.log(`[import-from-json] 从文件系统直接读取文件 ${packageName}.json，共 ${questionsToImport.length} 个题目`);
+        } catch (error: any) {
+          return badRequest(`无法读取JSON包 ${packageName}: ${error.message || String(error)}`);
+        }
+      } else {
+        // 如果没有指定packageName，使用loadQuestionFile（会从questions.json读取）
+        const categories = await getAllCategories();
+        
+        if (categories.length === 0) {
+          return badRequest("没有找到可导入的JSON包");
+        }
 
-      // 加载第一个包（如果指定了packageName，只加载该包）
-      const category = categories[0];
-      const file = await loadQuestionFile(category);
-      if (!file || !file.questions || file.questions.length === 0) {
-        return badRequest(`JSON包 ${category} 不存在或为空`);
+        // 加载第一个包
+        const category = categories[0];
+        const file = await loadQuestionFile(category);
+        if (!file || !file.questions || file.questions.length === 0) {
+          return badRequest(`JSON包 ${category} 不存在或为空`);
+        }
+        questionsToImport = file.questions;
+        packageInfo = { name: category, source: "filesystem" };
+        console.log(`[import-from-json] 从文件系统读取包 ${category}，共 ${questionsToImport.length} 个题目`);
       }
-      questionsToImport = file.questions;
-      packageInfo = { name: category, source: "filesystem" };
-      console.log(`[import-from-json] 从文件系统读取包 ${category}，共 ${questionsToImport.length} 个题目`);
     }
 
     // 4. 导入题目
@@ -278,15 +304,22 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     // 如果是从文件系统导入，尝试导入AI回答（从文件读取）
     if (packageInfo?.source === "filesystem") {
       try {
-        const category = packageInfo.name;
-        const file = await loadQuestionFile(category);
-        if (file && file.aiAnswers) {
-          console.log(`[import-from-json] 开始导入AI回答，共 ${Object.keys(file.aiAnswers).length} 个`);
+        const fileName = packageInfo.name;
+        // 直接读取文件，不经过loadQuestionFile的questions.json优先逻辑
+        const filePath = path.join(QUESTIONS_DIR, `${fileName}.json`);
+        const fileContent = await fs.readFile(filePath, "utf-8").catch(() => null);
+        if (fileContent) {
+          const fileData = JSON.parse(fileContent);
+          const aiAnswers = fileData.aiAnswers || (Array.isArray(fileData) ? {} : fileData.aiAnswers);
+          if (aiAnswers && Object.keys(aiAnswers).length > 0) {
+          console.log(`[import-from-json] 开始导入AI回答，共 ${Object.keys(aiAnswers).length} 个`);
           let aiAnswerSuccess = 0;
           let aiAnswerErrors = 0;
           
-          for (const [questionHash, answer] of Object.entries(file.aiAnswers)) {
+          for (const [questionHash, answer] of Object.entries(aiAnswers)) {
             try {
+              const answerText = typeof answer === "string" ? answer : String(answer);
+              
               // 检查是否已存在
               const existing = await db
                 .selectFrom("question_ai_answers")
@@ -307,7 +340,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                 await db
                   .updateTable("question_ai_answers")
                   .set({
-                    answer,
+                    answer: answerText,
                     category: questionInfo?.category || null,
                     stage_tag: questionInfo?.stage_tag || null,
                     topic_tags: questionInfo?.topic_tags || null,
@@ -322,7 +355,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   .values({
                     question_hash: questionHash,
                     locale: "zh",
-                    answer,
+                    answer: answerText,
                     view_count: 0,
                     category: questionInfo?.category || null,
                     stage_tag: questionInfo?.stage_tag || null,
@@ -339,6 +372,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
           }
           
           console.log(`[import-from-json] AI回答导入完成：成功 ${aiAnswerSuccess} 个，失败 ${aiAnswerErrors} 个`);
+          }
         }
       } catch (error: any) {
         console.error(`[import-from-json] Error importing AI answers:`, error);
