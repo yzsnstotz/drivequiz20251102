@@ -172,7 +172,10 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
               // 规范化category和其他标签字段
               const questionCategory = question.category || "其他";
-              const category = questionCategory; // 用于license_types
+              // license_types应该从license_tags字段获取，如果没有则使用category作为后备
+              const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
+                ? question.license_tags 
+                : (questionCategory ? [questionCategory] : null);
               const stageTag = question.stage_tag || null;
               const topicTags = question.topic_tags || null;
 
@@ -187,7 +190,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     correct_answer: question.correctAnswer as any,
                     image: question.image || null,
                     explanation: question.explanation || null,
-                    license_types: [category],
+                    license_types: licenseTypes,
                     category: questionCategory,
                     stage_tag: stageTag,
                     topic_tags: topicTags,
@@ -210,7 +213,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     correct_answer: question.correctAnswer as any,
                     image: question.image || null,
                     explanation: question.explanation || null,
-                    license_types: [category],
+                    license_types: licenseTypes,
                     category: questionCategory,
                     stage_tag: stageTag,
                     topic_tags: topicTags,
