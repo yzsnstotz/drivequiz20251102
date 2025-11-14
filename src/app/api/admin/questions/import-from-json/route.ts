@@ -172,10 +172,10 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
               // 规范化category和其他标签字段
               const questionCategory = question.category || "其他";
-              // license_types应该从license_tags字段获取，如果没有则使用category作为后备
+              // license_types应该从license_tags字段获取
               const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
                 ? question.license_tags 
-                : (questionCategory ? [questionCategory] : null);
+                : null;
               const stageTag = question.stage_tag || null;
               const topicTags = question.topic_tags || null;
 
