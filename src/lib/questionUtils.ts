@@ -28,18 +28,26 @@ export function getQuestionContent(
   }
   
   // 新格式：多语言对象
-  // 优先返回目标语言，如果没有则返回中文，最后返回第一个可用的语言
-  if (content[locale]) {
-    return content[locale];
+  // 优先返回目标语言（必须是有效的非空字符串），如果没有则返回中文，最后返回第一个可用的语言
+  const targetLangValue = content[locale];
+  if (targetLangValue && typeof targetLangValue === 'string' && targetLangValue.trim().length > 0) {
+    return targetLangValue;
   }
   
-  if (content.zh) {
+  // 如果目标语言不存在或为空，回退到中文
+  if (content.zh && typeof content.zh === 'string' && content.zh.trim().length > 0) {
     return content.zh;
   }
   
-  // 返回第一个可用的语言
-  const firstKey = Object.keys(content)[0];
-  return firstKey ? content[firstKey] || '' : '';
+  // 返回第一个可用的有效语言
+  for (const key of Object.keys(content)) {
+    const value = content[key];
+    if (value && typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  
+  return '';
 }
 
 /**

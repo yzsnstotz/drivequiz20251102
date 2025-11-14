@@ -41,7 +41,15 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
       try {
         // 通过版本检查与缓存的统一加载器获取题库，并按类别筛选
         const pkg = await loadUnifiedQuestionsPackage();
-        const allQuestions = pkg?.questions || [];
+        
+        // 优先使用当前语言的多语言包，如果没有则使用默认的questions
+        let allQuestions: any[] = [];
+        if (pkg?.questionsByLocale && pkg.questionsByLocale[language]) {
+          allQuestions = pkg.questionsByLocale[language];
+        } else {
+          allQuestions = pkg?.questions || [];
+        }
+        
         const filtered = allQuestions.filter((q: any) => q.category === questionSet.title);
         if (filtered.length > 0) {
           setQuestions(filtered as unknown as Question[]);
@@ -67,7 +75,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
       setCorrectAnswers(progress.correctAnswers);
       setAnsweredQuestions(new Set(progress.answeredQuestions));
     }
-  }, [questionSet.title]);
+  }, [questionSet.title, language]);
 
   const saveProgress = (isAnswerCorrect: boolean) => {
     const newAnsweredQuestions = new Set(answeredQuestions);
