@@ -5,6 +5,7 @@ export const maxDuration = 300; // 300秒超时（Vercel Pro计划最多300秒�
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success, conflict, notFound } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
+import { sql } from "kysely";
 import { z } from "zod";
 import {
   translateWithPolish,
@@ -155,8 +156,8 @@ export const POST = withAdminAuth(async (req: Request) => {
           .set({
             status: "failed",
             failed_count: results.failed,
-            errors: results.errors as any,
-            details: results.details as any,
+            errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+            details: sql`${JSON.stringify(results.details)}::jsonb`,
             completed_at: new Date(),
             updated_at: new Date(),
           })
@@ -581,8 +582,8 @@ async function processBatchAsync(
             processed_count: results.processed,
             succeeded_count: results.succeeded,
             failed_count: results.failed,
-            errors: results.errors as any,
-            details: results.details as any,
+            errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+            details: sql`${JSON.stringify(results.details)}::jsonb`,
             updated_at: new Date(),
           })
           .where("task_id", "=", taskId)
@@ -613,8 +614,8 @@ async function processBatchAsync(
             processed_count: results.processed,
             succeeded_count: results.succeeded,
             failed_count: results.failed,
-            errors: results.errors as any,
-            details: results.details as any,
+            errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+            details: sql`${JSON.stringify(results.details)}::jsonb`,
             updated_at: new Date(),
           })
           .where("task_id", "=", taskId)
