@@ -21,9 +21,9 @@ export type QuestionContent = string | {
 export function getContentText(
   content: QuestionContent | null | undefined,
   locale: Language = 'zh'
-): string {
+): string | null {
   if (!content) {
-    return '';
+    return null;
   }
   
   if (typeof content === 'string') {
@@ -32,7 +32,7 @@ export function getContentText(
   }
   
   // 新格式：多语言对象
-  // 优先返回目标语言（必须是有效的非空字符串，且不是占位符），如果没有则返回中文，最后返回第一个可用的语言
+  // 只返回目标语言（必须是有效的非空字符串，且不是占位符），如果没有则返回null
   const targetLangValue = content[locale];
   // 检查是否是占位符（以 [EN] 或 [JA] 开头）
   const isPlaceholder = targetLangValue && typeof targetLangValue === 'string' && 
@@ -42,20 +42,8 @@ export function getContentText(
     return targetLangValue;
   }
   
-  // 如果目标语言不存在、为空或是占位符，回退到中文
-  if (content.zh && typeof content.zh === 'string' && content.zh.trim().length > 0) {
-    return content.zh;
-  }
-  
-  // 返回第一个可用的有效语言
-  for (const key of Object.keys(content)) {
-    const value = content[key];
-    if (value && typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-  }
-  
-  return '';
+  // 如果目标语言不存在、为空或是占位符，返回null（不使用任何备用措施）
+  return null;
 }
 
 /**
@@ -68,7 +56,8 @@ export function getContentTextLower(
   content: QuestionContent | null | undefined,
   locale: Language = 'zh'
 ): string {
-  return getContentText(content, locale).toLowerCase();
+  const text = getContentText(content, locale);
+  return text ? text.toLowerCase() : '';
 }
 
 /**
@@ -84,6 +73,7 @@ export function contentIncludes(
   locale: Language = 'zh'
 ): boolean {
   const contentText = getContentTextLower(content, locale);
+  if (!contentText) return false;
   const searchLower = searchText.toLowerCase();
   return contentText.includes(searchLower);
 }
@@ -101,6 +91,7 @@ export function getContentPreview(
   locale: Language = 'zh'
 ): string {
   const text = getContentText(content, locale);
+  if (!text) return '';
   if (text.length <= maxLength) {
     return text;
   }

@@ -21,14 +21,14 @@ export interface QuestionContent {
 export function getQuestionContent(
   content: string | QuestionContent,
   locale: Language = 'zh'
-): string {
+): string | null {
   if (typeof content === 'string') {
     // 兼容旧格式：单语言字符串
     return content;
   }
   
   // 新格式：多语言对象
-  // 优先返回目标语言（必须是有效的非空字符串，且不是占位符），如果没有则返回中文，最后返回第一个可用的语言
+  // 只返回目标语言（必须是有效的非空字符串，且不是占位符），如果没有则返回null
   const targetLangValue = content[locale];
   // 检查是否是占位符（以 [EN] 或 [JA] 开头）
   const isPlaceholder = targetLangValue && typeof targetLangValue === 'string' && 
@@ -38,20 +38,8 @@ export function getQuestionContent(
     return targetLangValue;
   }
   
-  // 如果目标语言不存在、为空或是占位符，回退到中文
-  if (content.zh && typeof content.zh === 'string' && content.zh.trim().length > 0) {
-    return content.zh;
-  }
-  
-  // 返回第一个可用的有效语言
-  for (const key of Object.keys(content)) {
-    const value = content[key];
-    if (value && typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-  }
-  
-  return '';
+  // 如果目标语言不存在、为空或是占位符，返回null（不使用任何备用措施）
+  return null;
 }
 
 /**
@@ -76,6 +64,6 @@ export function getQuestionOptions(
   // 新格式：多语言对象数组
   return (options as Array<QuestionContent>).map(option => 
     getQuestionContent(option, locale)
-  );
+  ).filter((val): val is string => val !== null);
 }
 

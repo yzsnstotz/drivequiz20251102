@@ -308,28 +308,40 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             questions = questions.map((q) => {
               const localized: Question = { ...q };
               
+              // 检查是否是占位符的辅助函数
+              const isPlaceholder = (value: string | undefined): boolean => {
+                return value !== undefined && typeof value === 'string' && 
+                  (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+              };
+              
               // 处理content字段
               if (typeof q.content === "object" && q.content !== null) {
                 const contentObj = q.content as { [key: string]: string | undefined };
-                if (contentObj[targetLocale]) {
-                  localized.content = contentObj[targetLocale];
-                } else if (contentObj.zh) {
-                  localized.content = contentObj.zh; // 回退到中文
+                const targetValue = contentObj[targetLocale];
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                if (targetValue && !isPlaceholder(targetValue)) {
+                  localized.content = targetValue;
                 } else {
-                  localized.content = Object.values(contentObj)[0] || ""; // 回退到第一个可用语言
+                  localized.content = null; // 没有翻译，返回null
                 }
+              } else {
+                // 如果content是字符串，对于非中文语言返回null
+                localized.content = null;
               }
               
               // 处理explanation字段（如果也是多语言对象）
               if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
                 const expObj = q.explanation as { [key: string]: string | undefined };
-                if (expObj[targetLocale]) {
-                  localized.explanation = expObj[targetLocale];
-                } else if (expObj.zh) {
-                  localized.explanation = expObj.zh;
+                const targetValue = expObj[targetLocale];
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                if (targetValue && !isPlaceholder(targetValue)) {
+                  localized.explanation = targetValue;
                 } else {
-                  localized.explanation = Object.values(expObj)[0] || undefined;
+                  localized.explanation = null; // 没有翻译，返回null
                 }
+              } else if (q.explanation) {
+                // 如果explanation是字符串，对于非中文语言返回null
+                localized.explanation = null;
               }
               
               return localized;
@@ -384,28 +396,40 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             base = base.map((q) => {
               const localized: Question = { ...q };
               
+              // 检查是否是占位符的辅助函数
+              const isPlaceholder = (value: string | undefined): boolean => {
+                return value !== undefined && typeof value === 'string' && 
+                  (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+              };
+              
               // 处理content字段
               if (typeof q.content === "object" && q.content !== null) {
                 const contentObj = q.content as { [key: string]: string | undefined };
-                if (contentObj[targetLocale]) {
-                  localized.content = contentObj[targetLocale];
-                } else if (contentObj.zh) {
-                  localized.content = contentObj.zh;
+                const targetValue = contentObj[targetLocale];
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                if (targetValue && !isPlaceholder(targetValue)) {
+                  localized.content = targetValue;
                 } else {
-                  localized.content = Object.values(contentObj)[0] || "";
+                  localized.content = null; // 没有翻译，返回null
                 }
+              } else {
+                // 如果content是字符串，对于非中文语言返回null
+                localized.content = null;
               }
               
               // 处理explanation字段
               if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
                 const expObj = q.explanation as { [key: string]: string | undefined };
-                if (expObj[targetLocale]) {
-                  localized.explanation = expObj[targetLocale];
-                } else if (expObj.zh) {
-                  localized.explanation = expObj.zh;
+                const targetValue = expObj[targetLocale];
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                if (targetValue && !isPlaceholder(targetValue)) {
+                  localized.explanation = targetValue;
                 } else {
-                  localized.explanation = Object.values(expObj)[0] || undefined;
+                  localized.explanation = null; // 没有翻译，返回null
                 }
+              } else if (q.explanation) {
+                // 如果explanation是字符串，对于非中文语言返回null
+                localized.explanation = null;
               }
               
               return localized;
@@ -497,40 +521,50 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     }
 
     // 多语言替换（当数据源为数据库时，对题目内容进行本地化）
+    // 直接从 questions 表的 JSON 字段中提取对应语言（不再使用 question_translations 表）
     if ((source === "database" || !source) && locale && locale !== "zh") {
       try {
-        const hashes = allQuestions
-          .map((q) => (q as any).content_hash || (q as any).hash)
-          .filter(Boolean) as string[];
-        if (hashes.length > 0) {
-          const translations = await db
-            .selectFrom("question_translations")
-            .select(["content_hash", "content", "options", "explanation"])
-            .where("locale", "=", locale)
-            .where("content_hash", "in", hashes)
-            .execute();
-          const tmap = new Map<string, { content: string; options?: any; explanation?: string | null }>();
-          for (const t of translations) {
-            tmap.set(t.content_hash, {
-              content: t.content,
-              options: t.options,
-              explanation: t.explanation ?? null,
-            });
-          }
-          allQuestions = allQuestions.map((q) => {
-            const h = (q as any).content_hash || (q as any).hash;
-            const t = h ? tmap.get(h) : undefined;
-            if (t) {
-              return {
-                ...q,
-                content: t.content,
-                options: Array.isArray(t.options) ? t.options : (t.options ? [t.options] : undefined),
-                explanation: t.explanation || undefined,
-              };
+        // 检查是否是占位符的辅助函数
+        const isPlaceholder = (value: string | undefined): boolean => {
+          return value !== undefined && typeof value === 'string' && 
+            (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+        };
+        
+        allQuestions = allQuestions.map((q) => {
+          const localized: Question = { ...q };
+          
+          // 处理content字段：从多语言对象中提取对应语言
+          if (typeof q.content === "object" && q.content !== null) {
+            const contentObj = q.content as { [key: string]: string | undefined };
+            const targetValue = contentObj[locale];
+            // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+            if (targetValue && !isPlaceholder(targetValue)) {
+              localized.content = targetValue;
+            } else {
+              localized.content = null; // 没有翻译，返回null
             }
-            return q;
-          });
-        }
+          } else {
+            // 如果content是字符串，对于非中文语言返回null
+            localized.content = null;
+          }
+          
+          // 处理explanation字段：从多语言对象中提取对应语言
+          if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
+            const expObj = q.explanation as { [key: string]: string | undefined };
+            const targetValue = expObj[locale];
+            // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+            if (targetValue && !isPlaceholder(targetValue)) {
+              localized.explanation = targetValue;
+            } else {
+              localized.explanation = null; // 没有翻译，返回null
+            }
+          } else if (q.explanation) {
+            // 如果explanation是字符串，对于非中文语言返回null
+            localized.explanation = null;
+          }
+          
+          return localized;
+        });
       } catch (e) {
         console.error(`[GET /api/admin/questions] 本地化替换失败(locale=${locale})`, e);
       }

@@ -253,7 +253,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content, language)}</p>
+          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content, language) || currentQuestion.content?.zh || ''}</p>
           {currentQuestion.image && (
             <div className="mb-4">
               <Image
@@ -348,7 +348,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
               {isCorrect() ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language)}</p>
+              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language) || (typeof currentQuestion.explanation === 'object' ? currentQuestion.explanation?.zh : currentQuestion.explanation) || ''}</p>
             )}
           </div>
         )}
