@@ -465,6 +465,19 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       } else if (sortBy === "category") {
         aVal = a.category || "";
         bVal = b.category || "";
+      } else if (sortBy === "type") {
+        // 类型排序：single < multiple < truefalse
+        const typeOrder = { single: 1, multiple: 2, truefalse: 3 };
+        aVal = typeOrder[a.type as keyof typeof typeOrder] || 0;
+        bVal = typeOrder[b.type as keyof typeof typeOrder] || 0;
+      } else if (sortBy === "created_at") {
+        // 时间排序
+        aVal = (a as any).created_at ? new Date((a as any).created_at).getTime() : 0;
+        bVal = (b as any).created_at ? new Date((b as any).created_at).getTime() : 0;
+      } else if (sortBy === "updated_at") {
+        // 时间排序
+        aVal = (a as any).updated_at ? new Date((a as any).updated_at).getTime() : 0;
+        bVal = (b as any).updated_at ? new Date((b as any).updated_at).getTime() : 0;
       }
 
       if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
