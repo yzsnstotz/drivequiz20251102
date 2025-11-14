@@ -5,11 +5,17 @@ import { translateWithPolish } from "../_lib/batchProcessUtils";
 
 export const POST = withAdminAuth(async (req: Request) => {
   const requestId = `api-translate-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  console.log(`[API Translate] [${requestId}] ========== TRANSLATE API CALLED ==========`);
+  console.log(`[API Translate] [${requestId}] Request URL: ${req.url}`);
+  console.log(`[API Translate] [${requestId}] Request method: ${req.method}`);
   try {
     console.log(`[API Translate] [${requestId}] Request received`);
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch((e) => {
+      console.error(`[API Translate] [${requestId}] Failed to parse request body:`, e);
+      return {};
+    });
     const { questionId, contentHash, from, to } = body || {};
-    console.log(`[API Translate] [${requestId}] Body:`, { questionId, contentHash, from, to });
+    console.log(`[API Translate] [${requestId}] Body parsed:`, { questionId, contentHash, from, to });
     
     if ((!questionId && !contentHash) || !from || !to) {
       console.error(`[API Translate] [${requestId}] Missing required fields`);
@@ -83,9 +89,17 @@ export const POST = withAdminAuth(async (req: Request) => {
 
     // 为每个目标语言执行翻译
     const results: any[] = [];
+    console.log(`[API Translate] [${requestId}] Starting translation for ${targetLanguages.length} language(s):`, targetLanguages);
     for (const targetLang of targetLanguages) {
-      console.log(`[API Translate] [${requestId}] Translating to ${targetLang}`);
+      console.log(`[API Translate] [${requestId}] ========== Translating to ${targetLang} ==========`);
       try {
+        console.log(`[API Translate] [${requestId}] Calling translateWithPolish`, {
+          contentLength: content?.length || 0,
+          hasOptions: !!options,
+          hasExplanation: !!explanation,
+          from,
+          to: targetLang,
+        });
         const result = await translateWithPolish({
           source: {
             content,
@@ -94,6 +108,11 @@ export const POST = withAdminAuth(async (req: Request) => {
           },
           from,
           to: targetLang,
+        });
+        console.log(`[API Translate] [${requestId}] translateWithPolish completed`, {
+          contentLength: result.content?.length || 0,
+          hasOptions: !!result.options,
+          hasExplanation: !!result.explanation,
         });
 
         // 保存翻译结果
