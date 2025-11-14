@@ -12,7 +12,7 @@ import fs from "fs";
 import path from "path";
 import type { PaginationMeta } from "@/types/db";
 import { db } from "@/lib/db";
-import { normalizeCorrectAnswer } from "@/lib/questionDb";
+import { normalizeCorrectAnswer, getLatestUnifiedVersionContent } from "@/lib/questionDb";
 
 /**
  * 统一成功响应
@@ -82,33 +82,56 @@ export async function GET(
       return err("VALIDATION_FAILED", "排序方向必须是 asc 或 desc", 400);
     }
 
-    // 加载题目：优先从最新的JSON包读取，如果JSON包没有，再从数据库读取
+    // 加载题目：优先从数据库question_package_versions表的最新记录读取，其次从文件系统，最后从questions表
     let allQuestions: any[] = [];
     
-    // 步骤1：优先从最新的JSON包（questions.json）读取
-    const questionsDir = path.join(process.cwd(), "src/data/questions/zh");
-    const unifiedFilePath = path.join(questionsDir, "questions.json");
-    
+    // 步骤1：最优先从数据库question_package_versions表的最新记录读取（package_content字段）
     try {
-      if (fs.existsSync(unifiedFilePath)) {
-        const unifiedContent = fs.readFileSync(unifiedFilePath, "utf-8");
-        const unifiedData = JSON.parse(unifiedContent);
-        const allQuestionsFromUnified = Array.isArray(unifiedData) ? unifiedData : (unifiedData.questions || []);
-        
+      const latestVersionContent = await getLatestUnifiedVersionContent();
+      if (latestVersionContent && latestVersionContent.questions && latestVersionContent.questions.length > 0) {
         // 根据setId筛选题目（setId对应category字段，直接匹配）
-        allQuestions = allQuestionsFromUnified.filter((q: any) => {
+        allQuestions = latestVersionContent.questions.filter((q: any) => {
           return q.category === setId;
         });
         
         if (allQuestions.length > 0) {
-          console.log(`[Exam API] 从JSON包读取到 ${allQuestions.length} 个题目 (category=${setId})`);
+          console.log(`[Exam API] 从数据库最新版本JSON包读取到 ${allQuestions.length} 个题目 (category=${setId}, version=${latestVersionContent.version})`);
+        } else {
+          console.log(`[Exam API] 数据库最新版本JSON包中没有找到category=${setId}的题目`);
         }
+      } else {
+        console.log(`[Exam API] 数据库中没有找到最新版本的JSON包内容`);
       }
-    } catch (jsonError) {
-      console.error("[Exam API] 读取JSON包失败:", jsonError);
+    } catch (dbVersionError) {
+      console.error("[Exam API] 从数据库最新版本读取失败:", dbVersionError);
     }
     
-    // 步骤2：如果JSON包没有找到题目，从数据库读取（直接按category匹配）
+    // 步骤2：如果数据库最新版本没有找到，从文件系统questions.json读取
+    if (allQuestions.length === 0) {
+      const questionsDir = path.join(process.cwd(), "src/data/questions/zh");
+      const unifiedFilePath = path.join(questionsDir, "questions.json");
+      
+      try {
+        if (fs.existsSync(unifiedFilePath)) {
+          const unifiedContent = fs.readFileSync(unifiedFilePath, "utf-8");
+          const unifiedData = JSON.parse(unifiedContent);
+          const allQuestionsFromUnified = Array.isArray(unifiedData) ? unifiedData : (unifiedData.questions || []);
+          
+          // 根据setId筛选题目（setId对应category字段，直接匹配）
+          allQuestions = allQuestionsFromUnified.filter((q: any) => {
+            return q.category === setId;
+          });
+          
+          if (allQuestions.length > 0) {
+            console.log(`[Exam API] 从文件系统JSON包读取到 ${allQuestions.length} 个题目 (category=${setId})`);
+          }
+        }
+      } catch (jsonError) {
+        console.error("[Exam API] 读取文件系统JSON包失败:", jsonError);
+      }
+    }
+    
+    // 步骤3：如果都没有找到，从数据库questions表读取（直接按category匹配）
     if (allQuestions.length === 0) {
       try {
         const dbQuestions = await db
@@ -151,15 +174,16 @@ export async function GET(
             };
           });
           
-          console.log(`[Exam API] 从数据库读取到 ${allQuestions.length} 个题目 (category=${setId})`);
+          console.log(`[Exam API] 从数据库questions表读取到 ${allQuestions.length} 个题目 (category=${setId})`);
         }
       } catch (dbError) {
-        console.error("[Exam API] 从数据库读取题目失败:", dbError);
+        console.error("[Exam API] 从数据库questions表读取题目失败:", dbError);
       }
     }
     
-    // 步骤3：如果JSON包和数据库都没有，尝试从指定文件读取（兼容旧逻辑）
+    // 步骤4：如果都没有找到，尝试从指定文件读取（兼容旧逻辑）
     if (allQuestions.length === 0) {
+      const questionsDir = path.join(process.cwd(), "src/data/questions/zh");
       let fileName = setId;
       
       // 如果setId包含licenseType信息，直接使用；否则根据licenseType推断
@@ -179,10 +203,10 @@ export async function GET(
           allQuestions = questionData.questions || [];
           
           if (allQuestions.length > 0) {
-            console.log(`[Exam API] 从文件系统读取到 ${allQuestions.length} 个题目 (fileName=${fileName})`);
+            console.log(`[Exam API] 从文件系统指定文件读取到 ${allQuestions.length} 个题目 (fileName=${fileName})`);
           }
         } catch (fileError) {
-          console.error("[Exam API] 读取文件失败:", fileError);
+          console.error("[Exam API] 读取指定文件失败:", fileError);
         }
       }
     }

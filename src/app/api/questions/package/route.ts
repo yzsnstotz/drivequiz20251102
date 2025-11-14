@@ -10,6 +10,7 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 import { success, notFound, internalError } from "@/app/api/_lib/errors";
+import { getLatestUnifiedVersionContent } from "@/lib/questionDb";
 import fs from "fs/promises";
 import path from "path";
 
@@ -18,9 +19,29 @@ const UNIFIED_FILE = path.join(QUESTIONS_DIR, "questions.json");
 
 export async function GET() {
   try {
-    console.log(`[GET /api/questions/package] 开始读取文件: ${UNIFIED_FILE}`);
+    console.log(`[GET /api/questions/package] 开始获取JSON包`);
     
-    // 检查文件是否存在
+    // 步骤1：最优先从数据库question_package_versions表的最新记录读取（package_content字段）
+    try {
+      const latestVersionContent = await getLatestUnifiedVersionContent();
+      if (latestVersionContent && latestVersionContent.questions) {
+        const packageData = {
+          version: latestVersionContent.version,
+          questions: latestVersionContent.questions,
+          aiAnswers: latestVersionContent.aiAnswers || {},
+        };
+        console.log(`[GET /api/questions/package] 从数据库最新版本读取成功，版本: ${latestVersionContent.version}，题目数量: ${latestVersionContent.questions.length}`);
+        return success(packageData);
+      } else {
+        console.log(`[GET /api/questions/package] 数据库中没有找到最新版本的JSON包内容`);
+      }
+    } catch (dbError) {
+      console.error(`[GET /api/questions/package] 从数据库读取失败:`, dbError);
+    }
+    
+    // 步骤2：如果数据库没有，从文件系统questions.json读取
+    console.log(`[GET /api/questions/package] 尝试从文件系统读取: ${UNIFIED_FILE}`);
+    
     try {
       await fs.access(UNIFIED_FILE);
     } catch (accessError) {
@@ -35,7 +56,7 @@ export async function GET() {
     }
     
     const data = JSON.parse(content);
-    console.log(`[GET /api/questions/package] 成功读取，题目数量: ${Array.isArray(data) ? data.length : (data.questions?.length || 0)}`);
+    console.log(`[GET /api/questions/package] 从文件系统读取成功，题目数量: ${Array.isArray(data) ? data.length : (data.questions?.length || 0)}`);
     return success(data);
   } catch (err: any) {
     console.error("[GET /api/questions/package] Error:", err);
