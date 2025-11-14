@@ -13,6 +13,7 @@ import path from "path";
 import type { PaginationMeta } from "@/types/db";
 import { db } from "@/lib/db";
 import { normalizeCorrectAnswer } from "@/lib/questionDb";
+import { sql } from "kysely";
 
 /**
  * 统一成功响应
@@ -85,12 +86,73 @@ export async function GET(
     // 加载题目：优先从数据库读取，如果数据库没有，再从文件系统读取
     let allQuestions: any[] = [];
     
-    // 步骤1：优先从数据库读取（根据category字段匹配setId）
+    // 步骤1：优先从数据库读取（智能匹配category字段）
     try {
+      // 根据setId和licenseType推断可能的category值
+      // setId可能是: "provisional-1", "license-1", "仮免-1", "免许-1" 等
+      // 需要尝试多种匹配方式
+      let possibleCategories: string[] = [setId];
+      
+      // 如果setId是 "provisional-1" 格式，尝试转换为 "仮免-1"
+      if (setId.startsWith("provisional-")) {
+        const num = setId.replace("provisional-", "");
+        possibleCategories.push(`仮免-${num}`);
+        possibleCategories.push(`provisional-${num}`);
+      }
+      
+      // 如果setId是 "license-1" 格式，尝试转换为 "免许-1"
+      if (setId.startsWith("license-")) {
+        const num = setId.replace("license-", "");
+        possibleCategories.push(`免许-${num}`);
+        possibleCategories.push(`license-${num}`);
+      }
+      
+      // 如果setId是 "foreign-1" 格式
+      if (setId.startsWith("foreign-")) {
+        const num = setId.replace("foreign-", "");
+        possibleCategories.push(`外国切替-${num}`);
+        possibleCategories.push(`foreign-${num}`);
+      }
+      
+      // 如果setId是 "second-1" 格式
+      if (setId.startsWith("second-")) {
+        const num = setId.replace("second-", "");
+        possibleCategories.push(`二種-${num}`);
+        possibleCategories.push(`second-${num}`);
+      }
+      
+      // 如果setId是 "renewal-1" 格式
+      if (setId.startsWith("renewal-")) {
+        const num = setId.replace("renewal-", "");
+        possibleCategories.push(`再取得-${num}`);
+        possibleCategories.push(`renewal-${num}`);
+      }
+      
+      // 去重
+      possibleCategories = [...new Set(possibleCategories)];
+      
+      console.log(`[Exam API] 尝试从数据库匹配 category，可能的值为: ${possibleCategories.join(", ")}`);
+      
+      // 查询数据库：匹配category或license_types
+      // 构建查询条件：匹配category字段或license_types数组
       const dbQuestions = await db
         .selectFrom("questions")
         .selectAll()
-        .where("category", "=", setId)
+        .where((eb) => {
+          const conditions = [
+            // 匹配category字段
+            eb("category", "in", possibleCategories),
+          ];
+          
+          // 为每个可能的category值添加license_types数组匹配条件
+          for (const cat of possibleCategories) {
+            conditions.push(
+              sql<boolean>`${eb.ref("license_types")} @> ARRAY[${sql.literal(cat)}]::text[]`
+            );
+          }
+          
+          return eb.or(conditions);
+        })
         .orderBy("id", "asc")
         .execute();
 
@@ -127,7 +189,9 @@ export async function GET(
           };
         });
         
-        console.log(`[Exam API] 从数据库读取到 ${allQuestions.length} 个题目 (category=${setId})`);
+        console.log(`[Exam API] 从数据库读取到 ${allQuestions.length} 个题目 (setId=${setId}, 匹配的category: ${possibleCategories.join(", ")})`);
+      } else {
+        console.log(`[Exam API] 数据库中没有找到匹配的题目 (setId=${setId}, 尝试的category: ${possibleCategories.join(", ")})`);
       }
     } catch (dbError) {
       console.error("[Exam API] 从数据库读取题目失败:", dbError);
