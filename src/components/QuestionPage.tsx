@@ -348,7 +348,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
               {isCorrect() ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language) || (typeof currentQuestion.explanation === 'object' ? currentQuestion.explanation?.zh : currentQuestion.explanation) || ''}</p>
+              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language) || ''}</p>
             )}
           </div>
         )}
