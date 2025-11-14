@@ -527,31 +527,55 @@ async function processBatchAsync(
                 
                 // 处理 content：确保始终是有效的 JSONB 对象
                 let updatedContent: any;
+                const newContentStr = String(result.content || content || "").trim();
+                
                 if (typeof question.content === "object" && question.content !== null) {
                   // 如果原本是对象，更新 zh 字段
-                  updatedContent = { ...question.content, zh: result.content || content };
-                } else {
-                  // 如果原本是字符串，转换为 JSONB 对象
-                  const contentStr = String(result.content || content || "").trim();
-                  if (contentStr) {
-                    updatedContent = { zh: contentStr };
+                  if (newContentStr) {
+                    updatedContent = { ...question.content, zh: newContentStr };
                   } else {
-                    updatedContent = question.content; // 保持原值
+                    // 如果没有新内容，保持原对象
+                    updatedContent = question.content;
+                  }
+                } else {
+                  // 如果原本是字符串（旧格式），转换为 JSONB 对象
+                  if (newContentStr) {
+                    updatedContent = { zh: newContentStr };
+                  } else {
+                    // 如果没有新内容，将原字符串转换为 JSONB 对象
+                    const oldContentStr = String(question.content || "").trim();
+                    if (oldContentStr) {
+                      updatedContent = { zh: oldContentStr };
+                    } else {
+                      // 如果原内容也为空，使用默认值
+                      updatedContent = { zh: "" };
+                    }
                   }
                 }
 
                 // 处理 options：确保始终是有效的 JSONB 数组或 null
                 let updatedOptions: any = null;
                 if (result.options && Array.isArray(result.options)) {
-                  // 确保是有效的数组格式
-                  updatedOptions = result.options.filter((opt: any) => opt != null && String(opt).trim().length > 0);
-                  // 如果数组为空，设置为 null
+                  // 确保是有效的数组格式，过滤空值
+                  updatedOptions = result.options
+                    .filter((opt: any) => opt != null && String(opt).trim().length > 0)
+                    .map((opt: any) => String(opt).trim());
+                  // 如果数组为空，使用原值或设置为 null
                   if (updatedOptions.length === 0) {
-                    updatedOptions = question.options; // 保持原值
+                    if (question.options && Array.isArray(question.options) && question.options.length > 0) {
+                      updatedOptions = question.options; // 保持原值
+                    } else {
+                      updatedOptions = null; // 设置为 null
+                    }
                   }
                 } else if (question.options) {
-                  // 保持原有的 options
-                  updatedOptions = question.options;
+                  // 保持原有的 options（确保是数组格式）
+                  if (Array.isArray(question.options)) {
+                    updatedOptions = question.options;
+                  } else {
+                    // 如果不是数组，转换为数组或设置为 null
+                    updatedOptions = null;
+                  }
                 }
 
                 // 处理 explanation：确保始终是有效的 JSONB 对象或 null
@@ -575,16 +599,50 @@ async function processBatchAsync(
                   }
                 }
 
-                await db
-                  .updateTable("questions")
-                  .set({
-                    content: updatedContent,
-                    options: updatedOptions,
-                    explanation: updatedExplanation,
-                    updated_at: new Date(),
-                  })
-                  .where("id", "=", question.id)
-                  .execute();
+                // 验证所有字段都是有效的 JSONB 格式
+                try {
+                  // 验证 content 是对象
+                  if (typeof updatedContent !== "object" || updatedContent === null) {
+                    throw new Error(`Invalid content format: expected object, got ${typeof updatedContent}`);
+                  }
+                  
+                  // 验证 options 是数组或 null
+                  if (updatedOptions !== null && !Array.isArray(updatedOptions)) {
+                    throw new Error(`Invalid options format: expected array or null, got ${typeof updatedOptions}`);
+                  }
+                  
+                  // 验证 explanation 是对象或 null
+                  if (updatedExplanation !== null && (typeof updatedExplanation !== "object" || updatedExplanation === null)) {
+                    throw new Error(`Invalid explanation format: expected object or null, got ${typeof updatedExplanation}`);
+                  }
+
+                  console.log(`[BatchProcess] Updating question Q${question.id} with fill_missing result`, {
+                    contentType: typeof updatedContent,
+                    contentKeys: Object.keys(updatedContent || {}),
+                    optionsType: Array.isArray(updatedOptions) ? "array" : updatedOptions === null ? "null" : typeof updatedOptions,
+                    optionsLength: Array.isArray(updatedOptions) ? updatedOptions.length : null,
+                    explanationType: updatedExplanation === null ? "null" : typeof updatedExplanation,
+                  });
+
+                  await db
+                    .updateTable("questions")
+                    .set({
+                      content: updatedContent,
+                      options: updatedOptions,
+                      explanation: updatedExplanation,
+                      updated_at: new Date(),
+                    })
+                    .where("id", "=", question.id)
+                    .execute();
+                } catch (dbError: any) {
+                  console.error(`[BatchProcess] Database update failed for Q${question.id}:`, {
+                    error: dbError.message,
+                    content: JSON.stringify(updatedContent).substring(0, 100),
+                    options: JSON.stringify(updatedOptions).substring(0, 100),
+                    explanation: JSON.stringify(updatedExplanation).substring(0, 100),
+                  });
+                  throw dbError;
+                }
               }
               questionResult.operations.push("fill_missing");
             }
