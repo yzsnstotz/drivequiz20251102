@@ -215,9 +215,10 @@ export async function translateWithPolish(params: {
       let fixedJson = rawAnswer.trim();
       
       // 如果 JSON 被截断，尝试提取已有字段
-      const contentMatch = fixedJson.match(/"content"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+      // 改进正则表达式，支持多行字符串和转义字符
+      const contentMatch = fixedJson.match(/"content"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"/);
       const optionsMatch = fixedJson.match(/"options"\s*:\s*\[([^\]]*)\]/);
-      const explanationMatch = fixedJson.match(/"explanation"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+      const explanationMatch = fixedJson.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"/);
       
       if (contentMatch || optionsMatch) {
         // 至少有一个字段，尝试构建有效的 JSON
@@ -283,8 +284,14 @@ export async function translateWithPolish(params: {
     throw new Error("AI translation response missing JSON body");
   }
   
+  // 验证 content 字段是否存在且非空
+  const contentStr = String(parsed.content ?? "").trim();
+  if (!contentStr) {
+    throw new Error("AI translation response missing content field");
+  }
+  
   return {
-    content: String(parsed.content ?? "").trim(),
+    content: contentStr,
     options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : undefined,
     explanation: parsed.explanation ? String(parsed.explanation) : undefined,
   };
@@ -315,20 +322,101 @@ export async function polishContent(params: {
     adminToken: params.adminToken,
   });
 
+  // 解析 JSON 响应
   let parsed: any = null;
+  let rawAnswer = data.answer;
+  
+  // 尝试从代码块中提取 JSON（优先处理）
+  const codeBlockMatch = rawAnswer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch) {
+    rawAnswer = codeBlockMatch[1].trim();
+  }
+  
   try {
-    parsed = JSON.parse(data.answer);
-  } catch {
-    const m = data.answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (m) {
-      parsed = JSON.parse(m[1]);
+    parsed = JSON.parse(rawAnswer);
+  } catch (parseError) {
+    // 如果 JSON 解析失败，尝试修复截断的 JSON
+    try {
+      let fixedJson = rawAnswer.trim();
+      
+      // 如果 JSON 被截断，尝试提取已有字段
+      // 改进正则表达式，支持多行字符串和转义字符
+      const contentMatch = fixedJson.match(/"content"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"/);
+      const optionsMatch = fixedJson.match(/"options"\s*:\s*\[([^\]]*)\]/);
+      const explanationMatch = fixedJson.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"/);
+      
+      if (contentMatch || optionsMatch) {
+        // 至少有一个字段，尝试构建有效的 JSON
+        parsed = {};
+        
+        if (contentMatch) {
+          parsed.content = contentMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+        }
+        
+        if (optionsMatch) {
+          try {
+            // 尝试解析选项数组
+            const optionsStr = optionsMatch[1];
+            const options = optionsStr
+              .split(',')
+              .map(opt => opt.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"'))
+              .filter(opt => opt.length > 0);
+            if (options.length > 0) {
+              parsed.options = options;
+            }
+          } catch {
+            // 忽略选项解析错误
+          }
+        }
+        
+        if (explanationMatch) {
+          parsed.explanation = explanationMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+        } else {
+          // 如果 explanation 被截断，尝试提取部分内容
+          const explanationStartMatch = fixedJson.match(/"explanation"\s*:\s*"([^"]*)/);
+          if (explanationStartMatch) {
+            parsed.explanation = explanationStartMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+          }
+        }
+        
+        // 如果成功提取了至少一个字段，使用它
+        if (Object.keys(parsed).length > 0) {
+          console.warn(`[polishContent] JSON was truncated, extracted partial data: ${Object.keys(parsed).join(', ')}`);
+        } else {
+          throw new Error("No valid fields extracted from truncated JSON");
+        }
+      } else {
+        // 尝试添加缺失的闭合括号
+        if (!fixedJson.endsWith("}")) {
+          const openBraces = (fixedJson.match(/\{/g) || []).length;
+          const closeBraces = (fixedJson.match(/\}/g) || []).length;
+          const missingBraces = openBraces - closeBraces;
+          if (missingBraces > 0) {
+            fixedJson += "\n" + "}".repeat(missingBraces);
+          }
+        }
+        parsed = JSON.parse(fixedJson);
+      }
+    } catch {
+      // 如果修复后仍然失败，记录完整响应用于调试
+      console.error(`[polishContent] Failed to parse AI response. Full response length: ${data.answer.length}`);
+      console.error(`[polishContent] Response preview: ${data.answer.substring(0, 500)}`);
+      throw new Error("AI polish response missing JSON body");
     }
   }
+  
   if (!parsed || typeof parsed !== "object") {
     throw new Error("AI polish response missing JSON body");
   }
+  
+  // 验证 content 字段是否存在且非空
+  const contentStr = String(parsed.content ?? "").trim();
+  if (!contentStr) {
+    throw new Error("AI polish response missing content field");
+  }
+  
   return {
-    content: String(parsed.content ?? "").trim(),
+    content: contentStr,
     options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : undefined,
     explanation: parsed.explanation ? String(parsed.explanation) : undefined,
   };
