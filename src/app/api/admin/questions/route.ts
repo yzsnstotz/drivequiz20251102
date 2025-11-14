@@ -281,7 +281,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     // 如果指定了文件系统源（格式：filesystem:filename）
     if (source && source.startsWith("filesystem:")) {
       const filename = source.replace("filesystem:", "");
-      console.log(`[GET /api/admin/questions] 从文件系统读取: ${filename}`);
+      console.log(`[GET /api/admin/questions] 从文件系统读取: ${filename}, locale=${locale || "zh"}, category=${category || "全部"}`);
       
       try {
         const filePath = path.join(QUESTIONS_DIR, filename);
@@ -296,17 +296,53 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           questions = data.questions || [];
         }
         
-        // 如果指定了category筛选，只添加匹配的题目
-        if (category) {
-          questions = questions.filter((q) => q.category === category);
+        // 如果指定了locale且存在多语言包，优先使用多语言包
+        const targetLocale = locale || "zh";
+        if (data.questionsByLocale && data.questionsByLocale[targetLocale]) {
+          questions = data.questionsByLocale[targetLocale] as Question[];
+          console.log(`[GET /api/admin/questions] 使用多语言包 ${targetLocale}，题目数: ${questions.length}`);
+        } else {
+          // 如果没有多语言包，但题目中的content/explanation可能是多语言对象，需要本地化处理
+          if (targetLocale !== "zh") {
+            // 对于非中文语言，尝试从多语言对象中提取对应语言
+            questions = questions.map((q) => {
+              const localized: Question = { ...q };
+              
+              // 处理content字段
+              if (typeof q.content === "object" && q.content !== null) {
+                const contentObj = q.content as { [key: string]: string | undefined };
+                if (contentObj[targetLocale]) {
+                  localized.content = contentObj[targetLocale];
+                } else if (contentObj.zh) {
+                  localized.content = contentObj.zh; // 回退到中文
+                } else {
+                  localized.content = Object.values(contentObj)[0] || ""; // 回退到第一个可用语言
+                }
+              }
+              
+              // 处理explanation字段（如果也是多语言对象）
+              if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
+                const expObj = q.explanation as { [key: string]: string | undefined };
+                if (expObj[targetLocale]) {
+                  localized.explanation = expObj[targetLocale];
+                } else if (expObj.zh) {
+                  localized.explanation = expObj.zh;
+                } else {
+                  localized.explanation = Object.values(expObj)[0] || undefined;
+                }
+              }
+              
+              return localized;
+            });
+            console.log(`[GET /api/admin/questions] 已本地化处理题目内容到 ${targetLocale}`);
+          }
         }
         
-        // 如果指定了locale且存在多语言包，替换为对应语言
-        if (locale && locale !== "zh" && data.questionsByLocale && data.questionsByLocale[locale]) {
-          questions = data.questionsByLocale[locale] as Question[];
-          if (category) {
-            questions = questions.filter((q) => q.category === category);
-          }
+        // 如果指定了category筛选，在语言切换后进行筛选
+        if (category) {
+          const beforeFilter = questions.length;
+          questions = questions.filter((q) => q.category === category);
+          console.log(`[GET /api/admin/questions] 按category筛选: ${category}，筛选前: ${beforeFilter}，筛选后: ${questions.length}`);
         }
         
         allQuestions = questions;
@@ -316,7 +352,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         jsonPackageAiAnswersByLocale = data.aiAnswersByLocale || null;
         jsonPackageQuestionsByLocale = data.questionsByLocale || null;
         
-        console.log(`[GET /api/admin/questions] 从文件系统读取 ${filename}，题目数: ${allQuestions.length}`);
+        console.log(`[GET /api/admin/questions] 从文件系统读取 ${filename}，最终题目数: ${allQuestions.length}`);
       } catch (fileError) {
         console.error(`[GET /api/admin/questions] 从文件系统读取失败:`, fileError);
         allQuestions = [];
@@ -337,25 +373,54 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
           jsonPackageAiAnswersByLocale = (versionContent as any).aiAnswersByLocale || null;
           jsonPackageQuestionsByLocale = (versionContent as any).questionsByLocale || null;
           
-          // 如果指定了category筛选，只添加匹配的题目
-          if (category) {
-            let base = versionContent.questions as Question[];
-            // 如果指定了locale且存在多语言包，替换为对应语言
-            if (locale && locale !== "zh" && jsonPackageQuestionsByLocale && jsonPackageQuestionsByLocale[locale]) {
-              base = jsonPackageQuestionsByLocale[locale] as any;
-            }
-            const filteredQuestions = base.filter((q) => q.category === category);
-            console.log(`[GET /api/admin/questions] 按category筛选后题目数: ${filteredQuestions.length}`);
-            allQuestions.push(...(filteredQuestions as Question[]));
-          } else {
-            // 没有category筛选，添加所有题目
-            let base = versionContent.questions as Question[];
-            if (locale && locale !== "zh" && jsonPackageQuestionsByLocale && jsonPackageQuestionsByLocale[locale]) {
-              base = jsonPackageQuestionsByLocale[locale] as any;
-            }
-            console.log(`[GET /api/admin/questions] 添加所有题目: ${base.length}（locale=${locale}）`);
-            allQuestions.push(...(base as Question[]));
+          // 处理语言切换：优先使用多语言包
+          const targetLocale = locale || "zh";
+          let base = versionContent.questions as Question[];
+          if (jsonPackageQuestionsByLocale && jsonPackageQuestionsByLocale[targetLocale]) {
+            base = jsonPackageQuestionsByLocale[targetLocale] as Question[];
+            console.log(`[GET /api/admin/questions] 使用多语言包 ${targetLocale}，题目数: ${base.length}`);
+          } else if (targetLocale !== "zh") {
+            // 如果没有多语言包，但题目中的content/explanation可能是多语言对象，需要本地化处理
+            base = base.map((q) => {
+              const localized: Question = { ...q };
+              
+              // 处理content字段
+              if (typeof q.content === "object" && q.content !== null) {
+                const contentObj = q.content as { [key: string]: string | undefined };
+                if (contentObj[targetLocale]) {
+                  localized.content = contentObj[targetLocale];
+                } else if (contentObj.zh) {
+                  localized.content = contentObj.zh;
+                } else {
+                  localized.content = Object.values(contentObj)[0] || "";
+                }
+              }
+              
+              // 处理explanation字段
+              if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
+                const expObj = q.explanation as { [key: string]: string | undefined };
+                if (expObj[targetLocale]) {
+                  localized.explanation = expObj[targetLocale];
+                } else if (expObj.zh) {
+                  localized.explanation = expObj.zh;
+                } else {
+                  localized.explanation = Object.values(expObj)[0] || undefined;
+                }
+              }
+              
+              return localized;
+            });
+            console.log(`[GET /api/admin/questions] 已本地化处理题目内容到 ${targetLocale}`);
           }
+          
+          // 如果指定了category筛选，在语言切换后进行筛选
+          if (category) {
+            const beforeFilter = base.length;
+            base = base.filter((q) => q.category === category);
+            console.log(`[GET /api/admin/questions] 按category筛选: ${category}，筛选前: ${beforeFilter}，筛选后: ${base.length}`);
+          }
+          
+          allQuestions.push(...base);
         } else {
           console.warn(`[GET /api/admin/questions] 数据库中没有找到版本 ${source} 的内容`);
           // 如果数据库中没有找到，返回空结果

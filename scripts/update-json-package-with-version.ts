@@ -54,10 +54,10 @@ async function updateJsonPackageWithVersion(version?: string) {
 
     // 2. 转换为前端格式，使用规范化函数确保答案格式正确
     const allQuestions: Question[] = allDbQuestions.map((q) => {
-      // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
-      const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
-        ? q.license_types[0]
-        : "其他";
+      // 优先使用数据库的category字段，如果没有则从license_types数组中获取（取第一个），最后使用"其他"
+      const category = q.category 
+        || (Array.isArray(q.license_types) && q.license_types.length > 0 ? q.license_types[0] : null)
+        || "其他";
 
       return {
         id: q.id,
