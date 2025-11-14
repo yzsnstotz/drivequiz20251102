@@ -196,7 +196,12 @@ async function processBatchAsync(
     content_hash: string;
     content: any;
     options: any;
-    explanation: string | null;
+    explanation: {
+      zh: string;
+      en?: string;
+      ja?: string;
+      [key: string]: string | undefined;
+    } | string | null; // 支持多语言对象或字符串（向后兼容）
   }>,
   input: {
     operations: ("translate" | "polish" | "fill_missing" | "category_tags")[];
@@ -256,7 +261,17 @@ async function processBatchAsync(
           : question.options
             ? [String(question.options)]
             : null;
-        const explanation = question.explanation || null;
+        
+        // 处理 explanation 字段：支持多语言对象或字符串（向后兼容）
+        let explanation: string | null = null;
+        if (question.explanation) {
+          if (typeof question.explanation === "string") {
+            explanation = question.explanation;
+          } else if (typeof question.explanation === "object" && question.explanation !== null) {
+            // 多语言对象，优先使用中文
+            explanation = question.explanation.zh || null;
+          }
+        }
 
         // 执行各种操作
         for (const operation of input.operations) {
@@ -356,12 +371,25 @@ async function processBatchAsync(
                   updatedContent = result.content || content;
                 }
 
+                // 处理 explanation：如果是字符串，转换为多语言对象
+                let updatedExplanation: any = null;
+                if (result.explanation) {
+                  updatedExplanation = { zh: result.explanation };
+                } else if (question.explanation) {
+                  // 保持原有的 explanation（可能是多语言对象或字符串）
+                  if (typeof question.explanation === "string") {
+                    updatedExplanation = { zh: question.explanation };
+                  } else {
+                    updatedExplanation = question.explanation;
+                  }
+                }
+
                 await db
                   .updateTable("questions")
                   .set({
                     content: updatedContent,
                     options: result.options ? (result.options as any) : question.options,
-                    explanation: result.explanation || question.explanation,
+                    explanation: updatedExplanation,
                     updated_at: new Date(),
                   })
                   .where("id", "=", question.id)
