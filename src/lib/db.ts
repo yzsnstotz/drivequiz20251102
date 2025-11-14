@@ -752,7 +752,7 @@ function createDbInstance(): Kysely<Database> {
     // 不设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量，以避免影响其他 HTTPS 请求
     // 如果环境变量已经设置（例如在 package.json 的 dev 脚本中），这是可以接受的
     // 但在生产环境中，应该依赖连接配置而不是全局环境变量
-    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    if (process.env.NODE_ENV !== 'development' || !!process.env.VERCEL) {
       console.log('[DB Config] ℹ️  Using SSL with rejectUnauthorized: false (production mode, relying on connection config only)');
     }
   }
