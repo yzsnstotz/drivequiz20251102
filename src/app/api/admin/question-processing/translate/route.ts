@@ -132,7 +132,7 @@ export const POST = withAdminAuth(async (req: Request) => {
 
         if (existing) {
           console.log(`[API Translate] [${requestId}] Updating existing translation (id: ${existing.id})`);
-          await db
+          const updateResult = await db
             .updateTable("question_translations")
             .set({
               content: result.content,
@@ -142,10 +142,13 @@ export const POST = withAdminAuth(async (req: Request) => {
             })
             .where("id", "=", existing.id)
             .execute();
-          console.log(`[API Translate] [${requestId}] Translation updated successfully`);
+          console.log(`[API Translate] [${requestId}] Translation updated successfully`, {
+            rowsAffected: updateResult.length || 0,
+            translationId: existing.id,
+          });
         } else {
           console.log(`[API Translate] [${requestId}] Inserting new translation`);
-          await db
+          const insertResult = await db
             .insertInto("question_translations")
             .values({
               content_hash: question.content_hash,
@@ -155,25 +158,52 @@ export const POST = withAdminAuth(async (req: Request) => {
               explanation: result.explanation || null,
               source: "ai",
             })
+            .returning(["id", "content_hash", "locale", "content"])
             .execute();
-          console.log(`[API Translate] [${requestId}] Translation inserted successfully`);
+          console.log(`[API Translate] [${requestId}] Translation inserted successfully`, {
+            insertedId: insertResult[0]?.id,
+            contentHash: insertResult[0]?.content_hash,
+            locale: insertResult[0]?.locale,
+            contentLength: insertResult[0]?.content?.length || 0,
+          });
         }
 
-        // 验证保存是否成功
+        // 等待一小段时间确保数据库操作完成
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // 验证保存是否成功 - 使用更详细的查询
         const saved = await db
           .selectFrom("question_translations")
-          .select(["id", "content"])
+          .select(["id", "content_hash", "locale", "content", "options", "explanation", "updated_at"])
           .where("content_hash", "=", question.content_hash)
           .where("locale", "=", targetLang)
           .executeTakeFirst();
         
-        if (!saved || !saved.content) {
-          throw new Error(`Failed to save translation: saved record not found or content is empty`);
+        console.log(`[API Translate] [${requestId}] Verification query result:`, {
+          found: !!saved,
+          id: saved?.id,
+          contentHash: saved?.content_hash,
+          locale: saved?.locale,
+          contentLength: saved?.content?.length || 0,
+          hasOptions: !!saved?.options,
+          hasExplanation: !!saved?.explanation,
+          updatedAt: saved?.updated_at,
+        });
+        
+        if (!saved) {
+          throw new Error(`Failed to save translation: saved record not found (content_hash: ${question.content_hash}, locale: ${targetLang})`);
+        }
+        
+        if (!saved.content || saved.content.trim().length === 0) {
+          throw new Error(`Failed to save translation: content is empty (id: ${saved.id})`);
         }
         
         console.log(`[API Translate] [${requestId}] Translation to ${targetLang} saved and verified`, {
           translationId: saved.id,
+          contentHash: saved.content_hash,
+          locale: saved.locale,
           contentLength: saved.content?.length || 0,
+          contentPreview: saved.content?.substring(0, 50) + "...",
         });
         
         results.push({ locale: targetLang, success: true });
