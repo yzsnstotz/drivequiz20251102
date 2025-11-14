@@ -388,6 +388,8 @@ async function processBatchAsync(
               };
 
               // 为每个目标语言执行翻译
+              let translateSuccessCount = 0;
+              let translateFailureCount = 0;
               for (const targetLang of targetLanguages) {
                 // 在每次翻译前检查是否已取消
                 if (await checkCancelled()) {
@@ -401,6 +403,11 @@ async function processBatchAsync(
                     to: targetLang,
                     adminToken,
                   });
+
+                  // 验证翻译结果
+                  if (!result.content || result.content.trim().length === 0) {
+                    throw new Error("Translation result is empty");
+                  }
 
                   // 保存翻译结果
                   const existing = await db
@@ -434,16 +441,35 @@ async function processBatchAsync(
                       })
                       .execute();
                   }
+                  translateSuccessCount++;
                 } catch (translateError: any) {
+                  translateFailureCount++;
+                  const errorMsg = sanitizeError(translateError);
                   console.error(
-                    `[BatchProcess] Translation failed: Q${question.id} -> ${targetLang}: ${translateError.message}`
+                    `[BatchProcess] Translation failed: Q${question.id} -> ${targetLang}: ${errorMsg}`
                   );
+                  
+                  // 记录错误
+                  results.errors.push({
+                    questionId: question.id,
+                    error: `translate(${targetLang}): ${errorMsg}`,
+                  });
+                  
                   if (!input.continueOnError) {
                     throw translateError;
                   }
                 }
               }
-              questionResult.operations.push("translate");
+              
+              // 只有当至少有一个翻译成功时才标记操作成功
+              if (translateSuccessCount > 0) {
+                questionResult.operations.push("translate");
+              }
+              
+              // 如果所有翻译都失败，标记题目处理失败
+              if (translateFailureCount === targetLanguages.length) {
+                questionResult.status = "failed";
+              }
             }
 
             if (operation === "polish" && input.polishOptions) {
@@ -499,11 +525,33 @@ async function processBatchAsync(
               const needsUpdate = !content || !options || !explanation;
               if (needsUpdate) {
                 
+                // 处理 content：确保始终是有效的 JSONB 对象
                 let updatedContent: any;
                 if (typeof question.content === "object" && question.content !== null) {
+                  // 如果原本是对象，更新 zh 字段
                   updatedContent = { ...question.content, zh: result.content || content };
                 } else {
-                  updatedContent = result.content || content;
+                  // 如果原本是字符串，转换为 JSONB 对象
+                  const contentStr = String(result.content || content || "").trim();
+                  if (contentStr) {
+                    updatedContent = { zh: contentStr };
+                  } else {
+                    updatedContent = question.content; // 保持原值
+                  }
+                }
+
+                // 处理 options：确保始终是有效的 JSONB 数组或 null
+                let updatedOptions: any = null;
+                if (result.options && Array.isArray(result.options)) {
+                  // 确保是有效的数组格式
+                  updatedOptions = result.options.filter((opt: any) => opt != null && String(opt).trim().length > 0);
+                  // 如果数组为空，设置为 null
+                  if (updatedOptions.length === 0) {
+                    updatedOptions = question.options; // 保持原值
+                  }
+                } else if (question.options) {
+                  // 保持原有的 options
+                  updatedOptions = question.options;
                 }
 
                 // 处理 explanation：确保始终是有效的 JSONB 对象或 null
@@ -531,7 +579,7 @@ async function processBatchAsync(
                   .updateTable("questions")
                   .set({
                     content: updatedContent,
-                    options: result.options ? (result.options as any) : question.options,
+                    options: updatedOptions,
                     explanation: updatedExplanation,
                     updated_at: new Date(),
                   })
