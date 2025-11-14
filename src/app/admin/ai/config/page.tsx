@@ -213,10 +213,13 @@ export default function AdminAiConfigPage() {
                   </>
                 ) : config.aiProvider === "gemini_direct" ? (
                   <>
-                    <option value="gemini-pro">Gemini Pro</option>
-                    <option value="gemini-pro-1.5">Gemini Pro 1.5</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (推荐)</option>
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                    <option value="gemini-2.0-flash-001">Gemini 2.0 Flash 001</option>
+                    {/* 旧模型名称（已停用，会自动映射到新模型） */}
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (已停用，将映射到 2.5 Flash)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (已停用，将映射到 2.5 Pro)</option>
                   </>
                 ) : (config.aiProvider === "openrouter" || config.aiProvider === "openrouter_direct") ? (
                   <>

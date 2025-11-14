@@ -1801,11 +1801,13 @@ export async function POST(req: NextRequest) {
       }
       
       // 模型名称映射：将旧模型名称映射到新模型名称
-      // gemini-pro 已停用，映射到 gemini-1.5-flash
-      // gemini-pro-1.5 映射到 gemini-1.5-flash
+      // v1 API 中可用的模型：gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash 等
+      // 旧模型名称（gemini-1.5-flash, gemini-1.5-pro）在 v1 API 中不可用，需要映射到新模型
       const modelMapping: Record<string, string> = {
-        "gemini-pro": "gemini-1.5-flash",
-        "gemini-pro-1.5": "gemini-1.5-flash",
+        "gemini-pro": "gemini-2.5-flash",
+        "gemini-pro-1.5": "gemini-2.5-flash",
+        "gemini-1.5-flash": "gemini-2.5-flash",
+        "gemini-1.5-pro": "gemini-2.5-pro",
       };
       if (modelMapping[model]) {
         console.log(`[${requestId}] [STEP 5.2.1] 模型名称映射: ${model} -> ${modelMapping[model]}`);
@@ -1932,17 +1934,17 @@ export async function POST(req: NextRequest) {
               baseUrl: geminiBaseUrl,
               urlPattern: `${geminiBaseUrl}/models/{model}:generateContent?key=***`,
               possibleCauses: [
-                "模型名称不正确或已停用（请使用 gemini-1.5-flash 或 gemini-1.5-pro）",
-                "API 版本不匹配（已使用 v1，但某些模型可能需要其他版本）",
+                "模型名称不正确或已停用（v1 API 中应使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型 gemini-1.5-flash 已停用）",
+                "API 版本不匹配（已使用 v1，旧模型可能仅在 v1beta 中可用）",
                 "项目未启用 Gemini API 或 API Key 权限不足",
                 "区域限制（某些模型可能仅在特定区域可用）",
               ],
-              suggestion: "请检查：1) 在 AI 配置中心确保模型名称正确（推荐使用 gemini-1.5-flash）2) 在 Google Cloud Console 确认已启用 Gemini API 3) 验证 API Key 是否有效",
+              suggestion: "请检查：1) 在 AI 配置中心确保模型名称正确（推荐使用 gemini-2.5-flash，旧模型会自动映射）2) 在 Google Cloud Console 确认已启用 Gemini API 3) 验证 API Key 是否有效",
             };
             
             console.error(`[${requestId}] [STEP 5.6.2] Google Gemini 404 错误诊断`, diagnosticInfo);
             
-            return err("PROVIDER_ERROR", `Google Gemini API 404 错误: 模型 "${model}" 未找到。请检查：1) 模型名称是否正确（推荐使用 gemini-1.5-flash 或 gemini-1.5-pro）2) 是否在 Google Cloud Console 启用了 Gemini API 3) API Key 是否有效。错误详情: ${errorMessage}`, 404);
+            return err("PROVIDER_ERROR", `Google Gemini API 404 错误: 模型 "${model}" 未找到。请检查：1) 模型名称是否正确（v1 API 推荐使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型会自动映射）2) 是否在 Google Cloud Console 启用了 Gemini API 3) API Key 是否有效。错误详情: ${errorMessage}`, 404);
           }
           
           // 如果是 401 或 403 错误，提供更详细的错误信息
