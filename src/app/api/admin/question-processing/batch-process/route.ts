@@ -569,16 +569,32 @@ async function processBatchAsync(
           } catch (opError: any) {
             console.error(
               `[API BatchProcess] [${requestId}] Operation ${operation} failed for question ${question.id}:`,
-              opError.message
+              {
+                message: opError.message,
+                name: opError.name,
+                stack: opError.stack?.substring(0, 500),
+              }
             );
+            
+            // 如果是超时错误（AbortError），记录更详细的信息
+            if (opError.name === "AbortError" || opError.message?.includes("aborted") || opError.message?.includes("timeout")) {
+              console.error(
+                `[API BatchProcess] [${requestId}] Operation ${operation} timed out for question ${question.id}. This may be due to AI API timeout or rate limiting.`
+              );
+            }
+            
             if (!input.continueOnError) {
               throw opError;
             }
+            
+            // 标记题目处理失败，但继续处理其他操作
             questionResult.status = "failed";
             results.errors.push({
               questionId: question.id,
-              error: `${operation}: ${opError.message}`,
+              error: `${operation}: ${opError.message || opError.name || "Unknown error"}`,
             });
+            
+            console.log(`[API BatchProcess] [${requestId}] Operation ${operation} failed, but continuing with other operations (continueOnError=true)`);
           }
         }
 
