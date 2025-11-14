@@ -63,7 +63,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
     // 2. 验证超级管理员密码
     const body = await req.json();
-    const { password, packageName, source, version } = body;
+    const { password, packageName, source, version, useStreaming } = body;
 
     if (!password || typeof password !== "string") {
       return badRequest("超级管理员密码不能为空");
@@ -151,6 +151,324 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       return badRequest("没有可导入的题目");
     }
 
+    // 如果使用流式响应，返回流式响应
+    if (useStreaming) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const sendProgress = (progress: {
+            processed: number;
+            total: number;
+            imported: number;
+            updated: number;
+            errors: number;
+            currentBatch?: number;
+            totalBatches?: number;
+          }) => {
+            const data = JSON.stringify({ type: 'progress', ...progress });
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          };
+
+          try {
+            const BATCH_SIZE = 100;
+            const totalQuestions = questionsToImport.length;
+            
+            console.log(`[import-from-json] 开始导入包 ${packageInfo.name}（来源：${packageInfo.source}），共 ${totalQuestions} 个题目，将分 ${Math.ceil(totalQuestions / BATCH_SIZE)} 批处理`);
+            
+            // 发送初始进度
+            sendProgress({
+              processed: 0,
+              total: totalQuestions,
+              imported: 0,
+              updated: 0,
+              errors: 0,
+              currentBatch: 0,
+              totalBatches: Math.ceil(totalQuestions / BATCH_SIZE),
+            });
+
+            // 执行导入逻辑（内联实现，因为需要共享辅助函数）
+            // 辅助函数：规范化content字段
+            const normalizeContent = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } => {
+              if (typeof question.content === "string") {
+                return { zh: question.content };
+              } else {
+                const contentObj = question.content as { [key: string]: string | undefined };
+                const isPlaceholder = (value: string | undefined): boolean => {
+                  return value !== undefined && typeof value === 'string' && 
+                    (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+                };
+                
+                const result: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } = { zh: contentObj.zh || "" };
+                if (contentObj.en && !isPlaceholder(contentObj.en)) {
+                  result.en = contentObj.en;
+                }
+                if (contentObj.ja && !isPlaceholder(contentObj.ja)) {
+                  result.ja = contentObj.ja;
+                }
+                return result;
+              }
+            };
+
+            // 辅助函数：规范化explanation字段
+            const normalizeExplanation = (question: Question): { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | string | null => {
+              if (!question.explanation) return null;
+              if (typeof question.explanation === "string") {
+                return question.explanation;
+              } else {
+                const expObj = question.explanation as { [key: string]: string | undefined };
+                const isPlaceholder = (value: string | undefined): boolean => {
+                  return value !== undefined && typeof value === 'string' && 
+                    (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+                };
+                
+                const result: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } = { zh: expObj.zh || "" };
+                if (expObj.en && !isPlaceholder(expObj.en)) {
+                  result.en = expObj.en;
+                }
+                if (expObj.ja && !isPlaceholder(expObj.ja)) {
+                  result.ja = expObj.ja;
+                }
+                return result;
+              }
+            };
+
+            let totalProcessed = 0;
+            let totalImported = 0;
+            let totalUpdated = 0;
+            let totalErrors = 0;
+
+            for (let i = 0; i < totalQuestions; i += BATCH_SIZE) {
+              const batch = questionsToImport.slice(i, i + BATCH_SIZE);
+              const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+              const totalBatches = Math.ceil(totalQuestions / BATCH_SIZE);
+              
+              console.log(`[import-from-json] 处理批次 ${batchNumber}/${totalBatches}，包含 ${batch.length} 个题目`);
+
+              try {
+                // 步骤1：批量计算所有题目的hash
+                const questionHashes = batch.map(q => ({
+                  question: q,
+                  hash: calculateQuestionHash(q),
+                }));
+
+                // 步骤2：批量查询所有已存在的题目（一次性查询）
+                const hashes = questionHashes.map(qh => qh.hash);
+                const existingQuestions = await db
+                  .selectFrom("questions")
+                  .select(["id", "content_hash"])
+                  .where("content_hash", "in", hashes)
+                  .execute();
+
+                // 创建hash到id的映射
+                const hashToIdMap = new Map<string, number>();
+                for (const eq of existingQuestions) {
+                  hashToIdMap.set(eq.content_hash, eq.id);
+                }
+
+                // 步骤3：准备批量插入和更新的数据
+                const toInsert: Array<{
+                  content_hash: string;
+                  type: "single" | "multiple" | "truefalse";
+                  content: any;
+                  options: any;
+                  correct_answer: any;
+                  image: string | null;
+                  explanation: any;
+                  license_types: any;
+                  category: string;
+                  stage_tag: "both" | "provisional" | "regular" | null;
+                  topic_tags: any;
+                }> = [];
+                const toUpdate: Array<{
+                  id: number;
+                  type: "single" | "multiple" | "truefalse";
+                  content: any;
+                  options: any;
+                  correct_answer: any;
+                  image: string | null;
+                  explanation: any;
+                  license_types: any;
+                  category: string;
+                  stage_tag: "both" | "provisional" | "regular" | null;
+                  topic_tags: any;
+                }> = [];
+
+                // 步骤4：处理每个题目，准备批量操作数据
+                for (const { question, hash } of questionHashes) {
+                  try {
+                    totalProcessed++;
+
+                    const contentMultilang = normalizeContent(question);
+                    const explanationMultilang = normalizeExplanation(question);
+                    const questionCategory = question.category || "其他";
+                    const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
+                      ? question.license_tags 
+                      : null;
+                    const stageTag: "both" | "provisional" | "regular" | null = 
+                      (question.stage_tag === "both" || question.stage_tag === "provisional" || question.stage_tag === "regular")
+                        ? question.stage_tag
+                        : null;
+                    const topicTags = question.topic_tags || null;
+
+                    const existingId = hashToIdMap.get(hash);
+                    
+                    if (existingId) {
+                      toUpdate.push({
+                        id: existingId,
+                        type: question.type as "single" | "multiple" | "truefalse",
+                        content: contentMultilang as any,
+                        options: question.options ? (question.options as any) : null,
+                        correct_answer: question.correctAnswer as any,
+                        image: question.image || null,
+                        explanation: explanationMultilang as any,
+                        license_types: licenseTypes,
+                        category: questionCategory,
+                        stage_tag: stageTag,
+                        topic_tags: topicTags,
+                      });
+                    } else {
+                      toInsert.push({
+                        content_hash: hash,
+                        type: question.type as "single" | "multiple" | "truefalse",
+                        content: contentMultilang as any,
+                        options: question.options ? (question.options as any) : null,
+                        correct_answer: question.correctAnswer as any,
+                        image: question.image || null,
+                        explanation: explanationMultilang as any,
+                        license_types: licenseTypes,
+                        category: questionCategory,
+                        stage_tag: stageTag,
+                        topic_tags: topicTags,
+                      });
+                    }
+                  } catch (error: any) {
+                    totalErrors++;
+                    const errorMsg = `准备题目 ${question.id || 'unknown'} (${packageInfo.name}) 失败: ${error.message || String(error)}`;
+                    errors.push(errorMsg);
+                  }
+                }
+
+                // 步骤5：批量插入新题目
+                if (toInsert.length > 0) {
+                  try {
+                    await db.transaction().execute(async (trx) => {
+                      const INSERT_BATCH_SIZE = 50;
+                      for (let j = 0; j < toInsert.length; j += INSERT_BATCH_SIZE) {
+                        const insertBatch = toInsert.slice(j, j + INSERT_BATCH_SIZE);
+                        await trx.insertInto("questions").values(insertBatch).execute();
+                      }
+                    });
+                    totalImported += toInsert.length;
+                  } catch (error: any) {
+                    // 逐个插入（带重试）
+                    for (let idx = 0; idx < toInsert.length; idx++) {
+                      const item = toInsert[idx];
+                      let retryCount = 0;
+                      const maxRetries = 3;
+                      let success = false;
+                      
+                      while (retryCount < maxRetries && !success) {
+                        try {
+                          await db.insertInto("questions").values(item).execute();
+                          totalImported++;
+                          success = true;
+                        } catch (singleError: any) {
+                          retryCount++;
+                          if (retryCount >= maxRetries) {
+                            totalErrors++;
+                            errors.push(`插入题目失败: ${singleError.message || String(singleError)}`);
+                          } else {
+                            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // 步骤6：批量更新现有题目
+                if (toUpdate.length > 0) {
+                  const updatePromises = toUpdate.map(async (item) => {
+                    try {
+                      await db
+                        .updateTable("questions")
+                        .set({
+                          type: item.type,
+                          content: item.content,
+                          options: item.options,
+                          correct_answer: item.correct_answer,
+                          image: item.image,
+                          explanation: item.explanation,
+                          license_types: item.license_types,
+                          category: item.category,
+                          stage_tag: item.stage_tag,
+                          topic_tags: item.topic_tags,
+                          updated_at: new Date(),
+                        })
+                        .where("id", "=", item.id)
+                        .execute();
+                      return true;
+                    } catch (error: any) {
+                      return false;
+                    }
+                  });
+
+                  const updateResults = await Promise.all(updatePromises);
+                  const successCount = updateResults.filter(r => r === true).length;
+                  totalUpdated += successCount;
+                  if (successCount < toUpdate.length) {
+                    totalErrors += (toUpdate.length - successCount);
+                  }
+                }
+
+                // 发送进度更新
+                sendProgress({
+                  processed: totalProcessed,
+                  total: totalQuestions,
+                  imported: totalImported,
+                  updated: totalUpdated,
+                  errors: totalErrors,
+                  currentBatch: batchNumber,
+                  totalBatches: totalBatches,
+                });
+              } catch (error: any) {
+                console.error(`[import-from-json] 批次 ${batchNumber} 处理失败:`, error);
+                totalErrors += batch.length;
+              }
+            }
+
+            // 发送最终结果
+            const finalResult = {
+              type: 'complete',
+              totalProcessed: totalProcessed,
+              totalImported: totalImported,
+              totalUpdated: totalUpdated,
+              totalErrors: totalErrors,
+              errors: errors.slice(0, 50),
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalResult)}\n\n`));
+            controller.close();
+          } catch (error: any) {
+            const errorResult = {
+              type: 'error',
+              message: error.message || String(error),
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResult)}\n\n`));
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    // 非流式响应（原有逻辑）
     try {
       let packageProcessed = 0;
       let packageImported = 0;
@@ -331,25 +649,65 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
           // 步骤5：批量插入新题目
           if (toInsert.length > 0) {
             try {
-              await db
-                .insertInto("questions")
-                .values(toInsert)
-                .execute();
+              // 使用事务确保数据一致性
+              await db.transaction().execute(async (trx) => {
+                // 分批插入，避免单次插入过多数据导致超时
+                const INSERT_BATCH_SIZE = 50; // 减小批量插入大小
+                for (let j = 0; j < toInsert.length; j += INSERT_BATCH_SIZE) {
+                  const insertBatch = toInsert.slice(j, j + INSERT_BATCH_SIZE);
+                  await trx
+                    .insertInto("questions")
+                    .values(insertBatch)
+                    .execute();
+                  console.log(`[import-from-json] 批次 ${batchNumber} 子批次 ${Math.floor(j / INSERT_BATCH_SIZE) + 1} 插入 ${insertBatch.length} 个题目`);
+                }
+              });
               packageImported += toInsert.length;
               totalImported += toInsert.length;
-              console.log(`[import-from-json] 批次 ${batchNumber} 批量插入 ${toInsert.length} 个新题目`);
+              console.log(`[import-from-json] 批次 ${batchNumber} 批量插入完成，共 ${toInsert.length} 个新题目`);
             } catch (error: any) {
               console.error(`[import-from-json] 批次 ${batchNumber} 批量插入失败:`, error);
-              // 如果批量插入失败，尝试逐个插入
-              for (const item of toInsert) {
-                try {
-                  await db.insertInto("questions").values(item).execute();
-                  packageImported++;
-                  totalImported++;
-                } catch (singleError: any) {
-                  packageErrors++;
-                  totalErrors++;
-                  errors.push(`插入题目失败: ${singleError.message || String(singleError)}`);
+              console.error(`[import-from-json] 错误详情:`, {
+                message: error.message,
+                code: error.code,
+                detail: error.detail,
+                constraint: error.constraint,
+                stack: error.stack?.substring(0, 500),
+              });
+              // 如果批量插入失败，尝试逐个插入（带重试）
+              for (let idx = 0; idx < toInsert.length; idx++) {
+                const item = toInsert[idx];
+                let retryCount = 0;
+                const maxRetries = 3;
+                let success = false;
+                
+                while (retryCount < maxRetries && !success) {
+                  try {
+                    await db.insertInto("questions").values(item).execute();
+                    packageImported++;
+                    totalImported++;
+                    success = true;
+                    if (retryCount > 0) {
+                      console.log(`[import-from-json] 批次 ${batchNumber} 题目 ${idx + 1} 重试 ${retryCount} 次后成功`);
+                    }
+                  } catch (singleError: any) {
+                    retryCount++;
+                    if (retryCount >= maxRetries) {
+                      packageErrors++;
+                      totalErrors++;
+                      const errorMsg = `插入题目失败 (批次 ${batchNumber}, 索引 ${idx + 1}): ${singleError.message || String(singleError)}`;
+                      errors.push(errorMsg);
+                      console.error(`[import-from-json] ${errorMsg}`, {
+                        code: singleError.code,
+                        detail: singleError.detail,
+                        constraint: singleError.constraint,
+                      });
+                    } else {
+                      // 等待后重试
+                      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                      console.warn(`[import-from-json] 批次 ${batchNumber} 题目 ${idx + 1} 插入失败，${retryCount} 秒后重试...`);
+                    }
+                  }
                 }
               }
             }
