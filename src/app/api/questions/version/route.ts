@@ -18,30 +18,48 @@ const UNIFIED_FILE = path.join(QUESTIONS_DIR, "questions.json");
 
 export async function GET() {
   try {
+    console.log(`[GET /api/questions/version] 开始获取版本号`);
+    
     // 优先从数据库读取最新版本号（更可靠）
-    const dbVersion = await getLatestUnifiedVersion();
-    if (dbVersion) {
-      console.log(`[GET /api/questions/version] 从数据库读取版本号: ${dbVersion}`);
-      return success({ version: dbVersion });
+    try {
+      const dbVersion = await getLatestUnifiedVersion();
+      if (dbVersion) {
+        console.log(`[GET /api/questions/version] 从数据库读取版本号: ${dbVersion}`);
+        return success({ version: dbVersion });
+      }
+    } catch (dbError) {
+      console.warn(`[GET /api/questions/version] 从数据库读取版本号失败:`, dbError);
     }
 
     // 如果数据库没有版本号，尝试从文件读取（兼容旧逻辑）
-    console.log(`[GET /api/questions/version] 数据库没有版本号，尝试从文件读取`);
-    const content = await fs.readFile(UNIFIED_FILE, "utf-8").catch(() => null);
-    if (!content) {
+    console.log(`[GET /api/questions/version] 数据库没有版本号，尝试从文件读取: ${UNIFIED_FILE}`);
+    
+    try {
+      await fs.access(UNIFIED_FILE);
+    } catch (accessError) {
+      console.error(`[GET /api/questions/version] 文件不存在: ${UNIFIED_FILE}`, accessError);
       return notFound("Unified questions.json not found");
     }
+    
+    const content = await fs.readFile(UNIFIED_FILE, "utf-8");
+    if (!content) {
+      console.error(`[GET /api/questions/version] 文件内容为空: ${UNIFIED_FILE}`);
+      return notFound("Unified questions.json is empty");
+    }
+    
     const data = JSON.parse(content);
     const version: string | undefined = data?.version;
     if (!version || typeof version !== "string") {
+      console.error(`[GET /api/questions/version] 文件中没有版本号字段`);
       return internalError("Version not found in questions.json");
     }
     console.log(`[GET /api/questions/version] 从文件读取版本号: ${version}`);
     return success({ version });
   } catch (err: any) {
     console.error("[GET /api/questions/version] Error:", err);
-    return internalError("Failed to read questions version");
+    return internalError(`Failed to read questions version: ${err.message || String(err)}`);
   }
 }
+
 
 
