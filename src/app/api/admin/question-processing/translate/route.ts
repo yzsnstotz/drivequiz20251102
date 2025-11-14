@@ -1,3 +1,7 @@
+// Vercel Serverless Function 配置
+export const runtime = "nodejs";
+export const maxDuration = 60; // 60秒超时（Vercel Pro计划最多300秒，这里设置为60秒以支持重试）
+
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
@@ -21,7 +25,7 @@ export const POST = withAdminAuth(async (req: Request) => {
       console.error(`[API Translate] [${requestId}] Missing required fields`);
       return badRequest("questionId/contentHash, from, to are required");
     }
-
+    
     // 支持 to 为字符串或字符串数组
     const targetLanguages = Array.isArray(to) ? to : [to];
     
@@ -213,7 +217,7 @@ export const POST = withAdminAuth(async (req: Request) => {
         results.push({ locale: targetLang, success: false, error: error.message });
       }
     }
-
+    
     console.log(`[API Translate] [${requestId}] Request completed successfully`);
     return success({ results, ok: true });
   } catch (e: any) {

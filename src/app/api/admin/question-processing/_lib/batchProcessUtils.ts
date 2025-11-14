@@ -43,8 +43,22 @@ async function callAiAskInternal(params: {
   const apiUrl = `${baseUrl}/api/ai/ask`;
 
   // 内部调用（使用 fetch），带重试机制
+  // 设置总体超时时间（60秒），避免在重试时超过Vercel函数超时限制
+  const overallTimeout = 55000; // 55秒，留5秒缓冲
+  const startTime = Date.now();
+  
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      // 检查是否已经超过总体超时时间
+      const elapsed = Date.now() - startTime;
+      if (elapsed > overallTimeout) {
+        throw new Error(`AI API call timeout: exceeded ${overallTimeout}ms total time`);
+      }
+      
+      // 为每次请求设置超时（30秒）
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
@@ -57,7 +71,10 @@ async function callAiAskInternal(params: {
           sourceLanguage: params.sourceLanguage,
           targetLanguage: params.targetLanguage,
         }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -70,8 +87,17 @@ async function callAiAskInternal(params: {
         
         // 如果是429错误（Too Many Requests），进行重试
         if (response.status === 429 && attempt < retries) {
-          const delay = Math.pow(2, attempt) * 1000; // 指数退避：2s, 4s, 8s
-          console.log(`[callAiAskInternal] Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt}/${retries})`);
+          // 检查剩余时间是否足够重试
+          const elapsed = Date.now() - startTime;
+          const remainingTime = overallTimeout - elapsed;
+          const delay = Math.min(Math.pow(2, attempt) * 1000, remainingTime - 5000); // 指数退避，但不超过剩余时间
+          
+          if (delay < 1000) {
+            // 如果剩余时间不足1秒，直接失败
+            throw new Error(`AI API call timeout: insufficient time for retry (remaining: ${remainingTime}ms)`);
+          }
+          
+          console.log(`[callAiAskInternal] Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt}/${retries}, remaining: ${remainingTime}ms)`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -87,8 +113,16 @@ async function callAiAskInternal(params: {
             data.message?.includes("429") || 
             data.message?.includes("Too Many Requests")) {
           if (attempt < retries) {
-            const delay = Math.pow(2, attempt) * 1000;
-            console.log(`[callAiAskInternal] Provider rate limit (429), retrying in ${delay}ms (attempt ${attempt}/${retries})`);
+            // 检查剩余时间是否足够重试
+            const elapsed = Date.now() - startTime;
+            const remainingTime = overallTimeout - elapsed;
+            const delay = Math.min(Math.pow(2, attempt) * 1000, remainingTime - 5000);
+            
+            if (delay < 1000) {
+              throw new Error(`AI API call timeout: insufficient time for retry (remaining: ${remainingTime}ms)`);
+            }
+            
+            console.log(`[callAiAskInternal] Provider rate limit (429), retrying in ${delay}ms (attempt ${attempt}/${retries}, remaining: ${remainingTime}ms)`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
@@ -105,9 +139,17 @@ async function callAiAskInternal(params: {
       }
       
       // 如果是网络错误或429错误，等待后重试
-      if (error.message?.includes("429") || error.message?.includes("rate limit") || error.message?.includes("Too Many Requests")) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`[callAiAskInternal] Error (${error.message}), retrying in ${delay}ms (attempt ${attempt}/${retries})`);
+      if (error.message?.includes("429") || error.message?.includes("rate limit") || error.message?.includes("Too Many Requests") || error.name === "AbortError") {
+        // 检查剩余时间是否足够重试
+        const elapsed = Date.now() - startTime;
+        const remainingTime = overallTimeout - elapsed;
+        const delay = Math.min(Math.pow(2, attempt) * 1000, remainingTime - 5000);
+        
+        if (delay < 1000 || attempt === retries) {
+          throw error; // 如果剩余时间不足或已经是最后一次尝试，直接抛出错误
+        }
+        
+        console.log(`[callAiAskInternal] Error (${error.message}), retrying in ${delay}ms (attempt ${attempt}/${retries}, remaining: ${remainingTime}ms)`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
