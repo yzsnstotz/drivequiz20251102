@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, Trash2, BookOpen, Car, Shield, CheckSquare, XSquare, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import { getContentText } from '@/lib/questionContentUtils';
 
 interface Question {
   id: number;
   type: 'single' | 'multiple' | 'truefalse';
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
   image?: string;
   options?: string[];
   correctAnswer: string | string[];
@@ -52,9 +53,7 @@ function MistakeBookPage() {
 
   const getQuestionIcon = (question: Question) => {
     // 处理多语言content字段
-    const contentText = typeof question.content === 'string' 
-      ? question.content 
-      : (question.content?.zh || '');
+    const contentText = getContentText(question.content, 'zh');
     
     if (question.fromExam) {
       return <CheckSquare className="h-5 w-5 text-purple-600" />;
@@ -118,7 +117,7 @@ function MistakeBookPage() {
               </div>
             </div>
             
-            <p className="text-gray-900 text-lg mb-4">{selectedQuestion.content}</p>
+            <p className="text-gray-900 text-lg mb-4">{getContentText(selectedQuestion.content, 'zh')}</p>
             {selectedQuestion.image && (
               <div className="mb-4 relative w-full aspect-video">
                 <Image
@@ -239,9 +238,7 @@ function MistakeBookPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-gray-900 line-clamp-2">
-                      {index + 1}. {typeof question.content === 'string' 
-                        ? question.content 
-                        : (question.content?.zh || '')}
+                      {index + 1}. {getContentText(question.content, 'zh')}
                     </h3>
                     <button
                       onClick={(e) => {
