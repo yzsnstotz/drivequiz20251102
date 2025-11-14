@@ -113,7 +113,7 @@ const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim();
 
 // 直连 Google Gemini 配置
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
-const GEMINI_BASE_URL = process.env.GEMINI_BASE_URL?.trim() || "https://generativelanguage.googleapis.com/v1beta";
+const GEMINI_BASE_URL = process.env.GEMINI_BASE_URL?.trim() || "https://generativelanguage.googleapis.com/v1";
 
 // 在模块加载时记录环境变量（仅在开发环境）
 if (process.env.NODE_ENV === "development") {
@@ -1800,6 +1800,18 @@ export async function POST(req: NextRequest) {
         return err("INTERNAL_ERROR", "Google Gemini model is not configured.", 500);
       }
       
+      // 模型名称映射：将旧模型名称映射到新模型名称
+      // gemini-pro 已停用，映射到 gemini-1.5-flash
+      // gemini-pro-1.5 映射到 gemini-1.5-flash
+      const modelMapping: Record<string, string> = {
+        "gemini-pro": "gemini-1.5-flash",
+        "gemini-pro-1.5": "gemini-1.5-flash",
+      };
+      if (modelMapping[model]) {
+        console.log(`[${requestId}] [STEP 5.2.1] 模型名称映射: ${model} -> ${modelMapping[model]}`);
+        model = modelMapping[model];
+      }
+      
       // 安全审查（简化版，使用本地规则）
       const safetyCheck = checkSafetySimple(question);
       if (!safetyCheck.pass) {
@@ -1836,7 +1848,8 @@ export async function POST(req: NextRequest) {
       });
       
       // Google Gemini API 使用不同的格式
-      // URL: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}
+      // URL: https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={API_KEY}
+      // 注意：v1beta 版本已弃用，某些模型可能不支持，使用 v1 版本
       const geminiUrl = `${geminiBaseUrl}/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
       
       // Gemini API 使用 contents 格式，而不是 messages
