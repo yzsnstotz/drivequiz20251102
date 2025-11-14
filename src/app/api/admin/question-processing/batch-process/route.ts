@@ -450,6 +450,21 @@ async function processBatchAsync(
                 locale: input.polishOptions.locale,
               });
 
+              // 在批量处理中，如果后续有翻译操作，直接应用润色结果到内存变量
+              // 这样翻译操作会使用润色后的内容
+              // 同时仍然创建润色建议记录（用于审核和历史记录）
+              if (input.operations.includes("translate")) {
+                // 更新内存变量，供后续翻译操作使用
+                content = result.content;
+                if (result.options) {
+                  options = result.options;
+                }
+                if (result.explanation) {
+                  explanation = result.explanation;
+                }
+                console.log(`[API BatchProcess] [${requestId}] Updated in-memory content after polish for question ${question.id} (will be used for translation)`);
+              }
+
               // 创建润色建议（待审核）
               await db
                 .insertInto("question_polish_reviews")
