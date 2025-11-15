@@ -60,11 +60,13 @@ npx @opennextjs/cloudflare build
 
 **重要提示：**
 - OpenNext Cloudflare 会生成 Worker 文件（`.open-next/worker.js`）
+- Cloudflare Pages 需要 `_worker.js` 作为入口点（构建脚本会自动创建）
 - 确保 Cloudflare Pages 项目类型设置为 **"Workers"** 或 **"Full Stack"**
 - 如果仍然出现 404，可能需要检查：
-  1. 构建输出是否包含 `worker.js` 文件
+  1. 构建输出是否包含 `worker.js` 和 `_worker.js` 文件
   2. Cloudflare Pages 是否正确识别了 Worker 入口
   3. 环境变量是否正确配置
+  4. 在 Cloudflare Dashboard → Functions 中检查是否启用了 Pages Functions
 
 #### 环境变量配置
 
