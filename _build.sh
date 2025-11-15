@@ -22,5 +22,26 @@ fi
 echo "🏗️  构建 OpenNext Cloudflare 版本..."
 npx @opennextjs/cloudflare build
 
+# 确保 _routes.json 存在（Cloudflare Pages 路由配置）
+if [ ! -f ".open-next/_routes.json" ]; then
+  echo "📝 创建 _routes.json 路由配置文件..."
+  mkdir -p .open-next
+  cat > .open-next/_routes.json << 'EOF'
+{
+  "version": 1,
+  "include": ["/*"],
+  "exclude": []
+}
+EOF
+fi
+
+# 验证构建输出
+if [ ! -f ".open-next/worker.js" ]; then
+  echo "⚠️  警告: worker.js 文件不存在，构建可能不完整"
+  echo "请检查构建日志以获取更多信息"
+else
+  echo "✅ worker.js 文件已生成"
+fi
+
 echo "✅ 构建完成！"
 

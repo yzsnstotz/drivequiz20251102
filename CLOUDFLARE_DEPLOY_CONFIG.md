@@ -58,6 +58,14 @@ npx @opennextjs/cloudflare build
 /（项目根目录）
 ```
 
+**重要提示：**
+- OpenNext Cloudflare 会生成 Worker 文件（`.open-next/worker.js`）
+- 确保 Cloudflare Pages 项目类型设置为 **"Workers"** 或 **"Full Stack"**
+- 如果仍然出现 404，可能需要检查：
+  1. 构建输出是否包含 `worker.js` 文件
+  2. Cloudflare Pages 是否正确识别了 Worker 入口
+  3. 环境变量是否正确配置
+
 #### 环境变量配置
 
 在 **Settings** → **Environment Variables** 中设置以下 secrets（使用 `wrangler secret put` 命令）：
