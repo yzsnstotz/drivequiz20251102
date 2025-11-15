@@ -1,21 +1,28 @@
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { internalError, success } from "@/app/api/_lib/errors";
-import { getProcessorUrl } from "../_lib/getProcessorUrl";
+import { db } from "@/lib/db";
 
 export const GET = withAdminAuth(async (req: Request) => {
   try {
     const url = new URL(req.url);
     const status = url.searchParams.get("status") || "";
-    const upstream = await fetch(`${getProcessorUrl()}/reviews${status ? `?status=${encodeURIComponent(status)}` : ""}`);
-    const text = await upstream.text();
-    let json: any;
-    try { json = JSON.parse(text); } catch { return internalError("Processor non-JSON"); }
-    if (!upstream.ok || !json?.ok) {
-      return internalError(json?.message || `Processor error: ${upstream.status}`);
+    
+    // 直接从数据库查询润色审核记录
+    let query = db
+      .selectFrom("question_polish_reviews")
+      .selectAll()
+      .orderBy("created_at", "desc");
+    
+    if (status) {
+      query = query.where("status", "=", status as any);
     }
-    return success(json.data);
-  } catch {
-    return internalError("List reviews failed");
+    
+    const rows = await query.execute();
+    
+    return success(rows);
+  } catch (error: any) {
+    console.error("[Reviews API] Error:", error);
+    return internalError(error?.message || "List reviews failed");
   }
 });
 

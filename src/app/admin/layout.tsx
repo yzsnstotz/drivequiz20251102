@@ -81,6 +81,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [isDefaultAdmin, setIsDefaultAdmin] = useState<boolean | null>(null);
   const [adminPermissions, setAdminPermissions] = useState<string[] | null>(null);
+  // 菜单分组展开/收起状态（默认全部展开）
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["users", "questions", "merchant", "ai", "system"]));
   
   // 将导航项转换为带翻译的 NavItem（使用useMemo，依赖language确保实时更新）
   const ALL_NAV_ITEMS: NavItem[] = useMemo(() => {
@@ -303,30 +305,45 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         <aside className="hidden md:block w-60 shrink-0 bg-white/80 backdrop-blur-md border-r border-gray-200/50 min-h-[calc(100vh-3.5rem)]">
           <nav className="p-3 space-y-4">
             {/* 分组菜单 */}
-            {NAV_GROUPS.groups.map((group) => (
-              <div key={group.key} className="space-y-1">
-                <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  {group.label}
+            {NAV_GROUPS.groups.map((group) => {
+              const isExpanded = expandedGroups.has(group.key);
+              return (
+                <div key={group.key} className="space-y-1">
+                  <button
+                    onClick={() => {
+                      const newExpanded = new Set(expandedGroups);
+                      if (isExpanded) {
+                        newExpanded.delete(group.key);
+                      } else {
+                        newExpanded.add(group.key);
+                      }
+                      setExpandedGroups(newExpanded);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-700 transition-colors"
+                  >
+                    <span>{group.label}</span>
+                    <span className="text-xs">{isExpanded ? "−" : "+"}</span>
+                  </button>
+                  {isExpanded && group.items.map((item) => {
+                    const active = item.href === activeHref;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={[
+                          "block rounded-xl px-3 py-2.5 text-sm transition-colors ml-2",
+                          active
+                            ? "bg-blue-500 text-white shadow-sm"
+                            : "text-gray-700 hover:bg-gray-100/50",
+                        ].join(" ")}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
                 </div>
-                {group.items.map((item) => {
-                  const active = item.href === activeHref;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={[
-                        "block rounded-xl px-3 py-2.5 text-sm transition-colors ml-2",
-                        active
-                          ? "bg-blue-500 text-white shadow-sm"
-                          : "text-gray-700 hover:bg-gray-100/50",
-                      ].join(" ")}
-                    >
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
+              );
+            })}
             {/* 独立菜单项 */}
             {NAV_GROUPS.standaloneItems.length > 0 && (
               <div className="space-y-1">
@@ -358,32 +375,49 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           <div className="md:hidden px-4 pt-3 pb-2">
             <div className="space-y-3">
               {/* 分组菜单 */}
-              {NAV_GROUPS.groups.map((group) => (
-                <div key={group.key} className="space-y-2">
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2">
-                    {group.label}
+              {NAV_GROUPS.groups.map((group) => {
+                const isExpanded = expandedGroups.has(group.key);
+                return (
+                  <div key={group.key} className="space-y-2">
+                    <button
+                      onClick={() => {
+                        const newExpanded = new Set(expandedGroups);
+                        if (isExpanded) {
+                          newExpanded.delete(group.key);
+                        } else {
+                          newExpanded.add(group.key);
+                        }
+                        setExpandedGroups(newExpanded);
+                      }}
+                      className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 hover:text-gray-700 transition-colors"
+                    >
+                      <span>{group.label}</span>
+                      <span className="text-xs">{isExpanded ? "−" : "+"}</span>
+                    </button>
+                    {isExpanded && (
+                      <div className="flex flex-wrap gap-2">
+                        {group.items.map((item) => {
+                          const active = item.href === activeHref;
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              className={[
+                                "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
+                                active
+                                  ? "bg-blue-500 text-white shadow-sm"
+                                  : "text-gray-700 bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100",
+                              ].join(" ")}
+                            >
+                              {item.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {group.items.map((item) => {
-                      const active = item.href === activeHref;
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className={[
-                            "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
-                            active
-                              ? "bg-blue-500 text-white shadow-sm"
-                              : "text-gray-700 bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100",
-                          ].join(" ")}
-                        >
-                          {item.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {/* 独立菜单项 */}
               {NAV_GROUPS.standaloneItems.length > 0 && (
                 <div className="flex flex-wrap gap-2">
