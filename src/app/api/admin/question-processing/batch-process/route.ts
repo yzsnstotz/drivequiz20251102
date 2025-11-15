@@ -16,6 +16,137 @@ import {
 } from "../_lib/batchProcessUtils";
 import { aiDb } from "@/lib/aiDb";
 
+/**
+ * 生成任务完成简报（从数据库真实核验）
+ */
+async function generateTaskSummary(
+  taskId: string,
+  results: {
+    total: number;
+    processed: number;
+    succeeded: number;
+    failed: number;
+    errors: Array<{ questionId: number; error: string }>;
+    details: Array<{ questionId: number; operations: string[]; status: string }>;
+  },
+  questions: Array<{ id: number; content_hash: string }>,
+  input: {
+    operations: ("translate" | "polish" | "fill_missing" | "category_tags")[];
+    translateOptions?: { from: string; to: string | string[] };
+    polishOptions?: { locale: string };
+    batchSize: number;
+    continueOnError: boolean;
+  }
+): Promise<{
+  taskOverview: {
+    taskId: string;
+    operations: string[];
+    totalQuestions: number;
+    batchSize: number;
+    translateOptions?: { from: string; to: string | string[] };
+    polishOptions?: { locale: string };
+    continueOnError: boolean;
+  };
+  completionStatus: {
+    processed: number;
+    succeeded: number;
+    failed: number;
+    successRate: number;
+    verifiedFromDb: {
+      actualProcessed: number;
+      actualSucceeded: number;
+      actualFailed: number;
+      matches: boolean;
+    };
+  };
+  operationBreakdown: Record<string, {
+    attempted: number;
+    succeeded: number;
+    failed: number;
+  }>;
+  errorAnalysis: {
+    totalErrors: number;
+    uniqueErrorTypes: string[];
+    topErrors: Array<{ error: string; count: number }>;
+  };
+  generatedAt: string;
+}> {
+  // 从数据库真实核验完成情况
+  const taskRecord = await db
+    .selectFrom("batch_process_tasks")
+    .selectAll()
+    .where("task_id", "=", taskId)
+    .executeTakeFirst();
+
+  const actualProcessed = taskRecord?.processed_count || 0;
+  const actualSucceeded = taskRecord?.succeeded_count || 0;
+  const actualFailed = taskRecord?.failed_count || 0;
+
+  // 统计各操作的完成情况
+  const operationBreakdown: Record<string, { attempted: number; succeeded: number; failed: number }> = {};
+  input.operations.forEach(op => {
+    operationBreakdown[op] = { attempted: 0, succeeded: 0, failed: 0 };
+  });
+
+  results.details.forEach(detail => {
+    detail.operations.forEach(op => {
+      if (operationBreakdown[op]) {
+        operationBreakdown[op].attempted++;
+        if (detail.status === "success") {
+          operationBreakdown[op].succeeded++;
+        } else {
+          operationBreakdown[op].failed++;
+        }
+      }
+    });
+  });
+
+  // 错误分析
+  const errorTypes = new Map<string, number>();
+  results.errors.forEach(err => {
+    const errorType = err.error.split(":")[0] || err.error;
+    errorTypes.set(errorType, (errorTypes.get(errorType) || 0) + 1);
+  });
+
+  const topErrors = Array.from(errorTypes.entries())
+    .map(([error, count]) => ({ error, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return {
+    taskOverview: {
+      taskId,
+      operations: input.operations,
+      totalQuestions: results.total,
+      batchSize: input.batchSize,
+      translateOptions: input.translateOptions,
+      polishOptions: input.polishOptions,
+      continueOnError: input.continueOnError,
+    },
+    completionStatus: {
+      processed: results.processed,
+      succeeded: results.succeeded,
+      failed: results.failed,
+      successRate: results.processed > 0 ? (results.succeeded / results.processed) * 100 : 0,
+      verifiedFromDb: {
+        actualProcessed,
+        actualSucceeded,
+        actualFailed,
+        matches: actualProcessed === results.processed && 
+                 actualSucceeded === results.succeeded && 
+                 actualFailed === results.failed,
+      },
+    },
+    operationBreakdown,
+    errorAnalysis: {
+      totalErrors: results.errors.length,
+      uniqueErrorTypes: Array.from(errorTypes.keys()),
+      topErrors,
+    },
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 // POST /api/admin/question-processing/batch-process - 创建批量处理任务
 export const POST = withAdminAuth(async (req: Request) => {
   const requestId = `api-batch-process-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -937,6 +1068,9 @@ async function processBatchAsync(
     return;
   }
 
+    // 生成任务完成简报（从数据库真实核验）
+    const summary = await generateTaskSummary(taskId, results, questions, input);
+    
     // 更新任务状态为已完成
     // 根据处理结果决定最终状态：如果有失败的题目，标记为部分成功；如果全部成功，标记为完成
     const finalStatus = results.failed > 0 ? "completed" : "completed"; // 即使有失败，也标记为完成（因为 continueOnError 允许继续）
@@ -949,7 +1083,7 @@ async function processBatchAsync(
         succeeded_count: results.succeeded,
         failed_count: results.failed,
         errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-        details: sql`${JSON.stringify(results.details)}::jsonb`,
+        details: sql`${JSON.stringify([...results.details, { summary }])}::jsonb`,
         completed_at: new Date(),
         updated_at: new Date(),
       })
@@ -957,6 +1091,7 @@ async function processBatchAsync(
       .execute();
       
     console.log(`[BatchProcess] Task ${taskId} completed: ${results.succeeded} succeeded, ${results.failed} failed`);
+    console.log(`[BatchProcess] Task ${taskId} summary:`, JSON.stringify(summary, null, 2));
   } catch (error: any) {
     console.error(`[BatchProcess] Task ${taskId} failed: ${error.message}`);
     
