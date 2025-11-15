@@ -2301,7 +2301,15 @@ function QuestionForm({
         <textarea
           name="explanation"
           rows={2}
-          defaultValue={question?.explanation || ""}
+          defaultValue={
+            question?.explanation
+              ? typeof question.explanation === 'string'
+                ? question.explanation
+                : (typeof question.explanation === 'object' && question.explanation !== null
+                    ? (question.explanation.zh || question.explanation.en || question.explanation.ja || '')
+                    : '')
+              : ""
+          }
           className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           placeholder="请输入题目解析..."
         />
