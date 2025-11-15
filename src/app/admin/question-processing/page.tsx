@@ -36,6 +36,13 @@ type BatchProcessTask = {
     status: string;
     subtasks?: SubtaskDetail[]; // 子任务详细信息
   }> | null;
+  summary?: {
+    taskOverview: any;
+    completionStatus: any;
+    operationBreakdown: any;
+    errorAnalysis: any;
+    generatedAt: string;
+  };
   created_by: string | null;
   started_at: string | null;
   completed_at: string | null;
@@ -99,7 +106,18 @@ export default function QuestionProcessingPage() {
       );
 
       if (response.data) {
-        const loadedTasks = response.data.tasks || [];
+        const loadedTasks = (response.data.tasks || []).map((task: BatchProcessTask) => {
+          // 提取简报信息（如果存在）
+          if (task.details && Array.isArray(task.details)) {
+            const summaryItem = task.details.find((d: any) => d.summary);
+            if (summaryItem) {
+              task.summary = summaryItem.summary;
+              // 从 details 中移除 summary 项
+              task.details = task.details.filter((d: any) => !d.summary);
+            }
+          }
+          return task;
+        });
         setTasks(loadedTasks);
         return loadedTasks;
       } else {
@@ -1141,8 +1159,141 @@ export default function QuestionProcessingPage() {
                   </div>
                 )}
 
+                {/* 任务完成简报 */}
+                {selectedTask.status === "completed" && selectedTask.summary && (
+                  <div className="col-span-2 border-t pt-4 mt-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">任务完成简报</h3>
+                    
+                    {/* 任务概述 */}
+                    <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-2">任务概述</h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-gray-600">任务ID:</span>{" "}
+                          <code className="text-xs bg-white px-1 rounded">{selectedTask.summary.taskOverview.taskId}</code>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">操作类型:</span>{" "}
+                          {selectedTask.summary.taskOverview.operations.join(", ")}
+                        </div>
+                        <div>
+                          <span className="text-gray-600">总题目数:</span> {selectedTask.summary.taskOverview.totalQuestions}
+                        </div>
+                        <div>
+                          <span className="text-gray-600">批次大小:</span> {selectedTask.summary.taskOverview.batchSize}
+                        </div>
+                        {selectedTask.summary.taskOverview.translateOptions && (
+                          <div className="col-span-2">
+                            <span className="text-gray-600">翻译选项:</span>{" "}
+                            {selectedTask.summary.taskOverview.translateOptions.from} →{" "}
+                            {Array.isArray(selectedTask.summary.taskOverview.translateOptions.to)
+                              ? selectedTask.summary.taskOverview.translateOptions.to.join(", ")
+                              : selectedTask.summary.taskOverview.translateOptions.to}
+                          </div>
+                        )}
+                        {selectedTask.summary.taskOverview.polishOptions && (
+                          <div>
+                            <span className="text-gray-600">润色语言:</span> {selectedTask.summary.taskOverview.polishOptions.locale}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 完成情况 */}
+                    <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <h4 className="text-sm font-semibold text-green-900 mb-2">完成情况（数据库核验）</h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-gray-600">已处理:</span> {selectedTask.summary.completionStatus.processed}
+                        </div>
+                        <div>
+                          <span className="text-gray-600">成功:</span>{" "}
+                          <span className="text-green-700 font-semibold">
+                            {selectedTask.summary.completionStatus.succeeded}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">失败:</span>{" "}
+                          <span className="text-red-700 font-semibold">
+                            {selectedTask.summary.completionStatus.failed}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">成功率:</span>{" "}
+                          <span className="font-semibold">
+                            {selectedTask.summary.completionStatus.successRate.toFixed(2)}%
+                          </span>
+                        </div>
+                        <div className="col-span-2 mt-2 pt-2 border-t border-green-300">
+                          <div className="text-xs text-gray-600">
+                            <div>数据库核验:</div>
+                            <div className="mt-1">
+                              实际处理: {selectedTask.summary.completionStatus.verifiedFromDb.actualProcessed} |{" "}
+                              实际成功: {selectedTask.summary.completionStatus.verifiedFromDb.actualSucceeded} |{" "}
+                              实际失败: {selectedTask.summary.completionStatus.verifiedFromDb.actualFailed}
+                            </div>
+                            <div className={`mt-1 font-semibold ${
+                              selectedTask.summary.completionStatus.verifiedFromDb.matches ? "text-green-700" : "text-red-700"
+                            }`}>
+                              {selectedTask.summary.completionStatus.verifiedFromDb.matches ? "✓ 数据一致" : "✗ 数据不一致"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 操作分解 */}
+                    <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-2">操作分解</h4>
+                      <div className="space-y-2">
+                        {Object.entries(selectedTask.summary.operationBreakdown).map(([op, stats]: [string, any]) => (
+                          <div key={op} className="text-sm">
+                            <div className="font-medium text-gray-700 mb-1">
+                              {op === "translate" ? "翻译" : op === "polish" ? "润色" : op === "fill_missing" ? "填漏" : op === "category_tags" ? "分类标签" : op}
+                            </div>
+                            <div className="ml-4 text-xs text-gray-600">
+                              尝试: {stats.attempted} | 成功: {stats.succeeded} | 失败: {stats.failed}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 错误分析 */}
+                    {selectedTask.summary.errorAnalysis.totalErrors > 0 && (
+                      <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                        <h4 className="text-sm font-semibold text-red-900 mb-2">错误分析</h4>
+                        <div className="text-sm">
+                          <div className="mb-2">
+                            <span className="text-gray-600">总错误数:</span> {selectedTask.summary.errorAnalysis.totalErrors}
+                          </div>
+                          <div className="mb-2">
+                            <span className="text-gray-600">错误类型数:</span> {selectedTask.summary.errorAnalysis.uniqueErrorTypes.length}
+                          </div>
+                          {selectedTask.summary.errorAnalysis.topErrors.length > 0 && (
+                            <div>
+                              <div className="text-gray-600 mb-1">主要错误:</div>
+                              <ul className="ml-4 space-y-1 text-xs">
+                                {selectedTask.summary.errorAnalysis.topErrors.map((err: any, idx: number) => (
+                                  <li key={idx}>
+                                    {err.error} ({err.count} 次)
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-500 mt-2">
+                      简报生成时间: {new Date(selectedTask.summary.generatedAt).toLocaleString()}
+                    </div>
+                  </div>
+                )}
+
                 {/* 详情列表 */}
-                {selectedTask.details && selectedTask.details.length > 0 && (
+                {selectedTask.details && selectedTask.details.filter((d: any) => !d.summary).length > 0 && (
                   <div>
                     <label className="text-sm font-medium text-gray-700">
                       处理详情（包含子任务级别的AI对答追踪）

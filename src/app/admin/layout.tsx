@@ -82,6 +82,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [adminPermissions, setAdminPermissions] = useState<string[] | null>(null);
   // 菜单分组展开/收起状态（默认全部收起）
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // 移动端菜单开关状态
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // 将导航项转换为带翻译的 NavItem（使用useMemo，依赖language确保实时更新）
   const ALL_NAV_ITEMS: NavItem[] = useMemo(() => {
@@ -236,6 +238,20 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       {/* 顶部条 */}
       <header className="sticky top-0 z-20 h-14 bg-white/80 backdrop-blur-md border-b border-gray-200/50 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
+          {/* 移动端汉堡菜单按钮 */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Toggle menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {isMobileMenuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
           <span className="text-base font-semibold tracking-tight">{t('header.title')}</span>
           <span className="text-[10px] text-gray-400 hidden sm:inline">UTC · vNext</span>
         </div>
@@ -368,79 +384,82 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           </nav>
         </aside>
 
-        {/* 主体内容 */}
-        <main className="flex-1 min-h-[calc(100vh-3.5rem)] max-w-full overflow-x-hidden">
-          {/* 移动端导航 */}
-          <div className="md:hidden px-4 pt-3 pb-2">
-            <div className="space-y-3">
-              {/* 分组菜单 */}
-              {NAV_GROUPS.groups.map((group) => {
-                const isExpanded = expandedGroups.has(group.key);
-                return (
-                  <div key={group.key} className="space-y-2">
-                    <button
-                      onClick={() => {
-                        const newExpanded = new Set(expandedGroups);
-                        if (isExpanded) {
-                          newExpanded.delete(group.key);
-                        } else {
-                          newExpanded.add(group.key);
-                        }
-                        setExpandedGroups(newExpanded);
-                      }}
-                      className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 hover:text-gray-700 transition-colors"
-                    >
-                      <span>{group.label}</span>
-                      <span className="text-xs">{isExpanded ? "−" : "+"}</span>
-                    </button>
-                    {isExpanded && (
-                      <div className="flex flex-wrap gap-2">
-                        {group.items.map((item) => {
-                          const active = item.href === activeHref;
-                          return (
-                            <Link
-                              key={item.href}
-                              href={item.href}
-                              className={[
-                                "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
-                                active
-                                  ? "bg-blue-500 text-white shadow-sm"
-                                  : "text-gray-700 bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100",
-                              ].join(" ")}
-                            >
-                              {item.label}
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {/* 独立菜单项 */}
-              {NAV_GROUPS.standaloneItems.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {NAV_GROUPS.standaloneItems.map((item) => {
-                    const active = item.href === activeHref;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={[
-                          "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
-                          active
-                            ? "bg-blue-500 text-white shadow-sm"
-                            : "text-gray-700 bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100",
-                        ].join(" ")}
+        {/* 移动端侧边栏菜单（汉堡菜单） */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden fixed inset-0 z-30 bg-black bg-opacity-50" onClick={() => setIsMobileMenuOpen(false)}>
+            <div className="fixed left-0 top-14 bottom-0 w-64 bg-white shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <nav className="p-3 space-y-4">
+                {/* 分组菜单 */}
+                {NAV_GROUPS.groups.map((group) => {
+                  const isExpanded = expandedGroups.has(group.key);
+                  return (
+                    <div key={group.key} className="space-y-1">
+                      <button
+                        onClick={() => {
+                          const newExpanded = new Set(expandedGroups);
+                          if (isExpanded) {
+                            newExpanded.delete(group.key);
+                          } else {
+                            newExpanded.add(group.key);
+                          }
+                          setExpandedGroups(newExpanded);
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-700 transition-colors"
                       >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
+                        <span>{group.label}</span>
+                        <span className="text-xs">{isExpanded ? "−" : "+"}</span>
+                      </button>
+                      {isExpanded && group.items.map((item) => {
+                        const active = item.href === activeHref;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className={[
+                              "block rounded-xl px-3 py-2.5 text-sm transition-colors ml-2",
+                              active
+                                ? "bg-blue-500 text-white shadow-sm"
+                                : "text-gray-700 hover:bg-gray-100/50",
+                            ].join(" ")}
+                          >
+                            {item.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+                {/* 独立菜单项 */}
+                {NAV_GROUPS.standaloneItems.length > 0 && (
+                  <div className="space-y-1">
+                    {NAV_GROUPS.standaloneItems.map((item) => {
+                      const active = item.href === activeHref;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={[
+                            "block rounded-xl px-3 py-2.5 text-sm transition-colors",
+                            active
+                              ? "bg-blue-500 text-white shadow-sm"
+                              : "text-gray-700 hover:bg-gray-100/50",
+                          ].join(" ")}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </nav>
             </div>
           </div>
+        )}
+
+        {/* 主体内容 */}
+        <main className="flex-1 min-h-[calc(100vh-3.5rem)] max-w-full overflow-x-hidden">
 
           {/* iOS风格内容容器 */}
           <div className="px-4 pb-4 md:px-6 md:pb-6">
