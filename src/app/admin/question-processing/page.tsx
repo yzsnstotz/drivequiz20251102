@@ -203,25 +203,46 @@ export default function QuestionProcessingPage() {
 
   // 当任务详情窗口打开时，自动刷新该任务
   useEffect(() => {
+    // 使用 ref 来跟踪是否应该继续刷新
+    let shouldRefresh = true;
+    
     if (!selectedTask) {
       if (detailRefreshRef.current) {
         clearInterval(detailRefreshRef.current);
         detailRefreshRef.current = null;
       }
       setCurrentAiLogs([]);
+      shouldRefresh = false;
       return;
     }
+
+    const taskId = selectedTask.task_id; // 保存 taskId 到局部变量
 
     // 如果任务正在处理，设置定时刷新
     if (selectedTask.status === "processing" || selectedTask.status === "pending") {
       const refreshDetail = async () => {
+        // 检查是否应该继续刷新（防止在组件卸载或任务关闭后继续刷新）
+        if (!shouldRefresh) {
+          if (detailRefreshRef.current) {
+            clearInterval(detailRefreshRef.current);
+            detailRefreshRef.current = null;
+          }
+          return;
+        }
+
         try {
           const latestTasks = await loadTasks();
-          const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
+          const updatedTask = latestTasks.find(t => t.task_id === taskId);
           if (updatedTask) {
-            setSelectedTask(updatedTask);
+            // 只有在任务详情窗口仍然打开时才更新
+            setSelectedTask((current) => {
+              if (current && current.task_id === taskId) {
+                return updatedTask;
+              }
+              return current;
+            });
             // 加载 AI 日志
-            await loadCurrentAiLogs(updatedTask.task_id);
+            await loadCurrentAiLogs(taskId);
           }
         } catch (e) {
           console.error("Failed to refresh task detail:", e);
@@ -239,15 +260,17 @@ export default function QuestionProcessingPage() {
         detailRefreshRef.current = null;
       }
       setCurrentAiLogs([]);
+      shouldRefresh = false;
     }
 
     return () => {
+      shouldRefresh = false;
       if (detailRefreshRef.current) {
         clearInterval(detailRefreshRef.current);
         detailRefreshRef.current = null;
       }
     };
-  }, [selectedTask]); // 移除 tasks 依赖，避免频繁重建 interval
+  }, [selectedTask?.task_id, selectedTask?.status]); // 只依赖 task_id 和 status，避免频繁重建
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -927,20 +950,30 @@ export default function QuestionProcessingPage() {
                         AI 服务对话详情
                       </label>
                       <div className="mt-2 max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
-                        {currentAiLogs.map((log, idx) => (
+                        {currentAiLogs.map((log: any, idx) => (
                           <div key={idx} className="mb-4 pb-4 border-b last:border-b-0">
-                            <div className="text-xs text-gray-500 mb-1">
-                              {new Date(log.created_at).toLocaleString()} · {log.model}
+                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
+                              <span>{new Date(log.created_at).toLocaleString()}</span>
+                              <span>·</span>
+                              <span>{log.model}</span>
+                              {log.operations && log.operations.length > 0 && (
+                                <>
+                                  <span>·</span>
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px]">
+                                    {log.operations.join(", ")}
+                                  </span>
+                                </>
+                              )}
                             </div>
                             <div className="text-sm mb-2">
                               <div className="font-semibold text-gray-700 mb-1">提问：</div>
-                              <div className="bg-white p-2 rounded border text-gray-800 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                              <div className="bg-white p-2 rounded border text-gray-800 whitespace-pre-wrap max-h-32 overflow-y-auto text-xs">
                                 {log.question}
                               </div>
                             </div>
                             <div className="text-sm">
                               <div className="font-semibold text-gray-700 mb-1">回答：</div>
-                              <div className="bg-blue-50 p-2 rounded border border-blue-200 text-gray-800 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                              <div className="bg-blue-50 p-2 rounded border border-blue-200 text-gray-800 whitespace-pre-wrap max-h-48 overflow-y-auto text-xs">
                                 {log.answer}
                               </div>
                             </div>
