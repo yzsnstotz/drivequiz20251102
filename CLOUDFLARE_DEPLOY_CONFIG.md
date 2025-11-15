@@ -68,7 +68,7 @@ npx wrangler secret put AI_DATABASE_URL
 
 **重要配置：**
 - `pages_build_output_dir = ".open-next"` - Cloudflare Pages 需要的输出目录配置
-- `binding = "STATIC_ASSETS"` - 不能使用 `ASSETS`（Pages 保留名称）
+- **注意**：Pages 项目不支持 `main` 和 `assets` 配置项（这些是 Workers 专用的）
 
 ### 4. 本地测试构建
 
