@@ -153,12 +153,12 @@ export const POST = withAdminAuth(async (req: Request) => {
         let updatedContent: any;
         if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
           updatedContent = { ...currentQuestion.content, [targetLang]: result.content };
-        } else {
+        } else if (typeof currentQuestion.content === "string") {
           // 如果原本是字符串，转换为 JSONB 对象
-          const zhContent = typeof currentQuestion.content === "string" 
-            ? currentQuestion.content 
-            : (currentQuestion.content?.zh || "");
-          updatedContent = { zh: zhContent, [targetLang]: result.content };
+          updatedContent = { zh: currentQuestion.content, [targetLang]: result.content };
+        } else {
+          // 如果 content 为空或 null，直接创建新的 JSONB 对象
+          updatedContent = { [targetLang]: result.content };
         }
 
         // 更新 explanation JSONB 对象，添加目标语言
@@ -170,13 +170,10 @@ export const POST = withAdminAuth(async (req: Request) => {
           
           if (currentQuestion.explanation && typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
             updatedExplanation = { ...currentQuestion.explanation, [targetLang]: explanationStr };
+          } else if (typeof currentQuestion.explanation === "string") {
+            updatedExplanation = { zh: currentQuestion.explanation, [targetLang]: explanationStr };
           } else {
-            const zhExplanation = typeof currentQuestion.explanation === "string"
-              ? currentQuestion.explanation
-              : (currentQuestion.explanation?.zh || "");
-            updatedExplanation = zhExplanation 
-              ? { zh: zhExplanation, [targetLang]: explanationStr }
-              : { [targetLang]: explanationStr };
+            updatedExplanation = { [targetLang]: explanationStr };
           }
         } else if (currentQuestion.explanation) {
           updatedExplanation = currentQuestion.explanation;
