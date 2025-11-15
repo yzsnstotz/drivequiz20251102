@@ -27,6 +27,11 @@ git push
 npm install && npm run cf:build
 ```
 
+或者直接使用 npx：
+```bash
+npm install && npx @opennextjs/cloudflare build
+```
+
 或者使用构建脚本：
 ```bash
 bash _build.sh
@@ -60,6 +65,10 @@ npx wrangler secret put AI_DATABASE_URL
 ### 3. 使用 wrangler.toml
 
 确保 `wrangler.toml` 文件在项目根目录，Cloudflare 会自动读取。
+
+**重要配置：**
+- `pages_build_output_dir = ".open-next"` - Cloudflare Pages 需要的输出目录配置
+- `binding = "STATIC_ASSETS"` - 不能使用 `ASSETS`（Pages 保留名称）
 
 ### 4. 本地测试构建
 
