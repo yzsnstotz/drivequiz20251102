@@ -60,10 +60,11 @@ export const PATH_TO_PERMISSION: Record<string, PermissionCategory> = {
   '/admin/ai/logs': PERMISSION_CATEGORIES.AI_LOGS,
   '/admin/ai/filters': PERMISSION_CATEGORIES.AI_FILTERS,
   '/admin/ai/config': PERMISSION_CATEGORIES.AI_CONFIG,
+  '/admin/ai/scenes': PERMISSION_CATEGORIES.AI_CONFIG,
   '/admin/ai/rag': PERMISSION_CATEGORIES.AI_RAG,
   '/admin/ai/rag/list': PERMISSION_CATEGORIES.AI_RAG_LIST,
-  // AI总览页面需要至少有一个AI权限才能访问
-  '/admin/ai': PERMISSION_CATEGORIES.AI_MONITOR, // 默认使用monitor权限，实际会检查是否有任意AI权限
+  // AI总览页面（如果存在）默认使用monitor权限
+  '/admin/ai': PERMISSION_CATEGORIES.AI_MONITOR,
 };
 
 /**
@@ -107,23 +108,6 @@ export function hasPermissionForPath(
   // 登录页面不需要权限检查
   if (pathname === '/admin/login') {
     return true;
-  }
-
-  // 特殊处理：AI总览页面需要至少有一个AI权限
-  if (pathname === '/admin/ai') {
-    if (!adminPermissions || !Array.isArray(adminPermissions)) {
-      return false;
-    }
-    // 检查是否有任意AI权限
-    const aiPermissions = [
-      PERMISSION_CATEGORIES.AI_MONITOR,
-      PERMISSION_CATEGORIES.AI_LOGS,
-      PERMISSION_CATEGORIES.AI_FILTERS,
-      PERMISSION_CATEGORIES.AI_CONFIG,
-      PERMISSION_CATEGORIES.AI_RAG,
-      PERMISSION_CATEGORIES.AI_RAG_LIST,
-    ];
-    return aiPermissions.some(perm => adminPermissions.includes(perm));
   }
 
   // 查找路径对应的权限
