@@ -25,17 +25,19 @@ ls -la .open-next/worker.js
 
 在 Cloudflare Dashboard 中检查：
 
-1. **项目类型**：
-   - 进入项目 → Settings → Functions
-   - 确保启用了 **"Pages Functions"** 或 **"Workers"**
+1. **Functions 设置（重要）**：
+   - 进入项目 → **Settings** → **Functions**
+   - 确保 **"Pages Functions"** 已启用
+   - 检查是否有任何错误或警告
+   - **注意**：不需要在 Bindings 页面配置任何内容（除非需要连接外部资源）
 
 2. **构建输出目录**：
    - Settings → Builds & deployments
    - 输出目录应设置为：`.open-next`
 
 3. **Worker 入口点**：
-   - 如果使用 Pages Functions，可能需要配置入口点
-   - 检查是否有 `_worker.js` 或 `worker.js` 文件
+   - 检查部署的文件中是否包含 `.open-next/_worker.js`
+   - 如果没有，需要重新部署（构建脚本会自动创建）
 
 ### 3. 检查路由配置
 
