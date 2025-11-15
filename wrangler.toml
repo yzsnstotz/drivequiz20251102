@@ -1,8 +1,12 @@
-name = "drivequiz-admin-dev"   # 随便起，但建议跟用途相关
+name = "drivequiz-admin-dev"
+
+main = ".open-next/worker.js"
+
 compatibility_date = "2024-09-23"
+
 compatibility_flags = ["nodejs_compat"]
 
-# Cloudflare Pages 配置
-# 注意：Pages 项目不支持 "main" 和 "assets" 配置项
-pages_build_output_dir = ".open-next"
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
 
