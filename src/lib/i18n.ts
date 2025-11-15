@@ -13,7 +13,7 @@ export const adminTranslations: Translations = {
     'nav.dashboard': 'Dashboard',
     'nav.activationCodes': '激活码',
     'nav.users': '用户',
-    'nav.questions': '题目',
+    'nav.questions': '题目列表',
     'nav.questionProcessing': '批量题目处理',
     'nav.polishReviews': '润色确认',
     'nav.admins': '管理员',
@@ -25,11 +25,19 @@ export const adminTranslations: Translations = {
     'nav.adSlots': '广告栏管理',
     'nav.videos': '视频管理',
     'nav.contactAndTerms': '联系与条款',
-    'nav.ai': 'AI 总览',
+    'nav.aiMonitor': '每日摘要看板',
+    'nav.aiLogs': '问答日志',
+    'nav.aiFilters': '过滤规则',
+    'nav.aiConfig': '配置中心',
+    'nav.aiScenes': '场景配置',
+    'nav.aiRag': '知识库上传',
+    'nav.aiRagList': '文档列表',
     
     // 菜单分组
-    'nav.group.activation': '激活管理',
+    'nav.group.users': '用户管理',
+    'nav.group.questions': '题库管理',
     'nav.group.merchant': '商户与广告',
+    'nav.group.ai': 'AI管理',
     'nav.group.system': '系统管理',
     
     // 顶部栏
@@ -159,7 +167,7 @@ export const adminTranslations: Translations = {
     'nav.dashboard': 'Dashboard',
     'nav.activationCodes': 'Activation Codes',
     'nav.users': 'Users',
-    'nav.questions': 'Questions',
+    'nav.questions': 'Question List',
     'nav.questionProcessing': 'Batch Question Processing',
     'nav.polishReviews': 'Polish Reviews',
     'nav.admins': 'Admins',
@@ -171,11 +179,19 @@ export const adminTranslations: Translations = {
     'nav.adSlots': 'Ad Slots',
     'nav.videos': 'Videos',
     'nav.contactAndTerms': 'Contact & Terms',
-    'nav.ai': 'AI Overview',
+    'nav.aiMonitor': 'Daily Summary',
+    'nav.aiLogs': 'AI Logs',
+    'nav.aiFilters': 'Filters',
+    'nav.aiConfig': 'Config Center',
+    'nav.aiScenes': 'Scene Config',
+    'nav.aiRag': 'RAG Upload',
+    'nav.aiRagList': 'Document List',
     
     // 菜单分组
-    'nav.group.activation': 'Activation Management',
+    'nav.group.users': 'User Management',
+    'nav.group.questions': 'Question Management',
     'nav.group.merchant': 'Merchants & Ads',
+    'nav.group.ai': 'AI Management',
     'nav.group.system': 'System Management',
     
     // 顶部栏
@@ -305,7 +321,7 @@ export const adminTranslations: Translations = {
     'nav.dashboard': 'ダッシュボード',
     'nav.activationCodes': 'アクティベーションコード',
     'nav.users': 'ユーザー',
-    'nav.questions': '問題',
+    'nav.questions': '問題一覧',
     'nav.questionProcessing': '問題一括処理',
     'nav.polishReviews': '推敲確認',
     'nav.admins': '管理者',
@@ -317,11 +333,19 @@ export const adminTranslations: Translations = {
     'nav.adSlots': '広告欄管理',
     'nav.videos': '動画管理',
     'nav.contactAndTerms': '連絡と規約',
-    'nav.ai': 'AI 概要',
+    'nav.aiMonitor': '日次サマリー',
+    'nav.aiLogs': 'AIログ',
+    'nav.aiFilters': 'フィルター',
+    'nav.aiConfig': '設定センター',
+    'nav.aiScenes': 'シーン設定',
+    'nav.aiRag': 'RAGアップロード',
+    'nav.aiRagList': 'ドキュメント一覧',
     
     // 菜单分组
-    'nav.group.activation': '有効化管理',
+    'nav.group.users': 'ユーザー管理',
+    'nav.group.questions': '問題管理',
     'nav.group.merchant': '店舗と広告',
+    'nav.group.ai': 'AI管理',
     'nav.group.system': 'システム管理',
     
     // 顶部栏

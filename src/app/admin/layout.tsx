@@ -44,16 +44,26 @@ type NavGroup = {
 };
 
 const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
-  // 激活管理分组
-  { key: "nav.activationCodes", href: "/admin/activation-codes", match: (p: string) => p.startsWith("/admin/activation-codes"), permission: "activation_codes", group: "activation" },
-  { key: "nav.tasks", href: "/admin/tasks", match: (p: string) => p.startsWith("/admin/tasks"), permission: "tasks", group: "activation" },
-  // 独立菜单项
-  { key: "nav.users", href: "/admin/users", match: (p: string) => p.startsWith("/admin/users"), permission: "users" },
-  { key: "nav.questions", href: "/admin/questions", match: (p: string) => p.startsWith("/admin/questions") || p.startsWith("/admin/question-processing") || p.startsWith("/admin/polish-reviews"), permission: "questions" },
+  // 用户管理分组
+  { key: "nav.users", href: "/admin/users", match: (p: string) => p.startsWith("/admin/users"), permission: "users", group: "users" },
+  { key: "nav.activationCodes", href: "/admin/activation-codes", match: (p: string) => p.startsWith("/admin/activation-codes"), permission: "activation_codes", group: "users" },
+  { key: "nav.tasks", href: "/admin/tasks", match: (p: string) => p.startsWith("/admin/tasks"), permission: "tasks", group: "users" },
+  // 题库管理分组
+  { key: "nav.questions", href: "/admin/questions", match: (p: string) => p.startsWith("/admin/questions") && !p.startsWith("/admin/question-processing") && !p.startsWith("/admin/polish-reviews"), permission: "questions", group: "questions" },
+  { key: "nav.questionProcessing", href: "/admin/question-processing", match: (p: string) => p.startsWith("/admin/question-processing"), permission: "questions", group: "questions" },
+  { key: "nav.polishReviews", href: "/admin/polish-reviews", match: (p: string) => p.startsWith("/admin/polish-reviews"), permission: "questions", group: "questions" },
   // 商户与广告分组
   { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants", group: "merchant" },
   { key: "nav.merchantCategories", href: "/admin/merchant-categories", match: (p: string) => p.startsWith("/admin/merchant-categories"), permission: "merchants", group: "merchant" },
   { key: "nav.adSlots", href: "/admin/ad-slots", match: (p: string) => p.startsWith("/admin/ad-slots"), permission: "merchants", group: "merchant" },
+  // AI管理分组
+  { key: "nav.aiMonitor", href: "/admin/ai/monitor", match: (p: string) => p.startsWith("/admin/ai/monitor"), permission: "ai_monitor", group: "ai" },
+  { key: "nav.aiLogs", href: "/admin/ai/logs", match: (p: string) => p.startsWith("/admin/ai/logs"), permission: "ai_logs", group: "ai" },
+  { key: "nav.aiFilters", href: "/admin/ai/filters", match: (p: string) => p.startsWith("/admin/ai/filters"), permission: "ai_filters", group: "ai" },
+  { key: "nav.aiConfig", href: "/admin/ai/config", match: (p: string) => p.startsWith("/admin/ai/config"), permission: "ai_config", group: "ai" },
+  { key: "nav.aiScenes", href: "/admin/ai/scenes", match: (p: string) => p.startsWith("/admin/ai/scenes"), permission: "ai_config", group: "ai" },
+  { key: "nav.aiRag", href: "/admin/ai/rag", match: (p: string) => p.startsWith("/admin/ai/rag") && !p.startsWith("/admin/ai/rag/list"), permission: "ai_rag", group: "ai" },
+  { key: "nav.aiRagList", href: "/admin/ai/rag/list", match: (p: string) => p.startsWith("/admin/ai/rag/list"), permission: "ai_rag_list", group: "ai" },
   // 系统管理分组
   { key: "nav.operationLogs", href: "/admin/operation-logs", match: (p: string) => p.startsWith("/admin/operation-logs"), permission: "operation_logs", group: "system" },
   { key: "nav.stats", href: "/admin/stats", match: (p: string) => p.startsWith("/admin/stats"), permission: "stats", group: "system" },
@@ -61,8 +71,6 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   // 其他独立菜单项
   { key: "nav.videos", href: "/admin/videos", match: (p: string) => p.startsWith("/admin/videos"), permission: "videos" },
   { key: "nav.contactAndTerms", href: "/admin/contact-and-terms", match: (p: string) => p.startsWith("/admin/contact-and-terms"), permission: "contact_and_terms" },
-  // AI板块：总览页面需要至少有一个AI权限才能显示
-  { key: "nav.ai", href: "/admin/ai", match: (p: string) => p.startsWith("/admin/ai"), permission: "ai_monitor" },
 ] as const;
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
@@ -156,22 +164,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         if (item.requireDefaultAdmin) {
           return false;
         }
-        // 特殊处理：AI总览页面需要至少有一个AI权限
-        if (item.href === "/admin/ai") {
-          if (!adminPermissions || !Array.isArray(adminPermissions)) {
-            return false;
-          }
-          // 检查是否有任意AI权限
-          const aiPermissions = [
-            "ai_monitor",
-            "ai_logs",
-            "ai_filters",
-            "ai_config",
-            "ai_rag",
-            "ai_rag_list",
-          ];
-          return aiPermissions.some((perm) => adminPermissions.includes(perm));
-        }
         // 检查权限类别
         if (item.permission && adminPermissions) {
           return adminPermissions.includes(item.permission);
@@ -190,8 +182,10 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     
     // 定义分组顺序和标签
     const groupOrder = [
-      { key: "activation", labelKey: "nav.group.activation" },
+      { key: "users", labelKey: "nav.group.users" },
+      { key: "questions", labelKey: "nav.group.questions" },
       { key: "merchant", labelKey: "nav.group.merchant" },
+      { key: "ai", labelKey: "nav.group.ai" },
       { key: "system", labelKey: "nav.group.system" },
     ];
     
