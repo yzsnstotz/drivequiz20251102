@@ -3,6 +3,8 @@
  * 从 question-processor 提取的逻辑，用于内部调用
  */
 
+import { aiDb } from "@/lib/aiDb";
+
 export interface TranslateResult {
   content: string;
   options?: string[];
@@ -13,6 +15,62 @@ export interface CategoryAndTagsResult {
   category?: string | null;
   stage_tag?: "both" | "provisional" | "regular" | null;
   topic_tags?: string[] | null;
+}
+
+/**
+ * 子任务详细信息
+ */
+export interface SubtaskDetail {
+  operation: string; // 操作类型：translate, polish, fill_missing, category_tags
+  scene: string; // 场景标识
+  sceneName: string; // 场景名称
+  prompt: string; // 使用的prompt
+  expectedFormat: string | null; // 预期的输出格式
+  question: string; // 发送给AI的问题
+  answer: string; // AI的回答
+  status: "success" | "failed"; // 状态
+  error?: string; // 错误信息（如果有）
+  timestamp: string; // 时间戳
+}
+
+/**
+ * 获取场景配置（prompt和输出格式）
+ */
+async function getSceneConfig(sceneKey: string, locale: string = "zh"): Promise<{
+  prompt: string;
+  outputFormat: string | null;
+  sceneName: string;
+} | null> {
+  try {
+    const sceneConfig = await (aiDb as any)
+      .selectFrom("ai_scene_config")
+      .selectAll()
+      .where("scene_key", "=", sceneKey)
+      .where("enabled", "=", true)
+      .executeTakeFirst();
+
+    if (!sceneConfig) {
+      return null;
+    }
+
+    // 根据语言选择prompt
+    let prompt = sceneConfig.system_prompt_zh;
+    const lang = locale.toLowerCase();
+    if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
+      prompt = sceneConfig.system_prompt_ja;
+    } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
+      prompt = sceneConfig.system_prompt_en;
+    }
+
+    return {
+      prompt: prompt || sceneConfig.system_prompt_zh,
+      outputFormat: sceneConfig.output_format || null,
+      sceneName: sceneConfig.scene_name || sceneKey,
+    };
+  } catch (error) {
+    console.error(`[getSceneConfig] Failed to get scene config for ${sceneKey}:`, error);
+    return null;
+  }
 }
 
 /**
@@ -171,15 +229,16 @@ async function callAiAskInternal(params: {
 }
 
 /**
- * 翻译并润色
+ * 翻译并润色（带详细信息）
  */
 export async function translateWithPolish(params: {
   source: { content: string; options?: string[]; explanation?: string };
   from: string;
   to: string;
   adminToken?: string; // 管理员 token，用于跳过配额限制
-}): Promise<TranslateResult> {
-  const { source, from, to, adminToken } = params;
+  returnDetail?: boolean; // 是否返回详细信息
+}): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
+  const { source, from, to, adminToken, returnDetail } = params;
   const questionText = [
     `Content: ${source.content}`,
     source.options && source.options.length ? `Options:\n- ${source.options.join("\n- ")}` : ``,
@@ -188,10 +247,17 @@ export async function translateWithPolish(params: {
     .filter(Boolean)
     .join("\n");
 
+  const sceneKey = "question_translation";
+  let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;
+  
+  if (returnDetail) {
+    sceneConfig = await getSceneConfig(sceneKey, to);
+  }
+
   const data = await callAiAskInternal({
     question: questionText,
     locale: to,
-    scene: "question_translation",
+    scene: sceneKey,
     sourceLanguage: from,
     targetLanguage: to,
     adminToken,
@@ -290,11 +356,28 @@ export async function translateWithPolish(params: {
     throw new Error("AI translation response missing content field");
   }
   
-  return {
+  const result: TranslateResult = {
     content: contentStr,
     options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : undefined,
     explanation: parsed.explanation ? String(parsed.explanation) : undefined,
   };
+
+  if (returnDetail) {
+    const detail: SubtaskDetail = {
+      operation: "translate",
+      scene: sceneKey,
+      sceneName: sceneConfig?.sceneName || sceneKey,
+      prompt: sceneConfig?.prompt || "",
+      expectedFormat: sceneConfig?.outputFormat || null,
+      question: questionText,
+      answer: data.answer,
+      status: "success",
+      timestamp: new Date().toISOString(),
+    };
+    return { result, detail };
+  }
+
+  return result;
 }
 
 /**
