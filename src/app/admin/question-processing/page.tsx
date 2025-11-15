@@ -106,7 +106,7 @@ export default function QuestionProcessingPage() {
       );
 
       if (response.data) {
-        const loadedTasks = (response.data.tasks || []).map((task: BatchProcessTask) => {
+        const loadedTasks = (response.data.tasks || []).map((task: BatchProcessTask): BatchProcessTask => {
           // 提取简报信息（如果存在）
           if (task.details && Array.isArray(task.details)) {
             const summaryItem = task.details.find((d: any) => d.summary);
@@ -116,7 +116,7 @@ export default function QuestionProcessingPage() {
                 ...task,
                 summary: summaryItem.summary,
                 details: task.details.filter((d: any) => !d.summary),
-              };
+              } as BatchProcessTask;
             }
           }
           return task;
