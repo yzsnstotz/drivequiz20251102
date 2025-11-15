@@ -56,6 +56,8 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants", group: "merchant" },
   { key: "nav.merchantCategories", href: "/admin/merchant-categories", match: (p: string) => p.startsWith("/admin/merchant-categories"), permission: "merchants", group: "merchant" },
   { key: "nav.adSlots", href: "/admin/ad-slots", match: (p: string) => p.startsWith("/admin/ad-slots"), permission: "merchants", group: "merchant" },
+  { key: "nav.videos", href: "/admin/videos", match: (p: string) => p.startsWith("/admin/videos"), permission: "videos", group: "merchant" },
+  { key: "nav.contactAndTerms", href: "/admin/contact-and-terms", match: (p: string) => p.startsWith("/admin/contact-and-terms"), permission: "contact_and_terms", group: "merchant" },
   // AI管理分组
   { key: "nav.aiMonitor", href: "/admin/ai/monitor", match: (p: string) => p.startsWith("/admin/ai/monitor"), permission: "ai_monitor", group: "ai" },
   { key: "nav.aiLogs", href: "/admin/ai/logs", match: (p: string) => p.startsWith("/admin/ai/logs"), permission: "ai_logs", group: "ai" },
@@ -68,9 +70,6 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.operationLogs", href: "/admin/operation-logs", match: (p: string) => p.startsWith("/admin/operation-logs"), permission: "operation_logs", group: "system" },
   { key: "nav.stats", href: "/admin/stats", match: (p: string) => p.startsWith("/admin/stats"), permission: "stats", group: "system" },
   { key: "nav.admins", href: "/admin/admins", match: (p: string) => p.startsWith("/admin/admins"), requireDefaultAdmin: true, permission: "admins", group: "system" },
-  // 其他独立菜单项
-  { key: "nav.videos", href: "/admin/videos", match: (p: string) => p.startsWith("/admin/videos"), permission: "videos" },
-  { key: "nav.contactAndTerms", href: "/admin/contact-and-terms", match: (p: string) => p.startsWith("/admin/contact-and-terms"), permission: "contact_and_terms" },
 ] as const;
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
@@ -81,8 +80,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [isDefaultAdmin, setIsDefaultAdmin] = useState<boolean | null>(null);
   const [adminPermissions, setAdminPermissions] = useState<string[] | null>(null);
-  // 菜单分组展开/收起状态（默认全部展开）
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["users", "questions", "merchant", "ai", "system"]));
+  // 菜单分组展开/收起状态（默认全部收起）
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   
   // 将导航项转换为带翻译的 NavItem（使用useMemo，依赖language确保实时更新）
   const ALL_NAV_ITEMS: NavItem[] = useMemo(() => {
