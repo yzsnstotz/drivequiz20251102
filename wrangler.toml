@@ -1,4 +1,4 @@
-name = "drivequiz-admin-dev"
+name = "zalem"
 
 main = ".open-next/worker.js"
 
