@@ -189,15 +189,15 @@ BEGIN
         LANGUAGE sql STABLE
         SECURITY DEFINER
         SET search_path = public
-        AS $$
+        AS $body$
           SELECT id, doc_id, content, source_title, source_url, version,
                  1 - (embedding <=> query_embedding) AS similarity
           FROM ai_vectors
           WHERE 1 - (embedding <=> query_embedding) >= match_threshold
-            AND (seed_url IS NULL OR source_url IS NULL OR source_url LIKE seed_url || '%' OR source_url = seed_url)
+            AND (seed_url IS NULL OR source_url IS NULL OR source_url LIKE seed_url || '%%' OR source_url = seed_url)
           ORDER BY similarity DESC
           LIMIT match_count;
-        $$;
+        $body$;
         $func$, vector_dim);
         
         EXECUTE format('COMMENT ON FUNCTION match_documents(vector(%s), float, int, text) IS ''根据查询向量检索最相似的文档片段，返回相似度大于阈值的记录。支持可选的种子URL过滤。已修复 search_path 安全问题。''', vector_dim);
@@ -223,14 +223,14 @@ BEGIN
         LANGUAGE sql STABLE
         SECURITY DEFINER
         SET search_path = public
-        AS $$
+        AS $body$
           SELECT id, doc_id, content, source_title, source_url, version,
                  1 - (embedding <=> query_embedding) AS similarity
           FROM ai_vectors
           WHERE 1 - (embedding <=> query_embedding) >= match_threshold
           ORDER BY similarity DESC
           LIMIT match_count;
-        $$;
+        $body$;
         $func$, vector_dim);
         
         EXECUTE format('COMMENT ON FUNCTION match_documents(vector(%s), float, int) IS ''根据查询向量检索最相似的文档片段，返回相似度大于阈值的记录。已修复 search_path 安全问题。''', vector_dim);
