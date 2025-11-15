@@ -1,26 +1,50 @@
-import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
+import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success } from "@/app/api/_lib/errors";
-import { getProcessorUrl } from "../../../_lib/getProcessorUrl";
+import { db } from "@/lib/db";
 
 export const POST = withAdminAuth(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     if (!id) return badRequest("Missing id");
+    
     const body = await req.json().catch(() => ({}));
-    const upstream = await fetch(`${getProcessorUrl()}/reviews/${encodeURIComponent(id)}/reject`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ notes: body?.notes || "" })
-    });
-    const text = await upstream.text();
-    let json: any;
-    try { json = JSON.parse(text); } catch { return internalError("Processor non-JSON"); }
-    if (!upstream.ok || !json?.ok) {
-      return internalError(json?.message || `Processor error: ${upstream.status}`);
+    const notes = body?.notes || "";
+
+    const adminInfo = await getAdminInfo(req as any);
+    const adminId = adminInfo?.id || null;
+
+    // 获取润色记录
+    const review = await db
+      .selectFrom("question_polish_reviews")
+      .selectAll()
+      .where("id", "=", parseInt(id))
+      .executeTakeFirst();
+
+    if (!review) {
+      return badRequest("Review not found");
     }
+
+    if (review.status !== "pending") {
+      return badRequest("Review is not pending");
+    }
+
+    // 更新润色记录状态
+    await db
+      .updateTable("question_polish_reviews")
+      .set({
+        status: "rejected",
+        notes: notes || null,
+        reviewed_by: adminId,
+        reviewed_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where("id", "=", parseInt(id))
+      .execute();
+
     return success({ ok: true });
-  } catch {
-    return internalError("Reject failed");
+  } catch (error: any) {
+    console.error("[Reject Review] Error:", error);
+    return internalError(error?.message || "Reject failed");
   }
 });
 
