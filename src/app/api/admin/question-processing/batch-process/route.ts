@@ -417,48 +417,65 @@ async function processBatchAsync(
                     throw new Error("Translation result is empty");
                   }
 
-                  // 保存翻译结果
-                  const existing = await db
-                    .selectFrom("question_translations")
-                    .select(["id"])
-                    .where("content_hash", "=", question.content_hash)
-                    .where("locale", "=", targetLang)
+                  // 保存翻译结果到 questions.content JSONB 字段
+                  // 获取当前题目内容
+                  const currentQuestion = await db
+                    .selectFrom("questions")
+                    .select(["content", "explanation"])
+                    .where("id", "=", question.id)
                     .executeTakeFirst();
 
-                  // 确保 explanation 是字符串，不是对象
-                  const explanationStr = result.explanation 
-                    ? (typeof result.explanation === "string" ? result.explanation : String(result.explanation))
-                    : null;
-
-                  // 确保 options 是有效的 JSONB 格式
-                  const optionsJson = result.options && Array.isArray(result.options) && result.options.length > 0
-                    ? sql`${JSON.stringify(result.options)}::jsonb`
-                    : sql`null::jsonb`;
-
-                  if (existing) {
-                    await db
-                      .updateTable("question_translations")
-                      .set({
-                        content: result.content,
-                        options: optionsJson,
-                        explanation: explanationStr,
-                        updated_at: new Date(),
-                      })
-                      .where("id", "=", existing.id)
-                      .execute();
-                  } else {
-                    await db
-                      .insertInto("question_translations")
-                      .values({
-                        content_hash: question.content_hash,
-                        locale: targetLang,
-                        content: result.content,
-                        options: optionsJson,
-                        explanation: explanationStr,
-                        source: "ai",
-                      })
-                      .execute();
+                  if (!currentQuestion) {
+                    throw new Error("Question not found");
                   }
+
+                  // 更新 content JSONB 对象，添加目标语言
+                  let updatedContent: any;
+                  if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
+                    updatedContent = { ...currentQuestion.content, [targetLang]: result.content };
+                  } else {
+                    // 如果原本是字符串，转换为 JSONB 对象
+                    const zhContent = typeof currentQuestion.content === "string" 
+                      ? currentQuestion.content 
+                      : (currentQuestion.content?.zh || "");
+                    updatedContent = { zh: zhContent, [targetLang]: result.content };
+                  }
+
+                  // 更新 explanation JSONB 对象，添加目标语言
+                  let updatedExplanation: any = null;
+                  if (result.explanation) {
+                    const explanationStr = typeof result.explanation === "string" 
+                      ? result.explanation 
+                      : String(result.explanation);
+                    
+                    if (currentQuestion.explanation && typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
+                      updatedExplanation = { ...currentQuestion.explanation, [targetLang]: explanationStr };
+                    } else {
+                      const zhExplanation = typeof currentQuestion.explanation === "string"
+                        ? currentQuestion.explanation
+                        : (currentQuestion.explanation?.zh || "");
+                      updatedExplanation = zhExplanation 
+                        ? { zh: zhExplanation, [targetLang]: explanationStr }
+                        : { [targetLang]: explanationStr };
+                    }
+                  } else if (currentQuestion.explanation) {
+                    updatedExplanation = currentQuestion.explanation;
+                  }
+
+                  // 更新 options（如果需要支持多语言选项，可以类似处理）
+                  // 目前 options 是共享的，不需要按语言区分
+
+                  // 更新题目
+                  await db
+                    .updateTable("questions")
+                    .set({
+                      content: updatedContent as any,
+                      explanation: updatedExplanation as any,
+                      updated_at: new Date(),
+                    })
+                    .where("id", "=", question.id)
+                    .execute();
+                  
                   translateSuccessCount++;
                 } catch (translateError: any) {
                   translateFailureCount++;

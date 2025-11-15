@@ -70,20 +70,18 @@ export const POST = withAdminAuth(async (req: Request) => {
         }
       }
     } else {
-      // 从 question_translations 表获取翻译内容
-      const translation = await db
-        .selectFrom("question_translations")
-        .select(["content", "options", "explanation"])
-        .where("content_hash", "=", question.content_hash)
-        .where("locale", "=", from)
-        .executeTakeFirst();
-      
-      if (translation) {
-        content = translation.content || "";
-        options = Array.isArray(translation.options) ? translation.options : undefined;
-        explanation = translation.explanation || undefined;
+      // 从 questions.content JSONB 字段获取翻译内容
+      if (typeof question.content === "object" && question.content !== null) {
+        const contentObj = question.content as { [key: string]: string | undefined };
+        content = contentObj[from] || "";
       } else {
         return badRequest(`Source language translation not found for locale: ${from}`);
+      }
+      
+      // 从 questions.explanation JSONB 字段获取解析
+      if (question.explanation && typeof question.explanation === "object" && question.explanation !== null) {
+        const expObj = question.explanation as { [key: string]: string | undefined };
+        explanation = expObj[from] || undefined;
       }
     }
 
@@ -131,96 +129,113 @@ export const POST = withAdminAuth(async (req: Request) => {
           hasExplanation: !!result.explanation,
         });
 
-        // 保存翻译结果
+        // 保存翻译结果到 questions.content JSONB 字段
         console.log(`[API Translate] [${requestId}] Saving translation to ${targetLang}`, {
+          questionId: question.id,
           contentHash: question.content_hash,
           contentLength: result.content?.length || 0,
           hasOptions: !!result.options,
           hasExplanation: !!result.explanation,
         });
         
-        const existing = await db
-          .selectFrom("question_translations")
-          .select(["id"])
-          .where("content_hash", "=", question.content_hash)
-          .where("locale", "=", targetLang)
+        // 获取当前题目内容
+        const currentQuestion = await db
+          .selectFrom("questions")
+          .select(["content", "explanation"])
+          .where("id", "=", question.id)
           .executeTakeFirst();
 
-        if (existing) {
-          console.log(`[API Translate] [${requestId}] Updating existing translation (id: ${existing.id})`);
-          const updateResult = await db
-            .updateTable("question_translations")
-            .set({
-              content: result.content,
-              options: result.options ? (result.options as any) : null,
-              explanation: result.explanation || null,
-              updated_at: new Date(),
-            })
-            .where("id", "=", existing.id)
-            .execute();
-          console.log(`[API Translate] [${requestId}] Translation updated successfully`, {
-            rowsAffected: updateResult.length || 0,
-            translationId: existing.id,
-          });
-        } else {
-          console.log(`[API Translate] [${requestId}] Inserting new translation`);
-          const insertResult = await db
-            .insertInto("question_translations")
-            .values({
-              content_hash: question.content_hash,
-              locale: targetLang,
-              content: result.content,
-              options: result.options ? (result.options as any) : null,
-              explanation: result.explanation || null,
-              source: "ai",
-            })
-            .returning(["id", "content_hash", "locale", "content"])
-            .execute();
-          console.log(`[API Translate] [${requestId}] Translation inserted successfully`, {
-            insertedId: insertResult[0]?.id,
-            contentHash: insertResult[0]?.content_hash,
-            locale: insertResult[0]?.locale,
-            contentLength: insertResult[0]?.content?.length || 0,
-          });
+        if (!currentQuestion) {
+          throw new Error("Question not found");
         }
+
+        // 更新 content JSONB 对象，添加目标语言
+        let updatedContent: any;
+        if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
+          updatedContent = { ...currentQuestion.content, [targetLang]: result.content };
+        } else {
+          // 如果原本是字符串，转换为 JSONB 对象
+          const zhContent = typeof currentQuestion.content === "string" 
+            ? currentQuestion.content 
+            : (currentQuestion.content?.zh || "");
+          updatedContent = { zh: zhContent, [targetLang]: result.content };
+        }
+
+        // 更新 explanation JSONB 对象，添加目标语言
+        let updatedExplanation: any = null;
+        if (result.explanation) {
+          const explanationStr = typeof result.explanation === "string" 
+            ? result.explanation 
+            : String(result.explanation);
+          
+          if (currentQuestion.explanation && typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
+            updatedExplanation = { ...currentQuestion.explanation, [targetLang]: explanationStr };
+          } else {
+            const zhExplanation = typeof currentQuestion.explanation === "string"
+              ? currentQuestion.explanation
+              : (currentQuestion.explanation?.zh || "");
+            updatedExplanation = zhExplanation 
+              ? { zh: zhExplanation, [targetLang]: explanationStr }
+              : { [targetLang]: explanationStr };
+          }
+        } else if (currentQuestion.explanation) {
+          updatedExplanation = currentQuestion.explanation;
+        }
+
+        // 更新题目
+        const updateResult = await db
+          .updateTable("questions")
+          .set({
+            content: updatedContent as any,
+            explanation: updatedExplanation as any,
+            updated_at: new Date(),
+          })
+          .where("id", "=", question.id)
+          .execute();
+        
+        console.log(`[API Translate] [${requestId}] Translation saved successfully`, {
+          rowsAffected: updateResult.length || 0,
+          questionId: question.id,
+        });
 
         // 等待一小段时间确保数据库操作完成
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        // 验证保存是否成功 - 使用更详细的查询
+        // 验证保存是否成功
         const saved = await db
-          .selectFrom("question_translations")
-          .select(["id", "content_hash", "locale", "content", "options", "explanation", "updated_at"])
-          .where("content_hash", "=", question.content_hash)
-          .where("locale", "=", targetLang)
+          .selectFrom("questions")
+          .select(["id", "content", "explanation", "updated_at"])
+          .where("id", "=", question.id)
           .executeTakeFirst();
         
         console.log(`[API Translate] [${requestId}] Verification query result:`, {
           found: !!saved,
           id: saved?.id,
-          contentHash: saved?.content_hash,
-          locale: saved?.locale,
-          contentLength: saved?.content?.length || 0,
-          hasOptions: !!saved?.options,
+          hasContent: !!saved?.content,
           hasExplanation: !!saved?.explanation,
           updatedAt: saved?.updated_at,
         });
         
         if (!saved) {
-          throw new Error(`Failed to save translation: saved record not found (content_hash: ${question.content_hash}, locale: ${targetLang})`);
+          throw new Error(`Failed to save translation: question not found (id: ${question.id})`);
         }
         
-        if (!saved.content || saved.content.trim().length === 0) {
-          throw new Error(`Failed to save translation: content is empty (id: ${saved.id})`);
+        // 验证 content JSONB 中是否包含目标语言
+        if (typeof saved.content === "object" && saved.content !== null) {
+          const contentObj = saved.content as { [key: string]: string | undefined };
+          const targetContent = contentObj[targetLang];
+          if (!targetContent || targetContent.trim().length === 0) {
+            throw new Error(`Failed to save translation: content for ${targetLang} is empty (id: ${saved.id})`);
+          }
+          console.log(`[API Translate] [${requestId}] Translation to ${targetLang} saved and verified`, {
+            questionId: saved.id,
+            locale: targetLang,
+            contentLength: targetContent.length,
+            contentPreview: targetContent.substring(0, 50) + "...",
+          });
+        } else {
+          throw new Error(`Failed to save translation: content is not a JSONB object (id: ${saved.id})`);
         }
-        
-        console.log(`[API Translate] [${requestId}] Translation to ${targetLang} saved and verified`, {
-          translationId: saved.id,
-          contentHash: saved.content_hash,
-          locale: saved.locale,
-          contentLength: saved.content?.length || 0,
-          contentPreview: saved.content?.substring(0, 50) + "...",
-        });
         
         results.push({ locale: targetLang, success: true });
         console.log(`[API Translate] [${requestId}] Translation to ${targetLang} completed`);

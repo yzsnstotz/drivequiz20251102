@@ -607,7 +607,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     }
 
     // 多语言替换和严格筛选（当数据源为数据库时，对题目内容进行本地化）
-    // 优先从 question_translations 表读取翻译，如果没有则从 questions 表的 JSON 字段中提取
+    // 从 questions 表的 JSONB 字段中提取多语言内容
     // 严格筛选：只显示有目标语言内容的题目
     if (source === "database" || !source) {
       try {
@@ -617,36 +617,8 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
         };
         
-        // 批量查询翻译（优化性能）
-        let translationsMap: Map<string, { content: string; options?: any; explanation?: string }> = new Map();
-        if (locale && locale !== "zh") {
-          const contentHashes = allQuestions
-            .map(q => (q as any).content_hash)
-            .filter((hash): hash is string => !!hash);
-          
-          if (contentHashes.length > 0) {
-            const translations = await db
-              .selectFrom("question_translations")
-              .select(["content_hash", "content", "options", "explanation"])
-              .where("locale", "=", locale)
-              .where("content_hash", "in", contentHashes)
-              .execute();
-            
-            for (const t of translations) {
-              if (t.content && t.content.trim().length > 0) {
-                translationsMap.set(t.content_hash, {
-                  content: t.content,
-                  options: t.options,
-                  explanation: t.explanation || undefined,
-                });
-              }
-            }
-            console.log(`[GET /api/admin/questions] 批量查询翻译 (locale=${locale})，找到 ${translationsMap.size} 条翻译记录`);
-          }
-        }
-        
-        // 检查题目是否有目标语言的内容（包括 question_translations 表和 questions.content 字段）
-        const hasTargetLanguageContent = (q: Question & { content_hash?: string }, targetLocale: string, translations: Map<string, any>): boolean => {
+        // 检查题目是否有目标语言的内容（从 questions.content JSONB 字段）
+        const hasTargetLanguageContent = (q: Question & { content_hash?: string }, targetLocale: string): boolean => {
           // 对于中文，如果content是字符串，认为有内容
           if (targetLocale === "zh") {
             if (typeof q.content === "string" && q.content.trim().length > 0) {
@@ -661,12 +633,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             return false;
           }
           
-          // 对于其他语言，优先检查 question_translations 表
-          if (q.content_hash && translations.has(q.content_hash)) {
-            return true;
-          }
-          
-          // 如果没有翻译表记录，检查 questions.content 的多语言对象
+          // 对于其他语言，从 questions.content 的多语言对象中检查
           if (typeof q.content === "object" && q.content !== null) {
             const contentObj = q.content as { [key: string]: string | undefined };
             const targetValue = contentObj[targetLocale];
@@ -680,29 +647,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         
         // 先筛选：只保留有目标语言内容的题目
         const beforeFilter = allQuestions.length;
-        allQuestions = allQuestions.filter((q) => hasTargetLanguageContent(q as Question & { content_hash?: string }, locale, translationsMap));
+        allQuestions = allQuestions.filter((q) => hasTargetLanguageContent(q as Question & { content_hash?: string }, locale));
         console.log(`[GET /api/admin/questions] 严格语言筛选 (locale=${locale})，筛选前: ${beforeFilter}，筛选后: ${allQuestions.length}`);
         
-        // 然后进行本地化处理：优先从 question_translations 表读取，如果没有则从 questions.content 提取
+        // 然后进行本地化处理：从 questions.content 的多语言对象中提取
         if (locale && locale !== "zh") {
           allQuestions = allQuestions.map((q) => {
             const localized: Question = { ...q };
-            const contentHash = (q as any).content_hash;
             
-            // 优先从 question_translations 表读取翻译
-            if (contentHash && translationsMap.has(contentHash)) {
-              const translation = translationsMap.get(contentHash)!;
-              localized.content = translation.content;
-              if (translation.options) {
-                localized.options = Array.isArray(translation.options) ? translation.options : undefined;
-              }
-              if (translation.explanation) {
-                localized.explanation = translation.explanation;
-              }
-              return localized;
-            }
-            
-            // 如果没有翻译表记录，从 questions.content 的多语言对象中提取
+            // 从 questions.content 的多语言对象中提取
             if (typeof q.content === "object" && q.content !== null) {
               const contentObj = q.content as { [key: string]: string | undefined };
               const targetValue = contentObj[locale];
