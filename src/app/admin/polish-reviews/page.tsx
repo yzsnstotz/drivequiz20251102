@@ -101,7 +101,7 @@ export default function PolishReviewsPage() {
                 newGrouped[key] = {
                   content_hash: review.content_hash,
                   locale: review.locale,
-                  question_id: review.question_id,
+                  question_id: review.question_id ?? null,
                   question_category: review.question_category,
                   original_content: review.original_content,
                   original_options: review.original_options,
@@ -132,7 +132,7 @@ export default function PolishReviewsPage() {
               grouped[key] = {
                 content_hash: review.content_hash,
                 locale: review.locale,
-                question_id: review.question_id,
+                question_id: review.question_id ?? null,
                 question_category: review.question_category,
                 original_content: review.original_content,
                 original_options: review.original_options,
