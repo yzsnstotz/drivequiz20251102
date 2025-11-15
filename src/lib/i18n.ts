@@ -27,6 +27,11 @@ export const adminTranslations: Translations = {
     'nav.contactAndTerms': '联系与条款',
     'nav.ai': 'AI 总览',
     
+    // 菜单分组
+    'nav.group.activation': '激活管理',
+    'nav.group.merchant': '商户与广告',
+    'nav.group.system': '系统管理',
+    
     // 顶部栏
     'header.title': 'ZALEM Admin',
     'header.changePassword': '修改密码',
@@ -168,6 +173,11 @@ export const adminTranslations: Translations = {
     'nav.contactAndTerms': 'Contact & Terms',
     'nav.ai': 'AI Overview',
     
+    // 菜单分组
+    'nav.group.activation': 'Activation Management',
+    'nav.group.merchant': 'Merchants & Ads',
+    'nav.group.system': 'System Management',
+    
     // 顶部栏
     'header.title': 'ZALEM Admin',
     'header.changePassword': 'Change Password',
@@ -308,6 +318,11 @@ export const adminTranslations: Translations = {
     'nav.videos': '動画管理',
     'nav.contactAndTerms': '連絡と規約',
     'nav.ai': 'AI 概要',
+    
+    // 菜单分组
+    'nav.group.activation': '有効化管理',
+    'nav.group.merchant': '店舗と広告',
+    'nav.group.system': 'システム管理',
     
     // 顶部栏
     'header.title': 'ZALEM Admin',
