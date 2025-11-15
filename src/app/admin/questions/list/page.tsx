@@ -13,7 +13,7 @@ type Question = {
   options?: string[];
   correctAnswer: string | string[];
   image?: string;
-  explanation?: string;
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   category?: string;
   hash?: string;
   aiAnswer?: string;
@@ -1619,10 +1619,18 @@ export default function QuestionsPage() {
                     </td>
                     <td className="py-2 px-3 text-xs max-w-md">
                       {item.explanation ? (
-                        <div className="truncate" title={typeof item.explanation === 'string' ? item.explanation : (item.explanation?.zh || item.explanation?.en || item.explanation?.ja || '')}>
+                        <div className="truncate" title={
+                          typeof item.explanation === 'string' 
+                            ? item.explanation 
+                            : (typeof item.explanation === 'object' && item.explanation !== null
+                                ? (item.explanation.zh || item.explanation.en || item.explanation.ja || '')
+                                : '')
+                        }>
                           {typeof item.explanation === 'string' 
                             ? item.explanation 
-                            : (item.explanation?.zh || item.explanation?.en || item.explanation?.ja || '')}
+                            : (typeof item.explanation === 'object' && item.explanation !== null
+                                ? (item.explanation.zh || item.explanation.en || item.explanation.ja || '')
+                                : '')}
                         </div>
                       ) : (
                         <span className="text-gray-400 text-[10px]">—</span>
