@@ -66,6 +66,7 @@ export default function QuestionProcessingPage() {
   const [currentAiLogs, setCurrentAiLogs] = useState<Array<{ question: string; answer: string; model: string; created_at: string }>>([]);
   const errorCountRef = useRef<number>(0); // 错误计数
   const MAX_ERROR_COUNT = 3; // 连续失败 3 次后停止刷新
+  const isManuallyClosedRef = useRef<boolean>(false); // 标记是否手动关闭弹窗
 
   // 创建任务表单状态
   const [formData, setFormData] = useState<{
@@ -182,8 +183,8 @@ export default function QuestionProcessingPage() {
         // 重置错误计数（成功加载）
         errorCountRef.current = 0;
         
-        // 如果任务详情窗口打开，更新选中的任务
-        if (selectedTask) {
+        // 如果任务详情窗口打开且未被手动关闭，更新选中的任务
+        if (selectedTask && !isManuallyClosedRef.current) {
           const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
           if (updatedTask) {
             setSelectedTask(updatedTask);
@@ -910,7 +911,10 @@ export default function QuestionProcessingPage() {
                   <td className="px-4 py-3 text-sm">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setSelectedTask(task)}
+                        onClick={() => {
+                          isManuallyClosedRef.current = false; // 重置手动关闭标记
+                          setSelectedTask(task);
+                        }}
                         className="text-blue-600 hover:text-blue-800"
                       >
                         查看详情
@@ -950,7 +954,10 @@ export default function QuestionProcessingPage() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">任务详情</h2>
                 <button
-                  onClick={() => setSelectedTask(null)}
+                  onClick={() => {
+                    isManuallyClosedRef.current = true; // 标记为手动关闭
+                    setSelectedTask(null);
+                  }}
                   className="text-gray-500 hover:text-gray-700"
                 >
                   ✕
