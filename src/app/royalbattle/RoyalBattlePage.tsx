@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import { loadAllQuestions } from '@/lib/questionsLoader';
+import { useLanguage } from '@/lib/i18n';
 
 interface Question {
   id: number;
@@ -17,6 +18,7 @@ interface Question {
 }
 
 function RoyalBattlePage() {
+  const { t } = useLanguage();
   // 处理返回逻辑
   const handleBack = () => {
     window.history.back();
@@ -205,10 +207,10 @@ function RoyalBattlePage() {
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">大乱斗</h1>
+          <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.title')}</h1>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">加载题目中...</p>
+          <p className="text-gray-600">{t('royalbattle.loading')}</p>
         </div>
       </div>
     );
@@ -224,18 +226,18 @@ function RoyalBattlePage() {
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">游戏结束</h1>
+          <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.gameOver')}</h1>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <div className="text-center">
             <Trophy className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">最终得分: {score}</h2>
-            <p className="text-gray-600 mb-6">答对题目数: {Math.floor(score / 10)}</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('royalbattle.finalScore')}: {score}</h2>
+            <p className="text-gray-600 mb-6">{t('royalbattle.correctCount')}: {Math.floor(score / 10)}</p>
             <button
               onClick={handleBack}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
             >
-              返回首页
+              {t('royalbattle.backHome')}
             </button>
           </div>
         </div>
@@ -252,7 +254,7 @@ function RoyalBattlePage() {
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">大乱斗</h1>
+        <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.title')}</h1>
       </div>
 
       <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
@@ -297,17 +299,17 @@ function RoyalBattlePage() {
             <button
               onClick={() => setShowAIDialog(true)}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              aria-label="打开AI助手"
+              aria-label={t('royalbattle.openAI')}
             >
               <Bot className="h-4 w-4" />
-              <span>AI助手</span>
+              <span>{t('royalbattle.aiAssistant')}</span>
             </button>
           </div>
           {currentQuestion.image && (
             <div className="mb-4">
               <Image
                 src={currentQuestion.image.trim()}
-                alt="题目图片"
+                alt={t('royalbattle.image')}
                 width={800}
                 height={600}
                 className="max-w-full rounded-lg shadow-sm"
@@ -328,7 +330,7 @@ function RoyalBattlePage() {
                       : 'bg-gray-50 border-2 border-transparent'
                   }`}
                 >
-                  {option === 'true' ? '正确' : '错误'}
+                  {option === 'true' ? t('royalbattle.true') : t('royalbattle.false')}
                 </button>
               ))}
             </div>
@@ -362,7 +364,7 @@ function RoyalBattlePage() {
         {showAnswer && (
           <div className="mt-6 p-4 rounded-lg border bg-blue-50 border-blue-200 animate-fadeIn">
             <h3 className="text-gray-800 font-medium mb-2">
-              {isCorrect(selectedAnswer) ? '答对了！' : '答错了...'}
+              {isCorrect(selectedAnswer) ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </h3>
             {currentQuestion.explanation && (
               <p className="text-gray-700">{currentQuestion.explanation}</p>

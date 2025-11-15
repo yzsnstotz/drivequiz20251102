@@ -1,4 +1,4 @@
-"useclient";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import QuestionPage from "./QuestionPage";
 import { loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
+import { useLanguage } from "@/lib/i18n";
 
 interface QuestionSet {
   id: string;
@@ -157,6 +158,7 @@ const categories: Category[] = [
 ];
 
 function StudyPage() {
+  const { t } = useLanguage();
   const [selectedSet, setSelectedSet] = useState<QuestionSet | null>(null);
   const [questionSets, setQuestionSets] = useState<QuestionSet[]>([]);
   const [dynamicCategories, setDynamicCategories] = useState<Category[]>([]);
@@ -220,13 +222,13 @@ function StudyPage() {
 
             if (prefix.includes('學科講習') || prefix.includes('学科讲习')) {
               icon = <BookOpen className="h-6 w-6 text-blue-600" />;
-              title = '学科讲习';
+              title = t('study.category.lecture');
             } else if (prefix.includes('仮免') || prefix.includes('假免')) {
               icon = <Car className="h-6 w-6 text-green-600" />;
-              title = '仮免';
+              title = t('study.category.provisional');
             } else if (prefix.includes('免许') || prefix.includes('免許')) {
               icon = <Shield className="h-6 w-6 text-orange-600" />;
-              title = '免许';
+              title = t('study.category.license');
             } else {
               icon = <BookOpen className="h-6 w-6 text-gray-600" />;
               title = prefix;
@@ -276,7 +278,7 @@ function StudyPage() {
           setDynamicCategories(categories);
         }
       } catch (error) {
-        console.error('加载题目集失败:', error);
+        console.error(t('study.loadError'), error);
         // 出错时使用静态分类
         const initializedSets = categories.flatMap((category) =>
           category.questionSets.map((set) => {
@@ -313,8 +315,8 @@ function StudyPage() {
   return (
     <div className="container mx-auto px-4 py-6 pb-20">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">学习</h1>
-        <p className="text-gray-600">选择你想要学习的内容</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('study.title')}</h1>
+        <p className="text-gray-600">{t('study.subtitle')}</p>
       </div>
 
       <div className="space-y-8">
