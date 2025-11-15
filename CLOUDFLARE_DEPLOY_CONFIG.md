@@ -23,21 +23,30 @@ git push
 3. 配置以下设置：
 
 **构建命令：**
-```bash
-npm install --include=optional && npm run cf:build
-```
 
-或者直接使用 npx：
-```bash
-npm install --include=optional && npx @opennextjs/cloudflare build
-```
+⚠️ **重要**：Cloudflare Pages 默认使用 `npm ci`，它不会安装可选依赖。必须使用自定义构建命令。
 
-**重要**：必须使用 `--include=optional` 标志，以确保安装所有平台特定的原生模块（如 `@ast-grep/napi-linux-x64-gnu`）。
-
-或者使用构建脚本：
+推荐使用构建脚本（会自动处理依赖安装）：
 ```bash
 bash _build.sh
 ```
+
+或者手动指定完整命令：
+```bash
+npm install --include=optional && npm install @ast-grep/napi-linux-x64-gnu@0.35.0 --save-optional --force && npm run cf:build
+```
+
+或者分步执行：
+```bash
+npm install --include=optional
+npm install @ast-grep/napi-linux-x64-gnu@0.35.0 --save-optional --force
+npx @opennextjs/cloudflare build
+```
+
+**为什么需要这样做？**
+- `@ast-grep/napi-linux-x64-gnu` 是可选依赖，`npm ci` 默认不会安装
+- Cloudflare 构建环境是 Linux x64，需要这个平台特定的原生模块
+- 必须显式安装以确保构建成功
 
 **输出目录：**
 ```
