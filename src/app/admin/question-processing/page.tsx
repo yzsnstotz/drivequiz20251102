@@ -46,6 +46,8 @@ export default function QuestionProcessingPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const detailRefreshRef = useRef<NodeJS.Timeout | null>(null);
   const [currentAiLogs, setCurrentAiLogs] = useState<Array<{ question: string; answer: string; model: string; created_at: string }>>([]);
+  const errorCountRef = useRef<number>(0); // 错误计数
+  const MAX_ERROR_COUNT = 3; // 连续失败 3 次后停止刷新
 
   // 创建任务表单状态
   const [formData, setFormData] = useState<{
@@ -103,24 +105,43 @@ export default function QuestionProcessingPage() {
     try {
       // 获取任务详情，找到当前正在处理的题目
       const task = tasks.find(t => t.task_id === taskId);
-      if (!task || task.status !== "processing") {
+      if (!task || (task.status !== "processing" && task.status !== "pending")) {
         setCurrentAiLogs([]);
         return;
       }
 
       // 通过 API 获取最近的相关 AI 日志
       const token = typeof window !== "undefined" ? window.localStorage.getItem("ADMIN_TOKEN") : null;
-      const res = await fetch(`/api/admin/question-processing/task-ai-logs?taskId=${encodeURIComponent(taskId)}&limit=5`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超时
       
-      if (res.ok) {
-        const json = await res.json();
-        if (json.ok && json.data?.logs) {
-          setCurrentAiLogs(json.data.logs);
+      try {
+        const res = await fetch(`/api/admin/question-processing/task-ai-logs?taskId=${encodeURIComponent(taskId)}&limit=5`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (res.ok) {
+          const json = await res.json();
+          if (json.ok && json.data?.logs) {
+            setCurrentAiLogs(json.data.logs);
+          }
+        } else {
+          // 如果返回错误，不更新日志，但也不抛出错误（避免影响主流程）
+          console.warn(`[loadCurrentAiLogs] API returned ${res.status}`);
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          console.warn("[loadCurrentAiLogs] Request timeout");
+        } else {
+          throw fetchError;
         }
       }
     } catch (e) {
+      // 静默处理错误，不抛出（避免影响主流程）
       console.error("Failed to load AI logs:", e);
     }
   };
@@ -136,52 +157,82 @@ export default function QuestionProcessingPage() {
     if (!autoRefresh) return;
 
     const checkAndRefresh = async () => {
-      // 先加载最新任务列表
-      const latestTasks = await loadTasks();
-      
-      // 如果任务详情窗口打开，更新选中的任务
-      if (selectedTask) {
-        const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
-        if (updatedTask) {
-          setSelectedTask(updatedTask);
-          // 如果任务正在处理，加载 AI 日志
-          if (updatedTask.status === "processing") {
-            loadCurrentAiLogs(updatedTask.task_id);
+      try {
+        // 先加载最新任务列表
+        const latestTasks = await loadTasks();
+        
+        // 重置错误计数（成功加载）
+        errorCountRef.current = 0;
+        
+        // 如果任务详情窗口打开，更新选中的任务
+        if (selectedTask) {
+          const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
+          if (updatedTask) {
+            setSelectedTask(updatedTask);
+            // 如果任务已完成、失败或取消，停止刷新
+            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled") {
+              if (detailRefreshRef.current) {
+                clearInterval(detailRefreshRef.current);
+                detailRefreshRef.current = null;
+              }
+              return;
+            }
+            // 如果任务正在处理，加载 AI 日志
+            if (updatedTask.status === "processing") {
+              loadCurrentAiLogs(updatedTask.task_id).catch((e) => {
+                console.error("Failed to load AI logs:", e);
+              });
+            }
           }
         }
-      }
-      
-      // 检查是否有正在处理的任务
-      const processingTasks = latestTasks.filter(
-        (t) => t.status === "pending" || t.status === "processing"
-      );
-
-      if (processingTasks.length === 0) {
-        // 没有正在处理的任务，停止自动刷新
-        setAutoRefresh(false);
-        return;
-      }
-
-      // 检查是否有任务长时间没有更新（超过 5 分钟）
-      const now = Date.now();
-      const STUCK_TIMEOUT = 5 * 60 * 1000; // 5 分钟
-      
-      const hasStuckTasks = processingTasks.some((task) => {
-        const taskUpdatedAt = task.updated_at ? new Date(task.updated_at).getTime() : now;
-        const timeSinceTaskUpdate = now - taskUpdatedAt;
         
-        // 如果任务更新时间超过 5 分钟，认为任务卡住了
-        if (timeSinceTaskUpdate > STUCK_TIMEOUT) {
-          return true;
+        // 检查是否有正在处理的任务
+        const processingTasks = latestTasks.filter(
+          (t) => t.status === "pending" || t.status === "processing"
+        );
+
+        if (processingTasks.length === 0) {
+          // 没有正在处理的任务，停止自动刷新
+          setAutoRefresh(false);
+          return;
         }
-        
-        return false;
-      });
 
-      if (hasStuckTasks) {
-        console.warn("[BatchProcess] 检测到任务可能卡住（超过 5 分钟未更新），停止自动刷新");
-        setAutoRefresh(false);
-        return;
+        // 检查是否有任务长时间没有更新（超过 5 分钟）
+        const now = Date.now();
+        const STUCK_TIMEOUT = 5 * 60 * 1000; // 5 分钟
+        
+        const hasStuckTasks = processingTasks.some((task) => {
+          const taskUpdatedAt = task.updated_at ? new Date(task.updated_at).getTime() : now;
+          const timeSinceTaskUpdate = now - taskUpdatedAt;
+          
+          // 如果任务更新时间超过 5 分钟，认为任务卡住了
+          if (timeSinceTaskUpdate > STUCK_TIMEOUT) {
+            return true;
+          }
+          
+          return false;
+        });
+
+        if (hasStuckTasks) {
+          console.warn("[BatchProcess] 检测到任务可能卡住（超过 5 分钟未更新），停止自动刷新");
+          setAutoRefresh(false);
+          return;
+        }
+      } catch (e) {
+        // 错误处理：增加错误计数
+        errorCountRef.current += 1;
+        console.error("[BatchProcess] 刷新任务列表失败:", e);
+        
+        // 如果连续失败超过最大次数，停止自动刷新
+        if (errorCountRef.current >= MAX_ERROR_COUNT) {
+          console.error(`[BatchProcess] 连续失败 ${MAX_ERROR_COUNT} 次，停止自动刷新`);
+          setAutoRefresh(false);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          return;
+        }
       }
     };
 
@@ -220,6 +271,8 @@ export default function QuestionProcessingPage() {
 
     // 如果任务正在处理，设置定时刷新
     if (selectedTask.status === "processing" || selectedTask.status === "pending") {
+      let detailErrorCount = 0; // 任务详情刷新的错误计数
+      
       const refreshDetail = async () => {
         // 检查是否应该继续刷新（防止在组件卸载或任务关闭后继续刷新）
         if (!shouldRefresh) {
@@ -233,7 +286,22 @@ export default function QuestionProcessingPage() {
         try {
           const latestTasks = await loadTasks();
           const updatedTask = latestTasks.find(t => t.task_id === taskId);
+          
           if (updatedTask) {
+            // 重置错误计数（成功加载）
+            detailErrorCount = 0;
+            
+            // 如果任务已完成、失败或取消，停止刷新
+            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled") {
+              shouldRefresh = false;
+              if (detailRefreshRef.current) {
+                clearInterval(detailRefreshRef.current);
+                detailRefreshRef.current = null;
+              }
+              setCurrentAiLogs([]);
+              return;
+            }
+            
             // 只有在任务详情窗口仍然打开时才更新
             setSelectedTask((current) => {
               if (current && current.task_id === taskId) {
@@ -241,19 +309,42 @@ export default function QuestionProcessingPage() {
               }
               return current;
             });
-            // 加载 AI 日志
-            await loadCurrentAiLogs(taskId);
+            
+            // 加载 AI 日志（不阻塞，失败也不影响主流程）
+            loadCurrentAiLogs(taskId).catch((e) => {
+              console.error("Failed to load AI logs:", e);
+            });
+          } else {
+            // 任务不存在，停止刷新
+            shouldRefresh = false;
+            if (detailRefreshRef.current) {
+              clearInterval(detailRefreshRef.current);
+              detailRefreshRef.current = null;
+            }
           }
         } catch (e) {
+          // 错误处理：增加错误计数
+          detailErrorCount += 1;
           console.error("Failed to refresh task detail:", e);
+          
+          // 如果连续失败超过最大次数，停止刷新
+          if (detailErrorCount >= MAX_ERROR_COUNT) {
+            console.error(`[TaskDetail] 连续失败 ${MAX_ERROR_COUNT} 次，停止刷新任务详情`);
+            shouldRefresh = false;
+            if (detailRefreshRef.current) {
+              clearInterval(detailRefreshRef.current);
+              detailRefreshRef.current = null;
+            }
+            return;
+          }
         }
       };
 
       // 立即刷新一次
       refreshDetail();
 
-      // 每 3 秒刷新一次任务详情
-      detailRefreshRef.current = setInterval(refreshDetail, 3000);
+      // 每 3 秒刷新一次任务详情（增加间隔，减少请求频率）
+      detailRefreshRef.current = setInterval(refreshDetail, 5000); // 改为 5 秒
     } else {
       if (detailRefreshRef.current) {
         clearInterval(detailRefreshRef.current);
