@@ -37,10 +37,18 @@ fi
 
 # 验证构建输出
 if [ ! -f ".open-next/worker.js" ]; then
-  echo "⚠️  警告: worker.js 文件不存在，构建可能不完整"
-  echo "请检查构建日志以获取更多信息"
+  echo "❌ 错误: worker.js 文件不存在，构建失败"
+  exit 1
 else
   echo "✅ worker.js 文件已生成"
+fi
+
+# Cloudflare Pages 需要 _worker.js 作为入口点
+# 将 worker.js 复制为 _worker.js（Pages 标准入口点）
+if [ -f ".open-next/worker.js" ] && [ ! -f ".open-next/_worker.js" ]; then
+  echo "📝 创建 _worker.js（Cloudflare Pages 入口点）..."
+  cp .open-next/worker.js .open-next/_worker.js
+  echo "✅ _worker.js 已创建"
 fi
 
 echo "✅ 构建完成！"
