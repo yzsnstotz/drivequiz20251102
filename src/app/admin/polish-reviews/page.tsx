@@ -34,6 +34,7 @@ interface GroupedReview {
   locale: string;
   question_id: number | null;
   question_category: string | null;
+  category: string | null; // 从 review.category 获取的备用分类
   original_content: any;
   original_options: any;
   original_explanation: any;
@@ -103,6 +104,7 @@ export default function PolishReviewsPage() {
                   locale: review.locale,
                   question_id: review.question_id ?? null,
                   question_category: review.question_category ?? null,
+                  category: review.category ?? null,
                   original_content: review.original_content,
                   original_options: review.original_options,
                   original_explanation: review.original_explanation,
@@ -134,6 +136,7 @@ export default function PolishReviewsPage() {
                 locale: review.locale,
                 question_id: review.question_id ?? null,
                 question_category: review.question_category ?? null,
+                category: review.category ?? null,
                 original_content: review.original_content,
                 original_options: review.original_options,
                 original_explanation: review.original_explanation,
