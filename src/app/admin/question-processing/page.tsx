@@ -35,6 +35,7 @@ type BatchProcessTask = {
     operations: string[]; 
     status: string;
     subtasks?: SubtaskDetail[]; // 子任务详细信息
+    summary?: any; // 简报信息（如果存在）
   }> | null;
   summary?: {
     taskOverview: any;
@@ -109,13 +110,13 @@ export default function QuestionProcessingPage() {
         const loadedTasks = (response.data.tasks || []).map((task: BatchProcessTask): BatchProcessTask => {
           // 提取简报信息（如果存在）
           if (task.details && Array.isArray(task.details)) {
-            const summaryItem = task.details.find((d: any) => d.summary);
-            if (summaryItem) {
+            const summaryItem = task.details.find((d) => d.summary);
+            if (summaryItem && summaryItem.summary) {
               // 创建新对象而不是直接修改原对象
               return {
                 ...task,
                 summary: summaryItem.summary,
-                details: task.details.filter((d: any) => !d.summary),
+                details: task.details.filter((d) => !d.summary),
               } as BatchProcessTask;
             }
           }
