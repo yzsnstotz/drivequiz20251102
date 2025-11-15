@@ -24,13 +24,15 @@ git push
 
 **构建命令：**
 ```bash
-npm install && npm run cf:build
+npm install --include=optional && npm run cf:build
 ```
 
 或者直接使用 npx：
 ```bash
-npm install && npx @opennextjs/cloudflare build
+npm install --include=optional && npx @opennextjs/cloudflare build
 ```
+
+**重要**：必须使用 `--include=optional` 标志，以确保安装所有平台特定的原生模块（如 `@ast-grep/napi-linux-x64-gnu`）。
 
 或者使用构建脚本：
 ```bash
