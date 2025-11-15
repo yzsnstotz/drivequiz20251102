@@ -1583,6 +1583,7 @@ export default function QuestionsPage() {
                     题目内容 {filters.sortBy === "content" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">解析</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">驾照标签</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">阶段标签</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">主题标签</th>
@@ -1615,6 +1616,17 @@ export default function QuestionsPage() {
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
                         : item.correctAnswer}
+                    </td>
+                    <td className="py-2 px-3 text-xs max-w-md">
+                      {item.explanation ? (
+                        <div className="truncate" title={typeof item.explanation === 'string' ? item.explanation : (item.explanation?.zh || item.explanation?.en || item.explanation?.ja || '')}>
+                          {typeof item.explanation === 'string' 
+                            ? item.explanation 
+                            : (item.explanation?.zh || item.explanation?.en || item.explanation?.ja || '')}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-xs">
                       {item.license_tags && item.license_tags.length > 0 ? (
@@ -1884,6 +1896,16 @@ export default function QuestionsPage() {
                       : item.correctAnswer}
                   </div>
                 </div>
+                {item.explanation && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">解析</div>
+                    <div className="text-xs text-gray-700">
+                      {typeof item.explanation === 'string' 
+                        ? item.explanation 
+                        : (item.explanation?.zh || item.explanation?.en || item.explanation?.ja || '')}
+                    </div>
+                  </div>
+                )}
                 {(item.hash || item.aiAnswer) && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">Hash / AI回答</div>
