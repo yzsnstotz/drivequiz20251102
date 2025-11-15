@@ -13,9 +13,9 @@
     "check:build": "./scripts/check-build.sh",
     "check:types": "tsc --noEmit",
     "fix:build": "tsx scripts/auto-fix-build-errors.ts",
-    "cf:build": "npx @opennextjs/cloudflare build",
-    "cf:preview": "npx @opennextjs/cloudflare build && npx wrangler dev",
-    "cf:deploy": "npx @opennextjs/cloudflare build && npx wrangler deploy"
+    "cf:build": "npm install --include=optional && npx @opennextjs/cloudflare build",
+    "cf:preview": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler dev",
+    "cf:deploy": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler deploy"
   },
   "dependencies": {
     "jose": "^6.1.0",
@@ -50,6 +50,9 @@
     "typescript": "^5.5.3",
     "vitest": "^4.0.6",
     "wrangler": "^4.47.0"
+  },
+  "optionalDependencies": {
+    "@ast-grep/napi-linux-x64-gnu": "^0.35.0"
   },
   "overrides": {
     "rimraf": "^6.1.0",
