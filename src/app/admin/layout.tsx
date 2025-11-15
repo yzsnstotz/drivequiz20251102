@@ -49,7 +49,7 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.activationCodes", href: "/admin/activation-codes", match: (p: string) => p.startsWith("/admin/activation-codes"), permission: "activation_codes", group: "users" },
   { key: "nav.tasks", href: "/admin/tasks", match: (p: string) => p.startsWith("/admin/tasks"), permission: "tasks", group: "users" },
   // 题库管理分组
-  { key: "nav.questions", href: "/admin/questions", match: (p: string) => p.startsWith("/admin/questions") && !p.startsWith("/admin/question-processing") && !p.startsWith("/admin/polish-reviews"), permission: "questions", group: "questions" },
+  { key: "nav.questions", href: "/admin/questions", match: (p: string) => p === "/admin/questions" || (p.startsWith("/admin/questions/") && !p.startsWith("/admin/question-processing") && !p.startsWith("/admin/polish-reviews")), permission: "questions", group: "questions" },
   { key: "nav.questionProcessing", href: "/admin/question-processing", match: (p: string) => p.startsWith("/admin/question-processing"), permission: "questions", group: "questions" },
   { key: "nav.polishReviews", href: "/admin/polish-reviews", match: (p: string) => p.startsWith("/admin/polish-reviews"), permission: "questions", group: "questions" },
   // 商户与广告分组
