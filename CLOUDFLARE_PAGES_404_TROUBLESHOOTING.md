@@ -25,17 +25,24 @@ ls -la .open-next/worker.js
 
 在 Cloudflare Dashboard 中检查：
 
-1. **Functions 设置（重要）**：
-   - 进入项目 → **Settings** → **Functions**
-   - 确保 **"Pages Functions"** 已启用
-   - 检查是否有任何错误或警告
-   - **注意**：不需要在 Bindings 页面配置任何内容（除非需要连接外部资源）
+1. **Framework preset（重要）**：
+   - 进入项目 → **Settings** → **Builds & deployments**
+   - 将 **Framework preset** 设置为 **"None"**
+   - **不要选择 "Next.js"**，因为 OpenNext 有自己的构建流程
+   - 这是导致 404 错误的常见原因
 
 2. **构建输出目录**：
    - Settings → Builds & deployments
    - 输出目录应设置为：`.open-next`
 
-3. **Worker 入口点**：
+3. **构建命令**：
+   - 确保使用：`npm install --include=optional && npm install @ast-grep/napi-linux-x64-gnu@0.35.0 --save-optional --force && npm run cf:build`
+
+4. **Functions 设置**：
+   - 进入项目 → **Settings** → **Functions**
+   - 确保 **"Pages Functions"** 已启用（如果找不到此选项，可能不需要配置）
+
+5. **Worker 入口点**：
    - 检查部署的文件中是否包含 `.open-next/_worker.js`
    - 如果没有，需要重新部署（构建脚本会自动创建）
 

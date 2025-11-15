@@ -20,7 +20,10 @@ git push
 
 1. 进入你的 Cloudflare Workers/Pages 项目
 2. 进入 **Settings** → **Builds & deployments**
-3. 配置以下设置：
+3. **重要：Framework preset 设置**
+   - 将 **Framework preset** 设置为 **"None"**（不要选择 "Next.js"）
+   - 原因：OpenNext 有自己的构建流程，使用 Cloudflare 默认的 Next.js 构建会导致冲突
+4. 配置以下设置：
 
 **构建命令：**
 
