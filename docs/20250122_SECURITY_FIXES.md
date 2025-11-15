@@ -90,12 +90,83 @@
 
 ---
 
+## ⚡ 性能优化问题
+
+### 1. Multiple Permissive Policies 性能问题
+
+**状态**: ✅ 迁移脚本已创建
+
+**问题**: 多个表存在多个 permissive 策略用于相同的角色和操作（SELECT），导致性能问题。每个策略都需要在每次查询时评估。
+
+**影响评估**:
+- ⚠️ **性能影响**: 中等（每个 SELECT 查询需要评估多个策略）
+- 📊 **影响范围**: 所有表的 SELECT 操作性能
+- 🔧 **修复难度**: 低（只需修改策略定义）
+
+**修复方法**: 将 `service_write` 策略从 `FOR ALL` 改为 `FOR INSERT, UPDATE, DELETE`，排除 SELECT 操作。这样 SELECT 操作只由读策略处理，写操作只由写策略处理，避免策略重叠。
+
+**修复脚本**: `src/migrations/20250122_fix_multiple_permissive_policies_performance.sql`
+
+**修复的表** (19个):
+1. `ad_slots`
+2. `ad_contents`
+3. `ad_logs`
+4. `ad_slots_config`
+5. `batch_process_tasks`
+6. `languages`
+7. `question_ai_answer_pending_updates`
+8. `question_ai_answers`
+9. `question_package_versions`
+10. `question_polish_history`
+11. `question_polish_reviews`
+12. `questions`
+13. `service_categories`
+14. `service_reviews`
+15. `services`
+16. `user_interests`
+17. `user_profiles`
+18. `vehicle_types`
+19. `vehicles`
+
+**下一步**: 在数据库中执行迁移脚本。
+
+---
+
+### 2. Duplicate Index 性能问题
+
+**状态**: ✅ 迁移脚本已创建
+
+**问题**: 多个表存在重复的索引，浪费存储空间并可能影响写入性能。
+
+**修复脚本**: `src/migrations/20250122_fix_duplicate_indexes.sql`
+
+**修复的重复索引**:
+1. `question_ai_answer_pending_updates`: 删除 `idx_pending_updates_package`，保留 `idx_pending_updates_package_name`
+2. `question_ai_answers`: 删除 `idx_question_ai_answers_hash`，保留 `idx_question_ai_answers_question_hash`
+3. `question_ai_answers`: 删除 `idx_question_ai_answers_hash_locale_unique`，保留 `question_ai_answers_question_hash_locale_key`
+4. `question_package_versions`: 删除 `idx_package_versions_created_at`，保留 `idx_question_package_versions_created_at`
+5. `question_package_versions`: 删除 `idx_package_versions_package_name`，保留 `idx_question_package_versions_name`
+6. `questions`: 删除 `idx_questions_content_hash_unique`，保留 `questions_content_hash_key`
+
+**下一步**: 在数据库中执行迁移脚本。
+
+---
+
 ## 📋 执行顺序
 
+### 安全修复
 1. **立即执行**: `20250122_force_fix_function_search_path.sql` - 强制修复函数 search_path 安全问题
    - 如果此脚本执行失败，可以尝试 `20250122_fix_function_search_path.sql`
-2. **可选执行**: `20251111_move_vector_extension.sql` - 迁移 vector 扩展到 extensions schema
-3. **手动配置**: 在 Supabase Dashboard 中启用泄露密码保护
+
+### 性能优化
+2. **立即执行**: `20250122_fix_multiple_permissive_policies_performance.sql` - 修复多个 permissive 策略性能问题
+3. **立即执行**: `20250122_fix_duplicate_indexes.sql` - 删除重复索引
+
+### 可选修复
+4. **可选执行**: `20251111_move_vector_extension.sql` - 迁移 vector 扩展到 extensions schema
+
+### 手动配置
+5. **手动配置**: 在 Supabase Dashboard 中启用泄露密码保护
 
 ---
 
