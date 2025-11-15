@@ -387,7 +387,8 @@ export async function polishContent(params: {
   text: { content: string; options?: string[]; explanation?: string };
   locale: string;
   adminToken?: string; // 管理员 token，用于跳过配额限制
-}): Promise<TranslateResult> {
+  returnDetail?: boolean; // 是否返回详细信息
+}): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { text, locale } = params;
   const input = [
     `Language: ${locale}`,
@@ -398,10 +399,17 @@ export async function polishContent(params: {
     .filter(Boolean)
     .join("\n");
 
+  const sceneKey = "question_polish";
+  let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;
+  
+  if (params.returnDetail) {
+    sceneConfig = await getSceneConfig(sceneKey, locale);
+  }
+
   const data = await callAiAskInternal({
     question: input,
     locale: locale,
-    scene: "question_polish",
+    scene: sceneKey,
     adminToken: params.adminToken,
   });
 
@@ -498,11 +506,28 @@ export async function polishContent(params: {
     throw new Error("AI polish response missing content field");
   }
   
-  return {
+  const result: TranslateResult = {
     content: contentStr,
     options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : undefined,
     explanation: parsed.explanation ? String(parsed.explanation) : undefined,
   };
+
+  if (params.returnDetail) {
+    const detail: SubtaskDetail = {
+      operation: "polish",
+      scene: sceneKey,
+      sceneName: sceneConfig?.sceneName || sceneKey,
+      prompt: sceneConfig?.prompt || "",
+      expectedFormat: sceneConfig?.outputFormat || null,
+      question: input,
+      answer: data.answer,
+      status: "success",
+      timestamp: new Date().toISOString(),
+    };
+    return { result, detail };
+  }
+  
+  return result;
 }
 
 /**
@@ -514,7 +539,8 @@ export async function generateCategoryAndTags(params: {
   explanation?: string | null;
   locale?: string;
   adminToken?: string; // 管理员 token，用于跳过配额限制
-}): Promise<CategoryAndTagsResult> {
+  returnDetail?: boolean; // 是否返回详细信息
+}): Promise<CategoryAndTagsResult | { result: CategoryAndTagsResult; detail: SubtaskDetail }> {
   const { content, options, explanation, locale = "zh-CN" } = params;
 
   const input = [
@@ -525,10 +551,17 @@ export async function generateCategoryAndTags(params: {
     .filter(Boolean)
     .join("\n");
 
+  const sceneKey = "question_category_tags";
+  let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;
+  
+  if (params.returnDetail) {
+    sceneConfig = await getSceneConfig(sceneKey, locale);
+  }
+
   const data = await callAiAskInternal({
     question: input,
     locale: locale,
-    scene: "question_category_tags",
+    scene: sceneKey,
     adminToken: params.adminToken,
   });
 
@@ -545,7 +578,7 @@ export async function generateCategoryAndTags(params: {
     throw new Error("AI category/tags response missing JSON body");
   }
 
-  return {
+  const result: CategoryAndTagsResult = {
     category: parsed.category ? String(parsed.category) : null,
     stage_tag: parsed.stage_tag && ["both", "provisional", "regular"].includes(parsed.stage_tag)
       ? parsed.stage_tag
@@ -554,6 +587,23 @@ export async function generateCategoryAndTags(params: {
       ? parsed.topic_tags.map((s: any) => String(s)).filter(Boolean)
       : null,
   };
+
+  if (params.returnDetail) {
+    const detail: SubtaskDetail = {
+      operation: "category_tags",
+      scene: sceneKey,
+      sceneName: sceneConfig?.sceneName || sceneKey,
+      prompt: sceneConfig?.prompt || "",
+      expectedFormat: sceneConfig?.outputFormat || null,
+      question: input,
+      answer: data.answer,
+      status: "success",
+      timestamp: new Date().toISOString(),
+    };
+    return { result, detail };
+  }
+
+  return result;
 }
 
 /**
@@ -566,7 +616,8 @@ export async function fillMissingContent(params: {
   locale?: string;
   questionType?: "single" | "multiple" | "truefalse"; // 题目类型
   adminToken?: string; // 管理员 token，用于跳过配额限制
-}): Promise<TranslateResult> {
+  returnDetail?: boolean; // 是否返回详细信息
+}): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { content, options, explanation, locale = "zh-CN", questionType } = params;
 
   // 根据题目类型决定是否提示 options
@@ -589,10 +640,17 @@ export async function fillMissingContent(params: {
     .filter(Boolean)
     .join("\n");
 
+  const sceneKey = "question_fill_missing";
+  let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;
+  
+  if (params.returnDetail) {
+    sceneConfig = await getSceneConfig(sceneKey, locale);
+  }
+
   const data = await callAiAskInternal({
     question: input,
     locale: locale,
-    scene: "question_fill_missing",
+    scene: sceneKey,
     adminToken: params.adminToken,
   });
 
@@ -682,10 +740,27 @@ export async function fillMissingContent(params: {
     throw new Error("AI fill missing response missing JSON body");
   }
 
-  return {
+  const result: TranslateResult = {
     content: String(parsed.content ?? content ?? "").trim(),
     options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : options || undefined,
     explanation: parsed.explanation ? String(parsed.explanation) : explanation || undefined,
   };
+
+  if (params.returnDetail) {
+    const detail: SubtaskDetail = {
+      operation: "fill_missing",
+      scene: sceneKey,
+      sceneName: sceneConfig?.sceneName || sceneKey,
+      prompt: sceneConfig?.prompt || "",
+      expectedFormat: sceneConfig?.outputFormat || null,
+      question: input,
+      answer: data.answer,
+      status: "success",
+      timestamp: new Date().toISOString(),
+    };
+    return { result, detail };
+  }
+
+  return result;
 }
 

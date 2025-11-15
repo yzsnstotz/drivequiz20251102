@@ -1555,46 +1555,60 @@ export default function QuestionsPage() {
       ) : (
         <>
           <div className="hidden md:block overflow-x-auto relative">
-            <table className="w-full border-collapse min-w-[1200px]">
+            <table className="w-full border-collapse" style={{ tableLayout: "fixed", width: "100%" }}>
+              <colgroup>
+                <col style={{ width: "60px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "300px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "300px" }} />
+                <col style={{ width: "120px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "150px" }} />
+                <col style={{ width: "200px" }} />
+                <col style={{ width: "120px" }} />
+                <col style={{ width: "120px" }} />
+              </colgroup>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th 
-                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                     onClick={() => handleSort("id")}
                   >
                     ID {filters.sortBy === "id" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
                   <th 
-                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                     onClick={() => handleSort("category")}
                   >
                     卷类 {filters.sortBy === "category" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
                   <th 
-                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                     onClick={() => handleSort("type")}
                   >
                     类型 {filters.sortBy === "type" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
                   <th 
-                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                     onClick={() => handleSort("content")}
                   >
                     题目内容 {filters.sortBy === "content" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">解析</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">驾照标签</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">阶段标签</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">主题标签</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">Hash / AI回答</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">正确答案</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">解析</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">驾照标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">阶段标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">主题标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">Hash / AI回答</th>
                   <th 
-                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                     onClick={() => handleSort("created_at")}
                   >
                     创建时间 {filters.sortBy === "created_at" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 sticky right-0 bg-gray-50 z-10">操作</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 sticky right-0 bg-gray-50 z-10 whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -1607,19 +1621,19 @@ export default function QuestionsPage() {
                         {item.type === "single" ? "单选" : item.type === "multiple" ? "多选" : "判断"}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-xs max-w-md truncate" title={typeof item.content === 'string' ? item.content : (item.content?.zh || item.content?.en || item.content?.ja || '')}>
+                    <td className="py-2 px-3 text-xs overflow-hidden" style={{ wordBreak: "break-word", whiteSpace: "normal" }} title={typeof item.content === 'string' ? item.content : (item.content?.zh || item.content?.en || item.content?.ja || '')}>
                       {typeof item.content === 'string' 
                         ? item.content 
                         : (item.content?.zh || item.content?.en || item.content?.ja || '')}
                     </td>
-                    <td className="py-2 px-3 text-xs">
+                    <td className="py-2 px-3 text-xs whitespace-nowrap">
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
                         : item.correctAnswer}
                     </td>
-                    <td className="py-2 px-3 text-xs max-w-md">
+                    <td className="py-2 px-3 text-xs overflow-hidden" style={{ wordBreak: "break-word", whiteSpace: "normal" }}>
                       {item.explanation ? (
-                        <div className="truncate" title={
+                        <div title={
                           typeof item.explanation === 'string' 
                             ? item.explanation 
                             : (typeof item.explanation === 'object' && item.explanation !== null
