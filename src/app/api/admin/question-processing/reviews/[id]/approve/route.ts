@@ -8,7 +8,7 @@ export const POST = withAdminAuth(async (req: Request, { params }: { params: Pro
     if (!id) return badRequest("Missing id");
     
     const adminInfo = await getAdminInfo(req as any);
-    const adminId = adminInfo?.id || null;
+    const adminId = adminInfo?.id ? String(adminInfo.id) : null;
 
     // 获取润色记录
     const review = await db
@@ -95,7 +95,7 @@ export const POST = withAdminAuth(async (req: Request, { params }: { params: Pro
         new_content: review.proposed_content,
         new_options: review.proposed_options,
         new_explanation: review.proposed_explanation,
-        approved_by: adminId,
+        approved_by: adminId, // 注意：question_polish_history 表中的 approved_by 也是 string | null
       })
       .execute();
 
