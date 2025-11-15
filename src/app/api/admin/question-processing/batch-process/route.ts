@@ -109,6 +109,7 @@ export const POST = withAdminAuth(async (req: Request) => {
     let questions: Array<{
       id: number;
       content_hash: string;
+      type: "single" | "multiple" | "truefalse";
       content: any;
       options: any;
       explanation: {
@@ -123,14 +124,14 @@ export const POST = withAdminAuth(async (req: Request) => {
       console.log(`[API BatchProcess] [${requestId}] Loading specified questions: ${input.questionIds.length}`);
       questions = await db
         .selectFrom("questions")
-        .select(["id", "content_hash", "content", "options", "explanation"])
+        .select(["id", "content_hash", "type", "content", "options", "explanation"])
         .where("id", "in", input.questionIds)
         .execute();
     } else {
       console.log(`[API BatchProcess] [${requestId}] Loading all questions`);
       questions = await db
         .selectFrom("questions")
-        .select(["id", "content_hash", "content", "options", "explanation"])
+        .select(["id", "content_hash", "type", "content", "options", "explanation"])
         .execute();
     }
 
@@ -256,6 +257,7 @@ async function processBatchAsync(
   questions: Array<{
     id: number;
     content_hash: string;
+    type: "single" | "multiple" | "truefalse";
     content: any;
     options: any;
     explanation: {
