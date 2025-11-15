@@ -25,6 +25,7 @@ type NavItemKey = {
   match: (pathname: string) => boolean;
   requireDefaultAdmin?: boolean;
   permission?: string;
+  group?: string; // 分组标识
 };
 
 type NavItem = {
@@ -33,19 +34,31 @@ type NavItem = {
   match: (pathname: string) => boolean;
   requireDefaultAdmin: boolean;
   permission?: string; // 权限类别
+  group?: string; // 分组标识
+};
+
+type NavGroup = {
+  key: string;
+  label: string;
+  items: NavItem[];
 };
 
 const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
-  { key: "nav.activationCodes", href: "/admin/activation-codes", match: (p: string) => p.startsWith("/admin/activation-codes"), permission: "activation_codes" },
+  // 激活管理分组
+  { key: "nav.activationCodes", href: "/admin/activation-codes", match: (p: string) => p.startsWith("/admin/activation-codes"), permission: "activation_codes", group: "activation" },
+  { key: "nav.tasks", href: "/admin/tasks", match: (p: string) => p.startsWith("/admin/tasks"), permission: "tasks", group: "activation" },
+  // 独立菜单项
   { key: "nav.users", href: "/admin/users", match: (p: string) => p.startsWith("/admin/users"), permission: "users" },
   { key: "nav.questions", href: "/admin/questions", match: (p: string) => p.startsWith("/admin/questions") || p.startsWith("/admin/question-processing") || p.startsWith("/admin/polish-reviews"), permission: "questions" },
-  { key: "nav.admins", href: "/admin/admins", match: (p: string) => p.startsWith("/admin/admins"), requireDefaultAdmin: true, permission: "admins" },
-  { key: "nav.operationLogs", href: "/admin/operation-logs", match: (p: string) => p.startsWith("/admin/operation-logs"), permission: "operation_logs" },
-  { key: "nav.stats", href: "/admin/stats", match: (p: string) => p.startsWith("/admin/stats"), permission: "stats" },
-  { key: "nav.tasks", href: "/admin/tasks", match: (p: string) => p.startsWith("/admin/tasks"), permission: "tasks" },
-  { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants" },
-  { key: "nav.merchantCategories", href: "/admin/merchant-categories", match: (p: string) => p.startsWith("/admin/merchant-categories"), permission: "merchants" },
-  { key: "nav.adSlots", href: "/admin/ad-slots", match: (p: string) => p.startsWith("/admin/ad-slots"), permission: "merchants" },
+  // 商户与广告分组
+  { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants", group: "merchant" },
+  { key: "nav.merchantCategories", href: "/admin/merchant-categories", match: (p: string) => p.startsWith("/admin/merchant-categories"), permission: "merchants", group: "merchant" },
+  { key: "nav.adSlots", href: "/admin/ad-slots", match: (p: string) => p.startsWith("/admin/ad-slots"), permission: "merchants", group: "merchant" },
+  // 系统管理分组
+  { key: "nav.operationLogs", href: "/admin/operation-logs", match: (p: string) => p.startsWith("/admin/operation-logs"), permission: "operation_logs", group: "system" },
+  { key: "nav.stats", href: "/admin/stats", match: (p: string) => p.startsWith("/admin/stats"), permission: "stats", group: "system" },
+  { key: "nav.admins", href: "/admin/admins", match: (p: string) => p.startsWith("/admin/admins"), requireDefaultAdmin: true, permission: "admins", group: "system" },
+  // 其他独立菜单项
   { key: "nav.videos", href: "/admin/videos", match: (p: string) => p.startsWith("/admin/videos"), permission: "videos" },
   { key: "nav.contactAndTerms", href: "/admin/contact-and-terms", match: (p: string) => p.startsWith("/admin/contact-and-terms"), permission: "contact_and_terms" },
   // AI板块：总览页面需要至少有一个AI权限才能显示
@@ -69,6 +82,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       match: item.match,
       requireDefaultAdmin: item.requireDefaultAdmin ?? false,
       permission: item.permission,
+      group: item.group,
     }));
   }, [t, language]); // 依赖language确保语言切换时立即更新
 
@@ -128,16 +142,16 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   // 根据权限过滤导航项（依赖ALL_NAV_ITEMS，确保语言切换时更新）
   const NAV_ITEMS = useMemo(() => {
+    let filteredItems: NavItem[];
     if (isDefaultAdmin === null) {
       // 权限检查中，暂时不显示需要默认管理员权限的项
-      return ALL_NAV_ITEMS.filter((item) => !item.requireDefaultAdmin);
-    }
-    if (isDefaultAdmin) {
+      filteredItems = ALL_NAV_ITEMS.filter((item) => !item.requireDefaultAdmin);
+    } else if (isDefaultAdmin) {
       // 超级管理员，显示所有项
-      return ALL_NAV_ITEMS;
+      filteredItems = ALL_NAV_ITEMS;
     } else {
       // 普通管理员，根据权限过滤
-      return ALL_NAV_ITEMS.filter((item) => {
+      filteredItems = ALL_NAV_ITEMS.filter((item) => {
         // 隐藏需要超级管理员权限的项
         if (item.requireDefaultAdmin) {
           return false;
@@ -166,7 +180,38 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         return true;
       });
     }
+    return filteredItems;
   }, [isDefaultAdmin, ALL_NAV_ITEMS, adminPermissions]);
+
+  // 将导航项按分组组织
+  const NAV_GROUPS = useMemo(() => {
+    const groups: NavGroup[] = [];
+    const standaloneItems: NavItem[] = [];
+    
+    // 定义分组顺序和标签
+    const groupOrder = [
+      { key: "activation", labelKey: "nav.group.activation" },
+      { key: "merchant", labelKey: "nav.group.merchant" },
+      { key: "system", labelKey: "nav.group.system" },
+    ];
+    
+    // 按分组组织
+    groupOrder.forEach(({ key, labelKey }) => {
+      const items = NAV_ITEMS.filter(item => item.group === key);
+      if (items.length > 0) {
+        groups.push({
+          key,
+          label: t(labelKey),
+          items,
+        });
+      }
+    });
+    
+    // 收集独立菜单项（没有分组的）
+    standaloneItems.push(...NAV_ITEMS.filter(item => !item.group));
+    
+    return { groups, standaloneItems };
+  }, [NAV_ITEMS, t, language]);
 
   // 计算导航高亮
   const activeHref = useMemo(() => {
@@ -262,24 +307,54 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       <div className="flex">
         {/* 侧边栏 */}
         <aside className="hidden md:block w-60 shrink-0 bg-white/80 backdrop-blur-md border-r border-gray-200/50 min-h-[calc(100vh-3.5rem)]">
-          <nav className="p-3 space-y-1">
-            {NAV_ITEMS.map((item) => {
-              const active = item.href === activeHref;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={[
-                    "block rounded-xl px-3 py-2.5 text-sm transition-colors",
-                    active
-                      ? "bg-blue-500 text-white shadow-sm"
-                      : "text-gray-700 hover:bg-gray-100/50",
-                  ].join(" ")}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+          <nav className="p-3 space-y-4">
+            {/* 分组菜单 */}
+            {NAV_GROUPS.groups.map((group) => (
+              <div key={group.key} className="space-y-1">
+                <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  {group.label}
+                </div>
+                {group.items.map((item) => {
+                  const active = item.href === activeHref;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={[
+                        "block rounded-xl px-3 py-2.5 text-sm transition-colors ml-2",
+                        active
+                          ? "bg-blue-500 text-white shadow-sm"
+                          : "text-gray-700 hover:bg-gray-100/50",
+                      ].join(" ")}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
+            {/* 独立菜单项 */}
+            {NAV_GROUPS.standaloneItems.length > 0 && (
+              <div className="space-y-1">
+                {NAV_GROUPS.standaloneItems.map((item) => {
+                  const active = item.href === activeHref;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={[
+                        "block rounded-xl px-3 py-2.5 text-sm transition-colors",
+                        active
+                          ? "bg-blue-500 text-white shadow-sm"
+                          : "text-gray-700 hover:bg-gray-100/50",
+                      ].join(" ")}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </nav>
         </aside>
 
@@ -287,24 +362,56 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         <main className="flex-1 min-h-[calc(100vh-3.5rem)] max-w-full overflow-x-hidden">
           {/* 移动端导航 */}
           <div className="md:hidden px-4 pt-3 pb-2">
-            <div className="flex flex-wrap gap-2 pb-2">
-              {NAV_ITEMS.map((item) => {
-                const active = item.href === activeHref;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={[
-                      "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
-                      active
-                        ? "bg-blue-500 text-white shadow-sm"
-                        : "text-gray-700 bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100",
-                    ].join(" ")}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
+            <div className="space-y-3">
+              {/* 分组菜单 */}
+              {NAV_GROUPS.groups.map((group) => (
+                <div key={group.key} className="space-y-2">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2">
+                    {group.label}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.items.map((item) => {
+                      const active = item.href === activeHref;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={[
+                            "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
+                            active
+                              ? "bg-blue-500 text-white shadow-sm"
+                              : "text-gray-700 bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100",
+                          ].join(" ")}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              {/* 独立菜单项 */}
+              {NAV_GROUPS.standaloneItems.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {NAV_GROUPS.standaloneItems.map((item) => {
+                    const active = item.href === activeHref;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={[
+                          "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium touch-manipulation transition-colors",
+                          active
+                            ? "bg-blue-500 text-white shadow-sm"
+                            : "text-gray-700 bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100",
+                        ].join(" ")}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
