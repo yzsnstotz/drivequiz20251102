@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { Star, MapPin, Clock, Car } from 'lucide-react';
+import { useLanguage } from '@/lib/i18n';
 
 interface CarItem {
   id: string;
@@ -53,14 +54,21 @@ const carData: CarItem[] = [
   },
 ];
 
-const categories = ['全部', '驾校用车', '租车', '二手车', '汽车保养', '驾驶培训'];
-
 function CarsPage() {
-  const [selectedCategory, setSelectedCategory] = useState('全部');
+  const { t } = useLanguage();
+  const categories = [
+    t('cars.category.all'),
+    t('cars.category.school'),
+    t('cars.category.rental'),
+    t('cars.category.used'),
+    t('cars.category.maintenance'),
+    t('cars.category.training')
+  ];
+  const [selectedCategory, setSelectedCategory] = useState(categories[0]);
   const [sortBy, setSortBy] = useState<'distance' | 'rating'>('distance');
 
   const filteredCars = carData
-    .filter(car => selectedCategory === '全部' || car.type === selectedCategory)
+    .filter(car => selectedCategory === categories[0] || car.type === selectedCategory)
     .sort((a, b) => {
       if (sortBy === 'distance') {
         return parseInt(a.distance) - parseInt(b.distance);
@@ -73,8 +81,8 @@ function CarsPage() {
     <div className="container mx-auto px-4 py-6 pb-20">
       {/* 页面标题 */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">汽车服务</h1>
-        <p className="text-gray-600">驾校用车、租车等服务</p>
+        <h1 className="text-2xl font-bold text-gray-900">{t('cars.title')}</h1>
+        <p className="text-gray-600">{t('cars.subtitle')}</p>
       </div>
 
       {/* 分类筛选 */}
@@ -98,13 +106,13 @@ function CarsPage() {
           onClick={() => setSortBy('distance')}
           className={`px-4 py-2 rounded-lg text-sm font-medium ${sortBy === 'distance' ? 'bg-blue-50 text-blue-600' : 'text-gray-600'}`}
         >
-          按距离
+          {t('cars.sortByDistance')}
         </button>
         <button
           onClick={() => setSortBy('rating')}
           className={`px-4 py-2 rounded-lg text-sm font-medium ${sortBy === 'rating' ? 'bg-blue-50 text-blue-600' : 'text-gray-600'}`}
         >
-          按评分
+          {t('cars.sortByRating')}
         </button>
       </div>
 
