@@ -11,7 +11,7 @@ export const POST = withAdminAuth(async (req: Request, { params }: { params: Pro
     const notes = body?.notes || "";
 
     const adminInfo = await getAdminInfo(req as any);
-    const adminId = adminInfo?.id || null;
+    const adminId = adminInfo?.id ? String(adminInfo.id) : null;
 
     // 获取润色记录
     const review = await db
