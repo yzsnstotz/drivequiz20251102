@@ -113,7 +113,7 @@ export const POST = withAdminAuth(async (req: Request) => {
           from,
           to: targetLang,
         });
-        const result = await translateWithPolish({
+        const translateResult = await translateWithPolish({
           source: {
             content,
             options,
@@ -123,6 +123,17 @@ export const POST = withAdminAuth(async (req: Request) => {
           to: targetLang,
           adminToken,
         });
+
+        // 处理返回结果（可能是结果对象或包含详细信息的对象）
+        let result: any;
+        if (translateResult && typeof translateResult === 'object' && 'result' in translateResult && 'detail' in translateResult) {
+          // 返回了详细信息，提取result字段
+          result = (translateResult as any).result;
+        } else {
+          // 只返回了结果
+          result = translateResult;
+        }
+
         console.log(`[API Translate] [${requestId}] translateWithPolish completed`, {
           contentLength: result.content?.length || 0,
           hasOptions: !!result.options,
