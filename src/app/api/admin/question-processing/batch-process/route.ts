@@ -12,7 +12,9 @@ import {
   polishContent,
   generateCategoryAndTags,
   fillMissingContent,
+  SubtaskDetail,
 } from "../_lib/batchProcessUtils";
+import { aiDb } from "@/lib/aiDb";
 
 // POST /api/admin/question-processing/batch-process - 创建批量处理任务
 export const POST = withAdminAuth(async (req: Request) => {
@@ -289,6 +291,63 @@ async function processBatchAsync(
 
   console.log(`[BatchProcess] Task ${taskId} started: ${questions.length} questions, operations: ${input.operations.join(", ")}`);
   
+  // 辅助函数：获取场景配置
+  const getSceneConfig = async (sceneKey: string, locale: string = "zh"): Promise<{
+    prompt: string;
+    outputFormat: string | null;
+    sceneName: string;
+  } | null> => {
+    try {
+      const sceneConfig = await (aiDb as any)
+        .selectFrom("ai_scene_config")
+        .selectAll()
+        .where("scene_key", "=", sceneKey)
+        .where("enabled", "=", true)
+        .executeTakeFirst();
+
+      if (!sceneConfig) {
+        return null;
+      }
+
+      // 根据语言选择prompt
+      let prompt = sceneConfig.system_prompt_zh;
+      const lang = locale.toLowerCase();
+      if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
+        prompt = sceneConfig.system_prompt_ja;
+      } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
+        prompt = sceneConfig.system_prompt_en;
+      }
+
+      return {
+        prompt: prompt || sceneConfig.system_prompt_zh,
+        outputFormat: sceneConfig.output_format || null,
+        sceneName: sceneConfig.scene_name || sceneKey,
+      };
+    } catch (error) {
+      console.error(`[getSceneConfig] Failed to get scene config for ${sceneKey}:`, error);
+      return null;
+    }
+  };
+
+  // 辅助函数：从AI日志中获取最近的回答
+  const getLatestAiAnswer = async (questionText: string, scene: string, limit: number = 1): Promise<string | null> => {
+    try {
+      const logs = await (aiDb as any)
+        .selectFrom("ai_logs")
+        .select(["answer"])
+        .where("question", "=", questionText.substring(0, 500)) // 只匹配前500个字符
+        .where("from", "=", "batch_process") // 假设批量处理会设置这个字段
+        .orderBy("created_at", "desc")
+        .limit(limit)
+        .execute();
+
+      return logs.length > 0 ? logs[0].answer : null;
+    } catch (error) {
+      console.error(`[getLatestAiAnswer] Failed to get AI answer:`, error);
+      return null;
+    }
+  };
+  
   try {
 
   // 辅助函数：检查任务是否已被取消，如果已取消则更新状态并返回 true
@@ -339,6 +398,7 @@ async function processBatchAsync(
         questionId: question.id,
         operations: [] as string[],
         status: "success" as "success" | "failed",
+        subtasks: [] as SubtaskDetail[], // 子任务详细信息
       };
 
       try {
@@ -405,12 +465,57 @@ async function processBatchAsync(
                 }
 
                 try {
-                  const result = await translateWithPolish({
+                  // 构建问题文本
+                  const questionText = [
+                    `Content: ${sourceContent.content}`,
+                    sourceContent.options && sourceContent.options.length ? `Options:\n- ${sourceContent.options.join("\n- ")}` : ``,
+                    sourceContent.explanation ? `Explanation: ${sourceContent.explanation}` : ``,
+                  ]
+                    .filter(Boolean)
+                    .join("\n");
+
+                  // 获取场景配置
+                  const sceneKey = "question_translation";
+                  const sceneConfig = await getSceneConfig(sceneKey, targetLang);
+
+                  // 调用翻译函数（带详细信息）
+                  const translateResult = await translateWithPolish({
                     source: sourceContent,
                     from: input.translateOptions!.from,
                     to: targetLang,
                     adminToken,
+                    returnDetail: true,
                   });
+
+                  // 处理返回结果（可能是结果对象或包含详细信息的对象）
+                  let result: any;
+                  let detail: SubtaskDetail | null = null;
+
+                  if (translateResult && typeof translateResult === 'object' && 'result' in translateResult && 'detail' in translateResult) {
+                    // 返回了详细信息
+                    result = (translateResult as any).result;
+                    detail = (translateResult as any).detail;
+                  } else {
+                    // 只返回了结果
+                    result = translateResult;
+                    // 创建详细信息
+                    detail = {
+                      operation: "translate",
+                      scene: sceneKey,
+                      sceneName: sceneConfig?.sceneName || sceneKey,
+                      prompt: sceneConfig?.prompt || "",
+                      expectedFormat: sceneConfig?.outputFormat || null,
+                      question: questionText,
+                      answer: "", // 无法获取，留空
+                      status: "success",
+                      timestamp: new Date().toISOString(),
+                    };
+                  }
+
+                  // 记录子任务详细信息
+                  if (detail) {
+                    questionResult.subtasks.push(detail);
+                  }
 
                   // 验证翻译结果
                   if (!result.content || result.content.trim().length === 0) {

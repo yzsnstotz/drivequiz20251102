@@ -5,6 +5,19 @@ import { apiFetch, apiPost, apiDelete, ApiError } from "@/lib/apiClient";
 
 type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
+type SubtaskDetail = {
+  operation: string;
+  scene: string;
+  sceneName: string;
+  prompt: string;
+  expectedFormat: string | null;
+  question: string;
+  answer: string;
+  status: "success" | "failed";
+  error?: string;
+  timestamp: string;
+};
+
 type BatchProcessTask = {
   id: number;
   task_id: string;
@@ -17,7 +30,12 @@ type BatchProcessTask = {
   failed_count: number;
   current_batch: number;
   errors: Array<{ questionId: number; error: string }> | null;
-  details: Array<{ questionId: number; operations: string[]; status: string }> | null;
+  details: Array<{ 
+    questionId: number; 
+    operations: string[]; 
+    status: string;
+    subtasks?: SubtaskDetail[]; // 子任务详细信息
+  }> | null;
   created_by: string | null;
   started_at: string | null;
   completed_at: string | null;
@@ -1120,18 +1138,87 @@ export default function QuestionProcessingPage() {
                 {selectedTask.details && selectedTask.details.length > 0 && (
                   <div>
                     <label className="text-sm font-medium text-gray-700">
-                      处理详情
+                      处理详情（包含子任务级别的AI对答追踪）
                     </label>
-                    <div className="mt-2 max-h-48 overflow-y-auto border rounded p-3 bg-gray-50">
-                      {selectedTask.details.slice(0, 20).map((detail, idx) => (
-                        <div key={idx} className="text-sm text-gray-700 mb-1">
-                          题目 {detail.questionId}: {detail.operations.join(", ")} -{" "}
-                          {detail.status}
+                    <div className="mt-2 max-h-96 overflow-y-auto border rounded p-3 bg-gray-50 space-y-4">
+                      {selectedTask.details.slice(0, 10).map((detail, idx) => (
+                        <div key={idx} className="border-b border-gray-200 pb-4 last:border-b-0">
+                          <div className="text-sm font-semibold text-gray-800 mb-2">
+                            题目 {detail.questionId}: {detail.operations.join(", ")} - {detail.status}
+                          </div>
+                          
+                          {/* 子任务详细信息 */}
+                          {detail.subtasks && detail.subtasks.length > 0 && (
+                            <div className="ml-4 space-y-3 mt-2">
+                              {detail.subtasks.map((subtask, subtaskIdx) => (
+                                <div key={subtaskIdx} className="bg-white rounded-lg p-3 border border-gray-200">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">
+                                        {subtask.operation}
+                                      </span>
+                                      <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
+                                        {subtask.sceneName}
+                                      </span>
+                                      <span className={`px-2 py-1 text-xs rounded ${
+                                        subtask.status === "success" 
+                                          ? "bg-green-100 text-green-800" 
+                                          : "bg-red-100 text-red-800"
+                                      }`}>
+                                        {subtask.status === "success" ? "成功" : "失败"}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-gray-500">
+                                      {new Date(subtask.timestamp).toLocaleString("zh-CN")}
+                                    </span>
+                                  </div>
+
+                                  {/* 指令（Prompt） */}
+                                  <div className="mb-3">
+                                    <div className="text-xs font-semibold text-gray-700 mb-1">指令（Prompt）:</div>
+                                    <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs text-gray-800 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                      {subtask.prompt || "未配置"}
+                                    </div>
+                                  </div>
+
+                                  {/* 预期回答格式 */}
+                                  {subtask.expectedFormat && (
+                                    <div className="mb-3">
+                                      <div className="text-xs font-semibold text-gray-700 mb-1">预期回答格式:</div>
+                                      <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-gray-800 whitespace-pre-wrap max-h-24 overflow-y-auto">
+                                        {subtask.expectedFormat}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* 发送给AI的问题 */}
+                                  <div className="mb-3">
+                                    <div className="text-xs font-semibold text-gray-700 mb-1">发送给AI的问题:</div>
+                                    <div className="bg-gray-50 border border-gray-200 rounded p-2 text-xs text-gray-800 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                      {subtask.question}
+                                    </div>
+                                  </div>
+
+                                  {/* AI的回答 */}
+                                  <div>
+                                    <div className="text-xs font-semibold text-gray-700 mb-1">AI的回答:</div>
+                                    <div className={`border rounded p-2 text-xs whitespace-pre-wrap max-h-48 overflow-y-auto ${
+                                      subtask.status === "success"
+                                        ? "bg-green-50 border-green-200 text-gray-800"
+                                        : "bg-red-50 border-red-200 text-red-800"
+                                    }`}>
+                                      {subtask.answer || (subtask.error ? `错误: ${subtask.error}` : "无回答")}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
-                      {selectedTask.details.length > 20 && (
-                        <div className="text-xs text-gray-500 mt-2">
-                          还有 {selectedTask.details.length - 20} 条记录...
+                      {selectedTask.details.length > 10 && (
+                        <div className="text-xs text-gray-500 mt-2 text-center">
+                          还有 {selectedTask.details.length - 10} 条记录...
                         </div>
                       )}
                     </div>
