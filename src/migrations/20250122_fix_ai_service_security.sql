@@ -84,7 +84,7 @@ BEGIN
       RETURN NEW;
     END;
     $body$ LANGUAGE plpgsql
-    SET search_path = public;
+    SET search_path = public, extensions;
     $func$;
     
     EXECUTE 'COMMENT ON FUNCTION update_rag_operations_updated_at IS ''自动更新 rag_operations 表的 updated_at 字段。已修复 search_path 安全问题。''';
@@ -116,7 +116,7 @@ BEGIN
       RETURN NEW;
     END;
     $body$ LANGUAGE plpgsql
-    SET search_path = public;
+    SET search_path = public, extensions;
     $func$;
     
     EXECUTE 'COMMENT ON FUNCTION update_rag_documents_updated_at IS ''自动更新 rag_documents 表的 updated_at 字段。已修复 search_path 安全问题。''';
@@ -188,7 +188,7 @@ BEGIN
         )
         LANGUAGE sql STABLE
         SECURITY DEFINER
-        SET search_path = public
+        SET search_path = public, extensions
         AS $body$
           SELECT id, doc_id, content, source_title, source_url, version,
                  1 - (embedding <=> query_embedding) AS similarity
@@ -222,7 +222,7 @@ BEGIN
         )
         LANGUAGE sql STABLE
         SECURITY DEFINER
-        SET search_path = public
+        SET search_path = public, extensions
         AS $body$
           SELECT id, doc_id, content, source_title, source_url, version,
                  1 - (embedding <=> query_embedding) AS similarity
