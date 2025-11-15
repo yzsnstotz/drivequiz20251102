@@ -1077,42 +1077,62 @@ export default function QuestionProcessingPage() {
                     </div>
                   )}
                   
-                  {/* AI 对话详情 */}
-                  {selectedTask.status === "processing" && currentAiLogs.length > 0 && (
+                  {/* AI 对话详情 - 从子任务详细信息中显示 */}
+                  {selectedTask.details && selectedTask.details.filter((d: any) => !d.summary && d.subtasks && d.subtasks.length > 0).length > 0 && (
                     <div className="col-span-2">
                       <label className="text-sm font-medium text-gray-700">
-                        AI 服务对话详情
+                        AI 服务对话详情（所有操作）
                       </label>
-                      <div className="mt-2 max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
-                        {currentAiLogs.map((log: any, idx) => (
-                          <div key={idx} className="mb-4 pb-4 border-b last:border-b-0">
-                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
-                              <span>{new Date(log.created_at).toLocaleString()}</span>
-                              <span>·</span>
-                              <span>{log.model}</span>
-                              {log.operations && log.operations.length > 0 && (
-                                <>
-                                  <span>·</span>
-                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px]">
-                                    {log.operations.join(", ")}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            <div className="text-sm mb-2">
-                              <div className="font-semibold text-gray-700 mb-1">提问：</div>
-                              <div className="bg-white p-2 rounded border text-gray-800 whitespace-pre-wrap max-h-32 overflow-y-auto text-xs">
-                                {log.question}
+                      <div className="mt-2 max-h-96 overflow-y-auto border rounded p-3 bg-gray-50 space-y-4">
+                        {selectedTask.details
+                          .filter((d: any) => !d.summary && d.subtasks && d.subtasks.length > 0)
+                          .map((detail: any, detailIdx: number) => (
+                            <div key={detailIdx} className="border-b border-gray-200 pb-4 last:border-b-0">
+                              <div className="text-xs font-semibold text-gray-800 mb-2">
+                                题目 {detail.questionId}: {detail.operations.join(", ")} - {detail.status}
                               </div>
+                              {detail.subtasks.map((subtask: SubtaskDetail, subtaskIdx: number) => (
+                                <div key={subtaskIdx} className="ml-4 mb-3 bg-white rounded-lg p-3 border border-gray-200">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">
+                                        {subtask.operation}
+                                      </span>
+                                      <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
+                                        {subtask.sceneName}
+                                      </span>
+                                      <span className={`px-2 py-1 text-xs rounded ${
+                                        subtask.status === "success" 
+                                          ? "bg-green-100 text-green-800" 
+                                          : "bg-red-100 text-red-800"
+                                      }`}>
+                                        {subtask.status === "success" ? "成功" : "失败"}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-gray-500">
+                                      {new Date(subtask.timestamp).toLocaleString("zh-CN")}
+                                    </span>
+                                  </div>
+                                  <div className="text-sm mb-2">
+                                    <div className="font-semibold text-gray-700 mb-1">提问：</div>
+                                    <div className="bg-white p-2 rounded border text-gray-800 whitespace-pre-wrap max-h-32 overflow-y-auto text-xs">
+                                      {subtask.question}
+                                    </div>
+                                  </div>
+                                  <div className="text-sm">
+                                    <div className="font-semibold text-gray-700 mb-1">回答：</div>
+                                    <div className={`p-2 rounded border text-gray-800 whitespace-pre-wrap max-h-48 overflow-y-auto text-xs ${
+                                      subtask.status === "success"
+                                        ? "bg-blue-50 border-blue-200"
+                                        : "bg-red-50 border-red-200"
+                                    }`}>
+                                      {subtask.answer || (subtask.error ? `错误: ${subtask.error}` : "无回答")}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                            <div className="text-sm">
-                              <div className="font-semibold text-gray-700 mb-1">回答：</div>
-                              <div className="bg-blue-50 p-2 rounded border border-blue-200 text-gray-800 whitespace-pre-wrap max-h-48 overflow-y-auto text-xs">
-                                {log.answer}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                          ))}
                       </div>
                     </div>
                   )}

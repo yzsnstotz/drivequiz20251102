@@ -550,6 +550,7 @@ async function processBatchAsync(
             : null;
         
         // 处理 explanation 字段：支持多语言对象或字符串（向后兼容）
+        // 注意：需要在每次操作前重新获取最新的 explanation，因为 fill_missing 可能会更新它
         let explanation: string | null = null;
         if (question.explanation) {
           if (typeof question.explanation === "string") {
@@ -559,7 +560,7 @@ async function processBatchAsync(
             explanation = question.explanation.zh || null;
           }
         }
-
+        
         // 执行各种操作（将 translate 放到最后）
         const sortedOperations = [...input.operations].sort((a, b) => {
           if (a === "translate") return 1; // translate 放到最后
@@ -571,6 +572,21 @@ async function processBatchAsync(
           // 在执行每个操作前检查是否已取消
           if (await checkCancelled()) {
             throw new Error("Task has been cancelled");
+          }
+
+          // 在执行每个操作前，重新从数据库获取最新的 explanation（如果 fill_missing 已经更新了它）
+          const currentQuestion = await db
+            .selectFrom("questions")
+            .select(["explanation"])
+            .where("id", "=", question.id)
+            .executeTakeFirst();
+          
+          if (currentQuestion?.explanation) {
+            if (typeof currentQuestion.explanation === "string") {
+              explanation = currentQuestion.explanation;
+            } else if (typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
+              explanation = currentQuestion.explanation.zh || explanation;
+            }
           }
 
           try {
@@ -746,11 +762,28 @@ async function processBatchAsync(
                 options: options || undefined,
                 explanation: explanation || undefined,
               };
-              const result = await polishContent({
+              const polishResult = await polishContent({
                 text,
                 locale: input.polishOptions.locale,
                 adminToken,
+                returnDetail: true,
               });
+
+              // 处理返回结果（可能是结果对象或包含详细信息的对象）
+              let result: any;
+              let detail: SubtaskDetail | null = null;
+
+              if (polishResult && typeof polishResult === 'object' && 'result' in polishResult && 'detail' in polishResult) {
+                result = (polishResult as any).result;
+                detail = (polishResult as any).detail;
+              } else {
+                result = polishResult;
+              }
+
+              // 记录子任务详细信息
+              if (detail) {
+                questionResult.subtasks.push(detail);
+              }
 
               // 在批量处理中，如果后续有翻译操作，直接应用润色结果到内存变量
               // 这样翻译操作会使用润色后的内容
@@ -787,13 +820,30 @@ async function processBatchAsync(
             }
 
             if (operation === "fill_missing") {
-              const result = await fillMissingContent({
+              const fillResult = await fillMissingContent({
                 content,
                 options: options || null,
                 explanation: explanation || null,
                 questionType: question.type, // 传递题目类型
                 adminToken,
+                returnDetail: true,
               });
+
+              // 处理返回结果（可能是结果对象或包含详细信息的对象）
+              let result: any;
+              let detail: SubtaskDetail | null = null;
+
+              if (fillResult && typeof fillResult === 'object' && 'result' in fillResult && 'detail' in fillResult) {
+                result = (fillResult as any).result;
+                detail = (fillResult as any).detail;
+              } else {
+                result = fillResult;
+              }
+
+              // 记录子任务详细信息
+              if (detail) {
+                questionResult.subtasks.push(detail);
+              }
 
               // 更新题目内容（如果原内容缺失）
               const needsUpdate = !content || !options || !explanation;
@@ -931,12 +981,29 @@ async function processBatchAsync(
             }
 
             if (operation === "category_tags") {
-              const result = await generateCategoryAndTags({
+              const categoryResult = await generateCategoryAndTags({
                 content,
                 options: options || null,
                 explanation: explanation || null,
                 adminToken,
+                returnDetail: true,
               });
+
+              // 处理返回结果（可能是结果对象或包含详细信息的对象）
+              let result: any;
+              let detail: SubtaskDetail | null = null;
+
+              if (categoryResult && typeof categoryResult === 'object' && 'result' in categoryResult && 'detail' in categoryResult) {
+                result = (categoryResult as any).result;
+                detail = (categoryResult as any).detail;
+              } else {
+                result = categoryResult;
+              }
+
+              // 记录子任务详细信息
+              if (detail) {
+                questionResult.subtasks.push(detail);
+              }
 
               console.log(`[BatchProcess] Category and tags result for Q${question.id}:`, {
                 category: result.category,
