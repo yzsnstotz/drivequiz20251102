@@ -481,13 +481,26 @@ export async function fillMissingContent(params: {
   options?: string[] | null;
   explanation?: string | null;
   locale?: string;
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型
   adminToken?: string; // 管理员 token，用于跳过配额限制
 }): Promise<TranslateResult> {
-  const { content, options, explanation, locale = "zh-CN" } = params;
+  const { content, options, explanation, locale = "zh-CN", questionType } = params;
+
+  // 根据题目类型决定是否提示 options
+  let optionsPrompt = "";
+  if (questionType === "truefalse") {
+    // 是非题不需要选项
+    optionsPrompt = "Question Type: True/False (判断题，不需要选项，options 字段应设为 null 或空数组 [])\n";
+  } else {
+    // 单选或多选题需要选项
+    optionsPrompt = options && options.length 
+      ? `Options:\n- ${options.join("\n- ")}` 
+      : `Options: [缺失]`;
+  }
 
   const input = [
     `Content: ${content || "[缺失]"}`,
-    options && options.length ? `Options:\n- ${options.join("\n- ")}` : `Options: [缺失]`,
+    optionsPrompt,
     explanation ? `Explanation: ${explanation}` : `Explanation: [缺失]`,
   ]
     .filter(Boolean)

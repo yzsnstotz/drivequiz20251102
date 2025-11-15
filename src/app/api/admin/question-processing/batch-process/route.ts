@@ -539,6 +539,7 @@ async function processBatchAsync(
                 content,
                 options: options || null,
                 explanation: explanation || null,
+                questionType: question.type, // 传递题目类型
                 adminToken,
               });
 
@@ -576,7 +577,10 @@ async function processBatchAsync(
 
                 // 处理 options：确保始终是有效的 JSONB 数组或 null
                 let updatedOptions: any = null;
-                if (result.options && Array.isArray(result.options)) {
+                // 如果是是非题，options 应该为 null
+                if (question.type === "truefalse") {
+                  updatedOptions = null;
+                } else if (result.options && Array.isArray(result.options)) {
                   // 确保是有效的数组格式，过滤空值
                   updatedOptions = result.options
                     .filter((opt: any) => opt != null && String(opt).trim().length > 0)
