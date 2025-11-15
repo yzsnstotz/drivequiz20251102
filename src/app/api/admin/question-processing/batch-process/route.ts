@@ -867,18 +867,24 @@ async function processBatchAsync(
           console.log(`[BatchProcess] Progress: ${results.processed}/${results.total} (✓${results.succeeded} ✗${results.failed})`);
         }
         
-        await db
-          .updateTable("batch_process_tasks")
-          .set({
-            processed_count: results.processed,
-            succeeded_count: results.succeeded,
-            failed_count: results.failed,
-            errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-            details: sql`${JSON.stringify(results.details)}::jsonb`,
-            updated_at: new Date(),
-          })
-          .where("task_id", "=", taskId)
-          .execute();
+        // 更新任务进度（使用try-catch确保即使失败也能继续）
+        try {
+          await db
+            .updateTable("batch_process_tasks")
+            .set({
+              processed_count: results.processed,
+              succeeded_count: results.succeeded,
+              failed_count: results.failed,
+              errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+              details: sql`${JSON.stringify(results.details)}::jsonb`,
+              updated_at: new Date(),
+            })
+            .where("task_id", "=", taskId)
+            .execute();
+        } catch (updateError: any) {
+          console.error(`[BatchProcess] Failed to update task progress for Q${question.id}:`, updateError?.message);
+          // 不抛出错误，继续处理下一个题目
+        }
       } catch (error: any) {
         const errorMsg = sanitizeError(error);
         console.error(`[BatchProcess] Question ${question.id} processing failed: ${errorMsg}`);
@@ -898,19 +904,24 @@ async function processBatchAsync(
           throw error;
         }
 
-        // 更新进度
-        await db
-          .updateTable("batch_process_tasks")
-          .set({
-            processed_count: results.processed,
-            succeeded_count: results.succeeded,
-            failed_count: results.failed,
-            errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-            details: sql`${JSON.stringify(results.details)}::jsonb`,
-            updated_at: new Date(),
-          })
-          .where("task_id", "=", taskId)
-          .execute();
+        // 更新进度（使用try-catch确保即使失败也能继续）
+        try {
+          await db
+            .updateTable("batch_process_tasks")
+            .set({
+              processed_count: results.processed,
+              succeeded_count: results.succeeded,
+              failed_count: results.failed,
+              errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+              details: sql`${JSON.stringify(results.details)}::jsonb`,
+              updated_at: new Date(),
+            })
+            .where("task_id", "=", taskId)
+            .execute();
+        } catch (updateError: any) {
+          console.error(`[BatchProcess] Failed to update task progress after error for Q${question.id}:`, updateError?.message);
+          // 不抛出错误，继续处理下一个题目
+        }
       }
     }
   }
