@@ -111,9 +111,12 @@ export default function QuestionProcessingPage() {
           if (task.details && Array.isArray(task.details)) {
             const summaryItem = task.details.find((d: any) => d.summary);
             if (summaryItem) {
-              task.summary = summaryItem.summary;
-              // 从 details 中移除 summary 项
-              task.details = task.details.filter((d: any) => !d.summary);
+              // 创建新对象而不是直接修改原对象
+              return {
+                ...task,
+                summary: summaryItem.summary,
+                details: task.details.filter((d: any) => !d.summary),
+              };
             }
           }
           return task;
