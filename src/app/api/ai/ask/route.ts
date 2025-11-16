@@ -207,6 +207,85 @@ function touchResetIfNeeded() {
 function ok<T>(data: T) {
   return NextResponse.json({ ok: true, data } as const, { status: 200 });
 }
+
+/**
+ * 统一记录 AI 调用耗时
+ * 在所有 AI 调用前后使用此函数包装，确保耗时被正确记录
+ */
+async function recordAiCallTiming<T>(
+  timingInfo: { aiCall?: number },
+  requestId: string,
+  aiCallFn: () => Promise<T>
+): Promise<T> {
+  const aiCallStartTime = Date.now();
+  try {
+    const result = await aiCallFn();
+    const aiCallDuration = Date.now() - aiCallStartTime;
+    timingInfo.aiCall = aiCallDuration;
+    console.log(`[${requestId}] [AI_CALL_TIMING] AI调用耗时记录`, {
+      aiCallDuration: `${aiCallDuration}ms`,
+    });
+    return result;
+  } catch (error) {
+    const aiCallDuration = Date.now() - aiCallStartTime;
+    timingInfo.aiCall = aiCallDuration; // 即使出错也要记录耗时
+    console.log(`[${requestId}] [AI_CALL_TIMING] AI调用耗时记录（错误）`, {
+      aiCallDuration: `${aiCallDuration}ms`,
+      error: (error as Error).message,
+    });
+    throw error;
+  }
+}
+
+/**
+ * 统一添加耗时信息到响应数据
+ * 在所有返回响应的地方调用此函数，确保耗时信息被正确添加
+ */
+function addTimingToResponse(
+  data: any,
+  timingInfo: {
+    cacheCheck?: number;
+    databaseQuery?: number;
+    aiCall?: number;
+    databaseWrite?: number;
+    total?: number;
+  },
+  requestStartTime: number,
+  requestId: string
+): any {
+  // 计算总耗时
+  const totalDuration = Date.now() - requestStartTime;
+  timingInfo.total = totalDuration;
+  
+  // 构建包含耗时信息的 sources（前台用户端只显示总耗时）
+  const timingSourceItem = {
+    title: "处理耗时",
+    url: "",
+    snippet: `总耗时: ${totalDuration}ms`,
+  };
+  
+  const timingSources = [
+    ...(data.sources || []),
+    timingSourceItem,
+  ];
+  
+  // 调试：打印耗时信息
+  console.log(`[${requestId}] [TIMING] 添加耗时信息到响应`, {
+    cacheCheck: timingInfo.cacheCheck || 0,
+    databaseQuery: timingInfo.databaseQuery || 0,
+    aiCall: timingInfo.aiCall || 0,
+    databaseWrite: timingInfo.databaseWrite || 0,
+    total: totalDuration,
+    originalSourcesCount: data.sources?.length || 0,
+    timingSourcesCount: timingSources.length,
+    timingSourceItem,
+  });
+  
+  return {
+    ...data,
+    sources: timingSources,
+  };
+}
 function err(
   code:
     | "AUTH_REQUIRED"
@@ -576,10 +655,21 @@ async function writeAiLogToDatabase(params: {
 // ==== 入口：POST /api/ai/ask ====
 export async function POST(req: NextRequest) {
   const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const requestStartTime = Date.now(); // 记录请求开始时间
+  const timingInfo: {
+    cacheCheck?: number; // 缓存检查耗时（毫秒）
+    databaseQuery?: number; // 数据库查询耗时（毫秒）
+    aiCall?: number; // AI调用耗时（毫秒）
+    databaseWrite?: number; // 数据库写入耗时（毫秒）
+    total?: number; // 总耗时（毫秒）
+  } = {};
+  
   console.log(`[${requestId}] [POST START] 请求开始`, {
     url: req.url,
     method: req.method,
     timestamp: new Date().toISOString(),
+    requestStartTime,
+    timingInfoInitialized: true,
   });
   
   try {
@@ -683,18 +773,8 @@ export async function POST(req: NextRequest) {
         console.log(`[${requestId}] [STEP 0.4] 已选择本地AI服务`);
       }
     } else {
-      if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
-        console.error(`[${requestId}] [STEP 0.4] 在线AI服务配置不完整，返回错误`);
-        return err(
-          "INTERNAL_ERROR",
-          "AI service is not configured.",
-          500,
-          { missing: ["AI_SERVICE_URL", "AI_SERVICE_TOKEN"].filter(
-            (k) => !process.env[k as "AI_SERVICE_URL" | "AI_SERVICE_TOKEN"],
-          ) },
-        );
-      }
       // 如果是 openrouter_direct、openai_direct 或 gemini_direct，不通过 AI Service，直接调用 API
+      // 这些模式不需要 AI_SERVICE_URL 和 AI_SERVICE_TOKEN
       if (aiProviderFromDb === "openrouter_direct") {
         aiServiceMode = "openrouter_direct";
         console.log(`[${requestId}] [STEP 0.4] 已选择直连OpenRouter模式（不通过AI Service）`);
@@ -705,11 +785,23 @@ export async function POST(req: NextRequest) {
         aiServiceMode = "gemini_direct";
         console.log(`[${requestId}] [STEP 0.4] 已选择直连Google Gemini模式（不通过AI Service）`);
       } else {
-      selectedAiServiceUrl = AI_SERVICE_URL;
-      selectedAiServiceToken = AI_SERVICE_TOKEN;
-      // openrouter 和 openai 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
-      aiServiceMode = aiProviderFromDb === "openrouter" ? "openrouter" : "openai";
-      console.log(`[${requestId}] [STEP 0.4] 已选择${aiServiceMode === "openrouter" ? "OpenRouter" : "OpenAI"} AI服务`);
+        // 其他模式（openrouter、openai）需要通过 AI Service
+        if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
+          console.error(`[${requestId}] [STEP 0.4] 在线AI服务配置不完整，返回错误`);
+          return err(
+            "INTERNAL_ERROR",
+            "AI service is not configured.",
+            500,
+            { missing: ["AI_SERVICE_URL", "AI_SERVICE_TOKEN"].filter(
+              (k) => !process.env[k as "AI_SERVICE_URL" | "AI_SERVICE_TOKEN"],
+            ) },
+          );
+        }
+        selectedAiServiceUrl = AI_SERVICE_URL;
+        selectedAiServiceToken = AI_SERVICE_TOKEN;
+        // openrouter 和 openai 使用相同的 AI Service URL，由 AI Service 内部根据环境变量决定
+        aiServiceMode = aiProviderFromDb === "openrouter" ? "openrouter" : "openai";
+        console.log(`[${requestId}] [STEP 0.4] 已选择${aiServiceMode === "openrouter" ? "OpenRouter" : "OpenAI"} AI服务`);
       }
     }
     
@@ -910,13 +1002,14 @@ export async function POST(req: NextRequest) {
     }
 
     // 3) 配额检查（用户维度 10次/日）
-    // 检查是否为管理员请求，如果是则跳过配额限制
+    // 注意：后台请求应该使用 /api/admin/ai/ask 接口，这里保留管理员检查仅用于向后兼容
+    // 优化：只在有 Authorization header 时才检查管理员（减少不必要的数据库查询）
     let isAdminRequest = false;
-    try {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
+    // 重用之前声明的 authHeader 变量（第 730 行）
+    if (authHeader?.startsWith("Bearer ")) {
+      try {
         const token = authHeader.slice("Bearer ".length).trim();
-        // 检查是否为管理员 token
+        // 检查是否为管理员 token（仅在有 token 时检查，减少查询）
         const { db } = await import("@/lib/db");
         const admin = await db
           .selectFrom("admins")
@@ -926,12 +1019,12 @@ export async function POST(req: NextRequest) {
           .executeTakeFirst();
         if (admin) {
           isAdminRequest = true;
-          console.log(`[${requestId}] [STEP 3.0] 管理员请求，跳过配额限制`);
+          console.log(`[${requestId}] [STEP 3.0] 管理员请求，跳过配额限制（建议使用 /api/admin/ai/ask）`);
         }
+      } catch (e) {
+        // 忽略管理员检查错误，继续正常流程
+        console.warn(`[${requestId}] [STEP 3.0] 管理员检查失败:`, (e as Error).message);
       }
-    } catch (e) {
-      // 忽略管理员检查错误，继续正常流程
-      console.warn(`[${requestId}] [STEP 3.0] 管理员检查失败:`, (e as Error).message);
     }
 
     if (!isAdminRequest) {
@@ -1009,6 +1102,7 @@ export async function POST(req: NextRequest) {
     console.log(`[${requestId}] [STEP 4.5] 开始检查缓存的AI解析`, {
       skipCache: skipCache,
     });
+    const cacheCheckStartTime = Date.now(); // 记录缓存检查开始时间
     let cachedAnswer: string | null = null;
     let questionHash: string | null = null;
     let cacheSource: "localStorage" | "database" | null = null; // 记录缓存来源
@@ -1069,12 +1163,17 @@ export async function POST(req: NextRequest) {
           
           // 2.3 如果JSON包中也没有，再查询数据库
           if (!cachedAnswer) {
+            const dbQueryStartTime = Date.now(); // 记录数据库查询开始时间
             cachedAnswer = await getAIAnswerFromDb(questionHash, normalizedLocale);
+            const dbQueryDuration = Date.now() - dbQueryStartTime;
+            timingInfo.databaseQuery = (timingInfo.databaseQuery || 0) + dbQueryDuration; // 累加数据库查询耗时
+            
             if (cachedAnswer) {
               cacheSource = "database"; // 标记为从数据库读取
               console.log(`[${requestId}] [STEP 4.5.1] 从数据库中找到AI解析`, {
                 questionHash: questionHash.substring(0, 16) + "...",
                 answerLength: cachedAnswer.length,
+                dbQueryDuration: `${dbQueryDuration}ms`,
               });
               // 存入用户内存缓存（虽然Serverless环境中不可靠，但同一实例的后续请求可能受益）
               if (forwardedUserId) {
@@ -1084,6 +1183,17 @@ export async function POST(req: NextRequest) {
             }
           }
         }
+        
+        // 计算缓存检查总耗时
+        const cacheCheckDuration = Date.now() - cacheCheckStartTime;
+        timingInfo.cacheCheck = cacheCheckDuration;
+        console.log(`[${requestId}] [STEP 4.5.2] 缓存检查完成`, {
+          duration: `${cacheCheckDuration}ms`,
+          found: !!cachedAnswer,
+          source: cacheSource,
+          timingInfoCacheCheck: timingInfo.cacheCheck,
+          timingInfoFull: JSON.stringify(timingInfo, null, 2),
+        });
         
         // 如果找到缓存的AI解析，直接返回（除非 skipCache 为 true）
         if (cachedAnswer && !skipCache) {
@@ -1112,12 +1222,21 @@ export async function POST(req: NextRequest) {
             console.error(`[${requestId}] [STEP 4.5.3] 写入缓存日志失败:`, (error as Error).message);
           });
           
-          return ok({
-            answer: cachedAnswer,
-            cached: true,
-            aiProvider: "cache",
-            cacheSource: finalCacheSource, // 返回前端时使用实际来源（JSON包或数据库）
-          });
+          // 计算总耗时
+          // 返回结果（统一添加耗时信息）
+          return ok(
+            addTimingToResponse(
+              {
+                answer: cachedAnswer,
+                cached: true,
+                aiProvider: "cache",
+                cacheSource: finalCacheSource, // 返回前端时使用实际来源（JSON包或数据库）
+              },
+              timingInfo,
+              requestStartTime,
+              requestId
+            )
+          );
         }
       } catch (error) {
         console.error(`[${requestId}] [STEP 4.5] 检查缓存失败:`, error);
@@ -1246,17 +1365,24 @@ export async function POST(req: NextRequest) {
       });
       
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
-        
-        const openRouterResponse = await fetch(openRouterUrl, {
-          method: "POST",
-          headers: openRouterHeaders,
-          body: JSON.stringify(openRouterBody),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
+        const openRouterResponse = await recordAiCallTiming(
+          timingInfo,
+          requestId,
+          async () => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+            
+            const response = await fetch(openRouterUrl, {
+              method: "POST",
+              headers: openRouterHeaders,
+              body: JSON.stringify(openRouterBody),
+              signal: controller.signal,
+            });
+            
+            clearTimeout(timeoutId);
+            return response;
+          }
+        );
         
         if (!openRouterResponse.ok) {
           const errorText = await openRouterResponse.text().catch(() => "");
@@ -1345,12 +1471,14 @@ export async function POST(req: NextRequest) {
           answerLength: truncatedAnswer.length,
           inputTokens,
           outputTokens,
+          aiCallDuration: `${timingInfo.aiCall}ms`,
         });
         
         // 判断是否是习题调用（如果之前找到了匹配的题目）
         const isQuestionCall = !!questionHash;
         
         // 写入 ai_logs 表（异步，不阻塞响应）
+        const dbWriteStartTime = Date.now(); // 记录数据库写入开始时间
         void writeAiLogToDatabase({
           userId: forwardedUserId,
           question,
@@ -1366,8 +1494,18 @@ export async function POST(req: NextRequest) {
           cached: false,
           cacheSource: null,
           createdAtIso: new Date().toISOString(),
+        }).then(() => {
+          const dbWriteDuration = Date.now() - dbWriteStartTime;
+          timingInfo.databaseWrite = (timingInfo.databaseWrite || 0) + dbWriteDuration; // 累加数据库写入耗时
+          console.log(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 完成`, {
+            duration: `${dbWriteDuration}ms`,
+          });
         }).catch((error) => {
-          console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, (error as Error).message);
+          const dbWriteDuration = Date.now() - dbWriteStartTime;
+          console.error(`[${requestId}] [STEP 5.8.1] 写入 ai_logs 失败:`, {
+            error: (error as Error).message,
+            duration: `${dbWriteDuration}ms`,
+          });
         });
         
         // 如果是题目，写入 question_ai_answers 表（同步等待，确保在 Serverless 环境中完成）
@@ -1381,6 +1519,7 @@ export async function POST(req: NextRequest) {
           });
           
           // 在 Serverless 环境中，使用 await 等待写入完成（会稍微延迟响应，但确保数据写入）
+          const questionDbWriteStartTime = Date.now(); // 记录 question_ai_answers 写入开始时间
           try {
             // 检查是否已存在（防止并发请求重复写入）
             const existing = await getAIAnswerFromDb(questionHash, localeStr);
@@ -1424,14 +1563,23 @@ export async function POST(req: NextRequest) {
                 });
               }
             }
+            
+            // 计算 question_ai_answers 写入耗时
+            const questionDbWriteDuration = Date.now() - questionDbWriteStartTime;
+            timingInfo.databaseWrite = (timingInfo.databaseWrite || 0) + questionDbWriteDuration; // 累加数据库写入耗时
+            console.log(`[${requestId}] [STEP 5.8.2.4] question_ai_answers 写入完成`, {
+              duration: `${questionDbWriteDuration}ms`,
+            });
           } catch (error) {
             const errorObj = error as Error;
+            const questionDbWriteDuration = Date.now() - questionDbWriteStartTime;
             console.error(`[${requestId}] [STEP 5.8.2] 写入 question_ai_answers 失败:`, {
               error: errorObj.message,
               name: errorObj.name,
               stack: errorObj.stack,
               questionHash: questionHash.substring(0, 16) + "...",
               locale: localeStr,
+              duration: `${questionDbWriteDuration}ms`,
             });
           }
         } else {
@@ -1440,15 +1588,21 @@ export async function POST(req: NextRequest) {
         
         console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenRouter模式）`);
         
-        // 返回结果
-        return ok({
-          answer: truncatedAnswer,
-          sources: [], // 直连模式下暂时不返回 RAG 来源
-          model: openRouterData.model || model,
-          safetyFlag: "ok" as const,
-          costEstimate,
-          aiProvider: "openrouter_direct",
-        });
+        // 返回结果（统一添加耗时信息）
+        return ok(
+          addTimingToResponse(
+            {
+              answer: truncatedAnswer,
+              model: openRouterData.model || model,
+              safetyFlag: "ok" as const,
+              costEstimate,
+              aiProvider: "openrouter_direct",
+            },
+            timingInfo,
+            requestStartTime,
+            requestId
+          )
+        );
       } catch (error) {
         const errorObj = error as Error;
         console.error(`[${requestId}] [STEP 5.9] OpenRouter API 调用失败:`, {
@@ -1575,17 +1729,24 @@ export async function POST(req: NextRequest) {
       });
       
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
-        
-        const openaiResponse = await fetch(openaiUrl, {
-          method: "POST",
-          headers: openaiHeaders,
-          body: JSON.stringify(openaiBody),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
+        const openaiResponse = await recordAiCallTiming(
+          timingInfo,
+          requestId,
+          async () => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+            
+            const response = await fetch(openaiUrl, {
+              method: "POST",
+              headers: openaiHeaders,
+              body: JSON.stringify(openaiBody),
+              signal: controller.signal,
+            });
+            
+            clearTimeout(timeoutId);
+            return response;
+          }
+        );
         
         if (!openaiResponse.ok) {
           const errorText = await openaiResponse.text().catch(() => "");
@@ -1762,15 +1923,21 @@ export async function POST(req: NextRequest) {
         
         console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连OpenAI模式）`);
         
-        // 返回结果
-        return ok({
-          answer: truncatedAnswer,
-          sources: [], // 直连模式下暂时不返回 RAG 来源
-          model: openaiData.model || model,
-          safetyFlag: "ok" as const,
-          costEstimate,
-          aiProvider: "openai_direct",
-        });
+        // 返回结果（统一添加耗时信息）
+        return ok(
+          addTimingToResponse(
+            {
+              answer: truncatedAnswer,
+              model: openaiData.model || model,
+              safetyFlag: "ok" as const,
+              costEstimate,
+              aiProvider: "openai_direct",
+            },
+            timingInfo,
+            requestStartTime,
+            requestId
+          )
+        );
       } catch (error) {
         const errorObj = error as Error;
         console.error(`[${requestId}] [STEP 5.9] OpenAI API 调用失败:`, {
@@ -1925,26 +2092,30 @@ export async function POST(req: NextRequest) {
       });
       
       // 重试机制：最多重试3次，使用指数退避
-      const maxRetries = 3;
-      let lastError: any = null;
-      let geminiResponse: Response | null = null;
-      
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+      const geminiResponse = await recordAiCallTiming(
+        timingInfo,
+        requestId,
+        async () => {
+          const maxRetries = 3;
+          let lastError: any = null;
+          let response: Response | null = null;
           
-          geminiResponse = await fetch(geminiUrl, {
-            method: "POST",
-            headers: geminiHeaders,
-            body: JSON.stringify(geminiBody),
-            signal: controller.signal,
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (!geminiResponse.ok) {
-            const errorText = await geminiResponse.text().catch(() => "");
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+              
+              response = await fetch(geminiUrl, {
+                method: "POST",
+                headers: geminiHeaders,
+                body: JSON.stringify(geminiBody),
+                signal: controller.signal,
+              });
+              
+              clearTimeout(timeoutId);
+              
+              if (!response.ok) {
+                const errorText = await response.text().catch(() => "");
             let errorDetails: any = {};
             try {
               errorDetails = JSON.parse(errorText);
@@ -1952,17 +2123,17 @@ export async function POST(req: NextRequest) {
               errorDetails = { raw: errorText };
             }
             
-            // 如果是429错误（Too Many Requests），进行重试
-            if (geminiResponse.status === 429 && attempt < maxRetries) {
+                // 如果是429错误（Too Many Requests），进行重试
+                if (response.status === 429 && attempt < maxRetries) {
               const delay = Math.pow(2, attempt) * 1000; // 指数退避：2s, 4s, 8s
               console.log(`[${requestId}] [STEP 5.6] Google Gemini API 429错误，等待 ${delay}ms 后重试 (尝试 ${attempt}/${maxRetries})`);
               await new Promise(resolve => setTimeout(resolve, delay));
               continue; // 继续下一次重试
             }
             
-            console.error(`[${requestId}] [STEP 5.6] Google Gemini API 错误:`, {
-              status: geminiResponse.status,
-              statusText: geminiResponse.statusText,
+                console.error(`[${requestId}] [STEP 5.6] Google Gemini API 错误:`, {
+                  status: response.status,
+                  statusText: response.statusText,
               error: errorText,
               errorDetails,
               apiKeyPrefix: GEMINI_API_KEY.substring(0, 10),
@@ -1976,8 +2147,8 @@ export async function POST(req: NextRequest) {
               suggestion: "请检查：1) 模型名称是否正确（如 gemini-1.5-flash, gemini-1.5-pro）2) API Key 是否有效 3) 项目是否启用了 Gemini API",
             });
             
-            // 如果是 404 错误，提供模型相关的诊断信息
-            if (geminiResponse.status === 404) {
+                // 如果是 404 错误，提供模型相关的诊断信息
+                if (response.status === 404) {
               const errorMessage = errorDetails.error?.message || errorText;
               const diagnosticInfo = {
                 error: errorMessage,
@@ -1995,11 +2166,11 @@ export async function POST(req: NextRequest) {
               
               console.error(`[${requestId}] [STEP 5.6.2] Google Gemini 404 错误诊断`, diagnosticInfo);
               
-              return err("PROVIDER_ERROR", `Google Gemini API 404 错误: 模型 "${model}" 未找到。请检查：1) 模型名称是否正确（v1 API 推荐使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型会自动映射）2) 是否在 Google Cloud Console 启用了 Gemini API 3) API Key 是否有效。错误详情: ${errorMessage}`, 404);
-            }
-            
-            // 如果是 401 或 403 错误，提供更详细的错误信息
-            if (geminiResponse.status === 401 || geminiResponse.status === 403) {
+                  throw new Error(`Google Gemini API 404 错误: 模型 "${model}" 未找到。请检查：1) 模型名称是否正确（v1 API 推荐使用 gemini-2.5-flash 或 gemini-2.5-pro，旧模型会自动映射）2) 是否在 Google Cloud Console 启用了 Gemini API 3) API Key 是否有效。错误详情: ${errorMessage}`);
+                }
+                
+                // 如果是 401 或 403 错误，提供更详细的错误信息
+                if (response.status === 401 || response.status === 403) {
               const errorMessage = errorDetails.error?.message || errorText;
               const originalLength = process.env.GEMINI_API_KEY?.length || 0;
               const trimmedLength = GEMINI_API_KEY.length;
@@ -2018,32 +2189,32 @@ export async function POST(req: NextRequest) {
               
               console.error(`[${requestId}] [STEP 5.6.1] Google Gemini 认证错误诊断`, diagnosticInfo);
               
-              return err("AUTH_REQUIRED", `Google Gemini API 认证失败: ${errorMessage}。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置。`, geminiResponse.status);
-            }
-            
-            // 如果是429错误且已经重试完所有次数，返回错误
-            if (geminiResponse.status === 429) {
-              return err("PROVIDER_ERROR", `Google Gemini API 速率限制 (429): 请求过于频繁，已重试 ${maxRetries} 次。请稍后再试。`, 429);
-            }
-            
-            // 其他错误，如果是最后一次尝试，返回错误
-            if (attempt === maxRetries) {
-              return err("PROVIDER_ERROR", `Google Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`, geminiResponse.status >= 500 ? 502 : geminiResponse.status);
-            }
-            
-            // 如果是5xx错误，也进行重试
-            if (geminiResponse.status >= 500 && attempt < maxRetries) {
-              const delay = Math.pow(2, attempt) * 1000;
-              console.log(`[${requestId}] [STEP 5.6] Google Gemini API 5xx错误，等待 ${delay}ms 后重试 (尝试 ${attempt}/${maxRetries})`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              continue;
-            }
-            
-            return err("PROVIDER_ERROR", `Google Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`, geminiResponse.status >= 500 ? 502 : geminiResponse.status);
-          }
-          
-          // 如果成功，跳出重试循环
-          break;
+                  throw new Error(`Google Gemini API 认证失败: ${errorMessage}。请检查 Vercel 环境变量中的 GEMINI_API_KEY 是否正确配置。`);
+                }
+                
+                // 如果是429错误且已经重试完所有次数，返回错误
+                if (response.status === 429) {
+                  throw new Error(`Google Gemini API 速率限制 (429): 请求过于频繁，已重试 ${maxRetries} 次。请稍后再试。`);
+                }
+                
+                // 其他错误，如果是最后一次尝试，抛出错误
+                if (attempt === maxRetries) {
+                  throw new Error(`Google Gemini API error: ${response.status} ${response.statusText}`);
+                }
+                
+                // 如果是5xx错误，也进行重试
+                if (response.status >= 500 && attempt < maxRetries) {
+                  const delay = Math.pow(2, attempt) * 1000;
+                  console.log(`[${requestId}] [STEP 5.6] Google Gemini API 5xx错误，等待 ${delay}ms 后重试 (尝试 ${attempt}/${maxRetries})`);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                  continue;
+                }
+                
+                throw new Error(`Google Gemini API error: ${response.status} ${response.statusText}`);
+              }
+              
+              // 如果成功，返回响应
+              return response;
         } catch (error: any) {
           lastError = error;
           
@@ -2065,16 +2236,14 @@ export async function POST(req: NextRequest) {
         }
       }
       
-      // 如果所有重试都失败，返回错误
-      if (!geminiResponse || !geminiResponse.ok) {
-        if (lastError) {
-          throw lastError;
         }
-        return err("PROVIDER_ERROR", "Google Gemini API 调用失败，已重试所有次数", 502);
+      );
+      
+      if (!geminiResponse || !geminiResponse.ok) {
+        return err("PROVIDER_ERROR", "Google Gemini API 调用失败", 502);
       }
       
       try {
-        
         const geminiData = await geminiResponse.json() as {
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
           usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
@@ -2200,15 +2369,21 @@ export async function POST(req: NextRequest) {
         
         console.log(`[${requestId}] [STEP 5.8.3] 准备返回成功响应（直连Google Gemini模式）`);
         
-        // 返回结果
-        return ok({
-          answer: truncatedAnswer,
-          sources: [], // 直连模式下暂时不返回 RAG 来源
-          model: model,
-          safetyFlag: "ok" as const,
-          costEstimate,
-          aiProvider: "gemini_direct",
-        });
+        // 返回结果（统一添加耗时信息）
+        return ok(
+          addTimingToResponse(
+            {
+              answer: truncatedAnswer,
+              model: model,
+              safetyFlag: "ok" as const,
+              costEstimate,
+              aiProvider: "gemini_direct",
+            },
+            timingInfo,
+            requestStartTime,
+            requestId
+          )
+        );
       } catch (error) {
         const errorObj = error as Error;
         console.error(`[${requestId}] [STEP 5.9] Google Gemini API 调用失败:`, {
@@ -2294,31 +2469,39 @@ export async function POST(req: NextRequest) {
         upstreamHeaders["X-AI-Provider"] = aiServiceMode;
       }
 
-      upstream = await fetch(upstreamUrl, {
-        method: "POST",
-        headers: upstreamHeaders,
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      const fetchDuration = Date.now() - fetchStartTime;
+      upstream = await recordAiCallTiming(
+        timingInfo,
+        requestId,
+        async () => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => {
+            controller.abort();
+          }, 30000); // 30秒超时
+          
+          const response = await fetch(upstreamUrl, {
+            method: "POST",
+            headers: upstreamHeaders,
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+          return response;
+        }
+      );
       
       console.log(`[${requestId}] [STEP 5.2] 上游请求完成`, {
         status: upstream.status,
         statusText: upstream.statusText,
         ok: upstream.ok,
-        duration: `${fetchDuration}ms`,
       });
     } catch (error) {
-      const fetchDuration = Date.now() - fetchStartTime;
       upstreamError = error as Error;
       
       // 提取更详细的错误信息
       const errorDetails: Record<string, unknown> = {
         error: upstreamError.message,
         errorName: upstreamError.name,
-        duration: `${fetchDuration}ms`,
         url: upstreamUrl,
         mode: aiServiceMode,
       };
@@ -2397,7 +2580,7 @@ export async function POST(req: NextRequest) {
           errorDetails.protocol = urlObj.protocol;
           
           // 检查是否是DNS解析问题（快速失败通常意味着DNS解析失败）
-          if (fetchDuration < 1000) {
+          if (timingInfo.aiCall && timingInfo.aiCall < 1000) {
             errorDetails.likelyCause = "DNS_RESOLUTION_FAILED";
             errorDetails.suggestion = `The hostname "${hostname}" may not be resolvable. Please check: 1) DNS records are configured correctly, 2) Cloudflare Tunnel is running (if using tunnel), 3) The domain exists and is accessible.`;
           }
@@ -2411,7 +2594,7 @@ export async function POST(req: NextRequest) {
         if (aiServiceMode === "local" && AI_SERVICE_URL && AI_SERVICE_TOKEN) {
           console.warn(`[${requestId}] [STEP 5.2.1] 本地AI服务失败（可能是DNS解析问题），尝试回退到在线AI服务`, {
             hostname: hostname || "(unknown)",
-            duration: `${fetchDuration}ms`,
+            duration: `${timingInfo.aiCall || 0}ms`,
             note: "快速失败（<1s）通常表示DNS解析失败",
           });
           const fallbackBaseUrl = AI_SERVICE_URL.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
@@ -2889,21 +3072,29 @@ export async function POST(req: NextRequest) {
     // 8) 成功：返回结果，包含AI类型信息
     console.log(`[${requestId}] [STEP 8] 准备返回成功响应`);
     if (result.ok && result.data) {
-      // 在返回数据中添加AI类型信息
-      const responseData = {
-        ...result.data,
-        aiProvider: aiServiceMode,
-        cached: result.data.cached || false, // 透传缓存标识
-      };
+      // 在返回数据中添加AI类型信息和耗时信息（统一处理）
+      const responseData = addTimingToResponse(
+        {
+          ...result.data,
+          aiProvider: aiServiceMode,
+          cached: result.data.cached || false, // 透传缓存标识
+        },
+        timingInfo,
+        requestStartTime,
+        requestId
+      );
       
+      // 调试：打印最终返回的数据
       console.log(`[${requestId}] [STEP 8.1] 返回成功响应`, {
-        hasAnswer: !!result.data.answer,
-        answerLength: result.data.answer?.length || 0,
-        hasSources: !!result.data.sources,
-        sourcesCount: result.data.sources?.length || 0,
-        model: result.data.model || "(none)",
+        hasAnswer: !!responseData.answer,
+        answerLength: responseData.answer?.length || 0,
+        hasSources: !!responseData.sources,
+        sourcesCount: responseData.sources?.length || 0,
+        model: responseData.model || "(none)",
         aiProvider: aiServiceMode,
-        cached: result.data.cached || false,
+        cached: responseData.cached || false,
+        totalDuration: `${timingInfo.total}ms`,
+        timingInfo,
       });
       
       return ok(responseData);
@@ -2924,9 +3115,6 @@ export async function POST(req: NextRequest) {
 }
 
 // ==== 辅助 ====
-function joinUrl(base: string, path: string) {
-  return `${base.replace(/\/+$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
-}
 function mapStatus(s: number) {
   if (s === 400) return 400;
   if (s === 401) return 401;

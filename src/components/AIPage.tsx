@@ -86,6 +86,13 @@ function formatErrorMessage(err: unknown): string {
   }
 }
 
+// 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
+function cleanModelName(model: string | undefined): string | undefined {
+  if (!model) return undefined;
+  // 移除日期格式：-YYYY-MM-DD
+  return model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+}
+
 /** ---- 组件 ---- */
 // Get welcome message based on language
 function getWelcomeMessage(lang: Language): string {
@@ -398,104 +405,114 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
               </div>
               {/* AI reply metadata */}
               {!isUser && m.metadata && (
-                <div className="max-w-[78%] px-2 py-1 text-xs text-gray-500 space-y-1">
-                  {/* AI Service Provider */}
-                  {m.metadata.aiProvider && (
-                    <div className="flex items-center gap-1">
+                <div className="max-w-[78%] px-2 py-0.5 text-xs text-gray-500">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* AI Service Provider and Model */}
+                    {m.metadata.aiProvider && (
                       <span className="inline-flex items-center gap-1">
                         {m.metadata.aiProvider === "local" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-green-500"></span>
                             <span>Local AI (Ollama)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openai" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                             <span>OpenAI (via Render)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openai_direct" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
                             <span>OpenAI (Direct)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openrouter" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                             <span>OpenRouter (via Render)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openrouter_direct" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
                             <span>OpenRouter (Direct)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "gemini_direct" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                             <span>Google Gemini (Direct)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "cached" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                             <span>Cached Answer</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : null}
                       </span>
-                    </div>
-                  )}
-                  {/* RAG Sources */}
-                  {m.metadata.sources && m.metadata.sources.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className="text-gray-400">📚 Sources:</span>
-                      {m.metadata.sources.map((source, idx) => {
-                        const displayText = source.title || source.url || `Source ${idx + 1}`;
-                        const hasUrl = source.url && source.url.trim() !== "";
-                        
-                        if (hasUrl) {
-                          return (
-                            <a
-                              key={idx}
-                              href={source.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-500 hover:text-blue-600 underline truncate max-w-[200px]"
-                              title={displayText}
-                            >
-                              {displayText}
-                            </a>
-                          );
-                        } else {
-                          return (
-                            <span
-                              key={idx}
-                              className="text-gray-500 truncate max-w-[200px]"
-                              title={displayText}
-                            >
-                              {displayText}
+                    )}
+                    {/* 耗时信息（如果有） */}
+                    {m.metadata.sources && m.metadata.sources.length > 0 && (
+                      <>
+                        {m.metadata.sources
+                          .filter((source) => source.title === "处理耗时")
+                          .map((source, idx) => (
+                            <span key={idx} className="text-gray-400">
+                              {source.snippet}
                             </span>
-                          );
-                        }
-                      })}
+                          ))}
+                      </>
+                    )}
+                  </div>
+                  {/* RAG Sources（排除耗时信息） */}
+                  {m.metadata.sources && m.metadata.sources.filter((source) => source.title !== "处理耗时").length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <span className="text-gray-400 text-xs">📚</span>
+                      {m.metadata.sources
+                        .filter((source) => source.title !== "处理耗时")
+                        .map((source, idx) => {
+                          const displayText = source.title || source.url || `Source ${idx + 1}`;
+                          const hasUrl = source.url && source.url.trim() !== "";
+                          
+                          if (hasUrl) {
+                            return (
+                              <a
+                                key={idx}
+                                href={source.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:text-blue-600 underline break-words"
+                                title={displayText}
+                              >
+                                {displayText}
+                              </a>
+                            );
+                          } else {
+                            return (
+                              <span key={idx} className="text-gray-500 text-xs break-words">
+                                {displayText}
+                              </span>
+                            );
+                          }
+                        })}
                     </div>
                   )}
                 </div>

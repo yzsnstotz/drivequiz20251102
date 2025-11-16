@@ -61,6 +61,7 @@ interface Message {
     model?: string;
     sourceType?: "ai-generated" | "cached" | "knowledge-base" | "system-tip";
     cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
+    sources?: Array<{ title: string; url: string; snippet?: string }>; // 来源信息（包括耗时信息）
   };
 }
 
@@ -77,6 +78,13 @@ export default function QuestionAIDialog({
   const hasInitialized = useRef(false);
   const [localAiAnswers, setLocalAiAnswers] = useState<Record<string, string> | null>(null);
   const { language } = useLanguage();
+
+  // 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
+  const cleanModelName = (model: string | undefined): string | undefined => {
+    if (!model) return undefined;
+    // 移除日期格式：-YYYY-MM-DD
+    return model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  };
 
   // 滚动到底部
   const scrollToBottom = () => {
@@ -386,6 +394,7 @@ export default function QuestionAIDialog({
             model: result.data.model,
             sourceType: result.data.cached ? "cached" : "ai-generated",
             cacheSource: result.data.cacheSource || (result.data.cached ? "database" : undefined), // 明确标记缓存来源
+            sources: result.data.sources || [], // 包含耗时信息等来源
           },
         };
         setMessages((prev) => [...prev, newMessage]);
@@ -525,57 +534,57 @@ export default function QuestionAIDialog({
                   </div>
                   {/* AI reply metadata */}
                   {message.role === "assistant" && message.metadata && (
-                    <div className="max-w-[80%] px-2 py-1 text-xs text-gray-500 space-y-1 mt-1">
-                      {/* AI Service Provider and Model */}
-                      {(message.metadata.aiProvider || message.metadata.model) && (
-                        <div className="flex items-center gap-1">
+                    <div className="max-w-[80%] px-2 py-0.5 text-xs text-gray-500">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* AI Service Provider and Model */}
+                        {message.metadata.aiProvider && (
                           <span className="inline-flex items-center gap-1">
                             {message.metadata.aiProvider === "local" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                 <span>Local AI (Ollama)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openai" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                                 <span>OpenAI (via Render)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openai_direct" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
                                 <span>OpenAI (Direct)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openrouter" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                                 <span>OpenRouter (via Render)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openrouter_direct" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
                                 <span>OpenRouter (Direct)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "gemini_direct" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                                 <span>Google Gemini (Direct)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "cached" ? (
@@ -583,16 +592,61 @@ export default function QuestionAIDialog({
                                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                                 <span>Cached Answer</span>
                                 {message.metadata.cacheSource && (
-                                  <span className="text-gray-400 ml-1">
+                                  <span className="text-gray-400">
                                     ({message.metadata.cacheSource === "localStorage" ? "LocalStorage" : "Database"})
                                   </span>
                                 )}
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : null}
                           </span>
+                        )}
+                        {/* 耗时信息（如果有） */}
+                        {message.metadata.sources && message.metadata.sources.length > 0 && (
+                          <>
+                            {message.metadata.sources
+                              .filter((source) => source.title === "处理耗时")
+                              .map((source, idx) => (
+                                <span key={idx} className="text-gray-400">
+                                  {source.snippet}
+                                </span>
+                              ))}
+                          </>
+                        )}
+                      </div>
+                      {/* RAG Sources（排除耗时信息） */}
+                      {message.metadata.sources && message.metadata.sources.filter((source) => source.title !== "处理耗时").length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          <span className="text-gray-400 text-xs">📚</span>
+                          {message.metadata.sources
+                            .filter((source) => source.title !== "处理耗时")
+                            .map((source, idx) => {
+                              const displayText = source.title || source.url || `Source ${idx + 1}`;
+                              const hasUrl = source.url && source.url.trim() !== "";
+                              
+                              if (hasUrl) {
+                                return (
+                                  <a
+                                    key={idx}
+                                    href={source.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:text-blue-600 underline break-words"
+                                    title={displayText}
+                                  >
+                                    {displayText}
+                                  </a>
+                                );
+                              } else {
+                                return (
+                                  <span key={idx} className="text-gray-500 text-xs break-words">
+                                    {displayText}
+                                  </span>
+                                );
+                              }
+                            })}
                         </div>
                       )}
                     </div>
