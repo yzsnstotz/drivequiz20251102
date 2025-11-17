@@ -144,16 +144,21 @@ async function getSceneConfig(
     }
 
     const sceneConfig = data[0];
-    const lang = locale.toLowerCase();
+    const lang = locale.toLowerCase().trim();
 
     // 根据语言选择 prompt
+    // 注意：对于翻译场景，应该使用目标语言来选择 prompt
     let prompt = sceneConfig.system_prompt_zh;
+    let selectedLang = "zh";
+    
     if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
       prompt = sceneConfig.system_prompt_ja;
-      console.log("[LOCAL-AI] 使用日文 prompt");
+      selectedLang = "ja";
+      console.log("[LOCAL-AI] 使用日文 prompt (locale:", locale, "lang:", lang, ")");
     } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
       prompt = sceneConfig.system_prompt_en;
-      console.log("[LOCAL-AI] 使用英文 prompt");
+      selectedLang = "en";
+      console.log("[LOCAL-AI] 使用英文 prompt (locale:", locale, "lang:", lang, ")");
     } else {
       console.log("[LOCAL-AI] 使用中文 prompt (locale:", locale, "lang:", lang, ")");
     }
@@ -162,10 +167,14 @@ async function getSceneConfig(
     console.log("[LOCAL-AI] 场景配置读取成功:", { 
       sceneKey, 
       locale, 
+      selectedLang,
       promptLength: finalPrompt.length,
-      promptPreview: finalPrompt.substring(0, 100) + "...",
+      promptPreview: finalPrompt.substring(0, 200) + "...",
       duration: `${duration}ms`,
-      timeoutMs
+      timeoutMs,
+      hasZhPrompt: !!sceneConfig.system_prompt_zh,
+      hasJaPrompt: !!sceneConfig.system_prompt_ja,
+      hasEnPrompt: !!sceneConfig.system_prompt_en,
     });
 
     return {
@@ -204,6 +213,15 @@ function replacePlaceholders(
 ): string {
   let result = prompt;
 
+  console.log("[LOCAL-AI] 替换占位符前:", {
+    promptLength: prompt.length,
+    promptPreview: prompt.substring(0, 200) + "...",
+    sourceLanguage,
+    targetLanguage,
+    hasSourceLanguage: !!sourceLanguage,
+    hasTargetLanguage: !!targetLanguage,
+  });
+
   // 替换 {sourceLanguage} 和 {源语言}
   if (sourceLanguage) {
     result = result.replace(/{sourceLanguage}/gi, sourceLanguage);
@@ -215,6 +233,13 @@ function replacePlaceholders(
     result = result.replace(/{targetLanguage}/gi, targetLanguage);
     result = result.replace(/{目标语言}/g, targetLanguage);
   }
+
+  console.log("[LOCAL-AI] 替换占位符后:", {
+    resultLength: result.length,
+    resultPreview: result.substring(0, 300) + "...",
+    replacedSourceLanguage: sourceLanguage || "未替换",
+    replacedTargetLanguage: targetLanguage || "未替换",
+  });
 
   return result;
 }
@@ -386,7 +411,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
               targetLanguage,
               promptLocale,
               promptLength: sys.length,
-              promptPreview: sys.substring(0, 200) + "..."
+              promptPreview: sys.substring(0, 300) + "...",
+              promptAfterReplace: sys.substring(0, 500) + "..."
             });
           } else {
             // 场景配置不存在，使用默认 prompt
