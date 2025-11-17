@@ -41,32 +41,71 @@ type AskResult = {
 };
 
 /**
- * 从 Supabase 读取场景配置（带重试机制）
+ * 从 Supabase 读取 AI Provider 超时配置
+ */
+async function getProviderTimeout(config: LocalAIConfig): Promise<number> {
+  const SUPABASE_URL = config.supabaseUrl;
+  const SUPABASE_SERVICE_KEY = config.supabaseServiceKey;
+  const DEFAULT_TIMEOUT_MS = 120000; // 默认 120 秒（与 timeout_local 默认值一致）
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    console.warn("[LOCAL-AI] Supabase 配置缺失，使用默认超时时间:", DEFAULT_TIMEOUT_MS);
+    return DEFAULT_TIMEOUT_MS;
+  }
+
+  try {
+    const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_config?key=eq.timeout_local&select=value`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(5000), // 读取配置的超时时间较短
+    });
+
+    if (res.ok) {
+      const data = (await res.json()) as Array<{ value: string }>;
+      if (data && data.length > 0) {
+        const timeoutMs = Number(data[0].value);
+        if (!isNaN(timeoutMs) && timeoutMs > 0) {
+          console.log("[LOCAL-AI] 使用配置的超时时间:", timeoutMs, "ms");
+          return timeoutMs;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[LOCAL-AI] 读取超时配置失败，使用默认值:", error instanceof Error ? error.message : String(error));
+  }
+
+  console.log("[LOCAL-AI] 使用默认超时时间:", DEFAULT_TIMEOUT_MS, "ms");
+  return DEFAULT_TIMEOUT_MS;
+}
+
+/**
+ * 从 Supabase 读取场景配置
  */
 async function getSceneConfig(
   sceneKey: string,
   locale: string,
-  config: LocalAIConfig,
-  retryCount: number = 0
+  config: LocalAIConfig
 ): Promise<{ prompt: string; outputFormat: string | null } | null> {
   const SUPABASE_URL = config.supabaseUrl;
   const SUPABASE_SERVICE_KEY = config.supabaseServiceKey;
-  const MAX_RETRIES = 2; // 最多重试 2 次
-  const TIMEOUT_MS = 15000; // 15 秒超时（比 RAG 检索稍长，因为场景配置查询应该更快）
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     console.warn("[LOCAL-AI] Supabase 配置缺失，无法读取场景配置");
     return null;
   }
 
+  // 获取 AI Provider 超时配置
+  const timeoutMs = await getProviderTimeout(config);
+
   const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
   
   try {
-    if (retryCount === 0) {
-      console.log("[LOCAL-AI] 读取场景配置:", { sceneKey, locale, url: url.substring(0, 100) + "..." });
-    } else {
-      console.log(`[LOCAL-AI] 重试读取场景配置 (${retryCount}/${MAX_RETRIES}):`, { sceneKey, locale });
-    }
+    console.log("[LOCAL-AI] 读取场景配置:", { sceneKey, locale, timeoutMs, url: url.substring(0, 100) + "..." });
 
     const startTime = Date.now();
     const res = await fetch(url, {
@@ -76,7 +115,7 @@ async function getSceneConfig(
         Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
         "Content-Type": "application/json",
       },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const duration = Date.now() - startTime;
 
@@ -86,16 +125,9 @@ async function getSceneConfig(
         status: res.status, 
         statusText: res.statusText,
         errorText: errorText.substring(0, 200),
-        duration: `${duration}ms`
+        duration: `${duration}ms`,
+        timeoutMs
       });
-      
-      // 如果是 5xx 错误且还有重试次数，进行重试
-      if (res.status >= 500 && retryCount < MAX_RETRIES) {
-        console.log(`[LOCAL-AI] 服务器错误，${1000 * (retryCount + 1)}ms 后重试...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        return getSceneConfig(sceneKey, locale, config, retryCount + 1);
-      }
-      
       return null;
     }
 
@@ -133,7 +165,7 @@ async function getSceneConfig(
       promptLength: finalPrompt.length,
       promptPreview: finalPrompt.substring(0, 100) + "...",
       duration: `${duration}ms`,
-      retryCount
+      timeoutMs
     });
 
     return {
@@ -148,30 +180,14 @@ async function getSceneConfig(
     );
     
     if (isTimeout) {
-      console.error(`[LOCAL-AI] 读取场景配置超时 (${TIMEOUT_MS}ms):`, { sceneKey, locale, retryCount });
-      
-      // 如果是超时且还有重试次数，进行重试
-      if (retryCount < MAX_RETRIES) {
-        console.log(`[LOCAL-AI] 超时，${1000 * (retryCount + 1)}ms 后重试...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        return getSceneConfig(sceneKey, locale, config, retryCount + 1);
-      }
-      
-      console.error("[LOCAL-AI] 场景配置读取超时，已达到最大重试次数，使用默认 prompt");
+      console.error(`[LOCAL-AI] 读取场景配置超时 (${timeoutMs}ms):`, { sceneKey, locale });
     } else {
       console.error("[LOCAL-AI] 读取场景配置失败:", { 
         error: error instanceof Error ? error.message : String(error),
         sceneKey,
         locale,
-        retryCount
+        timeoutMs
       });
-      
-      // 如果是网络错误且还有重试次数，进行重试
-      if (retryCount < MAX_RETRIES) {
-        console.log(`[LOCAL-AI] 网络错误，${1000 * (retryCount + 1)}ms 后重试...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        return getSceneConfig(sceneKey, locale, config, retryCount + 1);
-      }
     }
     
     return null;
