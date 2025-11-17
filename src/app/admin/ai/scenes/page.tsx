@@ -320,6 +320,8 @@ export default function AdminAiScenesPage() {
         question: requestBody.question,
         locale: requestBody.locale || "zh",
         scene: requestBody.scene,
+        sourceLanguage: requestBody.sourceLanguage,
+        targetLanguage: requestBody.targetLanguage,
         model: providerConfig.model,
       });
 
