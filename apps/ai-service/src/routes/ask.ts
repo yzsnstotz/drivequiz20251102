@@ -13,6 +13,12 @@ type AskBody = {
   question?: string;
   userId?: string;
   lang?: string; // "zh" | "ja" | "en" | ...
+  // 场景标识（如 question_translation, question_polish 等）
+  scene?: string;
+  // 源语言（用于翻译场景）
+  sourceLanguage?: string;
+  // 目标语言（用于翻译场景）
+  targetLanguage?: string;
 };
 
 /** 响应体类型 */
@@ -77,6 +83,9 @@ function parseAndValidateBody(body: unknown): {
   question: string;
   lang: string;
   userId?: string | null;
+  scene?: string | null;
+  sourceLanguage?: string | null;
+  targetLanguage?: string | null;
 } {
   const b = (body ?? {}) as AskBody & { userId?: string | null };
 
@@ -107,12 +116,120 @@ function parseAndValidateBody(body: unknown): {
     userId = null;
   }
 
-  return { question, lang: validLang, userId };
+  // 处理场景相关参数
+  const scene = typeof b.scene === "string" ? b.scene.trim() || null : null;
+  const sourceLanguage = typeof b.sourceLanguage === "string" ? b.sourceLanguage.trim() || null : null;
+  const targetLanguage = typeof b.targetLanguage === "string" ? b.targetLanguage.trim() || null : null;
+
+  return { question, lang: validLang, userId, scene, sourceLanguage, targetLanguage };
 }
 
 /** 生成缓存 Key（包含语言与模型，避免跨配置命中） */
 export function buildCacheKey(question: string, lang: string, model: string): string {
   return `ask:v1:q=${encodeURIComponent(question)}:l=${lang}:m=${model}`;
+}
+
+/**
+ * 从 Supabase 读取场景配置
+ */
+async function getSceneConfig(
+  sceneKey: string,
+  locale: string,
+  config: ServiceConfig
+): Promise<{ prompt: string; outputFormat: string | null } | null> {
+  const SUPABASE_URL = config.supabaseUrl;
+  const SUPABASE_SERVICE_KEY = config.supabaseServiceKey;
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    return null;
+  }
+
+  try {
+    const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
+    console.log("[AI-SERVICE] 读取场景配置:", { sceneKey, locale, url: url.substring(0, 100) + "..." });
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) {
+      console.warn("[AI-SERVICE] 场景配置请求失败:", { status: res.status, statusText: res.statusText });
+      return null;
+    }
+
+    const data = (await res.json()) as Array<{
+      system_prompt_zh: string;
+      system_prompt_ja: string | null;
+      system_prompt_en: string | null;
+      output_format: string | null;
+    }>;
+
+    if (!data || data.length === 0) {
+      console.warn("[AI-SERVICE] 场景配置不存在:", { sceneKey });
+      return null;
+    }
+
+    const sceneConfig = data[0];
+    const lang = locale.toLowerCase();
+
+    // 根据语言选择 prompt
+    let prompt = sceneConfig.system_prompt_zh;
+    if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
+      prompt = sceneConfig.system_prompt_ja;
+      console.log("[AI-SERVICE] 使用日文 prompt");
+    } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
+      prompt = sceneConfig.system_prompt_en;
+      console.log("[AI-SERVICE] 使用英文 prompt");
+    } else {
+      console.log("[AI-SERVICE] 使用中文 prompt (locale:", locale, "lang:", lang, ")");
+    }
+
+    const finalPrompt = prompt || sceneConfig.system_prompt_zh;
+    console.log("[AI-SERVICE] 场景配置读取成功:", { 
+      sceneKey, 
+      locale, 
+      promptLength: finalPrompt.length,
+      promptPreview: finalPrompt.substring(0, 100) + "..."
+    });
+
+    return {
+      prompt: finalPrompt,
+      outputFormat: sceneConfig.output_format,
+    };
+  } catch (error) {
+    console.error("[AI-SERVICE] 读取场景配置失败:", error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+/**
+ * 替换 prompt 中的占位符
+ */
+function replacePlaceholders(
+  prompt: string,
+  sourceLanguage?: string,
+  targetLanguage?: string
+): string {
+  let result = prompt;
+
+  // 替换 {sourceLanguage} 和 {源语言}
+  if (sourceLanguage) {
+    result = result.replace(/{sourceLanguage}/gi, sourceLanguage);
+    result = result.replace(/{源语言}/g, sourceLanguage);
+  }
+
+  // 替换 {targetLanguage} 和 {目标语言}
+  if (targetLanguage) {
+    result = result.replace(/{targetLanguage}/gi, targetLanguage);
+    result = result.replace(/{目标语言}/g, targetLanguage);
+  }
+
+  return result;
 }
 
 /** System Prompt（根据语言输出） */
@@ -140,7 +257,16 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         ensureServiceAuth(request, config);
 
         // 2) 校验请求体
-        const { question, lang } = parseAndValidateBody(request.body);
+        const { question, lang, scene, sourceLanguage, targetLanguage } = parseAndValidateBody(request.body);
+        
+        // 记录接收到的参数
+        console.log("[AI-SERVICE] 接收到的请求参数:", {
+          scene,
+          sourceLanguage,
+          targetLanguage,
+          lang,
+          questionLength: question.length
+        });
 
         // 3) 从数据库读取模型配置（优先）或使用环境变量
         const model = await getModelFromConfig();
@@ -254,7 +380,49 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        const sys = buildSystemPrompt(lang);
+        // 5) 构建系统 prompt（优先使用场景配置）
+        // 重要：对于翻译场景，应该使用 targetLanguage 来选择 prompt 语言，而不是 lang
+        // lang 是请求的语言标识，targetLanguage 是翻译的目标语言
+        let sys: string;
+        const promptLocale = targetLanguage || lang; // 优先使用 targetLanguage（翻译目标语言）
+        console.log("[AI-SERVICE] 构建系统 prompt:", { 
+          scene, 
+          sourceLanguage, 
+          targetLanguage, 
+          lang, 
+          promptLocale,
+          willUseTargetLanguage: !!targetLanguage
+        });
+        
+        if (scene) {
+          // 尝试从数据库读取场景配置
+          // 使用 targetLanguage 或 lang 来选择 prompt 的语言版本
+          const sceneConfig = await getSceneConfig(scene, promptLocale, config);
+          if (sceneConfig) {
+            // 使用场景配置的 prompt，并替换占位符
+            sys = replacePlaceholders(sceneConfig.prompt, sourceLanguage || undefined, targetLanguage || undefined);
+            console.log("[AI-SERVICE] 使用场景配置:", { 
+              scene, 
+              sourceLanguage, 
+              targetLanguage,
+              promptLocale,
+              promptLength: sys.length,
+              promptPreview: sys.substring(0, 200) + "..."
+            });
+          } else {
+            // 场景配置不存在，使用默认 prompt
+            // 对于翻译场景，如果 targetLanguage 存在，应该使用 targetLanguage 的语言
+            const defaultPromptLang = targetLanguage || lang;
+            sys = buildSystemPrompt(defaultPromptLang);
+            console.warn("[AI-SERVICE] 场景配置不存在，使用默认 prompt:", { scene, lang: defaultPromptLang });
+          }
+        } else {
+          // 没有指定场景，使用默认 prompt
+          const defaultPromptLang = targetLanguage || lang;
+          sys = buildSystemPrompt(defaultPromptLang);
+          console.log("[AI-SERVICE] 未指定场景，使用默认 prompt:", { lang: defaultPromptLang });
+        }
+        
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
