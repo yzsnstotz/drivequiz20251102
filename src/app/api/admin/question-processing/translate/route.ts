@@ -246,7 +246,14 @@ export const POST = withAdminAuth(async (req: Request) => {
           throw new Error(`Failed to save translation: content is not a JSONB object (id: ${saved.id})`);
         }
         
-        results.push({ locale: targetLang, success: true });
+        // 返回翻译结果，包含翻译后的内容
+        results.push({ 
+          locale: targetLang, 
+          success: true,
+          content: result.content,
+          options: result.options,
+          explanation: result.explanation
+        });
         console.log(`[API Translate] [${requestId}] Translation to ${targetLang} completed`);
       } catch (error: any) {
         console.error(`[API Translate] [${requestId}] Translation to ${targetLang} failed:`, error.message);

@@ -43,7 +43,13 @@ export const POST = withAdminAuth(async (req: Request) => {
     }
     
     console.log(`[API Polish] [${requestId}] Request completed successfully`);
-    return success(json.data || { ok: true });
+    // 返回润色后的内容
+    return success({ 
+      ok: true,
+      content: json.data?.content,
+      options: json.data?.options,
+      explanation: json.data?.explanation
+    });
   } catch (e: any) {
     console.error(`[API Polish] [${requestId}] Error:`, e?.message, e?.stack);
     return internalError(e?.message || "Polish failed");

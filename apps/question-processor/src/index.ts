@@ -246,7 +246,14 @@ app.post("/polish", async (req, reply) => {
     app.log.info({ requestId, baseHash, locale: input.locale }, "[Polish] Polish review inserted successfully");
 
     app.log.info({ requestId, baseHash, locale: input.locale }, "[Polish] Request completed successfully");
-    return reply.send({ ok: true });
+    return reply.send({ 
+      ok: true,
+      data: {
+        content: result.content,
+        options: result.options,
+        explanation: result.explanation
+      }
+    });
   } catch (error: any) {
     app.log.error({ requestId, err: error, message: error?.message, stack: error?.stack }, "[Polish] Error occurred");
     const message = error?.message || "Internal server error";

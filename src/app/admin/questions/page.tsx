@@ -1864,16 +1864,130 @@ export default function QuestionsPage() {
                       </button>
                       <button
                         onClick={async () => {
+                          const locale = filters.locale || "zh";
+                          // 创建进度对话框
+                          const progressDialog = document.createElement("div");
+                          progressDialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                          progressDialog.innerHTML = `
+                            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                              <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-semibold">润色处理中...</h3>
+                                <button id="close-dialog" class="text-gray-400 hover:text-gray-600 transition-colors" style="display: none;">
+                                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                  </svg>
+                                </button>
+                              </div>
+                              <div id="progress-content" class="mb-4">
+                                <p class="text-sm text-gray-600">正在润色 ${locale.toUpperCase()} 语言的内容...</p>
+                              </div>
+                              <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                                <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 30%"></div>
+                              </div>
+                            </div>
+                          `;
+                          document.body.appendChild(progressDialog);
+                          const progressContent = progressDialog.querySelector("#progress-content");
+                          const progressBar = progressDialog.querySelector("#progress-bar") as HTMLElement;
+                          const closeBtn = progressDialog.querySelector("#close-dialog") as HTMLElement;
+                          const dialogTitle = progressDialog.querySelector("h3") as HTMLElement;
+                          
+                          // 关闭对话框的函数
+                          const closeDialog = () => {
+                            document.body.removeChild(progressDialog);
+                            window.location.reload();
+                          };
+                          
+                          closeBtn?.addEventListener("click", closeDialog);
+                          
                           try {
                             const payload: any = {
-                              locale: filters.locale || "zh",
+                              locale: locale,
                             };
                             if (item.hash) payload.contentHash = item.hash;
                             else payload.questionId = item.id;
-                            await apiPost("/api/admin/question-processing/polish", payload);
-                            alert("润色建议已生成，待审核");
+                            
+                            if (progressBar) {
+                              progressBar.style.width = "60%";
+                            }
+                            
+                            const result = await apiPost<{ content?: string; options?: string[]; explanation?: string }>("/api/admin/question-processing/polish", payload);
+                            
+                            // 显示结果
+                            if (progressContent) {
+                              progressContent.innerHTML = `
+                                <div class="space-y-3">
+                                  <div class="p-3 rounded-lg bg-green-50 border border-green-200">
+                                    <p class="text-sm font-semibold text-green-700 mb-2">
+                                      ✓ 润色完成！
+                                    </p>
+                                    <p class="text-sm text-gray-700 mb-2">
+                                      <span class="font-medium">润色建议已生成，待审核</span>
+                                    </p>
+                                  </div>
+                                  <div class="space-y-2">
+                                    <p class="text-sm font-medium text-gray-700">润色后的内容：</p>
+                                    ${result.content ? `
+                                      <div class="p-3 rounded bg-emerald-50 border border-emerald-200">
+                                        <p class="text-xs font-medium text-gray-700 mb-1">内容：</p>
+                                        <div class="bg-white p-2 rounded border border-gray-200">
+                                          <p class="text-xs text-gray-800 whitespace-pre-wrap">${result.content}</p>
+                                        </div>
+                                        ${result.options && result.options.length > 0 ? `
+                                          <div class="mt-2">
+                                            <p class="text-xs font-medium text-gray-700 mb-1">选项：</p>
+                                            <div class="bg-white p-2 rounded border border-gray-200">
+                                              <ul class="text-xs text-gray-800 space-y-0.5">
+                                                ${result.options.map((opt: string, idx: number) => `<li>${idx + 1}. ${opt}</li>`).join('')}
+                                              </ul>
+                                            </div>
+                                          </div>
+                                        ` : ''}
+                                        ${result.explanation ? `
+                                          <div class="mt-2">
+                                            <p class="text-xs font-medium text-gray-700 mb-1">解析：</p>
+                                            <div class="bg-white p-2 rounded border border-gray-200">
+                                              <p class="text-xs text-gray-800 whitespace-pre-wrap">${result.explanation}</p>
+                                            </div>
+                                          </div>
+                                        ` : ''}
+                                      </div>
+                                    ` : '<p class="text-sm text-gray-600">润色完成，但未返回内容</p>'}
+                                  </div>
+                                </div>
+                              `;
+                            }
+                            if (progressBar) {
+                              progressBar.style.width = "100%";
+                              progressBar.classList.remove("bg-blue-500");
+                              progressBar.classList.add("bg-green-500");
+                            }
+                            if (dialogTitle) {
+                              dialogTitle.textContent = "润色完成";
+                            }
+                            if (closeBtn) {
+                              closeBtn.style.display = "block";
+                            }
                           } catch (e) {
-                            alert(e instanceof Error ? e.message : "润色提交失败");
+                            if (progressContent) {
+                              progressContent.innerHTML = `
+                                <div class="p-3 rounded-lg bg-red-50 border border-red-200">
+                                  <p class="text-sm font-semibold text-red-700 mb-2">✗ 润色失败</p>
+                                  <p class="text-sm text-red-600">${e instanceof Error ? e.message : "未知错误"}</p>
+                                </div>
+                              `;
+                            }
+                            if (progressBar) {
+                              progressBar.style.width = "100%";
+                              progressBar.classList.remove("bg-blue-500");
+                              progressBar.classList.add("bg-red-500");
+                            }
+                            if (dialogTitle) {
+                              dialogTitle.textContent = "润色失败";
+                            }
+                            if (closeBtn) {
+                              closeBtn.style.display = "block";
+                            }
                           }
                         }}
                         className="text-emerald-600 hover:underline"
@@ -2095,10 +2209,36 @@ export default function QuestionsPage() {
                                 <div class="space-y-2">
                                   <p class="text-sm font-medium text-gray-700">详细结果：</p>
                                   ${result.results?.map(r => `
-                                    <div class="p-2 rounded ${r.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
-                                      <p class="text-xs font-medium ${r.success ? 'text-green-700' : 'text-red-700'}">
+                                    <div class="p-3 rounded ${r.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
+                                      <p class="text-xs font-medium ${r.success ? 'text-green-700' : 'text-red-700'} mb-2">
                                         ${r.locale.toUpperCase()}: ${r.success ? '✓ 翻译成功' : '✗ 翻译失败'}
                                       </p>
+                                      ${r.success && r.content ? `
+                                        <div class="mt-2 space-y-1">
+                                          <p class="text-xs font-medium text-gray-700">翻译后的内容：</p>
+                                          <div class="bg-white p-2 rounded border border-gray-200">
+                                            <p class="text-xs text-gray-800 whitespace-pre-wrap">${r.content}</p>
+                                          </div>
+                                          ${r.options && r.options.length > 0 ? `
+                                            <div class="mt-1">
+                                              <p class="text-xs font-medium text-gray-700">选项：</p>
+                                              <div class="bg-white p-2 rounded border border-gray-200">
+                                                <ul class="text-xs text-gray-800 space-y-0.5">
+                                                  ${r.options.map((opt: string, idx: number) => `<li>${idx + 1}. ${opt}</li>`).join('')}
+                                                </ul>
+                                              </div>
+                                            </div>
+                                          ` : ''}
+                                          ${r.explanation ? `
+                                            <div class="mt-1">
+                                              <p class="text-xs font-medium text-gray-700">解析：</p>
+                                              <div class="bg-white p-2 rounded border border-gray-200">
+                                                <p class="text-xs text-gray-800 whitespace-pre-wrap">${r.explanation}</p>
+                                              </div>
+                                            </div>
+                                          ` : ''}
+                                        </div>
+                                      ` : ''}
                                       ${!r.success && r.error ? `
                                         <p class="text-xs text-red-600 mt-1">错误: ${r.error}</p>
                                       ` : ''}
