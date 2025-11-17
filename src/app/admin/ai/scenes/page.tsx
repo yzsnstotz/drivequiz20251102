@@ -793,7 +793,7 @@ export default function AdminAiScenesPage() {
                     </div>
                   </div>
                 )}
-                {/* 题目类场景：分别输入题干、选项、解析 */}
+                {/* 题目类场景：分别输入题干、题目类型、选项、解析 */}
                 {(scene.scene_key === "question_translation" || scene.scene_key === "question_polish") ? (
                   <>
                     <div>
@@ -808,19 +808,50 @@ export default function AdminAiScenesPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">选项（可选，每行一个）</label>
-                      <textarea
-                        value={testState.testOptions?.join("\n") || ""}
+                      <label className="block text-sm font-medium mb-1">题目类型</label>
+                      <select
+                        value={testState.questionType || "single"}
                         onChange={(e) => {
-                          const options = e.target.value.split("\n").filter(line => line.trim());
-                          updateTestOptions(scene.id, options);
+                          const newType = e.target.value as "single" | "multiple" | "truefalse";
+                          setTestStates((prev) => ({
+                            ...prev,
+                            [scene.id]: {
+                              ...(prev[scene.id] || { sceneId: scene.id, testing: false, testInput: "", testResult: null, testError: null }),
+                              questionType: newType,
+                              // 如果是是非题，清空选项
+                              testOptions: newType === "truefalse" ? undefined : prev[scene.id]?.testOptions,
+                            },
+                          }));
                         }}
-                        placeholder="选项1\n选项2\n选项3"
-                        rows={3}
                         className="w-full border rounded px-3 py-2 text-sm"
                         disabled={testState.testing}
-                      />
+                      >
+                        <option value="single">单选题 (single)</option>
+                        <option value="multiple">多选题 (multiple)</option>
+                        <option value="truefalse">是非题 (truefalse)</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {testState.questionType === "truefalse" 
+                          ? "是非题不需要填写选项，系统会自动处理" 
+                          : "选择题目类型以正确格式化选项"}
+                      </p>
                     </div>
+                    {testState.questionType !== "truefalse" && (
+                      <div>
+                        <label className="block text-sm font-medium mb-1">选项（可选，每行一个）</label>
+                        <textarea
+                          value={testState.testOptions?.join("\n") || ""}
+                          onChange={(e) => {
+                            const options = e.target.value.split("\n").filter(line => line.trim());
+                            updateTestOptions(scene.id, options);
+                          }}
+                          placeholder="选项1\n选项2\n选项3"
+                          rows={3}
+                          className="w-full border rounded px-3 py-2 text-sm"
+                          disabled={testState.testing}
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="block text-sm font-medium mb-1">解析（可选）</label>
                       <textarea
