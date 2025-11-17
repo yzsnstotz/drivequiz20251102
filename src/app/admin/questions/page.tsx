@@ -2027,6 +2027,24 @@ export default function QuestionsPage() {
                         
                         cleanup();
                         
+                        // 创建进度对话框
+                        const progressDialog = document.createElement("div");
+                        progressDialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                        progressDialog.innerHTML = `
+                          <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                            <h3 class="text-lg font-semibold mb-4">翻译处理中...</h3>
+                            <div id="progress-content" class="mb-4">
+                              <p class="text-sm text-gray-600">正在翻译到: ${to}</p>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                              <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 30%"></div>
+                            </div>
+                          </div>
+                        `;
+                        document.body.appendChild(progressDialog);
+                        const progressContent = progressDialog.querySelector("#progress-content");
+                        const progressBar = progressDialog.querySelector("#progress-bar") as HTMLElement;
+                        
                         try {
                           const payload: any = {
                             from: from,
@@ -2034,10 +2052,51 @@ export default function QuestionsPage() {
                           };
                           if (item.hash) payload.contentHash = item.hash;
                           else payload.questionId = item.id;
-                          await apiPost("/api/admin/question-processing/translate", payload);
-                          alert("翻译任务已提交");
+                          
+                          if (progressBar) {
+                            progressBar.style.width = "60%";
+                          }
+                          
+                          const result = await apiPost<{ results: Array<{ locale: string; success: boolean; error?: string }> }>("/api/admin/question-processing/translate", payload);
+                          
+                          // 显示结果
+                          if (progressContent) {
+                            const successCount = result.results?.filter(r => r.success).length || 0;
+                            const failCount = result.results?.filter(r => !r.success).length || 0;
+                            progressContent.innerHTML = `
+                              <p class="text-sm font-semibold ${failCount === 0 ? 'text-green-600' : 'text-yellow-600'} mb-2">
+                                ${failCount === 0 ? '✓ 翻译完成！' : '⚠ 翻译部分完成'}
+                              </p>
+                              <p class="text-sm text-gray-600 mb-2">成功: ${successCount} | 失败: ${failCount}</p>
+                              ${result.results?.map(r => `
+                                <p class="text-xs ${r.success ? 'text-green-600' : 'text-red-600'} mt-1">
+                                  ${r.locale}: ${r.success ? '✓ 成功' : '✗ ' + (r.error || '失败')}
+                                </p>
+                              `).join("") || ""}
+                            `;
+                          }
+                          if (progressBar) {
+                            progressBar.style.width = "100%";
+                            progressBar.classList.remove("bg-blue-500");
+                            progressBar.classList.add(failCount === 0 ? "bg-green-500" : "bg-yellow-500");
+                          }
+                          
+                          setTimeout(() => {
+                            document.body.removeChild(progressDialog);
+                            window.location.reload();
+                          }, 3000);
                         } catch (e) {
-                          alert(e instanceof Error ? e.message : "翻译提交失败");
+                          if (progressContent) {
+                            progressContent.innerHTML = `<p class="text-sm text-red-600">翻译失败: ${e instanceof Error ? e.message : "未知错误"}</p>`;
+                          }
+                          if (progressBar) {
+                            progressBar.style.width = "100%";
+                            progressBar.classList.remove("bg-blue-500");
+                            progressBar.classList.add("bg-red-500");
+                          }
+                          setTimeout(() => {
+                            document.body.removeChild(progressDialog);
+                          }, 3000);
                         }
                       });
                     }}

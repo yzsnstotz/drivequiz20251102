@@ -572,10 +572,27 @@ export async function translateWithPolish(params: {
         parsed = JSON.parse(fixedJson);
       }
     } catch {
-      // 如果修复后仍然失败，记录完整响应用于调试
-      console.error(`[translateWithPolish] Failed to parse AI response. Full response length: ${data.answer.length}`);
-      console.error(`[translateWithPolish] Response preview: ${data.answer.substring(0, 500)}`);
-      throw new Error("AI translation response missing JSON body");
+      // 如果修复后仍然失败，尝试将整个响应作为纯文本内容处理
+      // 这种情况可能是AI没有按照JSON格式返回，而是直接返回了翻译文本
+      const trimmedAnswer = rawAnswer.trim();
+      if (trimmedAnswer.length > 0) {
+        console.warn(`[translateWithPolish] AI response is not JSON format, treating as plain text. Response length: ${trimmedAnswer.length}`);
+        console.warn(`[translateWithPolish] Response preview: ${trimmedAnswer.substring(0, 200)}`);
+        
+        // 将纯文本作为content字段
+        // 注意：如果AI只返回了纯文本，我们假设它只翻译了content部分
+        // options和explanation保持原样（如果源语言有的话，后续可能需要单独翻译）
+        parsed = {
+          content: trimmedAnswer,
+          // 不设置options和explanation，让它们保持undefined
+          // 这样至少能保存content的翻译结果
+        };
+      } else {
+        // 如果修复后仍然失败，记录完整响应用于调试
+        console.error(`[translateWithPolish] Failed to parse AI response. Full response length: ${data.answer.length}`);
+        console.error(`[translateWithPolish] Response preview: ${data.answer.substring(0, 500)}`);
+        throw new Error("AI translation response missing JSON body");
+      }
     }
   }
   
