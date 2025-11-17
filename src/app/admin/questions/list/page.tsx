@@ -1786,19 +1786,19 @@ export default function QuestionsPage() {
                               const progressBar = progressDialog.querySelector("#progress-bar") as HTMLElement;
                               
                               try {
+                                // 确保 from 有值，不能为空字符串或 null
+                                const from = (filters.locale || "zh").trim() || "zh";
+                                
+                                // 验证 from 是否有效
+                                if (!from) {
+                                  alert("源语言不能为空");
+                                  return;
+                                }
+                                
                                 const payload: any = {
-                                  // 确保 from 有值，不能为空字符串或 null
-                                  const from = (filters.locale || "zh").trim() || "zh";
-                                  const payload: any = {
-                                    from: from,
-                                    to: selectedLangs.length === 1 ? selectedLangs[0] : selectedLangs,
-                                  };
-                                  
-                                  // 验证 from 是否有效
-                                  if (!from) {
-                                    alert("源语言不能为空");
-                                    return;
-                                  }
+                                  from: from,
+                                  to: selectedLangs.length === 1 ? selectedLangs[0] : selectedLangs,
+                                };
                                 if (item.hash) payload.contentHash = item.hash;
                                 else payload.questionId = item.id;
                                 
