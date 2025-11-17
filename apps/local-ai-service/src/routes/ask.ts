@@ -231,16 +231,24 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const maxHistory = body.maxHistory || 10;
         const seedUrl = body.seedUrl?.trim() || null;
         const scene = body.scene?.trim() || null;
-        const sourceLanguage = body.sourceLanguage?.trim() || null;
-        const targetLanguage = body.targetLanguage?.trim() || null;
+        // 注意：如果 body.sourceLanguage 是 undefined，trim() 会报错，需要先检查
+        const sourceLanguage = body.sourceLanguage ? body.sourceLanguage.trim() || null : null;
+        const targetLanguage = body.targetLanguage ? body.targetLanguage.trim() || null : null;
         
-        // 记录接收到的参数
+        // 记录接收到的参数（包括原始值）
         console.log("[LOCAL-AI] 接收到的请求参数:", {
           scene,
           sourceLanguage,
           targetLanguage,
           lang,
-          questionLength: question.length
+          questionLength: question.length,
+          rawBody: {
+            scene: body.scene,
+            sourceLanguage: body.sourceLanguage,
+            targetLanguage: body.targetLanguage,
+            hasSourceLanguage: body.sourceLanguage !== undefined,
+            hasTargetLanguage: body.targetLanguage !== undefined,
+          }
         });
 
         if (!question || question.length === 0 || question.length > 2000) {
