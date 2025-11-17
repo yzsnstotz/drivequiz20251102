@@ -719,6 +719,8 @@ export default function AdminAiScenesPage() {
             testInput: "",
             testResult: null,
             testError: null,
+            sourceLanguage: "zh", // 默认源语言
+            targetLanguage: "ja", // 默认目标语言
           };
 
           return (
