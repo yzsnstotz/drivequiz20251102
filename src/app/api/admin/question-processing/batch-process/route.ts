@@ -1459,18 +1459,20 @@ async function processBatchAsync(
                 updated_at: new Date(),
               };
               
-              if (result.category) {
-                updates.category = result.category;
+              // 更新 license_type_tag（新字段）
+              if (result.license_type_tag) {
+                updates.license_type_tag = result.license_type_tag;
               }
+              // 更新 stage_tag
               if (result.stage_tag) {
                 updates.stage_tag = result.stage_tag;
               }
+              // 更新 topic_tags
               if (result.topic_tags && Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
                 updates.topic_tags = result.topic_tags;
               }
-              if (result.license_types && Array.isArray(result.license_types) && result.license_types.length > 0) {
-                updates.license_types = result.license_types;
-              }
+              // 不再更新 category（category 是卷类，不是标签）
+              // 不再更新 license_types（使用 license_type_tag 替代）
 
               await db
                 .updateTable("questions")
