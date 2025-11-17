@@ -72,18 +72,18 @@ export const POST = withAdminAuth(async (req: Request) => {
       count: targetLanguages.length,
     });
     
-    // 获取题目内容
+    // 获取题目内容（包括题目类型）
     let question: any = null;
     if (contentHash) {
       question = await db
         .selectFrom("questions")
-        .select(["id", "content_hash", "content", "options", "explanation"])
+        .select(["id", "content_hash", "type", "content", "options", "explanation"])
         .where("content_hash", "=", contentHash)
         .executeTakeFirst();
     } else if (questionId) {
       question = await db
         .selectFrom("questions")
-        .select(["id", "content_hash", "content", "options", "explanation"])
+        .select(["id", "content_hash", "type", "content", "options", "explanation"])
         .where("id", "=", questionId)
         .executeTakeFirst();
     }
@@ -168,6 +168,7 @@ export const POST = withAdminAuth(async (req: Request) => {
           },
           from: sourceLang, // 使用处理后的值（确保有值）
           to: targetLang,
+          questionType: question.type, // 传递题目类型（single/multiple/truefalse）
           adminToken,
           mode: "single", // ✅ 单题操作模式
         });

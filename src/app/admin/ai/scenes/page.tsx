@@ -143,6 +143,7 @@ type TestState = {
   targetLanguage?: string; // 目标语言（用于翻译场景）
   testOptions?: string[]; // 选项列表（用于题目类场景）
   testExplanation?: string; // 解析（用于题目类场景）
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型
 };
 
 export default function AdminAiScenesPage() {
@@ -329,11 +330,20 @@ export default function AdminAiScenesPage() {
         model: providerConfig.model,
       };
 
-      // 如果是题目类场景，收集选项和解析
+      // 如果是题目类场景，收集选项、解析和题目类型
       if (scene.scene_key === "question_translation" || scene.scene_key === "question_polish") {
-        if (testState.testOptions && testState.testOptions.length > 0) {
-          testPayload.options = testState.testOptions;
+        // 传递题目类型（如果指定了）
+        if (testState.questionType) {
+          testPayload.questionType = testState.questionType;
         }
+        
+        // 对于是非题，不传递选项（即使填写了也忽略）
+        if (testState.questionType !== "truefalse") {
+          if (testState.testOptions && testState.testOptions.length > 0) {
+            testPayload.options = testState.testOptions;
+          }
+        }
+        
         if (testState.testExplanation) {
           testPayload.explanation = testState.testExplanation;
         }

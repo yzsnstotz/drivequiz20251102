@@ -85,6 +85,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         explanation: explanation || undefined,
         sourceLanguage,
         targetLanguage,
+        questionType: questionType || undefined, // 传递题目类型
       });
     } else if (sceneKey === "question_polish") {
       // 对于润色场景，language 可以从 lang 或 sourceLanguage 获取
@@ -103,6 +104,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         options: options || [],
         explanation: explanation || undefined,
         language,
+        questionType: questionType || undefined, // 传递题目类型
       });
     }
     // 其他场景保持原样，直接使用 rawInput

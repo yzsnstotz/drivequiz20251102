@@ -146,8 +146,9 @@ export async function translateWithPolish(params: {
   source: { content: string; options?: string[]; explanation?: string };
   from: string;
   to: string;
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
 }): Promise<TranslateResult> {
-  const { source, from, to } = params;
+  const { source, from, to, questionType } = params;
   // 使用场景配置，场景配置中的 prompt 已经包含了翻译要求
   // 源语言和目标语言通过 sourceLanguage 和 targetLanguage 参数传递，会在系统 prompt 中动态替换
   // 这里只需要传递题目内容，场景配置会自动应用
@@ -159,6 +160,7 @@ export async function translateWithPolish(params: {
     explanation: source.explanation,
     sourceLanguage: from,
     targetLanguage: to,
+    questionType: questionType, // 传递题目类型
   });
 
   // 使用统一的 callQuestionAi 封装（带配置和缓存）

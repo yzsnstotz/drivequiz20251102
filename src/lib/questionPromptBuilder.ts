@@ -11,6 +11,7 @@ export interface QuestionTranslationPayload {
   explanation?: string;
   sourceLanguage: string;
   targetLanguage: string;
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
 }
 
 export interface QuestionPolishPayload {
@@ -18,6 +19,7 @@ export interface QuestionPolishPayload {
   options?: string[];
   explanation?: string;
   language: string; // 题目内容语言，如 'zh' | 'ja' | 'en'
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
 }
 
 /**
@@ -30,7 +32,7 @@ export interface QuestionPolishPayload {
  * - apps/question-processor/src/ai.ts (translateWithPolish)
  */
 export function buildQuestionTranslationInput(payload: QuestionTranslationPayload): string {
-  const { stem, options = [], explanation } = payload;
+  const { stem, options = [], explanation, questionType } = payload;
   
   // 严格按照现有业务逻辑拼装
   // 格式：Content: ...\nOptions:\n- ...\nExplanation: ...
@@ -39,11 +41,17 @@ export function buildQuestionTranslationInput(payload: QuestionTranslationPayloa
   // Content 部分（必需）
   parts.push(`Content: ${stem}`);
   
-  // Options 部分（如果有选项）
-  if (options && options.length > 0) {
+  // Options 部分处理
+  // 对于是非题（truefalse），不输出 Options 部分
+  // 对于单选/多选题，如果有选项则输出，否则不输出
+  if (questionType === "truefalse") {
+    // 是非题不需要选项，跳过 Options 部分
+  } else if (options && options.length > 0) {
+    // 单选或多选题：如果有选项则输出
     const optionsText = options.map((o) => `- ${o}`).join("\n");
     parts.push(`Options:\n${optionsText}`);
   }
+  // 如果没有选项且不是是非题，也不输出 Options 部分（保持与现有逻辑一致）
   
   // Explanation 部分（如果有解析）
   if (explanation) {
@@ -62,7 +70,7 @@ export function buildQuestionTranslationInput(payload: QuestionTranslationPayloa
  * - src/app/api/admin/question-processing/_lib/batchProcessUtils.ts (polishContent)
  */
 export function buildQuestionPolishInput(payload: QuestionPolishPayload): string {
-  const { stem, options = [], explanation, language } = payload;
+  const { stem, options = [], explanation, language, questionType } = payload;
   
   // 严格按照现有业务逻辑拼装
   // 格式：Language: ...\nContent: ...\nOptions:\n- ...\nExplanation: ...
@@ -74,11 +82,17 @@ export function buildQuestionPolishInput(payload: QuestionPolishPayload): string
   // Content 部分（必需）
   parts.push(`Content: ${stem}`);
   
-  // Options 部分（如果有选项）
-  if (options && options.length > 0) {
+  // Options 部分处理
+  // 对于是非题（truefalse），不输出 Options 部分
+  // 对于单选/多选题，如果有选项则输出，否则不输出
+  if (questionType === "truefalse") {
+    // 是非题不需要选项，跳过 Options 部分
+  } else if (options && options.length > 0) {
+    // 单选或多选题：如果有选项则输出
     const optionsText = options.map((o) => `- ${o}`).join("\n");
     parts.push(`Options:\n${optionsText}`);
   }
+  // 如果没有选项且不是是非题，也不输出 Options 部分（保持与现有逻辑一致）
   
   // Explanation 部分（如果有解析）
   if (explanation) {

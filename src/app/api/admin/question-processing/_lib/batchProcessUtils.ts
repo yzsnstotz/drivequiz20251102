@@ -470,6 +470,7 @@ export async function translateWithPolish(params: {
   source: { content: string; options?: string[]; explanation?: string };
   from: string;
   to: string;
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
   mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
@@ -504,6 +505,7 @@ export async function translateWithPolish(params: {
     explanation: source.explanation,
     sourceLanguage: sourceLang,
     targetLanguage: targetLang,
+    questionType: params.questionType, // 传递题目类型
   });
 
   const sceneKey = "question_translation";
