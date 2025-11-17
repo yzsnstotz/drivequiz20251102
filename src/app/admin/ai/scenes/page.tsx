@@ -349,7 +349,7 @@ export default function AdminAiScenesPage() {
       };
 
       // 如果是题目类场景，收集选项、解析和题目类型
-      if (scene.scene_key === "question_translation" || scene.scene_key === "question_polish") {
+      if (scene.scene_key === "question_translation" || scene.scene_key === "question_polish" || scene.scene_key === "question_fill_missing") {
         // 传递题目类型（如果指定了）
         if (testState.questionType) {
           testPayload.questionType = testState.questionType;
