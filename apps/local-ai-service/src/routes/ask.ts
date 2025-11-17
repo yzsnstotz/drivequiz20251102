@@ -419,7 +419,14 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             // 对于翻译场景，如果 targetLanguage 存在，应该使用 targetLanguage 的语言
             const defaultPromptLang = targetLanguage || lang;
             sys = buildSystemPrompt(defaultPromptLang);
-            console.warn("[LOCAL-AI] 场景配置不存在，使用默认 prompt:", { scene, lang: defaultPromptLang });
+            console.warn("[LOCAL-AI] 场景配置不存在，使用默认 prompt:", { 
+              scene, 
+              lang: defaultPromptLang,
+              sourceLanguage,
+              targetLanguage,
+              promptLocale,
+              warning: "⚠️ 翻译场景应该使用场景配置，默认 prompt 可能无法正确翻译"
+            });
           }
         } else {
           // 没有指定场景，使用默认 prompt
