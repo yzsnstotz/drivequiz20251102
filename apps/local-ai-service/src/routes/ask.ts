@@ -19,6 +19,12 @@ type AskBody = {
   maxHistory?: number;
   // 种子URL（可选，只返回该URL下的子页面）
   seedUrl?: string;
+  // 场景标识（如 question_translation）
+  scene?: string;
+  // 源语言（用于翻译场景）
+  sourceLanguage?: string;
+  // 目标语言（用于翻译场景）
+  targetLanguage?: string;
 };
 
 type AskResult = {
@@ -33,6 +39,94 @@ type AskResult = {
   cached?: boolean;
   time?: string;
 };
+
+/**
+ * 从 Supabase 读取场景配置
+ */
+async function getSceneConfig(
+  sceneKey: string,
+  locale: string,
+  config: LocalAIConfig
+): Promise<{ prompt: string; outputFormat: string | null } | null> {
+  const SUPABASE_URL = config.supabaseUrl;
+  const SUPABASE_SERVICE_KEY = config.supabaseServiceKey;
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    return null;
+  }
+
+  try {
+    const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    const data = (await res.json()) as Array<{
+      system_prompt_zh: string;
+      system_prompt_ja: string | null;
+      system_prompt_en: string | null;
+      output_format: string | null;
+    }>;
+
+    if (!data || data.length === 0) {
+      return null;
+    }
+
+    const sceneConfig = data[0];
+    const lang = locale.toLowerCase();
+
+    // 根据语言选择 prompt
+    let prompt = sceneConfig.system_prompt_zh;
+    if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
+      prompt = sceneConfig.system_prompt_ja;
+    } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
+      prompt = sceneConfig.system_prompt_en;
+    }
+
+    return {
+      prompt: prompt || sceneConfig.system_prompt_zh,
+      outputFormat: sceneConfig.output_format,
+    };
+  } catch (error) {
+    console.error("[LOCAL-AI] 读取场景配置失败:", error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+/**
+ * 替换 prompt 中的占位符
+ */
+function replacePlaceholders(
+  prompt: string,
+  sourceLanguage?: string,
+  targetLanguage?: string
+): string {
+  let result = prompt;
+
+  // 替换 {sourceLanguage} 和 {源语言}
+  if (sourceLanguage) {
+    result = result.replace(/{sourceLanguage}/gi, sourceLanguage);
+    result = result.replace(/{源语言}/g, sourceLanguage);
+  }
+
+  // 替换 {targetLanguage} 和 {目标语言}
+  if (targetLanguage) {
+    result = result.replace(/{targetLanguage}/gi, targetLanguage);
+    result = result.replace(/{目标语言}/g, targetLanguage);
+  }
+
+  return result;
+}
 
 function buildSystemPrompt(lang: string): string {
   const base =
@@ -121,6 +215,9 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const lang = (body.lang || "zh").toLowerCase().trim();
         const maxHistory = body.maxHistory || 10;
         const seedUrl = body.seedUrl?.trim() || null;
+        const scene = body.scene?.trim() || null;
+        const sourceLanguage = body.sourceLanguage?.trim() || null;
+        const targetLanguage = body.targetLanguage?.trim() || null;
 
         if (!question || question.length === 0 || question.length > 2000) {
           reply.code(400).send({
@@ -148,8 +245,25 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return "";
         });
 
-        // 5) 构建消息列表（包含对话历史）
-        const sys = buildSystemPrompt(lang);
+        // 5) 构建系统 prompt（优先使用场景配置）
+        let sys: string;
+        if (scene) {
+          // 尝试从数据库读取场景配置
+          const sceneConfig = await getSceneConfig(scene, targetLanguage || lang, config);
+          if (sceneConfig) {
+            // 使用场景配置的 prompt，并替换占位符
+            sys = replacePlaceholders(sceneConfig.prompt, sourceLanguage || undefined, targetLanguage || undefined);
+            console.log("[LOCAL-AI] 使用场景配置:", { scene, sourceLanguage, targetLanguage });
+          } else {
+            // 场景配置不存在，使用默认 prompt
+            sys = buildSystemPrompt(lang);
+            console.warn("[LOCAL-AI] 场景配置不存在，使用默认 prompt:", { scene });
+          }
+        } else {
+          // 没有指定场景，使用默认 prompt
+          sys = buildSystemPrompt(lang);
+        }
+        
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
