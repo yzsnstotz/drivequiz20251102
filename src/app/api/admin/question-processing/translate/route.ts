@@ -19,11 +19,18 @@ export const POST = withAdminAuth(async (req: Request) => {
       return {};
     });
     const { questionId, contentHash, from, to } = body || {};
+    
+    // 确保 from 和 to 有默认值
+    const sourceLang = from || "zh"; // 默认使用中文作为源语言
+    const targetLang = to;
+    
     console.log(`[API Translate] [${requestId}] Body parsed:`, { 
       questionId, 
       contentHash, 
       from, 
       to,
+      sourceLang, // 使用处理后的值
+      targetLang,
       fromType: typeof from,
       toType: typeof to,
       hasFrom: from !== undefined && from !== null && from !== "",
@@ -31,7 +38,7 @@ export const POST = withAdminAuth(async (req: Request) => {
       rawBody: JSON.stringify(body),
     });
     
-    if ((!questionId && !contentHash) || !from || !to) {
+    if ((!questionId && !contentHash) || !targetLang) {
       console.error(`[API Translate] [${requestId}] Missing required fields`, {
         hasQuestionId: !!questionId,
         hasContentHash: !!contentHash,
@@ -39,8 +46,10 @@ export const POST = withAdminAuth(async (req: Request) => {
         hasTo: !!to,
         fromValue: from,
         toValue: to,
+        sourceLang,
+        targetLang,
       });
-      return badRequest("questionId/contentHash, from, to are required");
+      return badRequest("questionId/contentHash, to are required. from defaults to 'zh' if not provided.");
     }
     
     // 支持 to 为字符串或字符串数组
@@ -71,7 +80,8 @@ export const POST = withAdminAuth(async (req: Request) => {
     let options: string[] | undefined = undefined;
     let explanation: string | undefined = undefined;
 
-    if (from.toLowerCase().startsWith("zh")) {
+    // 使用处理后的 sourceLang（有默认值）
+    if (sourceLang.toLowerCase().startsWith("zh")) {
       // 从 questions 表获取中文内容
       if (typeof question.content === "object" && question.content !== null) {
         content = question.content.zh || "";
@@ -90,15 +100,15 @@ export const POST = withAdminAuth(async (req: Request) => {
       // 从 questions.content JSONB 字段获取翻译内容
       if (typeof question.content === "object" && question.content !== null) {
         const contentObj = question.content as { [key: string]: string | undefined };
-        content = contentObj[from] || "";
+        content = contentObj[sourceLang] || "";
       } else {
-        return badRequest(`Source language translation not found for locale: ${from}`);
+        return badRequest(`Source language translation not found for locale: ${sourceLang}`);
       }
       
       // 从 questions.explanation JSONB 字段获取解析
       if (question.explanation && typeof question.explanation === "object" && question.explanation !== null) {
         const expObj = question.explanation as { [key: string]: string | undefined };
-        explanation = expObj[from] || undefined;
+        explanation = expObj[sourceLang] || undefined;
       }
     }
 
@@ -127,11 +137,11 @@ export const POST = withAdminAuth(async (req: Request) => {
           contentLength: content?.length || 0,
           hasOptions: !!options,
           hasExplanation: !!explanation,
-          from,
+          from: sourceLang, // 使用处理后的值（有默认值）
           to: targetLang,
-          fromType: typeof from,
-          fromValue: from,
-          hasFrom: from !== undefined && from !== null && from !== "",
+          fromType: typeof sourceLang,
+          fromValue: sourceLang,
+          hasFrom: sourceLang !== undefined && sourceLang !== null && sourceLang !== "",
         });
         const translateResult = await translateWithPolish({
           source: {
@@ -139,7 +149,7 @@ export const POST = withAdminAuth(async (req: Request) => {
             options,
             explanation,
           },
-          from: from, // 确保传递 from 参数
+          from: sourceLang, // 使用处理后的值（确保有值）
           to: targetLang,
           adminToken,
           mode: "single", // ✅ 单题操作模式
