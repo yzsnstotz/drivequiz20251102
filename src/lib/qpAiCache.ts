@@ -10,6 +10,9 @@ export interface AiCacheKeyInput {
   model: string;
   // 建议使用题目文本的 hash，而不是整段文本
   questionText: string;
+  // 源语言和目标语言（用于翻译场景，确保不同语言组合使用不同的缓存）
+  sourceLanguage?: string | null;
+  targetLanguage?: string | null;
 }
 
 export interface AiCacheEntry<T = any> {
@@ -23,16 +26,19 @@ const cache = new Map<string, AiCacheEntry>();
 /**
  * 构建缓存 key
  * 使用简单 hash 避免 key 太长
+ * 包含 sourceLanguage 和 targetLanguage，确保不同语言组合使用不同的缓存
  */
 function buildKey(input: AiCacheKeyInput): string {
-  // 可以简单做个 hash，避免 key 太长
-  const base = `${input.scene}::${input.provider}::${input.model}::${input.questionText}`;
+  // 构建基础字符串，包含所有影响结果的参数
+  const sourceLang = input.sourceLanguage || "";
+  const targetLang = input.targetLanguage || "";
+  const base = `${input.scene}::${input.provider}::${input.model}::${sourceLang}::${targetLang}::${input.questionText}`;
   // 简单 hash（不追求密码学安全）
   let hash = 0;
   for (let i = 0; i < base.length; i++) {
     hash = (hash * 31 + base.charCodeAt(i)) | 0;
   }
-  return `${input.scene}::${input.provider}::${input.model}::${hash}`;
+  return `${input.scene}::${input.provider}::${input.model}::${sourceLang}::${targetLang}::${hash}`;
 }
 
 /**

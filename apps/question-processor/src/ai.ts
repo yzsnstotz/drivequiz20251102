@@ -57,6 +57,8 @@ export async function callQuestionAi(params: {
       provider,
       model,
       questionText,
+      sourceLanguage,
+      targetLanguage,
     });
     if (cached) {
       // eslint-disable-next-line no-console
@@ -65,6 +67,8 @@ export async function callQuestionAi(params: {
         scene,
         provider,
         model,
+        sourceLanguage,
+        targetLanguage,
       );
       return cached;
     }
@@ -108,6 +112,8 @@ export async function callQuestionAi(params: {
         provider,
         model,
         questionText,
+        sourceLanguage,
+        targetLanguage,
       },
       result,
       qpAiConfig.cacheTtlMs,

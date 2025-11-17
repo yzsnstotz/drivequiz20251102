@@ -307,6 +307,8 @@ async function callAiAskInternal(
       provider,
       model: model || (provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel),
       questionText: params.question,
+      sourceLanguage: params.sourceLanguage,
+      targetLanguage: params.targetLanguage,
     });
     if (cached) {
       // eslint-disable-next-line no-console
@@ -315,6 +317,8 @@ async function callAiAskInternal(
         params.scene,
         provider,
         model,
+        params.sourceLanguage,
+        params.targetLanguage,
       );
       return cached;
     }
@@ -420,6 +424,8 @@ async function callAiAskInternal(
               provider,
               model: model || (provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel),
               questionText: params.question,
+              sourceLanguage: params.sourceLanguage,
+              targetLanguage: params.targetLanguage,
             },
             result,
             qpAiConfig.cacheTtlMs,
