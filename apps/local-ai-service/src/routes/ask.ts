@@ -57,6 +57,7 @@ async function getSceneConfig(
 
   try {
     const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
+    console.log("[LOCAL-AI] 读取场景配置:", { sceneKey, locale, url: url.substring(0, 100) + "..." });
     const res = await fetch(url, {
       method: "GET",
       headers: {
@@ -68,6 +69,7 @@ async function getSceneConfig(
     });
 
     if (!res.ok) {
+      console.warn("[LOCAL-AI] 场景配置请求失败:", { status: res.status, statusText: res.statusText });
       return null;
     }
 
@@ -79,6 +81,7 @@ async function getSceneConfig(
     }>;
 
     if (!data || data.length === 0) {
+      console.warn("[LOCAL-AI] 场景配置不存在:", { sceneKey });
       return null;
     }
 
@@ -89,12 +92,24 @@ async function getSceneConfig(
     let prompt = sceneConfig.system_prompt_zh;
     if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
       prompt = sceneConfig.system_prompt_ja;
+      console.log("[LOCAL-AI] 使用日文 prompt");
     } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
       prompt = sceneConfig.system_prompt_en;
+      console.log("[LOCAL-AI] 使用英文 prompt");
+    } else {
+      console.log("[LOCAL-AI] 使用中文 prompt (locale:", locale, "lang:", lang, ")");
     }
 
+    const finalPrompt = prompt || sceneConfig.system_prompt_zh;
+    console.log("[LOCAL-AI] 场景配置读取成功:", { 
+      sceneKey, 
+      locale, 
+      promptLength: finalPrompt.length,
+      promptPreview: finalPrompt.substring(0, 100) + "..."
+    });
+
     return {
-      prompt: prompt || sceneConfig.system_prompt_zh,
+      prompt: finalPrompt,
       outputFormat: sceneConfig.output_format,
     };
   } catch (error) {
@@ -218,6 +233,15 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const scene = body.scene?.trim() || null;
         const sourceLanguage = body.sourceLanguage?.trim() || null;
         const targetLanguage = body.targetLanguage?.trim() || null;
+        
+        // 记录接收到的参数
+        console.log("[LOCAL-AI] 接收到的请求参数:", {
+          scene,
+          sourceLanguage,
+          targetLanguage,
+          lang,
+          questionLength: question.length
+        });
 
         if (!question || question.length === 0 || question.length > 2000) {
           reply.code(400).send({
@@ -246,22 +270,46 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         });
 
         // 5) 构建系统 prompt（优先使用场景配置）
+        // 重要：对于翻译场景，应该使用 targetLanguage 来选择 prompt 语言，而不是 lang
+        // lang 是请求的语言标识，targetLanguage 是翻译的目标语言
         let sys: string;
+        const promptLocale = targetLanguage || lang; // 优先使用 targetLanguage（翻译目标语言）
+        console.log("[LOCAL-AI] 构建系统 prompt:", { 
+          scene, 
+          sourceLanguage, 
+          targetLanguage, 
+          lang, 
+          promptLocale,
+          willUseTargetLanguage: !!targetLanguage
+        });
+        
         if (scene) {
           // 尝试从数据库读取场景配置
-          const sceneConfig = await getSceneConfig(scene, targetLanguage || lang, config);
+          // 使用 targetLanguage 或 lang 来选择 prompt 的语言版本
+          const sceneConfig = await getSceneConfig(scene, promptLocale, config);
           if (sceneConfig) {
             // 使用场景配置的 prompt，并替换占位符
             sys = replacePlaceholders(sceneConfig.prompt, sourceLanguage || undefined, targetLanguage || undefined);
-            console.log("[LOCAL-AI] 使用场景配置:", { scene, sourceLanguage, targetLanguage });
+            console.log("[LOCAL-AI] 使用场景配置:", { 
+              scene, 
+              sourceLanguage, 
+              targetLanguage,
+              promptLocale,
+              promptLength: sys.length,
+              promptPreview: sys.substring(0, 200) + "..."
+            });
           } else {
             // 场景配置不存在，使用默认 prompt
-            sys = buildSystemPrompt(lang);
-            console.warn("[LOCAL-AI] 场景配置不存在，使用默认 prompt:", { scene });
+            // 对于翻译场景，如果 targetLanguage 存在，应该使用 targetLanguage 的语言
+            const defaultPromptLang = targetLanguage || lang;
+            sys = buildSystemPrompt(defaultPromptLang);
+            console.warn("[LOCAL-AI] 场景配置不存在，使用默认 prompt:", { scene, lang: defaultPromptLang });
           }
         } else {
           // 没有指定场景，使用默认 prompt
-          sys = buildSystemPrompt(lang);
+          const defaultPromptLang = targetLanguage || lang;
+          sys = buildSystemPrompt(defaultPromptLang);
+          console.log("[LOCAL-AI] 未指定场景，使用默认 prompt:", { lang: defaultPromptLang });
         }
         
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
