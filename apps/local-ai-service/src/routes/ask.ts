@@ -41,23 +41,34 @@ type AskResult = {
 };
 
 /**
- * 从 Supabase 读取场景配置
+ * 从 Supabase 读取场景配置（带重试机制）
  */
 async function getSceneConfig(
   sceneKey: string,
   locale: string,
-  config: LocalAIConfig
+  config: LocalAIConfig,
+  retryCount: number = 0
 ): Promise<{ prompt: string; outputFormat: string | null } | null> {
   const SUPABASE_URL = config.supabaseUrl;
   const SUPABASE_SERVICE_KEY = config.supabaseServiceKey;
+  const MAX_RETRIES = 2; // 最多重试 2 次
+  const TIMEOUT_MS = 15000; // 15 秒超时（比 RAG 检索稍长，因为场景配置查询应该更快）
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    console.warn("[LOCAL-AI] Supabase 配置缺失，无法读取场景配置");
     return null;
   }
 
+  const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
+  
   try {
-    const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
-    console.log("[LOCAL-AI] 读取场景配置:", { sceneKey, locale, url: url.substring(0, 100) + "..." });
+    if (retryCount === 0) {
+      console.log("[LOCAL-AI] 读取场景配置:", { sceneKey, locale, url: url.substring(0, 100) + "..." });
+    } else {
+      console.log(`[LOCAL-AI] 重试读取场景配置 (${retryCount}/${MAX_RETRIES}):`, { sceneKey, locale });
+    }
+
+    const startTime = Date.now();
     const res = await fetch(url, {
       method: "GET",
       headers: {
@@ -65,11 +76,26 @@ async function getSceneConfig(
         Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
         "Content-Type": "application/json",
       },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    const duration = Date.now() - startTime;
 
     if (!res.ok) {
-      console.warn("[LOCAL-AI] 场景配置请求失败:", { status: res.status, statusText: res.statusText });
+      const errorText = await res.text().catch(() => "");
+      console.warn("[LOCAL-AI] 场景配置请求失败:", { 
+        status: res.status, 
+        statusText: res.statusText,
+        errorText: errorText.substring(0, 200),
+        duration: `${duration}ms`
+      });
+      
+      // 如果是 5xx 错误且还有重试次数，进行重试
+      if (res.status >= 500 && retryCount < MAX_RETRIES) {
+        console.log(`[LOCAL-AI] 服务器错误，${1000 * (retryCount + 1)}ms 后重试...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return getSceneConfig(sceneKey, locale, config, retryCount + 1);
+      }
+      
       return null;
     }
 
@@ -81,7 +107,7 @@ async function getSceneConfig(
     }>;
 
     if (!data || data.length === 0) {
-      console.warn("[LOCAL-AI] 场景配置不存在:", { sceneKey });
+      console.warn("[LOCAL-AI] 场景配置不存在:", { sceneKey, duration: `${duration}ms` });
       return null;
     }
 
@@ -105,7 +131,9 @@ async function getSceneConfig(
       sceneKey, 
       locale, 
       promptLength: finalPrompt.length,
-      promptPreview: finalPrompt.substring(0, 100) + "..."
+      promptPreview: finalPrompt.substring(0, 100) + "...",
+      duration: `${duration}ms`,
+      retryCount
     });
 
     return {
@@ -113,7 +141,39 @@ async function getSceneConfig(
       outputFormat: sceneConfig.output_format,
     };
   } catch (error) {
-    console.error("[LOCAL-AI] 读取场景配置失败:", error instanceof Error ? error.message : String(error));
+    const isTimeout = error instanceof Error && (
+      error.name === "AbortError" || 
+      error.message.includes("timeout") ||
+      error.message.includes("aborted")
+    );
+    
+    if (isTimeout) {
+      console.error(`[LOCAL-AI] 读取场景配置超时 (${TIMEOUT_MS}ms):`, { sceneKey, locale, retryCount });
+      
+      // 如果是超时且还有重试次数，进行重试
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[LOCAL-AI] 超时，${1000 * (retryCount + 1)}ms 后重试...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return getSceneConfig(sceneKey, locale, config, retryCount + 1);
+      }
+      
+      console.error("[LOCAL-AI] 场景配置读取超时，已达到最大重试次数，使用默认 prompt");
+    } else {
+      console.error("[LOCAL-AI] 读取场景配置失败:", { 
+        error: error instanceof Error ? error.message : String(error),
+        sceneKey,
+        locale,
+        retryCount
+      });
+      
+      // 如果是网络错误且还有重试次数，进行重试
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[LOCAL-AI] 网络错误，${1000 * (retryCount + 1)}ms 后重试...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return getSceneConfig(sceneKey, locale, config, retryCount + 1);
+      }
+    }
+    
     return null;
   }
 }
@@ -264,18 +324,24 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const history = processHistory(body.messages, maxHistory);
         
         // 4) RAG 检索（结合对话历史增强上下文）
-        let ragQuery = question;
-        if (history.length > 0) {
-          // 从对话历史中提取上下文，增强 RAG 检索
-          ragQuery = extractContextFromHistory(history, question);
+        // 注意：对于翻译场景（question_translation），不需要 RAG 检索
+        let reference = "";
+        if (scene !== "question_translation" && scene !== "question_polish") {
+          let ragQuery = question;
+          if (history.length > 0) {
+            // 从对话历史中提取上下文，增强 RAG 检索
+            ragQuery = extractContextFromHistory(history, question);
+          }
+          
+          // 使用种子URL过滤（如果提供）
+          reference = await getRagContext(ragQuery, lang, seedUrl).catch((error) => {
+            // RAG 检索失败不影响主流程，仅记录错误
+            console.error("[LOCAL-AI] RAG检索失败:", error instanceof Error ? error.message : String(error));
+            return "";
+          });
+        } else {
+          console.log("[LOCAL-AI] 翻译/润色场景，跳过 RAG 检索");
         }
-        
-        // 使用种子URL过滤（如果提供）
-        const reference = await getRagContext(ragQuery, lang, seedUrl).catch((error) => {
-          // RAG 检索失败不影响主流程，仅记录错误
-          console.error("[LOCAL-AI] RAG检索失败:", error instanceof Error ? error.message : String(error));
-          return "";
-        });
 
         // 5) 构建系统 prompt（优先使用场景配置）
         // 重要：对于翻译场景，应该使用 targetLanguage 来选择 prompt 语言，而不是 lang
@@ -320,32 +386,44 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           console.log("[LOCAL-AI] 未指定场景，使用默认 prompt:", { lang: defaultPromptLang });
         }
         
-        const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
-        const refPrefix =
-          lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
-
         // 构建完整的消息列表
         const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
           { role: "system", content: sys },
         ];
 
-        // 添加历史消息（如果有）
-        if (history.length > 0) {
-          // 过滤掉 system 消息（已经在上面添加了）
-          const historyMessages = history
-            .filter((msg) => msg.role !== "system")
-            .map((msg) => ({
-              role: msg.role as "user" | "assistant",
-              content: msg.content,
-            }));
-          messages.push(...historyMessages);
-        }
+        // 对于翻译和润色场景，直接使用 question 作为用户消息，不添加前缀和 RAG 上下文
+        // 对于其他场景，使用问答格式
+        if (scene === "question_translation" || scene === "question_polish") {
+          // 翻译/润色场景：直接使用 question 作为用户消息
+          messages.push({
+            role: "user",
+            content: question,
+          });
+          console.log("[LOCAL-AI] 翻译/润色场景，直接使用 question 作为用户消息");
+        } else {
+          // 其他场景：使用问答格式，包含 RAG 上下文
+          const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
+          const refPrefix =
+            lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
 
-        // 添加当前问题和 RAG 上下文
-        messages.push({
-          role: "user",
-          content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
-        });
+          // 添加历史消息（如果有）
+          if (history.length > 0) {
+            // 过滤掉 system 消息（已经在上面添加了）
+            const historyMessages = history
+              .filter((msg) => msg.role !== "system")
+              .map((msg) => ({
+                role: msg.role as "user" | "assistant",
+                content: msg.content,
+              }));
+            messages.push(...historyMessages);
+          }
+
+          // 添加当前问题和 RAG 上下文
+          messages.push({
+            role: "user",
+            content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
+          });
+        }
 
         // 6) 调用 Ollama Chat（传递完整对话历史）
         const answer = await callOllamaChat(messages, 0.4);
