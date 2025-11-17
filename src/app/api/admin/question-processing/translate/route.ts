@@ -53,7 +53,24 @@ export const POST = withAdminAuth(async (req: Request) => {
     }
     
     // 支持 to 为字符串或字符串数组
-    const targetLanguages = Array.isArray(to) ? to : [to];
+    // 过滤掉 null、undefined 和空字符串
+    const targetLanguages = (Array.isArray(to) ? to : [to])
+      .filter((lang): lang is string => lang !== null && lang !== undefined && lang !== "");
+    
+    if (targetLanguages.length === 0) {
+      console.error(`[API Translate] [${requestId}] No valid target languages provided`, {
+        to,
+        toType: typeof to,
+        isArray: Array.isArray(to),
+      });
+      return badRequest("At least one valid target language (to) is required");
+    }
+    
+    console.log(`[API Translate] [${requestId}] Target languages after filtering:`, {
+      originalTo: to,
+      targetLanguages,
+      count: targetLanguages.length,
+    });
     
     // 获取题目内容
     let question: any = null;
