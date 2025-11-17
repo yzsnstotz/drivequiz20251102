@@ -475,6 +475,15 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         }
 
         // 6) 调用 Ollama Chat（传递完整对话历史）
+        console.log("[LOCAL-AI] 发送给 Ollama 的消息:", {
+          messageCount: messages.length,
+          systemPromptLength: messages[0]?.content?.length || 0,
+          systemPromptPreview: messages[0]?.content?.substring(0, 300) + "...",
+          userMessageLength: messages[messages.length - 1]?.content?.length || 0,
+          userMessagePreview: messages[messages.length - 1]?.content?.substring(0, 200) + "...",
+          scene,
+        });
+        
         const answer = await callOllamaChat(messages, 0.4);
 
         if (!answer) {
@@ -486,6 +495,14 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           });
           return;
         }
+
+        console.log("[LOCAL-AI] Ollama 返回的原始响应:", {
+          answerLength: answer.length,
+          answerPreview: answer.substring(0, 500) + "...",
+          answerEnd: answer.length > 500 ? "..." + answer.substring(answer.length - 200) : answer,
+          scene,
+          isJSON: answer.trim().startsWith("{") || answer.trim().startsWith("```json"),
+        });
 
         // 5) 构建 sources（从 reference 中提取）
         const sources: Array<{ title: string; url: string; snippet?: string }> = reference
