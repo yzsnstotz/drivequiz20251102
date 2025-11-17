@@ -153,10 +153,15 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       ok: aiResponse.ok,
       hasData: !!aiResponse.data,
       hasAnswer: !!aiResponse.data?.answer,
+      message: aiResponse.message,
+      errorCode: aiResponse.errorCode,
+      dataType: typeof aiResponse.data,
+      dataKeys: aiResponse.data ? Object.keys(aiResponse.data) : [],
     });
 
+    // 即使 AI 服务返回错误，也返回给前端，让前端显示错误信息
     return success({
-      ok: true,
+      ok: true, // 接口调用成功（即使 AI 服务返回错误）
       request: {
         // 返回最终发给 AI 的 payload（方便前端展示和调试）
         // 注意：隐藏敏感字段如 token

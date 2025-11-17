@@ -427,19 +427,45 @@ export default function AdminAiScenesPage() {
           },
         }));
       } else {
+        // 构建详细的错误信息
+        let errorMessage = "测试失败";
+        if (!result.ok) {
+          errorMessage = `接口调用失败: ${result.error || "未知错误"}`;
+        } else if (!result.response?.ok) {
+          errorMessage = `AI 服务错误: ${result.response?.message || result.response?.errorCode || "未知错误"}`;
+          if (result.response?.data && typeof result.response.data === "object") {
+            // 如果有额外的错误信息，添加到错误消息中
+            const errorData = result.response.data as any;
+            if (errorData.error || errorData.message) {
+              errorMessage += ` (${errorData.error || errorData.message})`;
+            }
+          }
+        } else if (!result.response?.data?.answer) {
+          errorMessage = "AI 服务返回了空答案";
+          if (result.response?.data) {
+            errorMessage += ` (返回数据: ${JSON.stringify(result.response.data).substring(0, 200)})`;
+          }
+        }
+        
         console.error(`[Scene Test] [${testId}] 测试失败`, {
           ok: result.ok,
           responseOk: result.response?.ok,
           message: result.response?.message,
           errorCode: result.response?.errorCode,
+          hasData: !!result.response?.data,
+          hasAnswer: !!result.response?.data?.answer,
+          dataType: typeof result.response?.data,
+          dataKeys: result.response?.data ? Object.keys(result.response.data) : [],
+          fullResponse: JSON.stringify(result.response).substring(0, 500),
         });
+        
         setTestStates((prev) => ({
           ...prev,
           [scene.id]: {
             ...testState,
             testing: false,
             testResult: null,
-            testError: result.response?.message || result.response?.errorCode || "测试失败",
+            testError: errorMessage,
             testRequest: result.request,
           },
         }));
