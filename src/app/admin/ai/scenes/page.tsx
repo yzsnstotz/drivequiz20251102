@@ -421,10 +421,16 @@ export default function AdminAiScenesPage() {
 
       const fetchDuration = Date.now() - fetchStartTime;
       console.log(`[Scene Test] [${testId}] 收到响应`, {
-        ok: result.ok,
+        resultKeys: Object.keys(result || {}),
+        resultOk: (result as any)?.ok,
         duration: `${fetchDuration}ms`,
-        hasResponse: !!result.response,
-        hasAnswer: !!result.response?.data?.answer,
+        hasResponse: !!result?.response,
+        hasRequest: !!result?.request,
+        responseOk: result?.response?.ok,
+        hasAnswer: !!result?.response?.data?.answer,
+        responseDataKeys: result?.response?.data ? Object.keys(result.response.data) : [],
+        message: result?.response?.message,
+        errorCode: result?.response?.errorCode,
       });
 
       if (result.ok && result.response?.ok && result.response?.data?.answer) {
@@ -462,17 +468,31 @@ export default function AdminAiScenesPage() {
           }
         }
         
-        console.error(`[Scene Test] [${testId}] 测试失败`, {
-          ok: result.ok,
-          responseOk: result.response?.ok,
-          message: result.response?.message,
-          errorCode: result.response?.errorCode,
-          hasData: !!result.response?.data,
-          hasAnswer: !!result.response?.data?.answer,
-          dataType: typeof result.response?.data,
-          dataKeys: result.response?.data ? Object.keys(result.response.data) : [],
-          fullResponse: JSON.stringify(result.response).substring(0, 500),
-        });
+        // 构建详细的错误日志
+        const errorDetails: any = {
+          resultKeys: Object.keys(result || {}),
+          resultOk: result?.ok,
+          responseOk: result?.response?.ok,
+          hasResponse: !!result?.response,
+          hasData: !!result?.response?.data,
+          hasAnswer: !!result?.response?.data?.answer,
+          message: result?.response?.message,
+          errorCode: result?.response?.errorCode,
+          dataType: typeof result?.response?.data,
+          dataKeys: result?.response?.data ? Object.keys(result.response.data) : [],
+        };
+        
+        // 如果有响应数据，添加更多信息
+        if (result?.response?.data) {
+          errorDetails.responseDataPreview = JSON.stringify(result.response.data).substring(0, 500);
+        }
+        
+        // 如果响应存在但格式异常，添加完整响应预览
+        if (result?.response) {
+          errorDetails.fullResponsePreview = JSON.stringify(result.response).substring(0, 500);
+        }
+        
+        console.error(`[Scene Test] [${testId}] 测试失败`, errorDetails);
         
         setTestStates((prev) => ({
           ...prev,
