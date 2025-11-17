@@ -124,9 +124,23 @@ function parseAndValidateBody(body: unknown): {
   return { question, lang: validLang, userId, scene, sourceLanguage, targetLanguage };
 }
 
-/** 生成缓存 Key（包含语言与模型，避免跨配置命中） */
-export function buildCacheKey(question: string, lang: string, model: string): string {
-  return `ask:v1:q=${encodeURIComponent(question)}:l=${lang}:m=${model}`;
+/** 生成缓存 Key（包含语言、模型和场景，避免跨配置命中） */
+export function buildCacheKey(question: string, lang: string, model: string, scene?: string | null, sourceLanguage?: string | null, targetLanguage?: string | null): string {
+  const parts = [
+    `q=${encodeURIComponent(question)}`,
+    `l=${lang}`,
+    `m=${model}`,
+  ];
+  if (scene) {
+    parts.push(`s=${encodeURIComponent(scene)}`);
+  }
+  if (sourceLanguage) {
+    parts.push(`from=${encodeURIComponent(sourceLanguage)}`);
+  }
+  if (targetLanguage) {
+    parts.push(`to=${encodeURIComponent(targetLanguage)}`);
+  }
+  return `ask:v1:${parts.join(":")}`;
 }
 
 /**
@@ -270,7 +284,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
 
         // 3) 从数据库读取模型配置（优先）或使用环境变量
         const model = await getModelFromConfig();
-        const cacheKey = buildCacheKey(question, lang, model);
+        const cacheKey = buildCacheKey(question, lang, model, scene, sourceLanguage, targetLanguage);
         const cached = await cacheGet<AskResult>(cacheKey);
         if (cached) {
           // 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
