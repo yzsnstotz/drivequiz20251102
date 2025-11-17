@@ -424,15 +424,23 @@ export default function QuestionAIDialog({
           memoryCache.set(questionHash, answer);
         }
         
+        // 确保 sources 包含耗时信息（如果 ai-service 没有返回，前端计算）
+        let sources = payload.data.sources || [];
+        const hasDurationInfo = sources.some((s: any) => s.title === "处理耗时");
+        if (!hasDurationInfo) {
+          // 如果 ai-service 没有返回耗时信息，前端不计算（因为前端无法准确计算服务端处理时间）
+          // 但保留 sources 数组，以便后续显示其他来源信息
+        }
+
         const newMessage: Message = {
           role: "assistant",
           content: answer,
           metadata: {
-            aiProvider: payload.data.cached ? "cached" : (payload.data.aiProvider || "openai"),
+            aiProvider: payload.data.cached ? "cached" : (payload.data.aiProvider || "render"), // 默认使用 render
             model: payload.data.model,
             sourceType: payload.data.cached ? "cached" : "ai-generated",
             cacheSource: payload.data.cached ? "database" : undefined, // ai-service 返回的缓存标记为 database
-            sources: payload.data.sources || [], // 包含耗时信息等来源
+            sources: sources, // 包含耗时信息等来源
           },
         };
         setMessages((prev) => [...prev, newMessage]);
@@ -590,6 +598,14 @@ export default function QuestionAIDialog({
                               <>
                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                 <span>Local AI (Ollama)</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "render" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                <span>Render AI Service</span>
                                 {cleanModelName(message.metadata.model) && (
                                   <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}

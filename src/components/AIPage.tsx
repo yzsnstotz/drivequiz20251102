@@ -419,6 +419,14 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                               <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
+                        ) : m.metadata.aiProvider === "render" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span>Render AI Service</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
+                            )}
+                          </>
                         ) : m.metadata.aiProvider === "openai" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-blue-500"></span>

@@ -60,15 +60,26 @@ export function resolveAiEndpoint(provider: AiProviderKey): { url: string; token
     throw error;
   }
 
-  // 验证 URL 格式
+  // 验证 URL 格式并清理路径（移除尾部的 /v1 等路径，避免重复拼接）
+  let cleanedUrl = ep.url;
   try {
     const urlObj = new URL(ep.url);
+    // 如果 URL 包含 /v1 路径，移除它（因为 joinUrl 会重新拼接）
+    if (urlObj.pathname === "/v1" || urlObj.pathname.endsWith("/v1")) {
+      cleanedUrl = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname.replace(/\/v1\/?$/, "")}`;
+      console.log("[resolveAiEndpoint] 移除 URL 中的 /v1 路径:", {
+        provider,
+        originalUrl: ep.url,
+        cleanedUrl,
+      });
+    }
     console.log("[resolveAiEndpoint] URL 验证通过:", {
       provider,
       protocol: urlObj.protocol,
       hostname: urlObj.hostname,
       port: urlObj.port || "default",
       pathname: urlObj.pathname,
+      cleanedUrl,
     });
   } catch (urlError) {
     const error = new Error(
@@ -83,7 +94,7 @@ export function resolveAiEndpoint(provider: AiProviderKey): { url: string; token
     throw error;
   }
 
-  // 返回原始 URL，由调用方使用 joinUrl 处理拼接
-  return { url: ep.url, token: ep.token };
+  // 返回清理后的 URL，由调用方使用 joinUrl 处理拼接
+  return { url: cleanedUrl, token: ep.token };
 }
 

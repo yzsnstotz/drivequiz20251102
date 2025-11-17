@@ -109,26 +109,79 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     });
   } catch (fetchError: any) {
     // 网络错误（如 CORS、连接失败等）
-    const errorMessage = fetchError?.message || "Network error";
-    const errorName = fetchError?.name || "Unknown";
-    const errorStack = fetchError?.stack?.substring(0, 200) || "";
+    // 安全地提取错误信息（Error 对象在序列化时可能变成空对象）
+    let errorMessage = "Network error";
+    let errorName = "Unknown";
+    let errorStack = "";
     
-    console.error("[callAiDirect] 网络请求失败:", {
-      provider,
-      baseUrl: url,
-      requestUrl,
-      error: errorMessage,
-      name: errorName,
-      stack: errorStack,
-      // 检查是否是 CORS 错误
-      isCorsError: errorMessage.includes("CORS") || errorMessage.includes("cors") || errorMessage.includes("Failed to fetch"),
-      // 检查是否是连接错误
-      isConnectionError: errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND") || errorMessage.includes("network"),
-    });
+    if (fetchError) {
+      // 优先使用 message 属性
+      if (typeof fetchError.message === "string") {
+        errorMessage = fetchError.message;
+      } else if (typeof fetchError === "string") {
+        errorMessage = fetchError;
+      } else if (fetchError.toString && fetchError.toString() !== "[object Object]") {
+        errorMessage = fetchError.toString();
+      }
+      
+      // 提取 name
+      if (typeof fetchError.name === "string") {
+        errorName = fetchError.name;
+      }
+      
+      // 提取 stack
+      if (typeof fetchError.stack === "string") {
+        errorStack = fetchError.stack.substring(0, 200);
+      }
+    }
+    
+    // 检查是否是 CORS 错误
+    const isCorsError = 
+      errorMessage.includes("CORS") || 
+      errorMessage.includes("cors") || 
+      errorMessage.includes("Failed to fetch") ||
+      errorMessage.includes("NetworkError") ||
+      errorName === "TypeError" && errorMessage.includes("fetch");
+    
+    // 检查是否是连接错误
+    const isConnectionError = 
+      errorMessage.includes("ECONNREFUSED") || 
+      errorMessage.includes("ENOTFOUND") || 
+      errorMessage.includes("network") ||
+      errorMessage.includes("ERR_CONNECTION_REFUSED") ||
+      errorMessage.includes("ERR_NAME_NOT_RESOLVED");
+    
+    // 确保所有值都是可序列化的基本类型
+    const errorInfo = {
+      provider: String(provider),
+      baseUrl: String(url || "(未定义)"),
+      requestUrl: String(requestUrl || "(未定义)"),
+      errorMessage: String(errorMessage),
+      errorName: String(errorName),
+      errorStack: String(errorStack || "(无堆栈信息)"),
+      isCorsError: Boolean(isCorsError),
+      isConnectionError: Boolean(isConnectionError),
+      // 原始错误对象（用于调试）
+      rawError: fetchError ? String(fetchError) : "null",
+    };
+    
+    console.error("[callAiDirect] 网络请求失败:", errorInfo);
+    
+    // 同时输出格式化字符串，确保信息可见
+    console.error(
+      `[callAiDirect] 网络请求失败详情:\n` +
+      `  Provider: ${errorInfo.provider}\n` +
+      `  Base URL: ${errorInfo.baseUrl}\n` +
+      `  Request URL: ${errorInfo.requestUrl}\n` +
+      `  错误消息: ${errorInfo.errorMessage}\n` +
+      `  错误类型: ${errorInfo.errorName}\n` +
+      `  CORS 错误: ${errorInfo.isCorsError}\n` +
+      `  连接错误: ${errorInfo.isConnectionError}`
+    );
     
     // 提供更详细的错误信息
     let detailedMessage = `网络请求失败: ${errorMessage}`;
-    if (errorMessage.includes("Failed to fetch") || errorMessage.includes("network")) {
+    if (isCorsError || isConnectionError) {
       detailedMessage += `\n\n可能的原因：\n1. AI 服务未运行（检查 ${url} 是否可访问）\n2. CORS 配置问题（检查 ai-service 的 CORS 设置）\n3. 网络连接问题（检查防火墙/代理设置）\n4. URL 配置错误（当前 URL: ${requestUrl}）`;
     }
     

@@ -133,6 +133,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
     "/ask",
     async (request: FastifyRequest<{ Body: AskBody }>, reply: FastifyReply): Promise<void> => {
       const config = app.config as ServiceConfig;
+      const startTime = Date.now(); // 记录开始时间
 
       try {
         // 1) 服务间鉴权（统一中间件）
@@ -149,12 +150,22 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           // 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
           // 主路由会在 STEP 4.5.3 或 STEP 7 中写入日志
 
-          // 返回标准响应结构（标记为缓存答案）
+          // 计算耗时（缓存命中时耗时很短）
+          const durationMs = Date.now() - startTime;
+          const durationSec = (durationMs / 1000).toFixed(2);
+
+          // 构建 sources 数组（包含耗时信息）
+          const sources: Array<{ title: string; url: string; snippet?: string }> = [
+            { title: "处理耗时", url: "", snippet: `${durationSec} 秒` },
+            ...(cached.sources || []),
+          ];
+
+          // 返回标准响应结构（标记为缓存答案，始终包含耗时信息）
           reply.send({
             ok: true,
             data: {
               answer: cached.answer,
-              sources: cached.sources,
+              sources: sources, // 始终返回 sources（包含耗时信息）
               model: cached.model,
               safetyFlag: cached.safetyFlag || "ok",
               costEstimate: cached.costEstimate,
@@ -339,16 +350,21 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 计算成本估算
         const approxUsd = estimateCostUsd(model, inputTokens, outputTokens);
 
-        // 构建 sources 数组（从 reference 转换，后续可从 RAG 返回完整结构）
-        const sources: Array<{ title: string; url: string; snippet?: string }> = reference
-          ? [{ title: "RAG Reference", url: "", snippet: reference.slice(0, 200) }]
-          : [];
+        // 计算处理耗时
+        const durationMs = Date.now() - startTime;
+        const durationSec = (durationMs / 1000).toFixed(2);
 
-        const ragHits = sources.length;
+        // 构建 sources 数组（包含耗时信息和 RAG 参考）
+        const sources: Array<{ title: string; url: string; snippet?: string }> = [
+          { title: "处理耗时", url: "", snippet: `${durationSec} 秒` },
+          ...(reference ? [{ title: "RAG Reference", url: "", snippet: reference.slice(0, 200) }] : []),
+        ];
+
+        const ragHits = reference ? 1 : 0;
 
         const result: AskResult = {
           answer,
-          sources: ragHits > 0 ? sources : undefined,
+          sources: sources, // 始终返回 sources（包含耗时信息）
           model,
           safetyFlag,
           costEstimate: {

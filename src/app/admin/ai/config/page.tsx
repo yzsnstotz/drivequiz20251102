@@ -10,7 +10,8 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
-  aiProvider: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct" | "strategy";
+  aiProvider: "render" | "local"; // 简化：只支持 render 和 local
+  aiModelProvider?: "openai" | "openrouter" | "gemini"; // 当 aiProvider 为 render 时，选择具体的大模型提供商
   timeoutOpenai?: number;
   timeoutOpenaiDirect?: number;
   timeoutOpenrouter?: number;
@@ -83,7 +84,8 @@ export default function AdminAiConfigPage() {
     model: "gpt-4o-mini",
     cacheTtl: 86400,
     costAlertUsdThreshold: 10.0,
-    aiProvider: "openai",
+    aiProvider: "render", // 默认使用 render
+    aiModelProvider: "openai", // 默认使用 OpenAI
     timeoutOpenai: 30000,
     timeoutOpenaiDirect: 30000,
     timeoutOpenrouter: 30000,

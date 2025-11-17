@@ -165,15 +165,33 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     origin: true, // 允许所有来源
     credentials: false,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type"],
+    allowedHeaders: ["Authorization", "Content-Type", "X-AI-Provider"],
+    exposedHeaders: ["Content-Type"],
+    maxAge: 86400, // 24小时，减少预检请求
+  });
+
+  // 为所有路由添加 CORS 头（确保所有响应都包含 CORS 头）
+  app.addHook("onSend", async (request, reply) => {
+    const origin = request.headers.origin;
+    if (origin) {
+      reply.header("Access-Control-Allow-Origin", origin);
+    } else {
+      reply.header("Access-Control-Allow-Origin", "*");
+    }
+    reply.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-AI-Provider");
+    reply.header("Access-Control-Max-Age", "86400");
   });
 
   // 为 /v1/ask 注册 OPTIONS 预检请求处理（确保 CORS 正常工作）
   app.options("/v1/ask", async (req, reply) => {
+    const origin = req.headers.origin;
     reply
-      .header("Access-Control-Allow-Origin", "*")
+      .header("Access-Control-Allow-Origin", origin || "*")
       .header("Access-Control-Allow-Methods", "POST, OPTIONS")
-      .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+      .header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-AI-Provider")
+      .header("Access-Control-Max-Age", "86400")
+      .code(204)
       .send();
   });
 
