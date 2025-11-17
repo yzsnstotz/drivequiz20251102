@@ -106,6 +106,7 @@ export async function callAiServer<T = any>(
     // 使用 joinUrl 安全拼接 URL
     const requestUrl = joinUrl(url, "/v1/ask");
 
+    // 记录完整的 rest 对象，便于调试
     console.log("[callAiServer] 调用 AI 服务:", {
       provider,
       url: `${url.substring(0, 50)}...`,
@@ -114,6 +115,35 @@ export async function callAiServer<T = any>(
       targetLanguage: rest.targetLanguage,
       model: rest.model,
       timeoutMs: timeout,
+      allRestKeys: Object.keys(rest),
+    });
+
+    // 构建请求体，确保所有参数都被传递
+    const requestBody: any = {
+      question: rest.question,
+      lang: rest.locale || "zh",
+      scene: rest.scene,
+      sourceLanguage: rest.sourceLanguage,
+      targetLanguage: rest.targetLanguage,
+      messages: rest.messages,
+      maxHistory: rest.maxHistory,
+      seedUrl: rest.seedUrl,
+      model: rest.model,
+    };
+
+    // 传递其他字段（如果有）
+    for (const [key, value] of Object.entries(rest)) {
+      if (!["question", "locale", "scene", "sourceLanguage", "targetLanguage", "messages", "maxHistory", "seedUrl", "model"].includes(key)) {
+        requestBody[key] = value;
+      }
+    }
+
+    console.log("[callAiServer] 请求体参数:", {
+      scene: requestBody.scene,
+      sourceLanguage: requestBody.sourceLanguage,
+      targetLanguage: requestBody.targetLanguage,
+      hasSourceLanguage: requestBody.sourceLanguage !== undefined,
+      hasTargetLanguage: requestBody.targetLanguage !== undefined,
     });
 
     const res = await fetch(requestUrl, {
@@ -122,24 +152,7 @@ export async function callAiServer<T = any>(
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        question: rest.question,
-        lang: rest.locale || "zh",
-        scene: rest.scene,
-        sourceLanguage: rest.sourceLanguage,
-        targetLanguage: rest.targetLanguage,
-        messages: rest.messages,
-        maxHistory: rest.maxHistory,
-        seedUrl: rest.seedUrl,
-        model: rest.model,
-        // 传递其他字段（如果有）
-        ...Object.fromEntries(
-          Object.entries(rest).filter(
-            ([key]) =>
-              !["question", "locale", "scene", "sourceLanguage", "targetLanguage", "messages", "maxHistory", "seedUrl", "model"].includes(key)
-          )
-        ),
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
       cache: "no-store",
     });
