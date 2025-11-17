@@ -7,7 +7,7 @@ import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success } from "@/app/api/_lib/errors";
 import { callAiServer } from "@/lib/aiClient.server";
 import { buildQuestionTranslationInput, buildQuestionPolishInput } from "@/lib/questionPromptBuilder";
-import { getCurrentAiProviderConfig } from "@/lib/aiProviderConfig.server";
+import { getCurrentAiProviderConfig } from "@/app/api/admin/question-processing/_lib/batchProcessUtils";
 
 /**
  * 场景测试接口

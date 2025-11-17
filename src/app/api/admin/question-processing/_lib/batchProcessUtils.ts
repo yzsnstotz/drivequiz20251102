@@ -224,7 +224,7 @@ function isNetworkTransientError(error: any): boolean {
  * 优先从数据库读取配置（配置中心设置），如果没有则使用环境变量
  * 批量处理工具应该优先使用配置中心的设置，而不是环境变量
  */
-async function getCurrentAiProviderConfig(): Promise<{ provider: ServerAiProviderKey; model?: string }> {
+export async function getCurrentAiProviderConfig(): Promise<{ provider: ServerAiProviderKey; model?: string }> {
   // 优先从数据库读取配置（配置中心设置）
   try {
     const configRow = await aiDb
