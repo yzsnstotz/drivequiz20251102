@@ -469,51 +469,6 @@ export default function AdminAiScenesPage() {
       },
     }));
   };
-      });
-
-      let errorMessage = "测试失败";
-      if (err instanceof Error) {
-        if (err.name === "AbortError" || err.message.includes("timeout")) {
-          errorMessage = "请求超时（60秒），请检查网络连接或稍后重试";
-        } else if (err.message.includes("Failed to fetch") || err.message.includes("ERR_TIMED_OUT")) {
-          errorMessage = "网络请求超时，请检查网络连接或 AI 服务是否正常运行";
-        } else {
-          errorMessage = err.message;
-        }
-      }
-      
-      setTestStates((prev) => ({
-        ...prev,
-        [scene.id]: {
-          sceneId: scene.id,
-          testing: false,
-          testInput: testInput,
-          testResult: null,
-          testError: errorMessage,
-        },
-      }));
-    }
-  };
-
-  const updateTestInput = (sceneId: number, input: string) => {
-    setTestStates((prev) => ({
-      ...prev,
-      [sceneId]: {
-        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
-        testInput: input,
-      },
-    }));
-  };
-
-  const updateTestLanguage = (sceneId: number, field: "sourceLanguage" | "targetLanguage", value: string) => {
-    setTestStates((prev) => ({
-      ...prev,
-      [sceneId]: {
-        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
-        [field]: value,
-      },
-    }));
-  };
 
   if (loading) {
     return (
