@@ -306,6 +306,9 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       const aiProvider = payload.data?.aiProvider;
       const model = payload.data?.model;
       
+      // 根据实际调用的 provider 设置 aiProvider（优先使用响应中的值，否则使用调用时的 provider）
+      const actualProvider = aiProvider || currentProvider;
+      
       // 构建回复内容（不再在内容中附加来源，而是在metadata中保存）
       const content = answer || "（空响应）";
       
@@ -315,7 +318,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         content,
         createdAt: Date.now(),
         metadata: {
-          aiProvider: aiProvider || "openai", // 默认为 openai
+          aiProvider: actualProvider, // 使用实际 provider
           sources: sources || [],
           model: model, // 保存模型名称
         },
@@ -476,19 +479,19 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
                             )}
                           </>
                         ) : null}
+                        {/* 耗时信息（显示在 provider 和 model 之后） */}
+                        {m.metadata.sources && m.metadata.sources.length > 0 && (
+                          <>
+                            {m.metadata.sources
+                              .filter((source: any) => source.title === "处理耗时")
+                              .map((source: any, idx: number) => (
+                                <span key={idx} className="text-gray-400">
+                                  · {source.snippet}
+                                </span>
+                              ))}
+                          </>
+                        )}
                       </span>
-                    )}
-                    {/* 耗时信息（如果有） */}
-                    {m.metadata.sources && m.metadata.sources.length > 0 && (
-                      <>
-                        {m.metadata.sources
-                          .filter((source) => source.title === "处理耗时")
-                          .map((source, idx) => (
-                            <span key={idx} className="text-gray-400">
-                              {source.snippet}
-                            </span>
-                          ))}
-                      </>
                     )}
                   </div>
                   {/* RAG Sources（排除耗时信息） */}

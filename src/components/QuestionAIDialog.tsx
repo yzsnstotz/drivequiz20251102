@@ -432,11 +432,16 @@ export default function QuestionAIDialog({
           // 但保留 sources 数组，以便后续显示其他来源信息
         }
 
+        // 根据实际调用的 provider 设置 aiProvider（优先使用响应中的值，否则使用调用时的 provider）
+        const actualProvider = payload.data.cached 
+          ? "cached" 
+          : (payload.data.aiProvider || providerToUse); // 使用响应中的 aiProvider，如果没有则使用调用时的 provider
+
         const newMessage: Message = {
           role: "assistant",
           content: answer,
           metadata: {
-            aiProvider: payload.data.cached ? "cached" : (payload.data.aiProvider || "render"), // 默认使用 render
+            aiProvider: actualProvider,
             model: payload.data.model,
             sourceType: payload.data.cached ? "cached" : "ai-generated",
             cacheSource: payload.data.cached ? "database" : undefined, // ai-service 返回的缓存标记为 database
@@ -664,19 +669,19 @@ export default function QuestionAIDialog({
                                 )}
                               </>
                             ) : null}
+                            {/* 耗时信息（显示在 provider 和 model 之后） */}
+                            {message.metadata.sources && message.metadata.sources.length > 0 && (
+                              <>
+                                {message.metadata.sources
+                                  .filter((source) => source.title === "处理耗时")
+                                  .map((source, idx) => (
+                                    <span key={idx} className="text-gray-400">
+                                      · {source.snippet}
+                                    </span>
+                                  ))}
+                              </>
+                            )}
                           </span>
-                        )}
-                        {/* 耗时信息（如果有） */}
-                        {message.metadata.sources && message.metadata.sources.length > 0 && (
-                          <>
-                            {message.metadata.sources
-                              .filter((source) => source.title === "处理耗时")
-                              .map((source, idx) => (
-                                <span key={idx} className="text-gray-400">
-                                  {source.snippet}
-                                </span>
-                              ))}
-                          </>
                         )}
                       </div>
                       {/* RAG Sources（排除耗时信息） */}

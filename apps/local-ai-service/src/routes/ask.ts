@@ -110,6 +110,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
     "/v1/ask",
     async (request: FastifyRequest<{ Body: AskBody }>, reply: FastifyReply): Promise<void> => {
       const config = app.config as LocalAIConfig;
+      const startTime = Date.now(); // 记录开始时间
       try {
         // 1) 服务间鉴权
         ensureServiceAuth(request, config);
@@ -200,12 +201,23 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 7) 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
         // 主路由会在 STEP 7 中写入日志（但 local 模式会跳过，因为 aiServiceMode === "local"）
 
+        // 计算处理耗时
+        const durationMs = Date.now() - startTime;
+        const durationSec = (durationMs / 1000).toFixed(2);
+
+        // 构建 sources 数组（包含耗时信息）
+        const sourcesWithDuration: Array<{ title: string; url: string; snippet?: string }> = [
+          { title: "处理耗时", url: "", snippet: `${durationSec} 秒` },
+          ...sources,
+        ];
+
         // 8) 返回结果（与在线AI服务格式完全一致）
-        const result: AskResult = {
+        const result: AskResult & { aiProvider?: string } = {
           answer,
-          sources: sources.length > 0 ? sources : undefined,
+          sources: sourcesWithDuration, // 包含耗时信息
           model: config.aiModel,
           safetyFlag: "ok", // 本地服务暂不实现安全审查
+          aiProvider: "local", // 明确标识为本地 AI 服务
           // 向后兼容字段
           reference: reference || null,
           lang,
