@@ -2,6 +2,7 @@ import { z } from "zod";
 import { callAiServer } from "../../src/lib/aiClient.server";
 import { loadQpAiConfig, type QpAiProvider } from "./aiConfig";
 import { getAiCache, setAiCache } from "./aiCache";
+import { buildQuestionTranslationInput, buildQuestionPolishInput } from "../../src/lib/questionPromptBuilder";
 
 // 在模块级提前加载一次配置（question-processor 通常是长跑任务，这样没问题）
 const qpAiConfig = loadQpAiConfig();
@@ -150,11 +151,15 @@ export async function translateWithPolish(params: {
   // 使用场景配置，场景配置中的 prompt 已经包含了翻译要求
   // 源语言和目标语言通过 sourceLanguage 和 targetLanguage 参数传递，会在系统 prompt 中动态替换
   // 这里只需要传递题目内容，场景配置会自动应用
-  const questionText = [
-    `Content: ${source.content}`,
-    source.options && source.options.length ? `Options:\n- ${source.options.join("\n- ")}` : ``,
-    source.explanation ? `Explanation: ${source.explanation}` : ``
-  ].filter(Boolean).join("\n");
+  
+  // 使用统一的题目拼装工具
+  const questionText = buildQuestionTranslationInput({
+    stem: source.content,
+    options: source.options,
+    explanation: source.explanation,
+    sourceLanguage: from,
+    targetLanguage: to,
+  });
 
   // 使用统一的 callQuestionAi 封装（带配置和缓存）
   const data = await callQuestionAi({
@@ -193,12 +198,14 @@ export async function polishContent(params: {
   const { text, locale } = params;
   // 使用场景配置，场景配置中的 prompt 已经包含了润色要求
   // 这里只需要传递题目内容，场景配置会自动应用
-  const input = [
-    `Language: ${locale}`,
-    `Content: ${text.content}`,
-    text.options && text.options.length ? `Options:\n- ${text.options.join("\n- ")}` : ``,
-    text.explanation ? `Explanation: ${text.explanation}` : ``
-  ].filter(Boolean).join("\n");
+  
+  // 使用统一的题目拼装工具
+  const input = buildQuestionPolishInput({
+    stem: text.content,
+    options: text.options,
+    explanation: text.explanation,
+    language: locale,
+  });
 
   // 使用统一的 callQuestionAi 封装（带配置和缓存）
   const data = await callQuestionAi({

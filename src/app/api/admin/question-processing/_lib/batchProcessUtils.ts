@@ -496,13 +496,15 @@ export async function translateWithPolish(params: {
     hasSourceLang: sourceLang !== undefined && sourceLang !== null && sourceLang !== "",
     hasTargetLang: targetLang !== undefined && targetLang !== null && targetLang !== "",
   });
-  const questionText = [
-    `Content: ${source.content}`,
-    source.options && source.options.length ? `Options:\n- ${source.options.join("\n- ")}` : ``,
-    source.explanation ? `Explanation: ${source.explanation}` : ``,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  
+  // 使用统一的题目拼装工具
+  const questionText = buildQuestionTranslationInput({
+    stem: source.content,
+    options: source.options,
+    explanation: source.explanation,
+    sourceLanguage: sourceLang,
+    targetLanguage: targetLang,
+  });
 
   const sceneKey = "question_translation";
   let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;
@@ -688,14 +690,14 @@ export async function polishContent(params: {
   mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { text, locale } = params;
-  const input = [
-    `Language: ${locale}`,
-    `Content: ${text.content}`,
-    text.options && text.options.length ? `Options:\n- ${text.options.join("\n- ")}` : ``,
-    text.explanation ? `Explanation: ${text.explanation}` : ``,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  
+  // 使用统一的题目拼装工具
+  const input = buildQuestionPolishInput({
+    stem: text.content,
+    options: text.options,
+    explanation: text.explanation,
+    language: locale,
+  });
 
   const sceneKey = "question_polish";
   let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;

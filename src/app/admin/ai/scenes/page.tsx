@@ -138,8 +138,11 @@ type TestState = {
   testInput: string;
   testResult: string | null;
   testError: string | null;
+  testRequest?: any; // 最终发往 AI 的请求体（用于调试）
   sourceLanguage?: string; // 源语言（用于翻译场景）
   targetLanguage?: string; // 目标语言（用于翻译场景）
+  testOptions?: string[]; // 选项列表（用于题目类场景）
+  testExplanation?: string; // 解析（用于题目类场景）
 };
 
 export default function AdminAiScenesPage() {
@@ -240,8 +243,50 @@ export default function AdminAiScenesPage() {
     }
   };
 
+  /**
+   * 场景测试：调用后端 API，使用统一的格式生成逻辑
+   */
+  const testSceneOnServer = async (payload: {
+    sceneKey: string;
+    rawInput: string;
+    options?: string[];
+    explanation?: string;
+    sourceLanguage?: string;
+    targetLanguage?: string;
+    lang?: string;
+    model?: string;
+    provider?: "local" | "render";
+  }) => {
+    const base = getBaseUrl();
+    const token = getAuthToken();
+    
+    const res = await fetch(`${base}/api/admin/ai/scenes/test`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error || `Scene test failed: ${res.status}`);
+    }
+
+    return res.json();
+  };
+
   const handleTest = async (scene: SceneConfig) => {
-    const testInput = testStates[scene.id]?.testInput || "";
+    const testState = testStates[scene.id] || {
+      sceneId: scene.id,
+      testing: false,
+      testInput: "",
+      testResult: null,
+      testError: null,
+    };
+    
+    const testInput = testState.testInput || "";
     if (!testInput.trim()) {
       alert("请输入测试问题");
       return;
@@ -251,127 +296,179 @@ export default function AdminAiScenesPage() {
     setTestStates((prev) => ({
       ...prev,
       [scene.id]: {
-        sceneId: scene.id,
+        ...testState,
         testing: true,
-        testInput: testInput,
         testResult: null,
         testError: null,
+        testRequest: null,
       },
     }));
 
     try {
-      const base = getBaseUrl();
-      const locale = (typeof navigator !== "undefined" && navigator.language) || "zh-CN";
       const testId = `test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      const locale = (typeof navigator !== "undefined" && navigator.language) || "zh-CN";
 
       console.log(`[Scene Test] [${testId}] 开始测试场景`, {
         sceneKey: scene.scene_key,
         sceneName: scene.scene_name,
         questionLength: testInput.length,
         locale: locale,
-        baseUrl: base,
       });
 
-      // 测试功能使用匿名模式，不传递管理员 token
-      // /api/ai/ask 会自动使用 anonymous 作为 userId
-      // 添加超时控制（60秒）
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.error(`[Scene Test] [${testId}] 请求超时（60秒）`);
-        controller.abort();
-      }, 60000);
+      // 获取当前配置的 provider 和 model（从配置中心）
+      const { getCurrentAiProvider } = await import("@/lib/aiProviderConfig.front");
+      const providerConfig = await getCurrentAiProvider();
+      const provider: "local" | "render" = providerConfig.provider;
 
-      const requestBody: any = {
-        question: testInput,
-        locale: locale,
-        scene: scene.scene_key,
-        skipCache: true, // 测试场景禁用缓存，确保每次都能获得新结果
-        testMode: true, // 标记为测试模式，后端会优先使用直连模式以加快响应
+      // 收集所有必需的参数
+      const testPayload: any = {
+        sceneKey: scene.scene_key,
+        rawInput: testInput,
+        lang: locale,
+        provider: provider,
+        model: providerConfig.model,
       };
+
+      // 如果是题目类场景，收集选项和解析
+      if (scene.scene_key === "question_translation" || scene.scene_key === "question_polish") {
+        if (testState.testOptions && testState.testOptions.length > 0) {
+          testPayload.options = testState.testOptions;
+        }
+        if (testState.testExplanation) {
+          testPayload.explanation = testState.testExplanation;
+        }
+      }
 
       // 如果是翻译场景，添加源语言和目标语言参数
       if (scene.scene_key === "question_translation") {
-        const testState = testStates[scene.id] || {};
-        if (testState.sourceLanguage) {
-          requestBody.sourceLanguage = testState.sourceLanguage;
+        if (!testState.sourceLanguage || !testState.targetLanguage) {
+          alert("翻译场景需要指定源语言和目标语言");
+          setTestStates((prev) => ({
+            ...prev,
+            [scene.id]: {
+              ...testState,
+              testing: false,
+              testError: "翻译场景需要指定源语言和目标语言",
+            },
+          }));
+          return;
         }
-        if (testState.targetLanguage) {
-          requestBody.targetLanguage = testState.targetLanguage;
+        testPayload.sourceLanguage = testState.sourceLanguage;
+        testPayload.targetLanguage = testState.targetLanguage;
+      } else if (scene.scene_key === "question_polish") {
+        // 润色场景使用 lang 或 sourceLanguage 作为 language
+        if (testState.sourceLanguage) {
+          testPayload.sourceLanguage = testState.sourceLanguage;
         }
       }
 
       const fetchStartTime = Date.now();
       
-      // 获取当前配置的 provider（从配置中心）
-      const { getCurrentAiProvider } = await import("@/lib/aiProviderConfig.front");
-      const providerConfig = await getCurrentAiProvider();
-      const provider: "local" | "render" = providerConfig.provider;
-      
-      console.log(`[Scene Test] [${testId}] 使用 provider:`, {
-        provider,
-        model: providerConfig.model,
-        scene: scene.scene_key,
+      console.log(`[Scene Test] [${testId}] 调用后端测试接口:`, {
+        provider: testPayload.provider,
+        scene: testPayload.sceneKey,
+        sourceLanguage: testPayload.sourceLanguage,
+        targetLanguage: testPayload.targetLanguage,
+        hasOptions: !!testPayload.options,
+        hasExplanation: !!testPayload.explanation,
       });
 
-      // 使用新的 callAiDirect 函数
-      const { callAiDirect } = await import("@/lib/aiClient.front");
-      const payload = await callAiDirect({
-        provider,
-        question: requestBody.question,
-        locale: requestBody.locale || "zh",
-        scene: requestBody.scene,
-        sourceLanguage: requestBody.sourceLanguage,
-        targetLanguage: requestBody.targetLanguage,
-        model: providerConfig.model,
-      });
+      // 调用后端测试接口
+      const result = await testSceneOnServer(testPayload);
 
-      clearTimeout(timeoutId);
       const fetchDuration = Date.now() - fetchStartTime;
       console.log(`[Scene Test] [${testId}] 收到响应`, {
-        ok: payload.ok,
+        ok: result.ok,
         duration: `${fetchDuration}ms`,
-        hasAnswer: !!payload.data?.answer,
+        hasResponse: !!result.response,
+        hasAnswer: !!result.response?.data?.answer,
       });
 
-      if (payload.ok && payload.data?.answer) {
+      if (result.ok && result.response?.ok && result.response?.data?.answer) {
         console.log(`[Scene Test] [${testId}] 测试成功`, {
-          answerLength: payload.data.answer.length,
+          answerLength: result.response.data.answer.length,
         });
         setTestStates((prev) => ({
           ...prev,
           [scene.id]: {
-            sceneId: scene.id,
+            ...testState,
             testing: false,
-            testInput: testInput,
-            testResult: payload.data!.answer,
+            testResult: result.response.data.answer,
             testError: null,
+            testRequest: result.request, // 保存最终发往 AI 的请求体
           },
         }));
       } else {
         console.error(`[Scene Test] [${testId}] 测试失败`, {
-          ok: payload.ok,
-          message: payload.message,
-          errorCode: payload.errorCode,
+          ok: result.ok,
+          responseOk: result.response?.ok,
+          message: result.response?.message,
+          errorCode: result.response?.errorCode,
         });
         setTestStates((prev) => ({
           ...prev,
           [scene.id]: {
-            sceneId: scene.id,
+            ...testState,
             testing: false,
-            testInput: testInput,
             testResult: null,
-            testError: payload.message || payload.errorCode || "测试失败",
+            testError: result.response?.message || result.response?.errorCode || "测试失败",
+            testRequest: result.request,
           },
         }));
       }
-    } catch (err) {
-      console.error(`[Scene Test] 测试异常`, {
-        sceneKey: scene.scene_key,
-        error: err instanceof Error ? {
-          name: err.name,
-          message: err.message,
-          stack: err.stack,
-        } : String(err),
+    } catch (err: any) {
+      console.error(`[Scene Test] 测试异常:`, err);
+      setTestStates((prev) => ({
+        ...prev,
+        [scene.id]: {
+          ...testState,
+          testing: false,
+          testResult: null,
+          testError: err?.message || "测试异常",
+        },
+      }));
+    }
+  };
+
+  const updateTestInput = (sceneId: number, input: string) => {
+    setTestStates((prev) => ({
+      ...prev,
+      [sceneId]: {
+        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
+        testInput: input,
+      },
+    }));
+  };
+
+  const updateTestLanguage = (sceneId: number, field: "sourceLanguage" | "targetLanguage", value: string) => {
+    setTestStates((prev) => ({
+      ...prev,
+      [sceneId]: {
+        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
+        [field]: value,
+      },
+    }));
+  };
+
+  const updateTestOptions = (sceneId: number, options: string[]) => {
+    setTestStates((prev) => ({
+      ...prev,
+      [sceneId]: {
+        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
+        testOptions: options,
+      },
+    }));
+  };
+
+  const updateTestExplanation = (sceneId: number, explanation: string) => {
+    setTestStates((prev) => ({
+      ...prev,
+      [sceneId]: {
+        ...(prev[sceneId] || { sceneId, testing: false, testInput: "", testResult: null, testError: null }),
+        testExplanation: explanation,
+      },
+    }));
+  };
       });
 
       let errorMessage = "测试失败";
@@ -731,17 +828,67 @@ export default function AdminAiScenesPage() {
                     </div>
                   </div>
                 )}
-                <div>
-                  <label className="block text-sm font-medium mb-1">测试输入（模拟用户问题）</label>
-                  <textarea
-                    value={testState.testInput}
-                    onChange={(e) => updateTestInput(scene.id, e.target.value)}
-                    placeholder={scene.scene_key === "question_translation" ? "输入题目内容，例如：\nContent: 这是什么标志？\nOptions:\n- 禁止通行\n- 注意行人\nExplanation: 这是禁止通行的标志" : "输入测试问题，例如：什么是交通标志？"}
-                    rows={3}
-                    className="w-full border rounded px-3 py-2 text-sm"
-                    disabled={testState.testing}
-                  />
-                </div>
+                {/* 题目类场景：分别输入题干、选项、解析 */}
+                {(scene.scene_key === "question_translation" || scene.scene_key === "question_polish") ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">题干内容 <span className="text-red-500">*</span></label>
+                      <textarea
+                        value={testState.testInput}
+                        onChange={(e) => updateTestInput(scene.id, e.target.value)}
+                        placeholder="输入题目内容，例如：这是什么标志？"
+                        rows={2}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                        disabled={testState.testing}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">选项（可选，每行一个）</label>
+                      <textarea
+                        value={testState.testOptions?.join("\n") || ""}
+                        onChange={(e) => {
+                          const options = e.target.value.split("\n").filter(line => line.trim());
+                          updateTestOptions(scene.id, options);
+                        }}
+                        placeholder="选项1\n选项2\n选项3"
+                        rows={3}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                        disabled={testState.testing}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">解析（可选）</label>
+                      <textarea
+                        value={testState.testExplanation || ""}
+                        onChange={(e) => updateTestExplanation(scene.id, e.target.value)}
+                        placeholder="输入解析内容"
+                        rows={2}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                        disabled={testState.testing}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">测试输入（模拟用户问题）</label>
+                    <textarea
+                      value={testState.testInput}
+                      onChange={(e) => updateTestInput(scene.id, e.target.value)}
+                      placeholder="输入测试问题，例如：什么是交通标志？"
+                      rows={3}
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      disabled={testState.testing}
+                    />
+                  </div>
+                )}
+                {testState.testRequest && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">最终发往 AI 的请求体（调试用）</label>
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded text-xs font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                      {JSON.stringify(testState.testRequest, null, 2)}
+                    </div>
+                  </div>
+                )}
                 {testState.testResult && (
                   <div>
                     <label className="block text-sm font-medium mb-1">AI 回复</label>
