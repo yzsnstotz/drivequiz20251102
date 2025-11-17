@@ -221,21 +221,11 @@ function isNetworkTransientError(error: any): boolean {
 
 /**
  * 获取当前配置的 provider 和 model
- * 优先使用环境变量配置（QP_AI_PROVIDER），如果没有则从数据库读取
- * 与 question-processor 保持一致：优先使用环境变量
+ * 优先从数据库读取配置（配置中心设置），如果没有则使用环境变量
+ * 批量处理工具应该优先使用配置中心的设置，而不是环境变量
  */
 async function getCurrentAiProviderConfig(): Promise<{ provider: ServerAiProviderKey; model?: string }> {
-  // 优先使用环境变量配置（与 question-processor 保持一致）
-  if (qpAiConfig.provider) {
-    const provider = qpAiConfig.provider;
-    const model = provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel;
-    return {
-      provider,
-      model,
-    };
-  }
-
-  // 如果没有环境变量配置，从数据库读取（向后兼容）
+  // 优先从数据库读取配置（配置中心设置）
   try {
     const configRow = await aiDb
       .selectFrom("ai_config")
@@ -254,15 +244,40 @@ async function getCurrentAiProviderConfig(): Promise<{ provider: ServerAiProvide
       }
     }
 
-    const provider = mapDbProviderToClientProvider(aiProvider) as ServerAiProviderKey;
+    // 如果数据库中有配置，优先使用数据库配置
+    if (aiProvider) {
+      const provider = mapDbProviderToClientProvider(aiProvider) as ServerAiProviderKey;
+      console.log("[getCurrentAiProviderConfig] 从数据库读取配置:", {
+        dbProvider: aiProvider,
+        mappedProvider: provider,
+        model: model || undefined,
+      });
+      return {
+        provider,
+        model: model || undefined,
+      };
+    }
+  } catch (error) {
+    console.warn("[getCurrentAiProviderConfig] 从数据库读取配置失败，尝试使用环境变量:", error);
+  }
+
+  // 如果数据库中没有配置，使用环境变量配置（向后兼容）
+  if (qpAiConfig.provider) {
+    const provider = qpAiConfig.provider;
+    const model = provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel;
+    console.log("[getCurrentAiProviderConfig] 使用环境变量配置:", {
+      provider,
+      model,
+    });
     return {
       provider,
-      model: model || undefined,
+      model,
     };
-  } catch (error) {
-    console.warn("[getCurrentAiProviderConfig] 获取配置失败，使用默认值:", error);
-    return { provider: "render" };
   }
+
+  // 如果都没有，使用默认值
+  console.warn("[getCurrentAiProviderConfig] 未找到配置，使用默认值 render");
+  return { provider: "render" };
 }
 
 async function callAiAskInternal(
