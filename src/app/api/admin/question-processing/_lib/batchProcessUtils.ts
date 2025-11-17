@@ -475,6 +475,20 @@ export async function translateWithPolish(params: {
   mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { source, from, to, adminToken, returnDetail } = params;
+  
+  // 验证 from 和 to 参数
+  if (!from || !to) {
+    throw new Error(`translateWithPolish: from and to are required. Got from=${from}, to=${to}`);
+  }
+  
+  console.log(`[translateWithPolish] 接收到的参数:`, {
+    from,
+    to,
+    fromType: typeof from,
+    toType: typeof to,
+    hasFrom: from !== undefined && from !== null && from !== "",
+    hasTo: to !== undefined && to !== null && to !== "",
+  });
   const questionText = [
     `Content: ${source.content}`,
     source.options && source.options.length ? `Options:\n- ${source.options.join("\n- ")}` : ``,

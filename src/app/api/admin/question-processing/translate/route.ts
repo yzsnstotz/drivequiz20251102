@@ -129,6 +129,9 @@ export const POST = withAdminAuth(async (req: Request) => {
           hasExplanation: !!explanation,
           from,
           to: targetLang,
+          fromType: typeof from,
+          fromValue: from,
+          hasFrom: from !== undefined && from !== null && from !== "",
         });
         const translateResult = await translateWithPolish({
           source: {
@@ -136,7 +139,7 @@ export const POST = withAdminAuth(async (req: Request) => {
             options,
             explanation,
           },
-          from,
+          from: from, // 确保传递 from 参数
           to: targetLang,
           adminToken,
           mode: "single", // ✅ 单题操作模式
