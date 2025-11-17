@@ -122,6 +122,7 @@ export const POST = withAdminAuth(async (req: Request) => {
           from,
           to: targetLang,
           adminToken,
+          mode: "single", // ✅ 单题操作模式
         });
 
         // 处理返回结果（可能是结果对象或包含详细信息的对象）

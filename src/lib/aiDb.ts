@@ -122,6 +122,32 @@ interface AiSceneConfigTable {
   updated_at: Generated<Date>;
 }
 
+// ai_provider_daily_stats 表
+interface AiProviderDailyStatsTable {
+  stat_date: Date; // date
+  provider: string;
+  model: string | null;
+  scene: string | null;
+  total_calls: number;
+  total_success: number;
+  total_error: number;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ai_provider_config 表
+interface AiProviderConfigTable {
+  id: Generated<number>;
+  provider: string;
+  model: string | null;
+  is_enabled: boolean;
+  daily_limit: number | null;
+  priority: number;
+  is_local_fallback: boolean;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 // ------------------------------------------------------------
 // AI 数据库总接口定义
 // ------------------------------------------------------------
@@ -134,6 +160,8 @@ interface AiDatabase {
   ai_vectors: AiVectorsTable;
   ai_config: AiConfigTable;
   ai_scene_config: AiSceneConfigTable;
+  ai_provider_daily_stats: AiProviderDailyStatsTable;
+  ai_provider_config: AiProviderConfigTable;
 }
 
 // ------------------------------------------------------------
@@ -181,16 +209,21 @@ function createAiDbInstance(): Kysely<AiDatabase> {
   // 创建 Pool 配置对象
   const poolConfig: {
     connectionString: string;
-    ssl?: { rejectUnauthorized: boolean };
+    ssl?: boolean | { rejectUnauthorized: boolean };
   } = {
     connectionString,
   };
 
   // Supabase 必须使用 SSL，但证书链可能有自签名证书
+  // 在开发环境中，设置 rejectUnauthorized: false 以接受自签名证书
   if (isSupabase) {
     poolConfig.ssl = {
       rejectUnauthorized: false,
     };
+    // 在开发环境中，也设置全局环境变量以确保 SSL 连接成功
+    if (process.env.NODE_ENV === 'development' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
   }
 
   // 创建 Pool 实例并传递给 PostgresDialect

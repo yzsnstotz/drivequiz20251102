@@ -1,4 +1,20 @@
 import { z } from "zod";
+import { callAiServer } from "../../src/lib/aiClient.server";
+import { loadQpAiConfig, type QpAiProvider } from "./aiConfig";
+import { getAiCache, setAiCache } from "./aiCache";
+
+// 在模块级提前加载一次配置（question-processor 通常是长跑任务，这样没问题）
+const qpAiConfig = loadQpAiConfig();
+
+// 可选：在首次加载时打印一行日志
+// eslint-disable-next-line no-console
+console.log("[question-processor] AI config:", {
+  provider: qpAiConfig.provider,
+  renderModel: qpAiConfig.renderModel,
+  localModel: qpAiConfig.localModel,
+  cacheEnabled: qpAiConfig.cacheEnabled,
+  cacheTtlMs: qpAiConfig.cacheTtlMs,
+});
 
 const AskSchema = z.object({
   question: z.string(),
@@ -16,63 +32,107 @@ export interface TranslateResult {
 }
 
 /**
- * 获取主站 API URL（用于调用 /api/ai/ask）
- * 优先使用环境变量，如果没有则尝试从 Vercel 环境变量获取
+ * 统一的 AI 调用封装（带配置和缓存）
+ * @param params AI 调用参数
+ * @returns AI 响应数据
  */
-function getMainAppUrl(): string {
-  // 优先使用明确配置的主站 URL
-  const url = process.env.MAIN_APP_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
-  if (!url) {
-    throw new Error("Missing MAIN_APP_URL/NEXT_PUBLIC_APP_URL/VERCEL_URL. Please configure the main app URL for question-processor.");
+export async function callQuestionAi(params: {
+  scene: string;
+  questionText: string;
+  locale?: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
+  extraPayload?: Record<string, any>;
+}): Promise<{ answer: string; explanation?: string; sources?: any[] }> {
+  const { scene, questionText, locale, sourceLanguage, targetLanguage, extraPayload } = params;
+
+  const provider = qpAiConfig.provider;
+  const model =
+    provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel;
+
+  // 1. 尝试命中缓存
+  if (qpAiConfig.cacheEnabled) {
+    const cached = getAiCache<{ answer: string; explanation?: string; sources?: any[] }>({
+      scene,
+      provider,
+      model,
+      questionText,
+    });
+    if (cached) {
+      // eslint-disable-next-line no-console
+      console.log(
+        "[question-processor] AI cache hit:",
+        scene,
+        provider,
+        model,
+      );
+      return cached;
+    }
   }
   
-  // 如果 URL 不包含协议，添加 https://
-  let fullUrl = url;
-  if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
-    fullUrl = `https://${fullUrl}`;
+  // 2. 调用 ai-service（通过 callAiServer）
+  const aiResp = await callAiServer<{ answer: string; explanation?: string; sources?: any[] }>({
+    provider, // "local" | "render"
+    scene,
+    model,
+    question: questionText,
+    locale: locale || "zh-CN",
+    sourceLanguage,
+    targetLanguage,
+    ...extraPayload,
+  });
+
+  if (!aiResp.ok || !aiResp.data) {
+    // 根据现有日志方式保持一致
+    // eslint-disable-next-line no-console
+    console.error(
+      "[question-processor] AI 调用失败:",
+      scene,
+      provider,
+      model,
+      aiResp.message,
+    );
+    throw new Error(
+      aiResp.message ??
+        `[question-processor] AI 调用失败（scene=${scene}, provider=${provider}, model=${model})`,
+    );
   }
   
-  return fullUrl.replace(/\/+$/, "");
+  const result = aiResp.data;
+
+  // 3. 写入缓存
+  if (qpAiConfig.cacheEnabled) {
+    setAiCache(
+      {
+        scene,
+        provider,
+        model,
+        questionText,
+      },
+      result,
+      qpAiConfig.cacheTtlMs,
+    );
+  }
+
+  return result;
 }
 
 /**
- * 调用主站的 /api/ai/ask 路由
- * 这样可以使用数据库中的 aiProvider 配置和场景配置
+ * 调用 ai-service（直接调用，不再通过主站 /api/ai/ask）
+ * 使用统一封装 callQuestionAi（带配置和缓存）
+ * @deprecated 建议直接使用 callQuestionAi
  */
 export async function askAi(body: AskBody & { scene?: string; sourceLanguage?: string; targetLanguage?: string }): Promise<any> {
-  const mainAppUrl = getMainAppUrl();
-  const url = `${mainAppUrl}/api/ai/ask`;
-  
-  // 使用匿名请求（question-processor 作为内部服务）
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-    },
-    body: JSON.stringify({
-      question: body.question,
+  const result = await callQuestionAi({
+    scene: body.scene || "default",
+    questionText: body.question,
       locale: body.lang || "zh-CN",
-      scene: body.scene, // 传递场景标识，使用数据库中的场景配置
-      sourceLanguage: body.sourceLanguage, // 源语言（用于翻译场景）
-      targetLanguage: body.targetLanguage, // 目标语言（用于翻译场景）
-      // 不传递 userId，使用匿名模式
-    })
+    sourceLanguage: body.sourceLanguage,
+    targetLanguage: body.targetLanguage,
   });
-  
-  const text = await res.text();
-  let json: any;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`Main app API returned non-JSON: ${text.slice(0, 200)}`);
-  }
-  
-  if (!res.ok || !json?.ok) {
-    throw new Error(`Main app API error: ${res.status} ${json?.message || text.slice(0, 200)}`);
-  }
-  
-  // 主站 API 返回格式：{ ok: true, data: { answer: "...", ... } }
-  return json.data || json;
+
+  // 返回格式兼容旧接口
+  return result;
 }
 
 export async function translateWithPolish(params: {
@@ -90,10 +150,11 @@ export async function translateWithPolish(params: {
     source.explanation ? `Explanation: ${source.explanation}` : ``
   ].filter(Boolean).join("\n");
 
-  const data = await askAi({
-    question: questionText,
-    lang: to,
+  // 使用统一的 callQuestionAi 封装（带配置和缓存）
+  const data = await callQuestionAi({
     scene: "question_translation", // 使用翻译场景配置
+    questionText,
+    locale: to,
     sourceLanguage: from, // 源语言（会在系统 prompt 中动态替换占位符）
     targetLanguage: to // 目标语言（会在系统 prompt 中动态替换占位符）
   });
@@ -133,10 +194,11 @@ export async function polishContent(params: {
     text.explanation ? `Explanation: ${text.explanation}` : ``
   ].filter(Boolean).join("\n");
 
-  const data = await askAi({
-    question: input,
-    lang: locale,
-    scene: "question_polish" // 使用润色场景配置
+  // 使用统一的 callQuestionAi 封装（带配置和缓存）
+  const data = await callQuestionAi({
+    scene: "question_polish", // 使用润色场景配置
+    questionText: input,
+    locale: locale,
   });
 
   let parsed: any = null;
@@ -181,10 +243,11 @@ export async function generateCategoryAndTags(params: {
     explanation ? `Explanation: ${explanation}` : ``
   ].filter(Boolean).join("\n");
 
-  const data = await askAi({
-    question: input,
-    lang: locale,
-    scene: "question_category_tags" // 使用分类标签场景配置
+  // 使用统一的 callQuestionAi 封装（带配置和缓存）
+  const data = await callQuestionAi({
+    scene: "question_category_tags", // 使用分类标签场景配置
+    questionText: input,
+    locale: locale,
   });
 
   let parsed: any = null;
@@ -228,10 +291,11 @@ export async function fillMissingContent(params: {
     explanation ? `Explanation: ${explanation}` : `Explanation: [缺失]`
   ].filter(Boolean).join("\n");
 
-  const data = await askAi({
-    question: input,
-    lang: locale,
-    scene: "question_fill_missing" // 使用填漏场景配置
+  // 使用统一的 callQuestionAi 封装（带配置和缓存）
+  const data = await callQuestionAi({
+    scene: "question_fill_missing", // 使用填漏场景配置
+    questionText: input,
+    locale: locale,
   });
 
   let parsed: any = null;

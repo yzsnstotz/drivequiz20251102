@@ -300,52 +300,40 @@ export default function AdminAiScenesPage() {
         }
       }
 
-      console.log(`[Scene Test] [${testId}] 发送请求`, {
-        url: `${base}/api/ai/ask`,
-        body: requestBody,
+      const fetchStartTime = Date.now();
+      
+      // 获取当前配置的 provider（从配置中心）
+      const { getCurrentAiProvider } = await import("@/lib/aiProviderConfig.front");
+      const providerConfig = await getCurrentAiProvider();
+      const provider: "local" | "render" = providerConfig.provider;
+      
+      console.log(`[Scene Test] [${testId}] 使用 provider:`, {
+        provider,
+        model: providerConfig.model,
+        scene: scene.scene_key,
       });
 
-      const fetchStartTime = Date.now();
-      const response = await fetch(`${base}/api/ai/ask`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
+      // 使用新的 callAiDirect 函数
+      const { callAiDirect } = await import("@/lib/aiClient.front");
+      const payload = await callAiDirect({
+        provider,
+        question: requestBody.question,
+        locale: requestBody.locale || "zh",
+        scene: requestBody.scene,
+        model: providerConfig.model,
       });
 
       clearTimeout(timeoutId);
       const fetchDuration = Date.now() - fetchStartTime;
       console.log(`[Scene Test] [${testId}] 收到响应`, {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
+        ok: payload.ok,
         duration: `${fetchDuration}ms`,
+        hasAnswer: !!payload.data?.answer,
       });
 
-      const responseText = await response.text();
-      console.log(`[Scene Test] [${testId}] 响应内容长度: ${responseText.length}`);
-
-      let data: any;
-      try {
-        data = JSON.parse(responseText);
-        console.log(`[Scene Test] [${testId}] 响应解析成功`, {
-          ok: data.ok,
-          hasAnswer: !!data.data?.answer,
-          hasError: !!data.message,
-        });
-      } catch (parseError) {
-        console.error(`[Scene Test] [${testId}] 响应解析失败`, {
-          error: parseError instanceof Error ? parseError.message : String(parseError),
-          responseText: responseText.substring(0, 200),
-        });
-        throw new Error(`响应解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
-      }
-
-      if (response.ok && data.ok && data.data?.answer) {
+      if (payload.ok && payload.data?.answer) {
         console.log(`[Scene Test] [${testId}] 测试成功`, {
-          answerLength: data.data.answer.length,
+          answerLength: payload.data.answer.length,
         });
         setTestStates((prev) => ({
           ...prev,
@@ -353,16 +341,15 @@ export default function AdminAiScenesPage() {
             sceneId: scene.id,
             testing: false,
             testInput: testInput,
-            testResult: data.data.answer,
+            testResult: payload.data!.answer,
             testError: null,
           },
         }));
       } else {
         console.error(`[Scene Test] [${testId}] 测试失败`, {
-          responseOk: response.ok,
-          dataOk: data.ok,
-          message: data.message,
-          errorCode: data.errorCode,
+          ok: payload.ok,
+          message: payload.message,
+          errorCode: payload.errorCode,
         });
         setTestStates((prev) => ({
           ...prev,
@@ -371,7 +358,7 @@ export default function AdminAiScenesPage() {
             testing: false,
             testInput: testInput,
             testResult: null,
-            testError: data.message || data.errorCode || "测试失败",
+            testError: payload.message || payload.errorCode || "测试失败",
           },
         }));
       }

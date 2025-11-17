@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, Trash2, BookOpen, Car, Shield, CheckSquare, XSquare, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import QuestionImage from '@/components/common/QuestionImage';
 import { getContentText } from '@/lib/questionContentUtils';
 import { useLanguage } from '@/lib/i18n';
 
@@ -121,15 +121,13 @@ function MistakeBookPage() {
             
             <p className="text-gray-900 text-lg mb-4">{getContentText(selectedQuestion.content, 'zh')}</p>
             {selectedQuestion.image && (
-              <div className="mb-4 relative w-full aspect-video">
-                <Image
-                  src={selectedQuestion.image}
-                  alt={t('mistakes.image')}
-                  fill
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
-                  className="object-contain rounded-lg shadow-sm"
-                />
-              </div>
+              <QuestionImage
+                src={selectedQuestion.image}
+                alt={t('mistakes.image')}
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
+                className="relative w-full aspect-video"
+              />
             )}
             
             {selectedQuestion.type === 'truefalse' ? (

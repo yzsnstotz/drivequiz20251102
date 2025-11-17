@@ -3,6 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Send } from "lucide-react";
 import { detectLanguage, type Language } from "@/lib/i18n";
+import { callAiDirect, type AiProviderKey } from "@/lib/aiClient.front";
+import { getAiExpectedTime } from "@/lib/aiStatsClient";
+import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 
 /** ---- 协议与类型 ---- */
 type Role = "user" | "ai";
@@ -65,9 +68,6 @@ interface AIPageProps {
 }
 
 /** ---- 常量与工具 ---- */
-const API_BASE =
-  (process.env.NEXT_PUBLIC_AI_API_BASE as string | undefined) ?? "";
-const CHAT_PATH = "/api/ai/ask"; // 使用 /api/ai/ask 路由，转发到 AI-Service (Render)
 const REQUEST_TIMEOUT_MS = 120_000; // 120秒超时（AI处理可能需要较长时间，特别是本地Ollama）
 const LOCAL_STORAGE_KEY = "AI_CHAT_HISTORY";
 const MAX_HISTORY_MESSAGES = 100;
@@ -138,11 +138,12 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [errorTip, setErrorTip] = useState<string>("");
+  const [expectedTime, setExpectedTime] = useState<number | null>(null);
+  const [currentProvider, setCurrentProvider] = useState<AiProviderKey>("render");
+  const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const endpoint = useMemo(() => `${API_BASE}${CHAT_PATH}`, []);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -158,6 +159,23 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       inputRef.current?.focus();
     }, 100);
     return () => clearTimeout(timer);
+  }, []);
+
+  // 获取当前配置的 provider（组件挂载时获取，确保使用最新配置）
+  useEffect(() => {
+    getCurrentAiProvider()
+      .then((config) => {
+        console.log("[AIPage] 获取到 provider 配置:", {
+          provider: config.provider,
+          model: config.model,
+        });
+        setCurrentProvider(config.provider);
+        setCurrentModel(config.model);
+      })
+      .catch((err) => {
+        console.warn("[AIPage] 获取 provider 配置失败，使用默认值:", err);
+        setCurrentProvider("render");
+      });
   }, []);
 
   // 持久化消息历史到 localStorage（限制最大条数）
@@ -226,50 +244,36 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         }
       }
 
-      // 统一协议：{ question, locale?, messages? } → { ok, data: { answer, sources?, ... }, errorCode, message }
       // 准备对话历史（包含当前用户消息，因为状态更新是异步的）
-      // 构建包含当前用户消息的完整历史
-      const allMessages = [...messages, userMsg]; // 包含刚发送的用户消息
+      const allMessages = [...messages, userMsg];
       
       const historyMessages = allMessages
-        .slice(-12) // 保留最近 12 条（包含当前消息，实际会传递 10 条历史）
-        .filter((msg) => msg.role === "user" || msg.role === "ai") // 只保留用户和AI消息
-        .slice(0, -1) // 排除当前用户消息（因为会单独传递 question）
+        .slice(-12)
+        .filter((msg) => msg.role === "user" || msg.role === "ai")
+        .slice(0, -1)
         .map((msg) => ({
           role: msg.role === "ai" ? "assistant" : "user" as "user" | "assistant",
           content: msg.content,
         }));
       
-      const requestBody: Record<string, unknown> = {
+      // 获取预计耗时（使用当前配置的 provider）
+      try {
+        const expected = await getAiExpectedTime(currentProvider, currentModel);
+        setExpectedTime(expected);
+      } catch {
+        // 忽略错误，继续执行
+      }
+
+      // 直接调用 ai-service（使用当前配置的 provider）
+      const payload = await callAiDirect({
+        provider: currentProvider,
         question: q,
         locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
-        // 显式指定场景为 chat（首页 AI 助手对话框）
         scene: "chat",
-      };
-      
-      // 传递对话历史（如果有）
-      // 注意：即使只有欢迎消息（AI消息），也应该传递，因为这是对话历史的一部分
-      if (historyMessages.length > 0) {
-        requestBody.messages = historyMessages;
-        requestBody.maxHistory = 10; // 限制最大历史消息数
-      }
-      
-      const res = await fetch(endpoint, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(requestBody),
+        messages: historyMessages.length > 0 ? historyMessages : undefined,
+        maxHistory: 10,
+        model: currentModel,
       });
-
-      let payload: AiAskResponse;
-      try {
-        payload = (await res.json()) as AiAskResponse;
-      } catch {
-        throw new Error(`Bad JSON response (status ${res.status})`);
-      }
 
       if (!payload.ok) {
         const message = payload.message || "服务开小差了，请稍后再试";
@@ -296,7 +300,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         return;
       }
 
-      // 处理响应数据：/api/ai/ask 返回 { ok, data: { answer, sources?, aiProvider?, model?, ... } }
+      // 处理响应数据：callAiDirect 返回 { ok, data: { answer, sources?, aiProvider?, model?, ... } }
       const answer = payload.data?.answer ?? "";
       const sources = payload.data?.sources;
       const aiProvider = payload.data?.aiProvider;
@@ -317,10 +321,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         },
       });
     } catch (err) {
-      const msg =
-        controller.signal.aborted
-          ? "请求超时，请重试。"
-          : `网络异常：${formatErrorMessage(err)}`;
+      const msg = err instanceof Error ? err.message : `网络异常：${formatErrorMessage(err)}`;
       setErrorTip(msg);
       pushMessage({
         id: uid(),
@@ -329,12 +330,12 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         createdAt: Date.now(),
       });
     } finally {
-      clearTimeout(timer);
       setLoading(false);
+      setExpectedTime(null);
       // 重新聚焦输入框
       inputRef.current?.focus();
     }
-  }, [endpoint, input, loading, pushMessage]);
+  }, [input, loading, pushMessage, messages]);
 
 
   return (
@@ -570,6 +571,13 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
             {loading ? "发送中…" : "发送"}
           </button>
         </div>
+
+        {/* 预计耗时显示 */}
+        {loading && expectedTime && (
+          <p className="mt-2 text-xs text-gray-500" role="status">
+            预计耗时：{expectedTime} 秒
+          </p>
+        )}
 
         {/* 底部错误提示 */}
         {errorTip && (

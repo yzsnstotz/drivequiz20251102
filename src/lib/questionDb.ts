@@ -309,6 +309,31 @@ export async function saveAIAnswerToDb(
         .where("content_hash", "=", questionHash)
         .executeTakeFirst();
 
+      // 统一处理：验证和清理sources JSON（所有Provider共享此逻辑）
+      // 确保sources可以正确序列化为JSONB，不写死任何Provider特定逻辑
+      let normalizedSources = null;
+      if (sources && Array.isArray(sources) && sources.length > 0) {
+        try {
+          const cleanedSources = sources.map(src => ({
+            title: src.title ? String(src.title) : "",
+            url: src.url ? String(src.url) : "",
+            snippet: src.snippet
+              ? String(src.snippet)
+                  .replace(/\\/g, "\\\\")
+                  .replace(/"/g, '\\"')
+              : "",
+            score: typeof src.score === "number" ? src.score : undefined,
+            version: src.version ? String(src.version) : undefined,
+          }));
+
+          JSON.stringify(cleanedSources);
+          normalizedSources = cleanedSources;
+        } catch (err) {
+          console.warn("[saveAIAnswerToDb] invalid JSON, fallback to null", err);
+          normalizedSources = null;
+        }
+      }
+
       // 插入新回答（只有在数据库中没有时才插入）
       const result = await db
         .insertInto("question_ai_answers")
@@ -316,7 +341,9 @@ export async function saveAIAnswerToDb(
           question_hash: questionHash,
           locale,
           answer,
-          sources: sources ? (sources as any) : null,
+          sources: normalizedSources
+            ? sql`${JSON.stringify(normalizedSources)}::jsonb`
+            : null,
           model: model || null,
           created_by: normalizedCreatedBy,
           view_count: 0,
@@ -330,7 +357,7 @@ export async function saveAIAnswerToDb(
       return result?.id || 0;
     }
   } catch (error) {
-    console.error("[saveAIAnswerToDb] Error:", error);
+    console.warn("[saveAIAnswerToDb] Error:", error);
     throw error;
   }
 }
@@ -482,72 +509,15 @@ export async function removePendingUpdate(
 // ============================================================
 
 /**
- * 从JSON包读取题目
- * 优先从统一的questions.json读取，如果不存在则从指定包名读取
+ * @deprecated 此函数已废弃，题库现在全部来自数据库
+ * 保留此函数仅为向后兼容，实际返回 null
  */
 export async function loadQuestionFile(
   packageName?: string
 ): Promise<{ questions: Question[]; version?: string; aiAnswers?: Record<string, string> } | null> {
-  try {
-    // 优先尝试从统一的questions.json读取（这是最新的包）
-    const unifiedFilePath = path.join(QUESTIONS_DIR, "questions.json");
-    try {
-      // 检查文件是否存在并获取文件修改时间（用于验证是否是最新的）
-      const fileStat = await fs.stat(unifiedFilePath).catch(() => null);
-      if (!fileStat) {
-        throw new Error("统一的questions.json文件不存在");
-      }
-      
-      const unifiedContent = await fs.readFile(unifiedFilePath, "utf-8");
-      const unifiedData = JSON.parse(unifiedContent);
-      
-      // 兼容多种格式
-      let allQuestions: Question[] = [];
-      if (Array.isArray(unifiedData)) {
-        allQuestions = unifiedData;
-      } else {
-        allQuestions = unifiedData.questions || [];
-      }
-      
-      // 如果指定了packageName，按category筛选
-      if (packageName) {
-        allQuestions = allQuestions.filter((q) => q.category === packageName);
-      }
-      
-      // 记录文件修改时间（用于验证是否是最新的）
-      const fileMtime = fileStat.mtime;
-      
-      return {
-        questions: allQuestions,
-        version: unifiedData.version,
-        aiAnswers: unifiedData.aiAnswers || {},
-        // 内部字段：文件修改时间（用于验证）
-        _fileMtime: fileMtime,
-      } as any;
-    } catch (unifiedError) {
-      // 如果统一的questions.json不存在，尝试从指定包名读取（兼容旧逻辑）
-      if (packageName) {
-        const filePath = path.join(QUESTIONS_DIR, `${packageName}.json`);
-        const content = await fs.readFile(filePath, "utf-8");
-        const data = JSON.parse(content);
-        
-        // 兼容多种格式
-        if (Array.isArray(data)) {
-          return { questions: data };
-        }
-        
-        return {
-          questions: data.questions || [],
-          version: data.version,
-          aiAnswers: data.aiAnswers || {},
-        };
-      }
-      throw unifiedError;
-    }
-  } catch (error) {
-    console.error(`[loadQuestionFile] Error loading ${packageName || "questions"}:`, error);
+  // 题库现在全部来自数据库，不再从文件系统读取
+  console.log(`[loadQuestionFile] 已废弃：题库现在全部来自数据库，不再从文件系统读取`);
     return null;
-  }
 }
 
 /**
@@ -727,107 +697,19 @@ export async function updateJsonPackageAiAnswer(
  * @param packageName 包名（可选），如果不提供，从统一的questions.json读取
  * @param questionHash 题目hash
  */
+/**
+ * @deprecated 此函数已废弃，题库现在全部来自数据库
+ * 保留此函数仅为向后兼容，实际返回 null
+ * 请使用 getAIAnswerFromDb 从数据库读取
+ */
 export async function getAIAnswerFromJson(
   packageName: string | null,
   questionHash: string
 ): Promise<string | null> {
-  try {
-    // 如果不指定packageName，从统一的questions.json读取（这是最新的包）
-    if (!packageName) {
-      // 1. 先获取数据库中的最新版本号和创建时间（确保获取的是最新包）
-      const latestVersionInfo = await getLatestUnifiedVersionInfo();
-      
-      // 2. 从统一的questions.json读取
-      const file = await loadQuestionFile(undefined);
-      if (!file) {
-        console.log(`[getAIAnswerFromJson] questions.json文件不存在`);
+  // 题库现在全部来自数据库，不再从文件系统读取
+  // 直接返回 null，让调用方从数据库读取
+  console.log(`[getAIAnswerFromJson] 已废弃：题库现在全部来自数据库，请使用 getAIAnswerFromDb`);
         return null;
-      }
-      if (!file.aiAnswers) {
-        console.log(`[getAIAnswerFromJson] questions.json文件存在但没有aiAnswers字段`);
-        return null;
-      }
-      // 记录aiAnswers的基本信息（用于调试）
-      const aiAnswersKeys = Object.keys(file.aiAnswers);
-      console.log(`[getAIAnswerFromJson] 已加载questions.json`, {
-        version: file.version,
-        hasAiAnswers: !!file.aiAnswers,
-        aiAnswersCount: aiAnswersKeys.length,
-        filePath: path.join(QUESTIONS_DIR, "questions.json"),
-      });
-      
-      // 3. 验证文件中的版本号是否是最新的（确保获取的是最新包）
-      if (latestVersionInfo) {
-        const { version: latestVersion, createdAt: latestCreatedAt } = latestVersionInfo;
-        
-        if (!file.version) {
-          console.warn(`[getAIAnswerFromJson] 警告：questions.json没有版本号，但数据库中有最新版本(${latestVersion})`);
-          // 文件没有版本号，但数据库有最新版本，说明文件可能不是最新的
-          // 仍然使用文件中的数据，因为可能仍然包含有效的AI回答
-        } else if (file.version !== latestVersion) {
-          console.warn(`[getAIAnswerFromJson] 警告：questions.json的版本号(${file.version})不是最新的(${latestVersion})，建议更新JSON包`);
-          // 文件版本号不是最新的，但继续使用文件中的数据
-          // 因为文件可能仍然包含有效的AI回答，而且重新生成JSON包可能很耗时
-        } else {
-          // 版本号匹配，验证文件修改时间（确保文件是最新的）
-          const fileMtime = (file as any)._fileMtime;
-          if (fileMtime && latestCreatedAt) {
-            const fileTime = new Date(fileMtime).getTime();
-            const dbTime = new Date(latestCreatedAt).getTime();
-            // 允许1分钟的误差（考虑到文件系统和数据库的时间差异）
-            const timeDiff = Math.abs(fileTime - dbTime);
-            if (timeDiff > 60 * 1000) {
-              console.warn(`[getAIAnswerFromJson] 警告：questions.json的修改时间与数据库记录时间相差较大(${Math.round(timeDiff / 1000)}秒)，建议更新JSON包`);
-            } else {
-              console.log(`[getAIAnswerFromJson] 确认：questions.json的版本号(${file.version})是最新的，且文件修改时间匹配`);
-            }
-          } else {
-            console.log(`[getAIAnswerFromJson] 确认：questions.json的版本号(${file.version})是最新的`);
-          }
-        }
-      } else {
-        // 数据库中没有版本号记录，说明可能还没有更新过JSON包
-        // 仍然使用文件中的数据
-        if (file.version) {
-          console.log(`[getAIAnswerFromJson] 信息：questions.json有版本号(${file.version})，但数据库中没有版本记录`);
-        }
-      }
-      
-      // 查找AI回答
-      const answer = file.aiAnswers[questionHash];
-      if (answer) {
-        console.log(`[getAIAnswerFromJson] 从questions.json找到AI回答`, {
-          questionHash: questionHash.substring(0, 16) + "...",
-          answerLength: answer.length,
-          totalAnswers: Object.keys(file.aiAnswers).length,
-        });
-        return answer;
-      } else {
-        // 记录更详细的调试信息
-        const aiAnswersKeys = Object.keys(file.aiAnswers);
-        const sampleHashes = aiAnswersKeys.slice(0, 3).map(h => h.substring(0, 16) + "...");
-        console.log(`[getAIAnswerFromJson] questions.json中没有找到对应的AI回答`, {
-          questionHash: questionHash.substring(0, 16) + "...",
-          totalAnswers: aiAnswersKeys.length,
-          sampleHashes: sampleHashes.length > 0 ? sampleHashes : "无",
-          fileVersion: file.version,
-        });
-        return null;
-      }
-    }
-    
-    // 如果指定了packageName，从指定包读取（兼容旧逻辑，但不推荐使用）
-    // 注意：单个JSON包可能不是最新的，建议使用统一的questions.json
-    console.warn(`[getAIAnswerFromJson] 警告：从单个JSON包(${packageName})读取，建议使用统一的questions.json`);
-    const file = await loadQuestionFile(packageName);
-    if (!file || !file.aiAnswers) {
-      return null;
-    }
-    return file.aiAnswers[questionHash] || null;
-  } catch (error) {
-    console.error("[getAIAnswerFromJson] Error:", error);
-    return null;
-  }
 }
 
 // ============================================================

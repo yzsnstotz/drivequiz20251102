@@ -1,9 +1,27 @@
 /**
  * 批量处理工具函数库
  * 从 question-processor 提取的逻辑，用于内部调用
+ * 使用与 question-processor 一致的配置和缓存逻辑
  */
 
 import { aiDb } from "@/lib/aiDb";
+import { callAiServer, type ServerAiProviderKey } from "@/lib/aiClient.server";
+import { mapDbProviderToClientProvider } from "@/lib/aiProviderMapping";
+import { loadQpAiConfig, type QpAiConfig } from "@/lib/qpAiConfig";
+import { getAiCache, setAiCache } from "@/lib/qpAiCache";
+
+// 在模块级提前加载一次配置（与 question-processor 保持一致）
+const qpAiConfig = loadQpAiConfig();
+
+// 可选：在首次加载时打印一行日志
+// eslint-disable-next-line no-console
+console.log("[batchProcessUtils] AI config:", {
+  provider: qpAiConfig.provider,
+  renderModel: qpAiConfig.renderModel,
+  localModel: qpAiConfig.localModel,
+  cacheEnabled: qpAiConfig.cacheEnabled,
+  cacheTtlMs: qpAiConfig.cacheTtlMs,
+});
 
 export interface TranslateResult {
   content: string;
@@ -15,6 +33,7 @@ export interface CategoryAndTagsResult {
   category?: string | null;
   stage_tag?: "both" | "provisional" | "regular" | null;
   topic_tags?: string[] | null;
+  license_types?: string[] | null;
 }
 
 /**
@@ -31,11 +50,65 @@ export interface SubtaskDetail {
   status: "success" | "failed"; // 状态
   error?: string; // 错误信息（如果有）
   timestamp: string; // 时间戳
+  aiProvider?: string; // AI 服务提供商（如 Google Gemini, OpenAI 等）
+  model?: string; // AI 模型名称
 }
 
 /**
  * 获取场景配置（prompt和输出格式）
  */
+// 全局 AI 请求队列：确保同一时间只有一个 AI 请求在进行
+class AiRequestQueue {
+  private queue: Array<() => Promise<any>> = [];
+  private processing = false;
+  private requestId = 0;
+
+  async enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const currentRequestId = ++this.requestId;
+    const queueLength = this.queue.length;
+    
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          if (queueLength > 0) {
+            console.log(`[AiRequestQueue] [Request ${currentRequestId}] 等待队列中，前面还有 ${queueLength} 个请求`);
+          }
+          console.log(`[AiRequestQueue] [Request ${currentRequestId}] 开始处理 AI 请求`);
+          const result = await fn();
+          console.log(`[AiRequestQueue] [Request ${currentRequestId}] ✅ AI 请求完成`);
+          resolve(result);
+        } catch (error) {
+          console.log(`[AiRequestQueue] [Request ${currentRequestId}] ❌ AI 请求失败:`, error instanceof Error ? error.message : String(error));
+          reject(error);
+        }
+      });
+      this.process();
+    });
+  }
+
+  private async process() {
+    if (this.processing || this.queue.length === 0) {
+      return;
+    }
+
+    this.processing = true;
+    console.log(`[AiRequestQueue] 开始处理队列，当前队列长度: ${this.queue.length}`);
+
+    while (this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (task) {
+        await task();
+      }
+    }
+
+    this.processing = false;
+    console.log(`[AiRequestQueue] 队列处理完成`);
+  }
+}
+
+// 创建全局队列实例
+const aiRequestQueue = new AiRequestQueue();
+
 async function getSceneConfig(sceneKey: string, locale: string = "zh"): Promise<{
   prompt: string;
   outputFormat: string | null;
@@ -74,158 +147,292 @@ async function getSceneConfig(sceneKey: string, locale: string = "zh"): Promise<
 }
 
 /**
- * 内部调用 /api/ai/ask（通过内部 HTTP 调用）
- * 在 Vercel 环境中，使用相对路径进行内部调用
+ * 内部调用 ai-service（直接调用，不再通过 /api/admin/ai/ask）
+ * 使用 callAiServer 直接调用 ai-service，支持场景配置，支持长超时
  */
-async function callAiAskInternal(params: {
-  question: string;
-  locale?: string;
-  scene?: string;
-  sourceLanguage?: string;
-  targetLanguage?: string;
-  adminToken?: string; // 管理员 token，用于跳过配额限制
-}, retries: number = 3): Promise<{ answer: string }> {
-  // 在 Vercel 环境中，使用绝对 URL
-  // 优先使用 VERCEL_URL（Vercel 自动提供），否则使用 NEXT_PUBLIC_APP_URL
-  let baseUrl = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_APP_URL;
-  
-  // 如果是在 Vercel 环境中，构建完整 URL
-  if (baseUrl) {
-    if (!baseUrl.startsWith("http")) {
-      baseUrl = `https://${baseUrl}`;
-    }
-  } else {
-    // 本地开发环境，使用 localhost
-    baseUrl = "http://localhost:3000";
+/**
+ * 判断是否是配额耗尽错误（不应重试）
+ * 优先使用标准 errorCode，与新系统对齐
+ */
+function isQuotaExceeded(errorText: string, errorData: any): boolean {
+  const text = (errorText || "").toLowerCase();
+  const message = (errorData?.message || "").toLowerCase();
+  const code = (errorData?.errorCode || errorData?.code || "").toUpperCase();
+
+  // ✅ 优先检查标准 errorCode
+  if (code === "PROVIDER_QUOTA_EXCEEDED") {
+    return true;
   }
 
-  const apiUrl = `${baseUrl}/api/ai/ask`;
+  // 兜底：字符串匹配（向后兼容）
+  return (
+    text.includes("quota exceeded for metric") ||
+    text.includes("free_tier_requests") ||
+    text.includes("daily ask limit exceeded") ||
+    text.includes("provider_quota_exceeded") ||
+    message.includes("quota exceeded for metric") ||
+    message.includes("free_tier_requests") ||
+    message.includes("daily ask limit exceeded") ||
+    message.includes("provider_quota_exceeded")
+  );
+}
 
-  // 内部调用（使用 fetch），带重试机制
-  // 设置总体超时时间（根据场景调整）
-  // 对于批量处理，需要更长的超时时间，因为可能涉及多个操作
-  const isBatchProcessing = process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_ENV === 'production';
-  const overallTimeout = isBatchProcessing ? 250000 : 55000; // 批量处理：250秒，单次调用：55秒
-  const startTime = Date.now();
+/**
+ * 判断是否是临时速率限制错误（可以重试）
+ * @param response Response 对象（可能为 null，如果是从 callAiServer 返回的错误）
+ * @param errorText 错误文本
+ * @param errorData 错误数据对象
+ */
+function isTemporaryRateLimit(response: Response | null, errorText: string, errorData: any): boolean {
+  // 如果 response 存在且状态码是 429，可能是临时速率限制
+  if (response && response.status === 429) {
+    // 如果是配额耗尽，不是临时速率限制
+    if (isQuotaExceeded(errorText, errorData)) {
+    return false;
+    }
+    return true;
+  }
   
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      // 检查是否已经超过总体超时时间
-      const elapsed = Date.now() - startTime;
-      if (elapsed > overallTimeout) {
-        throw new Error(`AI API call timeout: exceeded ${overallTimeout}ms total time`);
-      }
-      
-      // 为每次请求设置超时（根据场景调整）
-      // 批量处理场景需要更长的超时时间，因为AI可能需要更长时间处理
-      const singleRequestTimeout = isBatchProcessing ? 120000 : 30000; // 批量处理：120秒，单次调用：30秒
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), singleRequestTimeout);
-      
-      // 构建请求头，如果有管理员 token 则添加 Authorization header
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (params.adminToken) {
-        headers["Authorization"] = `Bearer ${params.adminToken}`;
-      }
+  // 如果 errorData 中有 errorCode，检查是否是速率限制
+  const code = (errorData?.errorCode || errorData?.code || "").toUpperCase();
+  if (code === "RATE_LIMIT" || code === "TOO_MANY_REQUESTS") {
+  // 如果是配额耗尽，不是临时速率限制
+  if (isQuotaExceeded(errorText, errorData)) {
+    return false;
+  }
+  return true;
+  }
+  
+  return false;
+}
 
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          question: params.question,
-          locale: params.locale || "zh-CN",
-          scene: params.scene,
-          sourceLanguage: params.sourceLanguage,
-          targetLanguage: params.targetLanguage,
-        }),
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
+/**
+ * 判断是否是网络临时错误（可以重试）
+ */
+function isNetworkTransientError(error: any): boolean {
+  return (
+    error.name === "AbortError" ||
+    error.message?.includes("ECONNRESET") ||
+    error.message?.includes("ETIMEDOUT") ||
+    error.message?.includes("network") ||
+    error.message?.includes("timeout")
+  );
+}
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorData: any = null;
-        try {
-          errorData = errorText ? JSON.parse(errorText) : null;
-        } catch {
-          // 忽略JSON解析错误
+/**
+ * 获取当前配置的 provider 和 model
+ * 优先使用环境变量配置（QP_AI_PROVIDER），如果没有则从数据库读取
+ * 与 question-processor 保持一致：优先使用环境变量
+ */
+async function getCurrentAiProviderConfig(): Promise<{ provider: ServerAiProviderKey; model?: string }> {
+  // 优先使用环境变量配置（与 question-processor 保持一致）
+  if (qpAiConfig.provider) {
+    const provider = qpAiConfig.provider;
+    const model = provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel;
+    return {
+      provider,
+      model,
+    };
+  }
+
+  // 如果没有环境变量配置，从数据库读取（向后兼容）
+  try {
+    const configRow = await aiDb
+      .selectFrom("ai_config")
+      .select(["key", "value"])
+      .where("key", "in", ["aiProvider", "model"])
+      .execute();
+
+    let aiProvider: string | null = null;
+    let model: string | null = null;
+
+    for (const row of configRow) {
+      if (row.key === "aiProvider") {
+        aiProvider = row.value;
+      } else if (row.key === "model") {
+        model = row.value;
+      }
+    }
+
+    const provider = mapDbProviderToClientProvider(aiProvider) as ServerAiProviderKey;
+    return {
+      provider,
+      model: model || undefined,
+    };
+  } catch (error) {
+    console.warn("[getCurrentAiProviderConfig] 获取配置失败，使用默认值:", error);
+    return { provider: "render" };
+  }
+}
+
+async function callAiAskInternal(
+  params: {
+    question: string;
+    locale?: string;
+    scene?: string;
+    sourceLanguage?: string;
+    targetLanguage?: string;
+    adminToken?: string; // 管理员 token（保留用于兼容，但不再使用）
+  },
+  options?: {
+    mode?: "batch" | "single";
+    retries?: number;
+  }
+): Promise<{ answer: string; aiProvider?: string; model?: string }> {
+  const mode = options?.mode || "single";
+  const retries = options?.retries ?? 1;
+
+  // 获取当前配置的 provider 和 model（优先使用环境变量）
+  const { provider, model } = await getCurrentAiProviderConfig();
+
+  // 1. 尝试命中缓存（如果启用）
+  if (qpAiConfig.cacheEnabled && params.scene) {
+    const cached = getAiCache<{ answer: string; aiProvider?: string; model?: string }>({
+      scene: params.scene,
+      provider,
+      model: model || (provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel),
+      questionText: params.question,
+    });
+    if (cached) {
+      // eslint-disable-next-line no-console
+      console.log(
+        "[batchProcessUtils] AI cache hit:",
+        params.scene,
+        provider,
+        model,
+      );
+      return cached;
+    }
+  }
+
+  // 内部调用（使用 callAiServer），带重试机制
+  // ✅ 显式区分 batch/single 模式，统一超时策略
+  const isBatchProcessing = mode === "batch";
+  const overallTimeout = isBatchProcessing ? 250000 : 55000; // 批量处理：250秒，单次调用：55秒
+  const singleRequestTimeout = isBatchProcessing ? 120000 : 30000; // 批量处理：120秒，单次调用：30秒
+  
+  // 将整个重试逻辑（包含所有重试）放入队列，确保同一时间只有一个 AI 请求在执行
+  return await aiRequestQueue.enqueue(async () => {
+    const MAX_RETRIES = retries; // 包含第一次，总共最多 MAX_RETRIES + 1 次
+    const startTime = Date.now();
+    
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // 检查是否已经超过总体超时时间
+        const elapsed = Date.now() - startTime;
+        if (elapsed > overallTimeout) {
+          throw new Error(`AI API call timeout: exceeded ${overallTimeout}ms total time`);
         }
         
-        // 如果是429错误（Too Many Requests），进行重试
-        if (response.status === 429 && attempt < retries) {
-          // 检查剩余时间是否足够重试
-          const elapsed = Date.now() - startTime;
-          const remainingTime = overallTimeout - elapsed;
-          const delay = Math.min(Math.pow(2, attempt) * 1000, remainingTime - 5000); // 指数退避，但不超过剩余时间
-          
-          if (delay < 1000) {
-            // 如果剩余时间不足1秒，直接失败
-            throw new Error(`AI API call timeout: insufficient time for retry (remaining: ${remainingTime}ms)`);
+        // 调用 ai-service
+        const aiResp = await callAiServer<{ answer: string; aiProvider?: string; model?: string }>(
+          {
+            provider,
+              question: params.question,
+              locale: params.locale || "zh-CN",
+              scene: params.scene,
+              sourceLanguage: params.sourceLanguage,
+              targetLanguage: params.targetLanguage,
+            model: model,
+          },
+          { timeoutMs: singleRequestTimeout }
+        );
+
+        if (!aiResp.ok) {
+          // ✅ 检查是否是配额耗尽（不应重试），统一转换为标准错误码
+          if (isQuotaExceeded(aiResp.message || "", aiResp)) {
+            const errorMessage = aiResp.message || "Quota exceeded";
+            const providerName = (aiResp.data as any)?.aiProvider || provider || "unknown";
+            // 记录配额耗尽日志
+            const today = new Date().toISOString().slice(0, 10);
+            console.warn(`[callAiAskInternal] AI Provider 配额耗尽`, {
+              provider: providerName,
+              model: model || null,
+              scene: params.scene || null,
+              date: today,
+              message: errorMessage.substring(0, 200),
+              errorCode: "PROVIDER_QUOTA_EXCEEDED",
+            });
+            // ✅ 统一转换为标准错误码，携带 provider 信息（通过错误对象属性）
+            const quotaError = new Error("BATCH_PROVIDER_QUOTA_EXCEEDED") as any;
+            quotaError.provider = providerName;
+            quotaError.date = today;
+            throw quotaError;
           }
           
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-        
-        throw new Error(`AI API call failed: ${response.status} ${errorText.substring(0, 200)}`);
-      }
-
-      const data = await response.json();
-
-      if (!data.ok) {
-        // 如果是429错误，进行重试
-        if ((data.errorCode === "PROVIDER_ERROR" && data.message?.includes("429")) || 
-            data.message?.includes("429") || 
-            data.message?.includes("Too Many Requests")) {
-          if (attempt < retries) {
-            // 检查剩余时间是否足够重试
+          // 检查是否是临时速率限制（可以重试一次）
+          if (isTemporaryRateLimit(null, aiResp.message || "", aiResp) && attempt < MAX_RETRIES) {
             const elapsed = Date.now() - startTime;
             const remainingTime = overallTimeout - elapsed;
-            const delay = Math.min(Math.pow(2, attempt) * 1000, remainingTime - 5000);
+            const delay = Math.min(2000, remainingTime - 5000); // 固定延迟2秒
             
             if (delay < 1000) {
               throw new Error(`AI API call timeout: insufficient time for retry (remaining: ${remainingTime}ms)`);
             }
             
+            console.log(`[callAiAskInternal] 临时速率限制错误，等待 ${delay}ms 后重试 (尝试 ${attempt + 1}/${MAX_RETRIES + 1})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
+          
+          // 其他错误直接抛出，不再重试
+          throw new Error(aiResp.message || "AI call failed");
+        }
+
+        // 验证响应数据
+        if (!aiResp.data || !aiResp.data.answer) {
+          throw new Error("AI service returned empty answer");
+        }
+
+        const result = { 
+          answer: aiResp.data.answer,
+          aiProvider: aiResp.data.aiProvider || provider,
+          model: aiResp.data.model || model,
+        };
+
+        // 3. 写入缓存（如果启用）
+        if (qpAiConfig.cacheEnabled && params.scene) {
+          setAiCache(
+            {
+              scene: params.scene,
+              provider,
+              model: model || (provider === "local" ? qpAiConfig.localModel : qpAiConfig.renderModel),
+              questionText: params.question,
+            },
+            result,
+            qpAiConfig.cacheTtlMs,
+          );
+        }
+
+        return result;
+      } catch (error: any) {
+        // 如果是最后一次尝试，抛出错误
+        if (attempt === MAX_RETRIES) {
+          throw error;
         }
         
-        throw new Error(data.message || "AI call failed");
-      }
-
-      return { answer: data.data.answer };
-    } catch (error: any) {
-      // 如果是最后一次尝试，抛出错误
-      if (attempt === retries) {
+        // 检查是否是网络临时错误（可以重试一次）
+        if (isNetworkTransientError(error) && attempt < MAX_RETRIES) {
+          const elapsed = Date.now() - startTime;
+          const remainingTime = overallTimeout - elapsed;
+          const delay = Math.min(1000, remainingTime - 5000); // 固定延迟1秒
+          
+          if (delay < 1000) {
+            throw error;
+          }
+          
+          console.log(`[callAiAskInternal] 网络临时错误，等待 ${delay}ms 后重试 (尝试 ${attempt + 1}/${MAX_RETRIES + 1}):`, error.message);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        // 其他错误（包括配额耗尽、空答案等）直接抛出，不再重试
         throw error;
       }
-      
-      // 如果是网络错误或429错误，等待后重试
-      if (error.message?.includes("429") || error.message?.includes("rate limit") || error.message?.includes("Too Many Requests") || error.name === "AbortError") {
-        // 检查剩余时间是否足够重试
-        const elapsed = Date.now() - startTime;
-        const remainingTime = overallTimeout - elapsed;
-        const delay = Math.min(Math.pow(2, attempt) * 1000, remainingTime - 5000);
-        
-        if (delay < 1000 || attempt === retries) {
-          throw error; // 如果剩余时间不足或已经是最后一次尝试，直接抛出错误
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      
-      // 其他错误直接抛出
-      throw error;
     }
-  }
-  
-  throw new Error("AI API call failed after retries");
+    
+    throw new Error("AI API call failed after retries");
+  });
 }
 
 /**
@@ -237,6 +444,7 @@ export async function translateWithPolish(params: {
   to: string;
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
+  mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { source, from, to, adminToken, returnDetail } = params;
   const questionText = [
@@ -254,14 +462,24 @@ export async function translateWithPolish(params: {
     sceneConfig = await getSceneConfig(sceneKey, to);
   }
 
-  const data = await callAiAskInternal({
-    question: questionText,
-    locale: to,
-    scene: sceneKey,
-    sourceLanguage: from,
-    targetLanguage: to,
-    adminToken,
-  });
+  // ✅ 根据调用模式决定超时策略
+  const callMode = params.mode || "single"; // 默认为 single，批量处理需显式传入 "batch"
+  
+  const data = await callAiAskInternal(
+    {
+      question: questionText,
+      locale: to,
+      scene: sceneKey,
+      sourceLanguage: from,
+      targetLanguage: to,
+      adminToken,
+    },
+    { mode: callMode, retries: 1 }
+  );
+
+  // 提取 AI provider 和 model 信息
+  const aiProvider = data.aiProvider || 'unknown';
+  const model = data.model || 'unknown';
 
   // 解析 JSON 响应
   let parsed: any = null;
@@ -373,6 +591,8 @@ export async function translateWithPolish(params: {
       answer: data.answer,
       status: "success",
       timestamp: new Date().toISOString(),
+      aiProvider: aiProvider, // 添加 AI provider 信息
+      model: model, // 添加 model 信息
     };
     return { result, detail };
   }
@@ -388,6 +608,7 @@ export async function polishContent(params: {
   locale: string;
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
+  mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { text, locale } = params;
   const input = [
@@ -406,12 +627,21 @@ export async function polishContent(params: {
     sceneConfig = await getSceneConfig(sceneKey, locale);
   }
 
-  const data = await callAiAskInternal({
-    question: input,
-    locale: locale,
-    scene: sceneKey,
-    adminToken: params.adminToken,
-  });
+  // ✅ 根据调用模式决定超时策略
+  const callMode = params.mode || "single"; // 默认为 single，批量处理需显式传入 "batch"
+  
+  const data = await callAiAskInternal(
+    {
+      question: input,
+      locale: locale,
+      scene: sceneKey,
+      adminToken: params.adminToken,
+    },
+    { mode: callMode, retries: 1 }
+  );
+
+  const aiProvider = data.aiProvider || 'unknown';
+  const model = data.model || 'unknown';
 
   // 解析 JSON 响应
   let parsed: any = null;
@@ -523,6 +753,8 @@ export async function polishContent(params: {
       answer: data.answer,
       status: "success",
       timestamp: new Date().toISOString(),
+      aiProvider: aiProvider,
+      model: model,
     };
     return { result, detail };
   }
@@ -540,6 +772,7 @@ export async function generateCategoryAndTags(params: {
   locale?: string;
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
+  mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<CategoryAndTagsResult | { result: CategoryAndTagsResult; detail: SubtaskDetail }> {
   const { content, options, explanation, locale = "zh-CN" } = params;
 
@@ -558,12 +791,21 @@ export async function generateCategoryAndTags(params: {
     sceneConfig = await getSceneConfig(sceneKey, locale);
   }
 
-  const data = await callAiAskInternal({
-    question: input,
-    locale: locale,
-    scene: sceneKey,
-    adminToken: params.adminToken,
-  });
+  // ✅ 根据调用模式决定超时策略
+  const callMode = params.mode || "single"; // 默认为 single，批量处理需显式传入 "batch"
+  
+  const data = await callAiAskInternal(
+    {
+      question: input,
+      locale: locale,
+      scene: sceneKey,
+      adminToken: params.adminToken,
+    },
+    { mode: callMode, retries: 1 }
+  );
+
+  const aiProvider = data.aiProvider || 'unknown';
+  const model = data.model || 'unknown';
 
   let parsed: any = null;
   try {
@@ -586,6 +828,9 @@ export async function generateCategoryAndTags(params: {
     topic_tags: Array.isArray(parsed.topic_tags)
       ? parsed.topic_tags.map((s: any) => String(s)).filter(Boolean)
       : null,
+    license_types: Array.isArray(parsed.license_types) || Array.isArray(parsed.license_tags)
+      ? (parsed.license_types || parsed.license_tags).map((s: any) => String(s)).filter(Boolean)
+      : null,
   };
 
   if (params.returnDetail) {
@@ -599,6 +844,8 @@ export async function generateCategoryAndTags(params: {
       answer: data.answer,
       status: "success",
       timestamp: new Date().toISOString(),
+      aiProvider: aiProvider,
+      model: model,
     };
     return { result, detail };
   }
@@ -617,6 +864,7 @@ export async function fillMissingContent(params: {
   questionType?: "single" | "multiple" | "truefalse"; // 题目类型
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
+  mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { content, options, explanation, locale = "zh-CN", questionType } = params;
 
@@ -647,12 +895,21 @@ export async function fillMissingContent(params: {
     sceneConfig = await getSceneConfig(sceneKey, locale);
   }
 
-  const data = await callAiAskInternal({
-    question: input,
-    locale: locale,
-    scene: sceneKey,
-    adminToken: params.adminToken,
-  });
+  // ✅ 根据调用模式决定超时策略
+  const callMode = params.mode || "single"; // 默认为 single，批量处理需显式传入 "batch"
+  
+  const data = await callAiAskInternal(
+    {
+      question: input,
+      locale: locale,
+      scene: sceneKey,
+      adminToken: params.adminToken,
+    },
+    { mode: callMode, retries: 1 }
+  );
+
+  const aiProvider = data.aiProvider || 'unknown';
+  const model = data.model || 'unknown';
 
   let parsed: any = null;
   let rawAnswer = data.answer;
@@ -757,6 +1014,8 @@ export async function fillMissingContent(params: {
       answer: data.answer,
       status: "success",
       timestamp: new Date().toISOString(),
+      aiProvider: aiProvider,
+      model: model,
     };
     return { result, detail };
   }

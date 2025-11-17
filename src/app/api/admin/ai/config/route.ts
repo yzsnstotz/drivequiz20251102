@@ -37,6 +37,12 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
         "cacheTtl",
         "costAlertUsdThreshold",
         "aiProvider",
+        "timeout_openai",
+        "timeout_openai_direct",
+        "timeout_openrouter",
+        "timeout_openrouter_direct",
+        "timeout_gemini_direct",
+        "timeout_local",
       ])
       .execute() as ConfigRow[];
 
@@ -54,6 +60,12 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       cacheTtl: config.cacheTtl || "86400",
       costAlertUsdThreshold: config.costAlertUsdThreshold || "10.00",
       aiProvider: config.aiProvider || "openai",
+      timeoutOpenai: config.timeout_openai || "30000",
+      timeoutOpenaiDirect: config.timeout_openai_direct || "30000",
+      timeoutOpenrouter: config.timeout_openrouter || "30000",
+      timeoutOpenrouterDirect: config.timeout_openrouter_direct || "30000",
+      timeoutGeminiDirect: config.timeout_gemini_direct || "30000",
+      timeoutLocal: config.timeout_local || "120000",
     };
 
     return success(result);
@@ -88,7 +100,13 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           model?: string;
           cacheTtl?: number;
           costAlertUsdThreshold?: number;
-          aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
+          aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct" | "strategy";
+          timeoutOpenai?: number;
+          timeoutOpenaiDirect?: number;
+          timeoutOpenrouter?: number;
+          timeoutOpenrouterDirect?: number;
+          timeoutGeminiDirect?: number;
+          timeoutLocal?: number;
         }
       | null;
 
@@ -145,11 +163,61 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         body.aiProvider !== "openrouter" &&
         body.aiProvider !== "openrouter_direct" &&
         body.aiProvider !== "openai_direct" &&
-        body.aiProvider !== "gemini_direct"
+        body.aiProvider !== "gemini_direct" &&
+        body.aiProvider !== "strategy"
       ) {
-        return badRequest("aiProvider must be either 'openai', 'local', 'openrouter', 'openrouter_direct', 'openai_direct', or 'gemini_direct'.");
+        return badRequest("aiProvider must be either 'strategy', 'openai', 'local', 'openrouter', 'openrouter_direct', 'openai_direct', or 'gemini_direct'.");
       }
       updates.push({ key: "aiProvider", value: body.aiProvider });
+    }
+
+    // 处理超时配置
+    if (body.timeoutOpenai !== undefined) {
+      const timeout = Number(body.timeoutOpenai);
+      if (isNaN(timeout) || timeout < 1000 || timeout > 600000) {
+        return badRequest("timeoutOpenai must be a number between 1000 and 600000 (1秒到10分钟).");
+      }
+      updates.push({ key: "timeout_openai", value: String(timeout) });
+    }
+
+    if (body.timeoutOpenaiDirect !== undefined) {
+      const timeout = Number(body.timeoutOpenaiDirect);
+      if (isNaN(timeout) || timeout < 1000 || timeout > 600000) {
+        return badRequest("timeoutOpenaiDirect must be a number between 1000 and 600000 (1秒到10分钟).");
+      }
+      updates.push({ key: "timeout_openai_direct", value: String(timeout) });
+    }
+
+    if (body.timeoutOpenrouter !== undefined) {
+      const timeout = Number(body.timeoutOpenrouter);
+      if (isNaN(timeout) || timeout < 1000 || timeout > 600000) {
+        return badRequest("timeoutOpenrouter must be a number between 1000 and 600000 (1秒到10分钟).");
+      }
+      updates.push({ key: "timeout_openrouter", value: String(timeout) });
+    }
+
+    if (body.timeoutOpenrouterDirect !== undefined) {
+      const timeout = Number(body.timeoutOpenrouterDirect);
+      if (isNaN(timeout) || timeout < 1000 || timeout > 600000) {
+        return badRequest("timeoutOpenrouterDirect must be a number between 1000 and 600000 (1秒到10分钟).");
+      }
+      updates.push({ key: "timeout_openrouter_direct", value: String(timeout) });
+    }
+
+    if (body.timeoutGeminiDirect !== undefined) {
+      const timeout = Number(body.timeoutGeminiDirect);
+      if (isNaN(timeout) || timeout < 1000 || timeout > 600000) {
+        return badRequest("timeoutGeminiDirect must be a number between 1000 and 600000 (1秒到10分钟).");
+      }
+      updates.push({ key: "timeout_gemini_direct", value: String(timeout) });
+    }
+
+    if (body.timeoutLocal !== undefined) {
+      const timeout = Number(body.timeoutLocal);
+      if (isNaN(timeout) || timeout < 1000 || timeout > 600000) {
+        return badRequest("timeoutLocal must be a number between 1000 and 600000 (1秒到10分钟).");
+      }
+      updates.push({ key: "timeout_local", value: String(timeout) });
     }
 
     if (updates.length === 0) {
@@ -212,6 +280,12 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         "cacheTtl",
         "costAlertUsdThreshold",
         "aiProvider",
+        "timeout_openai",
+        "timeout_openai_direct",
+        "timeout_openrouter",
+        "timeout_openrouter_direct",
+        "timeout_gemini_direct",
+        "timeout_local",
       ])
       .execute() as ConfigRow[];
 
@@ -227,6 +301,12 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       cacheTtl: configMap.cacheTtl || "86400",
       costAlertUsdThreshold: configMap.costAlertUsdThreshold || "10.00",
       aiProvider: configMap.aiProvider || "openai",
+      timeoutOpenai: configMap.timeout_openai || "30000",
+      timeoutOpenaiDirect: configMap.timeout_openai_direct || "30000",
+      timeoutOpenrouter: configMap.timeout_openrouter || "30000",
+      timeoutOpenrouterDirect: configMap.timeout_openrouter_direct || "30000",
+      timeoutGeminiDirect: configMap.timeout_gemini_direct || "30000",
+      timeoutLocal: configMap.timeout_local || "120000",
     };
 
     return success(result);

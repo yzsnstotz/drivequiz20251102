@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import QuestionImage from '@/components/common/QuestionImage';
 import { loadUnifiedQuestionsPackage } from '@/lib/questionsLoader';
 
 interface Question {
@@ -290,15 +290,12 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
         <div className="mb-6">
           <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
           {currentQuestion.image && (
-            <div className="mb-4">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt="题目图片"
-                width={800}
-                height={600}
-                className="max-w-full rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt="题目图片"
+              width={800}
+              height={600}
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (

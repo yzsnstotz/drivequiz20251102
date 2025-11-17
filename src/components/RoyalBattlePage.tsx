@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, Heart, Timer, Trophy } from 'lucide-react';
+import QuestionImage from './common/QuestionImage';
 import { loadAllQuestions } from '@/lib/questionsLoader';
 
 interface Question {
@@ -278,15 +278,12 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
         <div className="mb-6">
           <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
           {currentQuestion.image && (
-            <div className="mb-4">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt="题目图片"
-                width={800}
-                height={600}
-                className="max-w-full rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt="题目图片"
+              width={800}
+              height={600}
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (

@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import QuestionImage from '@/components/common/QuestionImage';
 import { loadAllQuestions } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
 
@@ -306,15 +306,12 @@ function RoyalBattlePage() {
             </button>
           </div>
           {currentQuestion.image && (
-            <div className="mb-4">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt={t('royalbattle.image')}
-                width={800}
-                height={600}
-                className="max-w-full rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt={t('royalbattle.image')}
+              width={800}
+              height={600}
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (

@@ -160,8 +160,22 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     bodyLimit: 1 * 1024 * 1024, // 1MB
   });
 
-  // 关闭对外 CORS（默认拒绝），如需内部联调可临时放开
-  app.register(cors, { origin: false });
+  // 允许浏览器直接调用 ai-service（支持跨域）
+  app.register(cors, {
+    origin: true, // 允许所有来源
+    credentials: false,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Authorization", "Content-Type"],
+  });
+
+  // 为 /v1/ask 注册 OPTIONS 预检请求处理（确保 CORS 正常工作）
+  app.options("/v1/ask", async (req, reply) => {
+    reply
+      .header("Access-Control-Allow-Origin", "*")
+      .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+      .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+      .send();
+  });
 
   // 注入配置
   app.decorate("config", config);

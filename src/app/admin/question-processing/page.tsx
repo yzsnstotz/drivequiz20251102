@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { apiFetch, apiPost, apiDelete, ApiError } from "@/lib/apiClient";
 
 type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
@@ -59,9 +59,43 @@ type TasksResponse = {
 };
 
 export default function QuestionProcessingPage() {
+  // 辅助函数：安全地提取 details 数组
+  // details 可能是数组，也可能是对象（包含 server_logs 等字段）
+  const getDetailsArray = useCallback((details: any): Array<any> => {
+    if (!details) return [];
+    if (Array.isArray(details)) return details;
+    if (typeof details === 'object') {
+      // 如果是对象，查找数组类型的字段（排除 server_logs）
+      // 优先查找 'items' 字段（如果 appendServerLog 将数组转换为了对象）
+      if (Array.isArray(details.items)) {
+        return details.items;
+      }
+      // 查找其他数组字段（排除 server_logs）
+      for (const key in details) {
+        if (key !== 'server_logs' && Array.isArray(details[key])) {
+          return details[key];
+        }
+      }
+      // 如果没有找到数组字段，返回空数组
+      return [];
+    }
+    return [];
+  }, []);
+
   const [tasks, setTasks] = useState<BatchProcessTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [processingLogs, setProcessingLogs] = useState<Array<{
+    timestamp: string;
+    level: 'info' | 'warn' | 'error';
+    message: string;
+    taskId?: string;
+    logType?: 'task-list' | 'task-processing'; // 区分任务列表日志和处理日志
+  }>>([]);
+  const [showLogs, setShowLogs] = useState(true);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -76,6 +110,58 @@ export default function QuestionProcessingPage() {
   const MAX_ERROR_COUNT = 3; // 连续失败 3 次后停止刷新
   const isManuallyClosedRef = useRef<boolean>(false); // 标记是否手动关闭弹窗
 
+  // 从 localStorage 加载上一次的任务配置
+  const loadCachedFormData = (): {
+    questionIds: string;
+    operations: string[];
+    translateOptions: { from: string; to: string | string[] };
+    polishOptions: { locale: string };
+    batchSize: number;
+    continueOnError: boolean;
+  } => {
+    try {
+      const cached = localStorage.getItem('batch_process_task_config');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          questionIds: "", // 每次清空题目ID，让用户重新输入
+          operations: parsed.operations || [],
+          translateOptions: parsed.translateOptions || { from: "zh", to: ["ja"] },
+          polishOptions: parsed.polishOptions || { locale: "zh-CN" },
+          batchSize: parsed.batchSize || 10,
+          continueOnError: parsed.continueOnError !== undefined ? parsed.continueOnError : true,
+        };
+      }
+    } catch (error) {
+      console.error('[loadCachedFormData] Failed to load cached form data:', error);
+    }
+    // 默认值
+    return {
+      questionIds: "",
+      operations: [],
+      translateOptions: { from: "zh", to: ["ja"] },
+      polishOptions: { locale: "zh-CN" },
+      batchSize: 10,
+      continueOnError: true,
+    };
+  };
+
+  // 保存任务配置到 localStorage
+  const saveCachedFormData = (data: {
+    operations: string[];
+    translateOptions: { from: string; to: string | string[] };
+    polishOptions: { locale: string };
+    batchSize: number;
+    continueOnError: boolean;
+  }) => {
+    try {
+      localStorage.setItem('batch_process_task_config', JSON.stringify(data));
+      console.log('[saveCachedFormData] Task config saved to localStorage');
+    } catch (error) {
+      console.error('[saveCachedFormData] Failed to save cached form data:', error);
+    }
+  };
+
   // 创建任务表单状态
   const [formData, setFormData] = useState<{
     questionIds: string;
@@ -84,18 +170,34 @@ export default function QuestionProcessingPage() {
     polishOptions: { locale: string };
     batchSize: number;
     continueOnError: boolean;
-  }>({
-    questionIds: "",
-    operations: [],
-    translateOptions: { from: "zh", to: ["ja"] }, // 改为数组，支持多选
-    polishOptions: { locale: "zh-CN" },
-    batchSize: 10,
-    continueOnError: true,
-  });
+  }>(loadCachedFormData());
 
-  const loadTasks = async (): Promise<BatchProcessTask[]> => {
-    setLoading(true);
-    setError(null);
+  const loadTasks = useCallback(async (silent: boolean = false): Promise<BatchProcessTask[]> => {
+    if (!silent) {
+      setLoading(true);
+    }
+    // 清除之前的错误自动清除定时器
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = null;
+    }
+    
+    // 只在非静默模式下记录加载开始
+    if (!silent) {
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'info' as const,
+            message: '📥 开始加载任务列表...',
+            logType: 'task-list' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
+    }
+    
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
@@ -107,57 +209,141 @@ export default function QuestionProcessingPage() {
       );
 
       if (response.data) {
-        const loadedTasks = (response.data.tasks || []).map((task: BatchProcessTask): BatchProcessTask => {
+        // 去重：按 task_id 去重，保留最新的任务
+        const taskMap = new Map<string, BatchProcessTask>();
+        (response.data.tasks || []).forEach((task: BatchProcessTask) => {
+          const existing = taskMap.get(task.task_id);
+          if (!existing || new Date(task.updated_at) > new Date(existing.updated_at)) {
+            taskMap.set(task.task_id, task);
+          }
+        });
+        
+        const loadedTasks = Array.from(taskMap.values()).map((task: BatchProcessTask): BatchProcessTask => {
+          // 使用辅助函数提取 details 数组
+          const detailsArray = getDetailsArray(task.details);
+          
           // 提取简报信息（如果存在）
-          if (task.details && Array.isArray(task.details)) {
-            const summaryItem = task.details.find((d) => d.summary);
+          if (detailsArray.length > 0) {
+            const summaryItem = detailsArray.find((d) => d && d.summary);
             if (summaryItem && summaryItem.summary) {
               // 创建新对象而不是直接修改原对象
               return {
                 ...task,
                 summary: summaryItem.summary,
-                details: task.details.filter((d) => !d.summary),
+                details: detailsArray.filter((d) => !d || !d.summary),
               } as BatchProcessTask;
             }
           }
-          return task;
+          
+          // 确保 details 是数组格式
+          return {
+            ...task,
+            details: detailsArray,
+          } as BatchProcessTask;
         });
-        setTasks(loadedTasks);
+        
+        // 按创建时间倒序排序
+        loadedTasks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        
+        // 只在任务列表真正变化时才更新状态
+        setTasks(prevTasks => {
+          const prevTaskIds = new Set(prevTasks.map(t => t.task_id));
+          const newTaskIds = new Set(loadedTasks.map(t => t.task_id));
+          const taskIdsChanged = prevTaskIds.size !== newTaskIds.size || 
+            !Array.from(prevTaskIds).every(id => newTaskIds.has(id));
+          
+          // 检查任务状态是否有变化
+          const statusChanged = prevTasks.some(prevTask => {
+            const newTask = loadedTasks.find(t => t.task_id === prevTask.task_id);
+            return !newTask || newTask.status !== prevTask.status || 
+                   newTask.processed_count !== prevTask.processed_count;
+          });
+          
+          // 如果任务列表或状态有变化，更新状态
+          if (taskIdsChanged || statusChanged) {
+            return loadedTasks;
+          }
+          return prevTasks; // 没有变化，返回原状态
+        });
+        
+        // 只在非静默模式下记录加载成功
+        if (!silent) {
+          setProcessingLogs(prev => {
+            const newLogs = [
+              ...prev,
+              {
+                timestamp: new Date().toISOString(),
+                level: 'info' as const,
+                message: `✅ 任务列表加载成功: 共 ${loadedTasks.length} 个任务`,
+                logType: 'task-list' as const,
+              }
+            ];
+            return newLogs.slice(-200);
+          });
+        }
+        
         return loadedTasks;
       } else {
-        setError("加载任务列表失败");
+        if (!silent) {
+          setError("加载任务列表失败");
+        }
         return [];
       }
     } catch (err) {
       const apiErr = err as ApiError;
-      setError(apiErr.message || "加载任务列表失败");
+      const errorMessage = apiErr.message || "加载任务列表失败";
+      if (!silent) {
+        setError(errorMessage);
+        // 5秒后自动清除错误消息
+        errorTimeoutRef.current = setTimeout(() => {
+          setError(null);
+          errorTimeoutRef.current = null;
+        }, 5000);
+      }
       return [];
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  };
+  }, [statusFilter]); // 依赖 statusFilter
 
   useEffect(() => {
     loadTasks();
-  }, [statusFilter]);
+  }, [loadTasks]);
 
-  // 加载当前任务的 AI 日志
-  const loadCurrentAiLogs = async (taskId: string) => {
+  // 当打开创建表单时，从缓存恢复配置
+  useEffect(() => {
+    if (showCreateForm) {
+      const cached = loadCachedFormData();
+      setFormData(prev => ({
+        ...prev,
+        operations: cached.operations,
+        translateOptions: cached.translateOptions,
+        polishOptions: cached.polishOptions,
+        batchSize: cached.batchSize,
+        continueOnError: cached.continueOnError,
+      }));
+      console.log('[useEffect] Restored form data from cache:', cached);
+    }
+  }, [showCreateForm]);
+
+  // 自动滚动日志到底部
+  useEffect(() => {
+    if (logsContainerRef.current && showLogs) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [processingLogs, showLogs]);
+
+  // 加载当前任务的详细处理日志
+  const loadProcessingLogs = async (taskId: string) => {
     try {
-      // 获取任务详情，找到当前正在处理的题目
-      const task = tasks.find(t => t.task_id === taskId);
-      if (!task || (task.status !== "processing" && task.status !== "pending")) {
-        setCurrentAiLogs([]);
-        return;
-      }
-
-      // 通过 API 获取最近的相关 AI 日志
       const token = typeof window !== "undefined" ? window.localStorage.getItem("ADMIN_TOKEN") : null;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 秒超时
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 秒超时
       
       try {
-        const res = await fetch(`/api/admin/question-processing/task-ai-logs?taskId=${encodeURIComponent(taskId)}&limit=5`, {
+        const res = await fetch(`/api/admin/question-processing/processing-logs?taskId=${encodeURIComponent(taskId)}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           signal: controller.signal,
         });
@@ -167,23 +353,37 @@ export default function QuestionProcessingPage() {
         if (res.ok) {
           const json = await res.json();
           if (json.ok && json.data?.logs) {
-            setCurrentAiLogs(json.data.logs);
+            // 将后端日志转换为前端日志格式
+            const formattedLogs = json.data.logs.map((log: any) => ({
+              timestamp: log.timestamp,
+              level: log.level,
+              message: log.message,
+              questionId: log.questionId,
+              operation: log.operation,
+              aiProvider: log.aiProvider,
+              logType: log.logType === 'server' ? 'task-processing' as const : 'task-processing' as const, // 服务器日志也显示为任务处理类型
+              taskId: taskId, // 添加任务ID
+            }));
+            
+            // 添加到处理日志中
+            setProcessingLogs(prev => {
+              // 合并日志，避免重复
+              const existingMessages = new Set(prev.map(l => l.message));
+              const newLogs = formattedLogs.filter((l: any) => !existingMessages.has(l.message));
+              const combined = [...prev, ...newLogs];
+              return combined.slice(-200); // 只保留最近200条
+            });
           }
-        } else {
-          // 如果返回错误，不更新日志，但也不抛出错误（避免影响主流程）
-          console.warn(`[loadCurrentAiLogs] API returned ${res.status}`);
         }
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
-        if (fetchError.name === 'AbortError') {
-          console.warn("[loadCurrentAiLogs] Request timeout");
-        } else {
-          throw fetchError;
+        if (fetchError.name !== 'AbortError') {
+          console.warn("[loadProcessingLogs] Request failed:", fetchError);
         }
       }
     } catch (e) {
-      // 静默处理错误，不抛出（避免影响主流程）
-      console.error("Failed to load AI logs:", e);
+      // 静默处理错误
+      console.error("Failed to load processing logs:", e);
     }
   };
 
@@ -199,8 +399,15 @@ export default function QuestionProcessingPage() {
 
     const checkAndRefresh = async () => {
       try {
-        // 先加载最新任务列表
-        const latestTasks = await loadTasks();
+        console.log('[Frontend] [checkAndRefresh] Starting refresh check...');
+        // 先加载最新任务列表（静默模式，避免产生过多日志）
+        const latestTasks = await loadTasks(true);
+        console.log('[Frontend] [checkAndRefresh] Loaded tasks:', latestTasks.length, latestTasks.map(t => ({
+          task_id: t.task_id.substring(0, 8),
+          status: t.status,
+          processed: t.processed_count,
+          total: t.total_questions
+        })));
         
         // 重置错误计数（成功加载）
         errorCountRef.current = 0;
@@ -209,19 +416,27 @@ export default function QuestionProcessingPage() {
         if (selectedTask && !isManuallyClosedRef.current) {
           const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
           if (updatedTask) {
+            console.log('[Frontend] [checkAndRefresh] Selected task updated:', {
+              task_id: updatedTask.task_id.substring(0, 8),
+              status: updatedTask.status,
+              processed: updatedTask.processed_count,
+              total: updatedTask.total_questions
+            });
             setSelectedTask(updatedTask);
             // 如果任务已完成、失败或取消，停止刷新
             if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled") {
+              console.log('[Frontend] [checkAndRefresh] Task finished, stopping refresh');
               if (detailRefreshRef.current) {
                 clearInterval(detailRefreshRef.current);
                 detailRefreshRef.current = null;
               }
               return;
             }
-            // 如果任务正在处理，加载 AI 日志
+            // 如果任务正在处理，加载详细日志
             if (updatedTask.status === "processing") {
-              loadCurrentAiLogs(updatedTask.task_id).catch((e) => {
-                console.error("Failed to load AI logs:", e);
+              console.log('[Frontend] [checkAndRefresh] Task still processing, loading logs...');
+              loadProcessingLogs(updatedTask.task_id).catch((e) => {
+                console.error("Failed to load processing logs:", e);
               });
             }
           }
@@ -231,10 +446,53 @@ export default function QuestionProcessingPage() {
         const processingTasks = latestTasks.filter(
           (t) => t.status === "pending" || t.status === "processing"
         );
+        console.log('[Frontend] [checkAndRefresh] Processing tasks found:', processingTasks.length);
+
+        // 为每个正在处理的任务添加日志（只在进度变化时）
+        processingTasks.forEach(task => {
+          setProcessingLogs(prev => {
+            // 检查是否已经有这个任务的最新日志
+            const lastLog = prev.filter(l => l.taskId === task.task_id && l.message.includes('进度:')).pop();
+            const currentProgress = `${task.processed_count}/${task.total_questions} (${getProgress(task)}%)`;
+            
+            // 如果进度没有变化，不添加新日志
+            if (lastLog && lastLog.message.includes(currentProgress)) {
+              return prev;
+            }
+            
+            const statusEmoji = task.status === 'processing' ? '⚙️' : '⏳';
+            const newLogs = [
+              ...prev,
+              {
+                timestamp: new Date().toISOString(),
+                level: 'info' as const,
+                message: `${statusEmoji} 任务 ${task.task_id.substring(0, 8)}... 进度: ${currentProgress} | 成功: ${task.succeeded_count} | 失败: ${task.failed_count}`,
+                taskId: task.task_id,
+                logType: 'task-processing' as const,
+              }
+            ];
+            // 只保留最近200条日志
+            return newLogs.slice(-200);
+          });
+        });
 
         if (processingTasks.length === 0) {
           // 没有正在处理的任务，停止自动刷新
           setAutoRefresh(false);
+          setProcessingLogs(prev => {
+            const completedTasks = latestTasks.filter(t => t.status === 'completed');
+            const failedTasks = latestTasks.filter(t => t.status === 'failed');
+            const newLogs = [
+              ...prev,
+              {
+                timestamp: new Date().toISOString(),
+                level: 'info' as const,
+                message: `✅ 所有任务已完成 | 已完成: ${completedTasks.length} | 失败: ${failedTasks.length} | 停止自动刷新`,
+                logType: 'task-processing' as const,
+              }
+            ];
+            return newLogs.slice(-200);
+          });
           return;
         }
 
@@ -257,17 +515,56 @@ export default function QuestionProcessingPage() {
         if (hasStuckTasks) {
           console.warn("[BatchProcess] 检测到任务可能卡住（超过 5 分钟未更新），停止自动刷新");
           setAutoRefresh(false);
+          setProcessingLogs(prev => {
+            const newLogs = [
+              ...prev,
+              {
+                timestamp: new Date().toISOString(),
+                level: 'warn' as const,
+                message: '⚠️ 检测到任务可能卡住（超过 5 分钟未更新），已停止自动刷新',
+                logType: 'task-processing' as const,
+              }
+            ];
+            return newLogs.slice(-200);
+          });
           return;
         }
       } catch (e) {
         // 错误处理：增加错误计数
         errorCountRef.current += 1;
+        const errorMessage = e instanceof Error ? e.message : String(e);
         console.error("[BatchProcess] 刷新任务列表失败:", e);
+        
+        // 添加错误日志
+        setProcessingLogs(prev => {
+          const newLogs = [
+            ...prev,
+            {
+              timestamp: new Date().toISOString(),
+              level: 'error' as const,
+              message: `刷新任务列表失败: ${errorMessage}`,
+              logType: 'task-list' as const,
+            }
+          ];
+          return newLogs.slice(-100);
+        });
         
         // 如果连续失败超过最大次数，停止自动刷新
         if (errorCountRef.current >= MAX_ERROR_COUNT) {
           console.error(`[BatchProcess] 连续失败 ${MAX_ERROR_COUNT} 次，停止自动刷新`);
           setAutoRefresh(false);
+          setProcessingLogs(prev => {
+            const newLogs = [
+              ...prev,
+              {
+                timestamp: new Date().toISOString(),
+                level: 'error' as const,
+                message: `连续失败 ${MAX_ERROR_COUNT} 次，停止自动刷新`,
+                logType: 'task-list' as const,
+              }
+            ];
+            return newLogs.slice(-200);
+          });
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
@@ -291,7 +588,7 @@ export default function QuestionProcessingPage() {
         intervalRef.current = null;
       }
     };
-  }, [autoRefresh, selectedTask, tasks]);
+  }, [autoRefresh, selectedTask?.task_id ?? null, loadTasks]); // 包含 loadTasks 依赖
 
   // 当任务详情窗口打开时，自动刷新该任务
   useEffect(() => {
@@ -325,7 +622,7 @@ export default function QuestionProcessingPage() {
         }
 
         try {
-          const latestTasks = await loadTasks();
+          const latestTasks = await loadTasks(true); // 静默模式，避免产生过多日志
           const updatedTask = latestTasks.find(t => t.task_id === taskId);
           
           if (updatedTask) {
@@ -351,9 +648,9 @@ export default function QuestionProcessingPage() {
               return current;
             });
             
-            // 加载 AI 日志（不阻塞，失败也不影响主流程）
-            loadCurrentAiLogs(taskId).catch((e) => {
-              console.error("Failed to load AI logs:", e);
+            // 加载详细处理日志（不阻塞，失败也不影响主流程）
+            loadProcessingLogs(taskId).catch((e) => {
+              console.error("Failed to load processing logs:", e);
             });
           } else {
             // 任务不存在，停止刷新
@@ -402,7 +699,7 @@ export default function QuestionProcessingPage() {
         detailRefreshRef.current = null;
       }
     };
-  }, [selectedTask?.task_id, selectedTask?.status]); // 只依赖 task_id 和 status，避免频繁重建
+  }, [selectedTask?.task_id ?? null, selectedTask?.status ?? null, loadTasks]); // 使用 null 确保依赖数组大小一致
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -435,26 +732,87 @@ export default function QuestionProcessingPage() {
         payload.polishOptions = formData.polishOptions;
       }
 
-      const response = await apiPost<{ task_id: string }>(
+      const response = await apiPost<{ taskId?: string; task_id?: string }>(
         "/api/admin/question-processing/batch-process",
         payload
       );
 
-      // apiPost 成功时返回 ApiSuccess，失败时抛出 ApiError
+      // apiPost 直接返回 data，不是包装对象
+      // API返回的是 taskId 或 task_id
+      const taskId = response?.taskId || response?.task_id;
+      
+      // 保存任务配置到 localStorage（不保存 questionIds，因为每次可能不同）
+      saveCachedFormData({
+        operations: formData.operations,
+        translateOptions: formData.translateOptions,
+        polishOptions: formData.polishOptions,
+        batchSize: formData.batchSize,
+        continueOnError: formData.continueOnError,
+      });
+      
       setShowCreateForm(false);
+      // 重置表单，但保留配置（下次打开时会从缓存加载）
       setFormData({
         questionIds: "",
-        operations: [],
-        translateOptions: { from: "zh", to: ["ja"] },
-        polishOptions: { locale: "zh-CN" },
-        batchSize: 10,
-        continueOnError: true,
+        operations: formData.operations, // 保留操作类型
+        translateOptions: formData.translateOptions, // 保留翻译选项
+        polishOptions: formData.polishOptions, // 保留润色选项
+        batchSize: formData.batchSize, // 保留批次大小
+        continueOnError: formData.continueOnError, // 保留错误处理选项
       });
+      console.log('[handleCreateTask] Task created, taskId:', taskId, 'response:', response);
+      
+      if (!taskId) {
+        console.error('[handleCreateTask] ❌ Task ID is missing! Response:', response);
+        throw new Error('任务创建成功但未返回任务ID');
+      }
+      
       await loadTasks();
       setAutoRefresh(true);
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'info' as const,
+            message: `✅ 任务创建成功: ${taskId || 'unknown'}`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          },
+          {
+            timestamp: new Date().toISOString(),
+            level: 'info' as const,
+            message: `🔄 已启动自动刷新，将每5秒更新一次任务状态`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
     } catch (err) {
       const apiErr = err as ApiError;
-      setError(apiErr.message || "创建任务失败");
+      const errorMessage = apiErr.message || "创建任务失败";
+      setError(errorMessage);
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'error' as const,
+            message: `创建任务失败: ${errorMessage}`,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-100);
+      });
+      // 5秒后自动清除错误消息
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+      errorTimeoutRef.current = setTimeout(() => {
+        setError(null);
+        errorTimeoutRef.current = null;
+      }, 5000);
     } finally {
       setCreating(false);
     }
@@ -578,8 +936,20 @@ export default function QuestionProcessingPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            onClick={() => {
+              setError(null);
+              if (errorTimeoutRef.current) {
+                clearTimeout(errorTimeoutRef.current);
+                errorTimeoutRef.current = null;
+              }
+            }}
+            className="ml-4 text-red-700 hover:text-red-900"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -968,6 +1338,159 @@ export default function QuestionProcessingPage() {
         )}
       </div>
 
+      {/* 实时日志展示卡片 */}
+      <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
+        <div className="p-4 bg-gray-50 border-b flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold">实时处理日志</h2>
+            <button
+              onClick={() => setShowLogs(!showLogs)}
+              className="text-sm text-gray-600 hover:text-gray-800"
+            >
+              {showLogs ? "隐藏" : "显示"}
+            </button>
+            <button
+              onClick={() => setProcessingLogs([])}
+              className="text-sm text-red-600 hover:text-red-800"
+            >
+              清空日志
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  // 格式化所有日志
+                  const logText = processingLogs.map(log => {
+                    const time = new Date(log.timestamp).toLocaleString('zh-CN');
+                    const level = log.level.toUpperCase();
+                    const logType = log.logType === 'task-list' ? '任务列表' : log.logType === 'task-processing' ? '任务处理' : '';
+                    const taskId = log.taskId ? `Task: ${log.taskId.substring(0, 8)}...` : '';
+                    const questionId = log.questionId ? `Q${log.questionId}` : '';
+                    const aiProvider = log.aiProvider || '';
+                    
+                    const parts = [
+                      `[${time}]`,
+                      `[${level}]`,
+                      logType ? `[${logType}]` : '',
+                      taskId ? `[${taskId}]` : '',
+                      questionId ? `[${questionId}]` : '',
+                      aiProvider ? `[${aiProvider}]` : '',
+                      log.message
+                    ].filter(Boolean);
+                    
+                    return parts.join(' ');
+                  }).join('\n');
+                  
+                  await navigator.clipboard.writeText(logText);
+                  setCopySuccess(true);
+                  setTimeout(() => setCopySuccess(false), 2000);
+                } catch (err) {
+                  console.error('Failed to copy logs:', err);
+                  // 降级方案：使用传统方法
+                  const textArea = document.createElement('textarea');
+                  textArea.value = processingLogs.map(log => {
+                    const time = new Date(log.timestamp).toLocaleString('zh-CN');
+                    const level = log.level.toUpperCase();
+                    const logType = log.logType === 'task-list' ? '任务列表' : log.logType === 'task-processing' ? '任务处理' : '';
+                    const taskId = log.taskId ? `Task: ${log.taskId.substring(0, 8)}...` : '';
+                    const questionId = log.questionId ? `Q${log.questionId}` : '';
+                    const aiProvider = log.aiProvider || '';
+                    
+                    const parts = [
+                      `[${time}]`,
+                      `[${level}]`,
+                      logType ? `[${logType}]` : '',
+                      taskId ? `[${taskId}]` : '',
+                      questionId ? `[${questionId}]` : '',
+                      aiProvider ? `[${aiProvider}]` : '',
+                      log.message
+                    ].filter(Boolean);
+                    
+                    return parts.join(' ');
+                  }).join('\n');
+                  textArea.style.position = 'fixed';
+                  textArea.style.opacity = '0';
+                  document.body.appendChild(textArea);
+                  textArea.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(textArea);
+                  setCopySuccess(true);
+                  setTimeout(() => setCopySuccess(false), 2000);
+                }
+              }}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              {copySuccess ? '✅ 已复制' : '📋 复制全部日志'}
+            </button>
+          </div>
+          <div className="text-sm text-gray-500">
+            日志数量: {processingLogs.length}
+          </div>
+        </div>
+        {showLogs && (
+          <div className="p-4">
+            <div 
+              ref={logsContainerRef}
+              className="bg-gray-900 text-green-400 font-mono text-xs rounded-lg p-4 max-h-96 overflow-y-auto"
+            >
+              {processingLogs.length === 0 ? (
+                <div className="text-gray-500">暂无日志，等待任务处理...</div>
+              ) : (
+                processingLogs.map((log, idx) => (
+                  <div
+                    key={idx}
+                    className={`mb-1 ${
+                      log.level === 'error'
+                        ? 'text-red-400'
+                        : log.level === 'warn'
+                        ? 'text-yellow-400'
+                        : 'text-green-400'
+                    }`}
+                  >
+                    <span className="text-gray-500">
+                      [{new Date(log.timestamp).toLocaleTimeString('zh-CN')}]
+                    </span>
+                    <span className="ml-2">
+                      [{log.level.toUpperCase()}]
+                    </span>
+                    {log.logType && (
+                      <span className={`ml-2 ${
+                        log.logType === 'task-list' 
+                          ? 'text-gray-400' 
+                          : log.message.includes('🔥') || log.message.includes('processBatchAsync') || log.message.includes('STARTED') || log.message.includes('About to call')
+                          ? 'text-yellow-400 font-bold'
+                          : 'text-blue-400'
+                      }`}>
+                        [{log.logType === 'task-list' 
+                          ? '任务列表' 
+                          : log.message.includes('🔥') || log.message.includes('processBatchAsync') || log.message.includes('STARTED') || log.message.includes('About to call')
+                          ? '服务器日志'
+                          : '任务处理'}]
+                      </span>
+                    )}
+                    {log.taskId && (
+                      <span className="ml-2 text-blue-400">
+                        [Task: {log.taskId.substring(0, 8)}...]
+                      </span>
+                    )}
+                    {log.questionId && (
+                      <span className="ml-2 text-cyan-400">
+                        [Q{log.questionId}]
+                      </span>
+                    )}
+                    {log.aiProvider && (
+                      <span className="ml-2 text-purple-400">
+                        [{log.aiProvider}]
+                      </span>
+                    )}
+                    <span className="ml-2">{log.message}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 任务详情弹窗 */}
       {selectedTask && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1082,14 +1605,18 @@ export default function QuestionProcessingPage() {
                   )}
                   
                   {/* AI 对话详情 - 从子任务详细信息中显示 */}
-                  {selectedTask.details && selectedTask.details.filter((d: any) => !d.summary && d.subtasks && d.subtasks.length > 0).length > 0 && (
+                  {(() => {
+                    const detailsArray = getDetailsArray(selectedTask.details);
+                    const validDetails = detailsArray.filter((d: any) => d && !d.summary && d.subtasks && Array.isArray(d.subtasks) && d.subtasks.length > 0);
+                    return validDetails.length > 0;
+                  })() && (
                     <div className="col-span-2">
                       <label className="text-sm font-medium text-gray-700">
                         AI 服务对话详情（所有操作）
                       </label>
                       <div className="mt-2 max-h-96 overflow-y-auto border rounded p-3 bg-gray-50 space-y-4">
-                        {selectedTask.details
-                          .filter((d: any) => !d.summary && d.subtasks && d.subtasks.length > 0)
+                        {getDetailsArray(selectedTask.details)
+                          .filter((d: any) => d && !d.summary && d.subtasks && Array.isArray(d.subtasks) && d.subtasks.length > 0)
                           .map((detail: any, detailIdx: number) => (
                             <div key={detailIdx} className="border-b border-gray-200 pb-4 last:border-b-0">
                               <div className="text-xs font-semibold text-gray-800 mb-2">
@@ -1317,13 +1844,20 @@ export default function QuestionProcessingPage() {
                 )}
 
                 {/* 详情列表 */}
-                {selectedTask.details && selectedTask.details.filter((d: any) => !d.summary).length > 0 && (
+                {(() => {
+                  const detailsArray = getDetailsArray(selectedTask.details);
+                  const validDetails = detailsArray.filter((d: any) => d && !d.summary);
+                  return validDetails.length > 0;
+                })() && (
                   <div>
                     <label className="text-sm font-medium text-gray-700">
                       处理详情（包含子任务级别的AI对答追踪）
                     </label>
                     <div className="mt-2 max-h-96 overflow-y-auto border rounded p-3 bg-gray-50 space-y-4">
-                      {selectedTask.details.slice(0, 10).map((detail, idx) => (
+                      {getDetailsArray(selectedTask.details)
+                        .filter((d: any) => d && !d.summary)
+                        .slice(0, 10)
+                        .map((detail, idx) => (
                         <div key={idx} className="border-b border-gray-200 pb-4 last:border-b-0">
                           <div className="text-sm font-semibold text-gray-800 mb-2">
                             题目 {detail.questionId}: {detail.operations.join(", ")} - {detail.status}
@@ -1398,9 +1932,12 @@ export default function QuestionProcessingPage() {
                           )}
                         </div>
                       ))}
-                      {selectedTask.details.length > 10 && (
+                      {(() => {
+                        const detailsArray = getDetailsArray(selectedTask.details);
+                        return detailsArray.length > 10;
+                      })() && (
                         <div className="text-xs text-gray-500 mt-2 text-center">
-                          还有 {selectedTask.details.length - 10} 条记录...
+                          还有 {getDetailsArray(selectedTask.details).length - 10} 条记录...
                         </div>
                       )}
                     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,34 @@ async function fetchSummary(dateISO: string, token?: string): Promise<SummaryRes
     } : {},
   });
   return (await res.json()) as SummaryResp;
+}
+
+type ProviderStatsResp = {
+  ok: boolean;
+  data?: Array<{
+    provider: string;
+    model: string | null;
+    scene: string | null;
+    total_calls: number;
+    total_success: number;
+    total_error: number;
+    success_rate: string;
+  }>;
+  message?: string;
+};
+
+async function fetchProviderStats(dateISO: string, token?: string): Promise<ProviderStatsResp> {
+  const base = typeof window !== "undefined" 
+    ? window.location.origin 
+    : process.env.NEXT_PUBLIC_APP_BASE_URL ?? "";
+  const url = `${base}/api/admin/ai/stats/providers?date=${encodeURIComponent(dateISO)}`;
+  const res = await fetch(url, { 
+    cache: "no-store",
+    headers: token ? {
+      "Authorization": `Bearer ${token}`,
+    } : {},
+  });
+  return (await res.json()) as ProviderStatsResp;
 }
 
 async function rebuildSummary(dateISO: string, token?: string): Promise<{ ok: boolean; message?: string }> {
@@ -89,6 +117,37 @@ async function prewarmCache(token?: string): Promise<{ ok: boolean; message?: st
   return (await res.json()) as { ok: boolean; message?: string; data?: any };
 }
 
+type HeartbeatResp = {
+  ok: boolean;
+  data?: {
+    checkedAt: string;
+    providers: Array<{
+      id: string;
+      label: string;
+      mode: "local" | "remote";
+      endpoint: string;
+      status: "up" | "down";
+      latencyMs: number | null;
+      lastError: string | null;
+    }>;
+  };
+  message?: string;
+};
+
+async function fetchHeartbeat(token?: string): Promise<HeartbeatResp> {
+  const base = typeof window !== "undefined"
+    ? window.location.origin
+    : process.env.NEXT_PUBLIC_APP_BASE_URL ?? "";
+  const url = `${base}/api/admin/ai/heartbeat`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: token ? {
+      "Authorization": `Bearer ${token}`,
+    } : {},
+  });
+  return (await res.json()) as HeartbeatResp;
+}
+
 // 从 localStorage 读取刷新配置
 function getRefreshConfig() {
   if (typeof window === "undefined") return { enabled: false, intervalMinutes: 5 };
@@ -113,6 +172,7 @@ function saveRefreshConfig(config: { enabled: boolean; intervalMinutes: number }
 export default function AdminAiMonitorPage() {
   const [dateISO, setDateISO] = useState(() => new Date().toISOString().slice(0, 10));
   const [resp, setResp] = useState<SummaryResp | null>(null);
+  const [providerStats, setProviderStats] = useState<ProviderStatsResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildMessage, setRebuildMessage] = useState<string | null>(null);
@@ -121,14 +181,21 @@ export default function AdminAiMonitorPage() {
   const [refreshConfig, setRefreshConfig] = useState(getRefreshConfig);
   const [showRefreshConfig, setShowRefreshConfig] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [heartbeat, setHeartbeat] = useState<HeartbeatResp | null>(null);
+  const [loadingHeartbeat, setLoadingHeartbeat] = useState(false);
+  const [heartbeatError, setHeartbeatError] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
       setLoading(true);
       // 从 localStorage 获取 token（如果存在）
       const token = typeof window !== "undefined" ? localStorage.getItem("ADMIN_TOKEN") : undefined;
-      const data = await fetchSummary(dateISO, token || undefined);
-      setResp(data);
+      const [summaryData, statsData] = await Promise.all([
+        fetchSummary(dateISO, token || undefined),
+        fetchProviderStats(dateISO, token || undefined),
+      ]);
+      setResp(summaryData);
+      setProviderStats(statsData);
       setLoading(false);
       setLastRefreshTime(new Date());
     } catch (err) {
@@ -137,12 +204,31 @@ export default function AdminAiMonitorPage() {
     }
   };
 
+  const fetchHeartbeatData = useCallback(async () => {
+    try {
+      setLoadingHeartbeat(true);
+      setHeartbeatError(null);
+      const token = typeof window !== "undefined" ? localStorage.getItem("ADMIN_TOKEN") : undefined;
+      const data = await fetchHeartbeat(token || undefined);
+      if (!data.ok) {
+        throw new Error(data.message || "心跳检查失败");
+      }
+      setHeartbeat(data);
+    } catch (err: any) {
+      setHeartbeatError(err?.message ?? "心跳检查失败");
+    } finally {
+      setLoadingHeartbeat(false);
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     let pollTimer: NodeJS.Timeout | null = null;
     let autoRefreshTimer: NodeJS.Timeout | null = null;
+    let heartbeatTimer: NodeJS.Timeout | null = null;
 
     loadData();
+    fetchHeartbeatData();
 
     // 如果刚执行了重跑，10秒后自动刷新
     if (rebuildMessage) {
@@ -165,12 +251,20 @@ export default function AdminAiMonitorPage() {
       }, intervalMs);
     }
 
+    // 心跳监控轮询（每60秒）
+    heartbeatTimer = setInterval(() => {
+      if (mounted) {
+        fetchHeartbeatData();
+      }
+    }, 60000);
+
     return () => {
       mounted = false;
       if (pollTimer) clearTimeout(pollTimer);
       if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
     };
-  }, [dateISO, rebuildMessage, refreshConfig.enabled, refreshConfig.intervalMinutes]);
+  }, [dateISO, rebuildMessage, refreshConfig.enabled, refreshConfig.intervalMinutes, fetchHeartbeatData]);
 
   const handleRebuild = async () => {
     try {
@@ -300,20 +394,17 @@ export default function AdminAiMonitorPage() {
     return <div className="p-4">加载中...</div>;
   }
 
-  if (!resp?.ok || !resp.data) {
-    return <div className="p-4 text-red-600">加载失败：{resp?.message ?? "unknown error"}</div>;
-  }
-
-  const d = resp.data;
-  const totals = d.totals || {};
-  const totalCalls = d.totalCalls || totals.totalCalls || 0;
-  const avgCost = d.avgCostUsd || d.avgCost || totals.avgCost || totals.avgCostUsd || 0;
-  const cacheHitRate = d.cacheHitRate || totals.cacheHitRate || 0;
-  const ragHitRate = d.ragHitRate || totals.ragHitRate || 0;
-  const blocked = d.blocked || 0;
-  const needsHuman = d.needsHuman || 0;
-  const locales = d.locales || {};
-  const topQuestions = d.topQuestions || [];
+  // 即使 summary 失败，也显示页面，但显示错误提示
+  const d = resp?.data;
+  const totals = d?.totals || {};
+  const totalCalls = d?.totalCalls || totals.totalCalls || 0;
+  const avgCost = d?.avgCostUsd || d?.avgCost || totals.avgCost || totals.avgCostUsd || 0;
+  const cacheHitRate = d?.cacheHitRate || totals.cacheHitRate || 0;
+  const ragHitRate = d?.ragHitRate || totals.ragHitRate || 0;
+  const blocked = d?.blocked || 0;
+  const needsHuman = d?.needsHuman || 0;
+  const locales = d?.locales || {};
+  const topQuestions = d?.topQuestions || [];
 
   // 计算 locales 饼图数据
   const localeEntries = Object.entries(locales).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -466,20 +557,104 @@ export default function AdminAiMonitorPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="总调用" value={totalCalls} />
-        <Stat label="平均成本(USD)" value={avgCost.toFixed(4)} />
-        <Stat label="缓存命中率" value={(cacheHitRate * 100).toFixed(1) + "%"} />
-        <Stat label="RAG 命中率" value={(ragHitRate * 100).toFixed(1) + "%"} />
+      {!resp?.ok && (
+        <div className="p-3 rounded bg-red-100 text-red-700">
+          摘要数据加载失败：{resp?.message ?? "unknown error"}
+        </div>
+      )}
+
+      {/* AI 服务状态 */}
+      <div className="border rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">AI 服务状态</h2>
+          <button
+            onClick={fetchHeartbeatData}
+            disabled={loadingHeartbeat}
+            className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:bg-gray-400"
+          >
+            {loadingHeartbeat ? "刷新中..." : "立刻刷新"}
+          </button>
+        </div>
+        {heartbeatError && (
+          <p className="mb-2 text-sm text-red-500">
+            心跳检查失败：{heartbeatError}
+          </p>
+        )}
+        {heartbeat && heartbeat.data && (
+          <>
+            <p className="mb-3 text-xs text-gray-500">
+              最近检查时间：{new Date(heartbeat.data.checkedAt).toLocaleString()}
+            </p>
+            <div className="space-y-2">
+              {heartbeat.data.providers.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium">
+                      {p.label}{" "}
+                      <span className="ml-2 text-xs text-gray-500">
+                        ({p.mode === "local" ? "本地" : "远程"})
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {p.endpoint}
+                    </div>
+                    {p.lastError && p.status === "down" && (
+                      <div className="text-xs text-red-500 mt-1">
+                        错误：{p.lastError}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className="flex items-center justify-end gap-2">
+                      <span
+                        className={
+                          p.status === "up"
+                            ? "h-2 w-2 rounded-full bg-green-500"
+                            : "h-2 w-2 rounded-full bg-red-500"
+                        }
+                      />
+                      <span className="text-sm font-medium">
+                        {p.status === "up" ? "在线" : "离线"}
+                      </span>
+                    </div>
+                    {typeof p.latencyMs === "number" && (
+                      <div className="mt-1 text-xs text-gray-500">
+                        延迟：{p.latencyMs} ms
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {!heartbeat && !heartbeatError && !loadingHeartbeat && (
+          <p className="text-sm text-gray-500">暂无心跳数据。</p>
+        )}
+        {loadingHeartbeat && !heartbeat && (
+          <p className="text-sm text-gray-500">加载中...</p>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Stat label="Blocked" value={blocked} />
-        <Stat label="Needs human" value={needsHuman} />
-        <Stat label="Locales" value={localeTotal} />
-      </div>
+      {d && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Stat label="总调用" value={totalCalls} />
+            <Stat label="平均成本(USD)" value={avgCost.toFixed(4)} />
+            <Stat label="缓存命中率" value={(cacheHitRate * 100).toFixed(1) + "%"} />
+            <Stat label="RAG 命中率" value={(ragHitRate * 100).toFixed(1) + "%"} />
+          </div>
 
-      {localeEntries.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Stat label="Blocked" value={blocked} />
+            <Stat label="Needs human" value={needsHuman} />
+            <Stat label="Locales" value={localeTotal} />
+          </div>
+
+          {localeEntries.length > 0 && (
         <div>
           <h2 className="font-medium mb-2">语言分布（Top 5）</h2>
           <div className="border rounded-lg p-4">
@@ -506,22 +681,71 @@ export default function AdminAiMonitorPage() {
         </div>
       )}
 
+            <div>
+              <h2 className="font-medium mb-2">Top 问题</h2>
+              <ul className="list-disc pl-6">
+                {topQuestions.length > 0 ? (
+                  topQuestions.map((x, i) => {
+                    const question = "q" in x ? x.q : x.question;
+                    return (
+                      <li key={i} className="text-sm">
+                        {question} <span className="text-neutral-400">({x.count})</span>
+                      </li>
+                    );
+                  })
+                ) : (
+                  <li className="text-sm text-neutral-400">无数据</li>
+                )}
+              </ul>
+            </div>
+          </>
+      )}
+
+      {!d && (
+        <div className="p-4 text-gray-500 text-center">
+          暂无摘要数据
+        </div>
+      )}
+
+      {/* AI Provider 调用统计 */}
       <div>
-        <h2 className="font-medium mb-2">Top 问题</h2>
-        <ul className="list-disc pl-6">
-          {topQuestions.length > 0 ? (
-            topQuestions.map((x, i) => {
-              const question = "q" in x ? x.q : x.question;
-              return (
-                <li key={i} className="text-sm">
-                  {question} <span className="text-neutral-400">({x.count})</span>
-                </li>
-              );
-            })
-          ) : (
-            <li className="text-sm text-neutral-400">无数据</li>
-          )}
-        </ul>
+        <h2 className="font-medium mb-2">AI Provider 调用统计（{dateISO}）</h2>
+        {providerStats?.ok && providerStats.data && providerStats.data.length > 0 ? (
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Provider</th>
+                  <th className="px-4 py-2 text-left font-medium">Model</th>
+                  <th className="px-4 py-2 text-left font-medium">Scene</th>
+                  <th className="px-4 py-2 text-right font-medium">总调用</th>
+                  <th className="px-4 py-2 text-right font-medium">成功</th>
+                  <th className="px-4 py-2 text-right font-medium">失败</th>
+                  <th className="px-4 py-2 text-right font-medium">成功率</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {providerStats.data.map((stat, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-4 py-2">{stat.provider}</td>
+                    <td className="px-4 py-2 text-neutral-600">
+                      {stat.model ? (stat.model.length > 20 ? stat.model.substring(0, 20) + "..." : stat.model) : "-"}
+                    </td>
+                    <td className="px-4 py-2 text-neutral-600">{stat.scene || "-"}</td>
+                    <td className="px-4 py-2 text-right">{stat.total_calls}</td>
+                    <td className="px-4 py-2 text-right text-green-600">{stat.total_success}</td>
+                    <td className="px-4 py-2 text-right text-red-600">{stat.total_error}</td>
+                    <td className="px-4 py-2 text-right">{stat.success_rate}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="border rounded-lg p-4 text-sm text-neutral-400">
+            暂无数据
+          </div>
+        )}
       </div>
     </div>
   );

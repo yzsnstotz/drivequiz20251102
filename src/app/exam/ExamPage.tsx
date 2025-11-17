@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Clock, CheckSquare, XSquare, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import QuestionImage from '@/components/common/QuestionImage';
 import { loadAllQuestions } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
 
@@ -386,15 +386,13 @@ function ExamPage() {
         <div className="mb-6">
           <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
           {currentQuestion.image && (
-            <div className="mb-4 relative w-full aspect-video">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt={t('exam.image')}
-                fill
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
-                className="object-contain rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt={t('exam.image')}
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
+              className="relative w-full aspect-video"
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (

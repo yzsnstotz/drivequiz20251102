@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { apiPost } from "@/lib/apiClient.front";
 import Header from "@/components/common/Header";
 import { Send, X, MessageCircle } from "lucide-react";
+import { callAiDirect } from "@/lib/aiClient.front";
+import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 
 type Context = "license" | "vehicle" | "service" | "general";
 
@@ -31,6 +32,8 @@ function AIPageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [currentProvider, setCurrentProvider] = useState<"local" | "render">("render");
+  const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -39,6 +42,19 @@ function AIPageContent() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // 获取当前配置的 provider
+  useEffect(() => {
+    getCurrentAiProvider()
+      .then((config) => {
+        setCurrentProvider(config.provider);
+        setCurrentModel(config.model);
+      })
+      .catch((err) => {
+        console.warn("[AIPage] 获取 provider 配置失败，使用默认值:", err);
+        setCurrentProvider("render");
+      });
+  }, []);
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
@@ -57,26 +73,29 @@ function AIPageContent() {
     setError(null);
 
     try {
-      const response = await apiPost<{
-        answer: string;
-        sources?: Array<{
-          title: string;
-          url: string;
-          snippet?: string;
-        }>;
-      }>("/api/ai/ask", {
+      // 将 context 映射到 scene（如果需要）
+      // 当前 ai-service 可能不支持 context 参数，先使用 "chat" 作为默认场景
+      const scene = "chat"; // 可以根据 context 映射到不同的 scene
+
+      const payload = await callAiDirect({
+        provider: currentProvider,
         question: userMessage.content,
-        context: context,
         locale: "zh",
+        scene: scene,
+        model: currentModel,
       });
+
+      if (!payload.ok) {
+        throw new Error(payload.message || "AI 服务调用失败");
+      }
 
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: response.answer,
+        content: payload.data?.answer || "（空响应）",
         createdAt: Date.now(),
         context,
-        sources: response.sources,
+        sources: payload.data?.sources,
       };
 
       setMessages((prev) => [...prev, aiMessage]);

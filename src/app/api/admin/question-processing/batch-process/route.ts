@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300; // 300秒超时（Vercel Pro计划最多300秒，批量处理需要更长时间）
 
 import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
-import { badRequest, internalError, success, conflict, notFound } from "@/app/api/_lib/errors";
+import { badRequest, internalError, success, conflict, notFound, unauthorized } from "@/app/api/_lib/errors";
 import { db } from "@/lib/db";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -15,6 +15,129 @@ import {
   SubtaskDetail,
 } from "../_lib/batchProcessUtils";
 import { aiDb } from "@/lib/aiDb";
+
+/**
+ * 将服务器端日志追加到任务的 details 字段中
+ */
+async function appendServerLog(
+  taskId: string,
+  log: {
+    timestamp: string;
+    level: 'info' | 'warn' | 'error';
+    message: string;
+  }
+) {
+  try {
+    // 获取当前任务的 details
+    const task = await db
+      .selectFrom("batch_process_tasks")
+      .select(["details"])
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+
+    if (!task) return;
+
+    const currentDetails = task.details as any;
+    let detailsObj: any;
+    let serverLogs: any[] = [];
+    
+    // 处理 details 可能是数组或对象的情况
+    if (Array.isArray(currentDetails)) {
+      // 如果是数组，转换为对象格式，保留数组内容
+      detailsObj = {
+        items: currentDetails,
+        server_logs: []
+      };
+      serverLogs = [];
+    } else if (currentDetails && typeof currentDetails === 'object') {
+      // 如果是对象，保留现有结构
+      detailsObj = currentDetails;
+      serverLogs = currentDetails.server_logs || [];
+    } else {
+      // 如果是 null 或 undefined，创建新对象
+      detailsObj = { server_logs: [] };
+      serverLogs = [];
+    }
+    
+    // 追加新日志（最多保留500条）
+    serverLogs.push(log);
+    if (serverLogs.length > 500) {
+      serverLogs.shift(); // 移除最旧的日志
+    }
+    
+    // 更新 server_logs
+    detailsObj.server_logs = serverLogs;
+
+    // 更新数据库
+    await db
+      .updateTable("batch_process_tasks")
+      .set({
+        details: sql`${JSON.stringify(detailsObj)}::jsonb`,
+        updated_at: new Date(),
+      })
+      .where("task_id", "=", taskId)
+      .execute();
+  } catch (error) {
+    // 静默失败，不影响主流程
+    console.error(`[appendServerLog] Failed to append log for task ${taskId}:`, error);
+  }
+}
+
+/**
+ * 更新 details 字段，保留 server_logs
+ */
+async function updateDetailsWithServerLogs(
+  taskId: string,
+  detailsArray: any[]
+): Promise<any> {
+  try {
+    // 获取当前任务的 details
+    const task = await db
+      .selectFrom("batch_process_tasks")
+      .select(["details"])
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+
+    if (!task) {
+      // 如果任务不存在，直接返回数组格式的对象
+      return { items: detailsArray, server_logs: [] };
+    }
+
+    const currentDetails = task.details as any;
+    let detailsObj: any;
+    
+    // 处理 details 可能是数组或对象的情况
+    if (Array.isArray(currentDetails)) {
+      // 如果是数组，转换为对象格式
+      detailsObj = {
+        items: detailsArray,
+        server_logs: []
+      };
+    } else if (currentDetails && typeof currentDetails === 'object') {
+      // 如果是对象，保留 server_logs，更新 items
+      detailsObj = {
+        ...currentDetails,
+        items: detailsArray
+      };
+      // 确保 server_logs 存在
+      if (!detailsObj.server_logs) {
+        detailsObj.server_logs = [];
+      }
+    } else {
+      // 如果是 null 或 undefined，创建新对象
+      detailsObj = {
+        items: detailsArray,
+        server_logs: []
+      };
+    }
+    
+    return detailsObj;
+  } catch (error) {
+    console.error(`[updateDetailsWithServerLogs] Failed to get current details for task ${taskId}:`, error);
+    // 如果出错，返回基本格式
+    return { items: detailsArray, server_logs: [] };
+  }
+}
 
 /**
  * 生成任务完成简报（从数据库真实核验）
@@ -187,6 +310,14 @@ export const POST = withAdminAuth(async (req: Request) => {
       console.warn(`[API BatchProcess] [${requestId}] Failed to get admin token:`, (e as Error).message);
     }
 
+    // ✅ 强制校验：如果 adminToken 拿不到，直接拒绝请求，不创建任务
+    if (!adminToken) {
+      console.error(
+        `[API BatchProcess] [${requestId}] Admin token missing, abort batch process creation`
+      );
+      return unauthorized("Admin token is required for batch processing");
+    }
+
     // 验证操作选项
     if (input.operations.includes("translate") && !input.translateOptions) {
       return badRequest("translateOptions is required when 'translate' operation is included");
@@ -292,31 +423,109 @@ export const POST = withAdminAuth(async (req: Request) => {
     };
 
     // 分批处理（异步执行，不阻塞响应）
-    processBatchAsync(requestId, taskId, questions, input, results, adminToken).catch(async (error) => {
-      console.error(`[API BatchProcess] [${requestId}] Async batch processing failed:`, error);
-      // 如果异步处理失败，更新任务状态为失败
+    // 注意：在Serverless环境中，需要确保异步任务能够执行
+    // 使用立即执行的Promise确保任务开始执行
+    console.log(`[API BatchProcess] [${requestId}] Starting async batch processing for task ${taskId}`);
+    console.log(`[API BatchProcess] [${requestId}] Questions count: ${questions.length}, Operations: ${input.operations.join(", ")}, BatchSize: ${input.batchSize || 10}`);
+    
+    // 立即启动异步处理，不等待
+    const processingPromise = (async () => {
       try {
-        await db
-          .updateTable("batch_process_tasks")
-          .set({
-            status: "failed",
-            failed_count: results.failed,
-            errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-            details: sql`${JSON.stringify(results.details)}::jsonb`,
-            completed_at: new Date(),
-            updated_at: new Date(),
-          })
-          .where("task_id", "=", taskId)
-          .execute();
-        console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to failed`);
-      } catch (updateError) {
-        console.error(`[API BatchProcess] [${requestId}] Failed to update task status to failed:`, updateError);
+        console.log(`[API BatchProcess] [${requestId}] 🔥 About to call processBatchAsync...`);
+        // 记录调用日志
+        await appendServerLog(taskId, {
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: `🔥 About to call processBatchAsync...`,
+        });
+        
+        await processBatchAsync(requestId, taskId, questions, input, results, adminToken);
+        console.log(`[API BatchProcess] [${requestId}] ✅ processBatchAsync completed successfully`);
+        
+        // 记录完成日志
+        await appendServerLog(taskId, {
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: `✅ processBatchAsync completed successfully`,
+        });
+      } catch (error: any) {
+        console.error(`[API BatchProcess] [${requestId}] ❌ processBatchAsync failed:`, error);
+        console.error(`[API BatchProcess] [${requestId}] Error message:`, error?.message);
+        console.error(`[API BatchProcess] [${requestId}] Error stack:`, error?.stack);
+        throw error; // 重新抛出，让外层的 catch 处理
       }
-    });
+    })();
+    
+    console.log(`[API BatchProcess] [${requestId}] Async processing promise created, task will start processing`);
+    
+    // 在Serverless环境中，确保至少等待一小段时间让任务开始执行
+    // 这样可以避免函数在响应返回后立即被终止
+    if (process.env.VERCEL) {
+      console.log(`[API BatchProcess] [${requestId}] Vercel environment detected, waiting 100ms for task to start`);
+      // Vercel环境：等待100ms确保任务开始执行
+      processingPromise.catch(async (error) => {
+        console.error(`[API BatchProcess] [${requestId}] Async batch processing failed:`, error);
+        console.error(`[API BatchProcess] [${requestId}] Error stack:`, error?.stack);
+        // 如果异步处理失败，更新任务状态为失败
+        try {
+          const detailsObj = await updateDetailsWithServerLogs(taskId, results.details);
+          await db
+            .updateTable("batch_process_tasks")
+            .set({
+              status: "failed",
+              failed_count: results.failed,
+              errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+              details: sql`${JSON.stringify(detailsObj)}::jsonb`,
+              completed_at: new Date(),
+              updated_at: new Date(),
+            })
+            .where("task_id", "=", taskId)
+            .execute();
+          console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to failed`);
+        } catch (updateError) {
+          console.error(`[API BatchProcess] [${requestId}] Failed to update task status to failed:`, updateError);
+        }
+      });
+      
+      // 等待一小段时间确保任务开始执行
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log(`[API BatchProcess] [${requestId}] Wait completed, returning response`);
+    } else {
+      // 本地环境：正常处理
+      console.log(`[API BatchProcess] [${requestId}] Local environment, async processing started`);
+      // 在本地环境也等待一小段时间，确保异步函数开始执行
+      await new Promise(resolve => setTimeout(resolve, 200));
+      console.log(`[API BatchProcess] [${requestId}] Wait completed in local environment, returning response`);
+      processingPromise.catch(async (error) => {
+        console.error(`[API BatchProcess] [${requestId}] Async batch processing failed:`, error);
+        console.error(`[API BatchProcess] [${requestId}] Error stack:`, error?.stack);
+        // 如果异步处理失败，更新任务状态为失败
+        try {
+          const detailsObj = await updateDetailsWithServerLogs(taskId, results.details);
+          await db
+            .updateTable("batch_process_tasks")
+            .set({
+              status: "failed",
+              failed_count: results.failed,
+              errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+              details: sql`${JSON.stringify(detailsObj)}::jsonb`,
+              completed_at: new Date(),
+              updated_at: new Date(),
+            })
+            .where("task_id", "=", taskId)
+            .execute();
+          console.log(`[API BatchProcess] [${requestId}] Task ${taskId} status updated to failed`);
+        } catch (updateError) {
+          console.error(`[API BatchProcess] [${requestId}] Failed to update task status to failed:`, updateError);
+        }
+      });
+    }
 
     // 立即返回任务ID，不等待处理完成
+    // 注意：返回 taskId 和 task_id 两个字段以兼容不同的前端代码
     return success({
       taskId,
+      task_id: taskId, // 兼容字段
       total: questions.length,
       status: "processing",
       message: "Batch processing started. Use GET endpoint to check progress.",
@@ -417,10 +626,72 @@ async function processBatchAsync(
   },
   adminToken?: string // 管理员 token，用于跳过配额限制
 ) {
+  // 立即记录函数被调用
+  const startTime = new Date().toISOString();
+  console.log(`[BatchProcess] [${requestId}] 🔥 processBatchAsync FUNCTION CALLED for task ${taskId}`);
+  console.log(`[BatchProcess] [${requestId}] Function execution started at: ${startTime}`);
+  
+  // 将日志写入数据库
+  await appendServerLog(taskId, {
+    timestamp: startTime,
+    level: 'info',
+    message: `🔥 processBatchAsync FUNCTION CALLED for task ${taskId}`,
+  });
+  
   const batchSize = input.batchSize || 10;
   const totalBatches = Math.ceil(questions.length / batchSize);
 
-  console.log(`[BatchProcess] Task ${taskId} started: ${questions.length} questions, operations: ${input.operations.join(", ")}`);
+  // ✅ Provider 配额耗尽标志位：用于优雅停止整批任务
+  let providerQuotaExceeded = false;
+
+  console.log(`[BatchProcess] [${requestId}] ========== Task ${taskId} STARTED ==========`);
+  console.log(`[BatchProcess] [${requestId}] Questions: ${questions.length}, Operations: ${input.operations.join(", ")}, BatchSize: ${batchSize}, TotalBatches: ${totalBatches}`);
+  console.log(`[BatchProcess] [${requestId}] Task ID: ${taskId}, Request ID: ${requestId}`);
+  
+  // 将启动日志写入数据库
+  await appendServerLog(taskId, {
+    timestamp: new Date().toISOString(),
+    level: 'info',
+    message: `========== Task ${taskId} STARTED ========== | Questions: ${questions.length}, Operations: ${input.operations.join(", ")}, BatchSize: ${batchSize}, TotalBatches: ${totalBatches}`,
+  });
+  
+  // 立即更新数据库状态，确保任务已经开始执行（在Serverless环境中很重要）
+  try {
+    console.log(`[BatchProcess] [${requestId}] Updating task status to 'processing'...`);
+    await appendServerLog(taskId, {
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: `Updating task status to 'processing'...`,
+    });
+    
+    const updateResult = await db
+      .updateTable("batch_process_tasks")
+      .set({
+        status: "processing",
+        total_questions: questions.length,
+        updated_at: new Date(),
+      })
+      .where("task_id", "=", taskId)
+      .execute();
+    console.log(`[BatchProcess] [${requestId}] ✅ Task ${taskId} status updated to 'processing', total_questions set to ${questions.length}`);
+    console.log(`[BatchProcess] [${requestId}] Update result:`, updateResult);
+    
+    await appendServerLog(taskId, {
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: `✅ Task status updated to 'processing', total_questions set to ${questions.length}`,
+    });
+  } catch (updateError: any) {
+    console.error(`[BatchProcess] [${requestId}] ❌ Failed to update task status at start:`, updateError?.message);
+    console.error(`[BatchProcess] [${requestId}] Error stack:`, updateError?.stack);
+    
+    await appendServerLog(taskId, {
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      message: `❌ Failed to update task status at start: ${updateError?.message}`,
+    });
+    // 不抛出错误，继续执行
+  }
   
   // 辅助函数：获取场景配置
   const getSceneConfig = async (sceneKey: string, locale: string = "zh"): Promise<{
@@ -479,7 +750,48 @@ async function processBatchAsync(
     }
   };
   
+  // 确保在Serverless环境中任务能够开始执行
+  // 立即执行一个数据库操作，确保函数不会在响应返回后立即被终止
   try {
+    // 验证数据库连接
+    console.log(`[BatchProcess] [${requestId}] Verifying database connection...`);
+    const taskRecord = await db
+      .selectFrom("batch_process_tasks")
+      .select(["task_id", "status", "total_questions", "processed_count"])
+      .where("task_id", "=", taskId)
+      .executeTakeFirst();
+    console.log(`[BatchProcess] [${requestId}] ✅ Database connection verified`);
+    console.log(`[BatchProcess] [${requestId}] Current task record:`, {
+      task_id: taskRecord?.task_id,
+      status: taskRecord?.status,
+      total_questions: taskRecord?.total_questions,
+      processed_count: taskRecord?.processed_count,
+    });
+    
+    await appendServerLog(taskId, {
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: `✅ Database connection verified | Status: ${taskRecord?.status}, Total: ${taskRecord?.total_questions}, Processed: ${taskRecord?.processed_count}`,
+    });
+  } catch (dbError: any) {
+    console.error(`[BatchProcess] [${requestId}] ❌ Database connection failed:`, dbError?.message);
+    console.error(`[BatchProcess] [${requestId}] Error stack:`, dbError?.stack);
+    
+    await appendServerLog(taskId, {
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      message: `❌ Database connection failed: ${dbError?.message}`,
+    });
+    throw new Error(`Database connection failed: ${dbError?.message}`);
+  }
+
+  try {
+    console.log(`[BatchProcess] [${requestId}] Starting batch processing loop...`);
+    await appendServerLog(taskId, {
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: `Starting batch processing loop...`,
+    });
 
   // 辅助函数：检查任务是否已被取消，如果已取消则更新状态并返回 true
   let cancelledFlag = false; // 本地标志，避免重复查询
@@ -499,31 +811,59 @@ async function processBatchAsync(
     return false;
   };
 
+  console.log(`[BatchProcess] [${requestId}] Starting to process ${questions.length} questions in ${totalBatches} batches`);
+  
   for (let i = 0; i < questions.length; i += batchSize) {
     const batch = questions.slice(i, i + batchSize);
     const currentBatch = Math.floor(i / batchSize) + 1;
+    
+    console.log(`[BatchProcess] [${requestId}] ========== Batch ${currentBatch}/${totalBatches} ==========`);
+    console.log(`[BatchProcess] [${requestId}] Processing batch ${currentBatch} with ${batch.length} questions`);
 
     // 检查任务是否已被取消
     if (await checkCancelled()) {
-      console.log(`[BatchProcess] Task ${taskId} cancelled at batch ${currentBatch}`);
+      console.log(`[BatchProcess] [${requestId}] ❌ Task ${taskId} cancelled at batch ${currentBatch}`);
       return;
     }
 
+    // ✅ 检查 Provider 配额是否已耗尽
+    if (providerQuotaExceeded) {
+      console.log(
+        `[BatchProcess] [${requestId}] Provider quota already exceeded, stop processing further batches`
+      );
+      break;
+    }
+
     // 更新当前批次
-    await db
-      .updateTable("batch_process_tasks")
-      .set({
-        current_batch: currentBatch,
-        updated_at: new Date(),
-      })
-      .where("task_id", "=", taskId)
-      .execute();
+    try {
+      console.log(`[BatchProcess] [${requestId}] Updating task current_batch to ${currentBatch}...`);
+      await db
+        .updateTable("batch_process_tasks")
+        .set({
+          current_batch: currentBatch,
+          updated_at: new Date(),
+        })
+        .where("task_id", "=", taskId)
+        .execute();
+      console.log(`[BatchProcess] [${requestId}] ✅ Task current_batch updated to ${currentBatch}`);
+    } catch (updateError: any) {
+      console.error(`[BatchProcess] [${requestId}] ❌ Failed to update current_batch:`, updateError?.message);
+    }
 
     for (const question of batch) {
+      console.log(`[BatchProcess] [${requestId}] --- Processing question ${question.id} ---`);
       // 在处理每个题目前检查任务是否已被取消
       if (await checkCancelled()) {
         console.log(`[BatchProcess] Task ${taskId} cancelled at question ${question.id}`);
         return;
+      }
+
+      // ✅ 检查 Provider 配额是否已耗尽
+      if (providerQuotaExceeded) {
+        console.log(
+          `[BatchProcess] [${requestId}] Provider quota already exceeded, stop processing further questions`
+        );
+        break;
       }
       const questionResult = {
         questionId: question.id,
@@ -574,6 +914,15 @@ async function processBatchAsync(
             throw new Error("Task has been cancelled");
           }
 
+          // 记录操作开始日志
+          const operationName = operation === 'translate' ? '翻译' :
+                               operation === 'polish' ? '润色' :
+                               operation === 'fill_missing' ? '填漏' :
+                               operation === 'category_tags' ? '分类标签' :
+                               operation;
+          
+          console.log(`[BatchProcess] [${requestId}] 正在进行题目ID ${question.id} 的${operationName}任务`);
+
           // 在执行每个操作前，重新从数据库获取最新的 explanation（如果 fill_missing 已经更新了它）
           const currentQuestion = await db
             .selectFrom("questions")
@@ -612,11 +961,42 @@ async function processBatchAsync(
                 }
 
                 try {
+                  // 在每次翻译前，重新从数据库获取最新的 explanation（确保获取到之前翻译的explanation）
+                  const currentQuestionBeforeTranslate = await db
+                    .selectFrom("questions")
+                    .select(["content", "explanation"])
+                    .where("id", "=", question.id)
+                    .executeTakeFirst();
+
+                  if (!currentQuestionBeforeTranslate) {
+                    throw new Error("Question not found");
+                  }
+
+                  // 更新 sourceContent 中的 explanation，使用最新的多语言 explanation 对象
+                  let currentExplanation: string | null = null;
+                  if (currentQuestionBeforeTranslate.explanation) {
+                    if (typeof currentQuestionBeforeTranslate.explanation === "string") {
+                      currentExplanation = currentQuestionBeforeTranslate.explanation;
+                    } else if (typeof currentQuestionBeforeTranslate.explanation === "object" && currentQuestionBeforeTranslate.explanation !== null) {
+                      // 优先使用源语言（from）的explanation，如果没有则使用中文
+                      const fromLang = input.translateOptions!.from;
+                      currentExplanation = (currentQuestionBeforeTranslate.explanation as any)[fromLang] 
+                        || currentQuestionBeforeTranslate.explanation.zh 
+                        || null;
+                    }
+                  }
+
+                  // 更新 sourceContent，使用最新的 explanation
+                  const sourceContentWithLatestExplanation = {
+                    ...sourceContent,
+                    explanation: currentExplanation || undefined,
+                  };
+
                   // 构建问题文本
                   const questionText = [
-                    `Content: ${sourceContent.content}`,
-                    sourceContent.options && sourceContent.options.length ? `Options:\n- ${sourceContent.options.join("\n- ")}` : ``,
-                    sourceContent.explanation ? `Explanation: ${sourceContent.explanation}` : ``,
+                    `Content: ${sourceContentWithLatestExplanation.content}`,
+                    sourceContentWithLatestExplanation.options && sourceContentWithLatestExplanation.options.length ? `Options:\n- ${sourceContentWithLatestExplanation.options.join("\n- ")}` : ``,
+                    sourceContentWithLatestExplanation.explanation ? `Explanation: ${sourceContentWithLatestExplanation.explanation}` : ``,
                   ]
                     .filter(Boolean)
                     .join("\n");
@@ -627,11 +1007,12 @@ async function processBatchAsync(
 
                   // 调用翻译函数（带详细信息）
                   const translateResult = await translateWithPolish({
-                    source: sourceContent,
+                    source: sourceContentWithLatestExplanation,
                     from: input.translateOptions!.from,
                     to: targetLang,
                     adminToken,
                     returnDetail: true,
+                    mode: "batch", // ✅ 批量处理模式
                   });
 
                   // 处理返回结果（可能是结果对象或包含详细信息的对象）
@@ -669,46 +1050,39 @@ async function processBatchAsync(
                     throw new Error("Translation result is empty");
                   }
 
-                  // 保存翻译结果到 questions.content JSONB 字段
-                  // 获取当前题目内容
-                  const currentQuestion = await db
-                    .selectFrom("questions")
-                    .select(["content", "explanation"])
-                    .where("id", "=", question.id)
-                    .executeTakeFirst();
-
-                  if (!currentQuestion) {
-                    throw new Error("Question not found");
-                  }
-
                   // 更新 content JSONB 对象，添加目标语言
                   let updatedContent: any;
-                  if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
-                    updatedContent = { ...currentQuestion.content, [targetLang]: result.content };
-                  } else if (typeof currentQuestion.content === "string") {
+                  if (typeof currentQuestionBeforeTranslate.content === "object" && currentQuestionBeforeTranslate.content !== null) {
+                    updatedContent = { ...currentQuestionBeforeTranslate.content, [targetLang]: result.content };
+                  } else if (typeof currentQuestionBeforeTranslate.content === "string") {
                     // 如果原本是字符串，转换为 JSONB 对象
-                    updatedContent = { zh: currentQuestion.content, [targetLang]: result.content };
+                    updatedContent = { zh: currentQuestionBeforeTranslate.content, [targetLang]: result.content };
                   } else {
                     // 如果 content 为空或 null，直接创建新的 JSONB 对象
                     updatedContent = { [targetLang]: result.content };
                   }
 
                   // 更新 explanation JSONB 对象，添加目标语言
+                  // 重要：必须合并所有已翻译的语言，不能覆盖
                   let updatedExplanation: any = null;
                   if (result.explanation) {
                     const explanationStr = typeof result.explanation === "string" 
                       ? result.explanation 
                       : String(result.explanation);
                     
-                    if (currentQuestion.explanation && typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
-                      updatedExplanation = { ...currentQuestion.explanation, [targetLang]: explanationStr };
-                    } else if (typeof currentQuestion.explanation === "string") {
-                      updatedExplanation = { zh: currentQuestion.explanation, [targetLang]: explanationStr };
+                    if (currentQuestionBeforeTranslate.explanation && typeof currentQuestionBeforeTranslate.explanation === "object" && currentQuestionBeforeTranslate.explanation !== null) {
+                      // 合并现有的多语言 explanation，添加新的目标语言
+                      updatedExplanation = { ...currentQuestionBeforeTranslate.explanation, [targetLang]: explanationStr };
+                    } else if (typeof currentQuestionBeforeTranslate.explanation === "string") {
+                      // 如果原本是字符串，转换为 JSONB 对象并添加目标语言
+                      updatedExplanation = { zh: currentQuestionBeforeTranslate.explanation, [targetLang]: explanationStr };
                     } else {
+                      // 如果原本没有 explanation，创建新的 JSONB 对象
                       updatedExplanation = { [targetLang]: explanationStr };
                     }
-                  } else if (currentQuestion.explanation) {
-                    updatedExplanation = currentQuestion.explanation;
+                  } else if (currentQuestionBeforeTranslate.explanation) {
+                    // 如果翻译结果没有 explanation，保留原有的 explanation
+                    updatedExplanation = currentQuestionBeforeTranslate.explanation;
                   }
 
                   // 更新 options（如果需要支持多语言选项，可以类似处理）
@@ -728,17 +1102,64 @@ async function processBatchAsync(
                   translateSuccessCount++;
                 } catch (translateError: any) {
                   translateFailureCount++;
-                  const errorMsg = sanitizeError(translateError);
+                  const errorMsg = sanitizeError(translateError) || "";
+                  const msg = String(translateError?.message || "");
+
+                  // ✅ 统一的配额耗尽处理（在所有批量操作的 catch 块最前面）
+                  if (msg === "BATCH_PROVIDER_QUOTA_EXCEEDED") {
+                    providerQuotaExceeded = true;
+
+                    // ✅ 添加标准错误结构，方便前端 UI 展示
+                    // 从错误对象中提取 provider 和 date 信息（如果可用）
+                    const provider = (translateError as any)?.provider || "unknown";
+                    const quotaDate = (translateError as any)?.date || new Date().toISOString().slice(0, 10);
+                    
+                    results.errors.push({
+                      type: "provider_quota_exceeded",
+                      provider: provider,
+                      date: quotaDate,
+                      message: "AI provider daily quota exceeded",
+                      questionId: question.id,
+                      error: "AI provider quota exceeded for today",
+                    });
+
+                    await db
+                      .updateTable("batch_process_tasks")
+                      .set({
+                        status: "failed",
+                        errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+                        updated_at: new Date(),
+                      })
+                      .where("task_id", "=", taskId)
+                      .execute();
+
+                    await appendServerLog(taskId, {
+                      timestamp: new Date().toISOString(),
+                      level: "error",
+                      message: "🚨 Provider quota exceeded — batch terminated early",
+                    });
+
+                    // 向上抛出，不再继续其他题目
+                    throw new Error("BATCH_PROVIDER_QUOTA_EXCEEDED");
+                  }
+
                   console.error(
-                    `[BatchProcess] Translation failed: Q${question.id} -> ${targetLang}: ${errorMsg}`
+                    `[BatchProcess] [${requestId}] Translation failed: Q${question.id} -> ${targetLang}: ${errorMsg}`
                   );
-                  
-                  // 记录错误
+
+                  // 记录服务器日志
+                  await appendServerLog(taskId, {
+                    timestamp: new Date().toISOString(),
+                    level: 'error',
+                    message: `❌ Translation failed: Q${question.id} -> ${targetLang}: ${errorMsg}`,
+                  });
+
+                  // 其他普通错误：按原逻辑处理
                   results.errors.push({
                     questionId: question.id,
                     error: `translate(${targetLang}): ${errorMsg}`,
                   });
-                  
+
                   if (!input.continueOnError) {
                     throw translateError;
                   }
@@ -767,6 +1188,7 @@ async function processBatchAsync(
                 locale: input.polishOptions.locale,
                 adminToken,
                 returnDetail: true,
+                mode: "batch", // ✅ 批量处理模式
               });
 
               // 处理返回结果（可能是结果对象或包含详细信息的对象）
@@ -783,6 +1205,12 @@ async function processBatchAsync(
               // 记录子任务详细信息
               if (detail) {
                 questionResult.subtasks.push(detail);
+                
+                // 记录详细日志
+                const aiProviderName = detail.aiProvider || 'unknown';
+                const modelName = detail.model || 'unknown';
+                console.log(`[BatchProcess] [${requestId}] 题目ID ${question.id} - 发起AI(${aiProviderName})请求: ${detail.question.substring(0, 100)}${detail.question.length > 100 ? '...' : ''}`);
+                console.log(`[BatchProcess] [${requestId}] 题目ID ${question.id} - 获得AI回复(${aiProviderName}): ${detail.answer.substring(0, 200)}${detail.answer.length > 200 ? '...' : ''}`);
               }
 
               // 在批量处理中，如果后续有翻译操作，直接应用润色结果到内存变量
@@ -827,6 +1255,7 @@ async function processBatchAsync(
                 questionType: question.type, // 传递题目类型
                 adminToken,
                 returnDetail: true,
+                mode: "batch", // ✅ 批量处理模式
               });
 
               // 处理返回结果（可能是结果对象或包含详细信息的对象）
@@ -843,6 +1272,12 @@ async function processBatchAsync(
               // 记录子任务详细信息
               if (detail) {
                 questionResult.subtasks.push(detail);
+                
+                // 记录详细日志
+                const aiProviderName = detail.aiProvider || 'unknown';
+                const modelName = detail.model || 'unknown';
+                console.log(`[BatchProcess] [${requestId}] 题目ID ${question.id} - 发起AI(${aiProviderName})请求: ${detail.question.substring(0, 100)}${detail.question.length > 100 ? '...' : ''}`);
+                console.log(`[BatchProcess] [${requestId}] 题目ID ${question.id} - 获得AI回复(${aiProviderName}): ${detail.answer.substring(0, 200)}${detail.answer.length > 200 ? '...' : ''}`);
               }
 
               // 更新题目内容（如果原内容缺失）
@@ -987,6 +1422,7 @@ async function processBatchAsync(
                 explanation: explanation || null,
                 adminToken,
                 returnDetail: true,
+                mode: "batch", // ✅ 批量处理模式
               });
 
               // 处理返回结果（可能是结果对象或包含详细信息的对象）
@@ -1003,6 +1439,12 @@ async function processBatchAsync(
               // 记录子任务详细信息
               if (detail) {
                 questionResult.subtasks.push(detail);
+                
+                // 记录详细日志
+                const aiProviderName = detail.aiProvider || 'unknown';
+                const modelName = detail.model || 'unknown';
+                console.log(`[BatchProcess] [${requestId}] 题目ID ${question.id} - 发起AI(${aiProviderName})请求: ${detail.question.substring(0, 100)}${detail.question.length > 100 ? '...' : ''}`);
+                console.log(`[BatchProcess] [${requestId}] 题目ID ${question.id} - 获得AI回复(${aiProviderName}): ${detail.answer.substring(0, 200)}${detail.answer.length > 200 ? '...' : ''}`);
               }
 
               console.log(`[BatchProcess] Category and tags result for Q${question.id}:`, {
@@ -1025,6 +1467,9 @@ async function processBatchAsync(
               if (result.topic_tags && Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
                 updates.topic_tags = result.topic_tags;
               }
+              if (result.license_types && Array.isArray(result.license_types) && result.license_types.length > 0) {
+                updates.license_types = result.license_types;
+              }
 
               await db
                 .updateTable("questions")
@@ -1037,7 +1482,54 @@ async function processBatchAsync(
             }
           } catch (opError: any) {
             const errorMsg = sanitizeError(opError);
-            console.error(`[BatchProcess] Operation ${operation} failed: Q${question.id} - ${errorMsg}`);
+            const msg = String(opError?.message || "");
+
+            // ✅ 统一的配额耗尽处理（在所有批量操作的 catch 块最前面）
+            if (msg === "BATCH_PROVIDER_QUOTA_EXCEEDED") {
+              providerQuotaExceeded = true;
+
+              // ✅ 添加标准错误结构，方便前端 UI 展示
+              // 从错误对象中提取 provider 和 date 信息（如果可用）
+              const provider = (opError as any)?.provider || "unknown";
+              const quotaDate = (opError as any)?.date || new Date().toISOString().slice(0, 10);
+              
+              results.errors.push({
+                type: "provider_quota_exceeded",
+                provider: provider,
+                date: quotaDate,
+                message: "AI provider daily quota exceeded",
+                questionId: question.id,
+                error: "AI provider quota exceeded for today",
+              });
+
+              await db
+                .updateTable("batch_process_tasks")
+                .set({
+                  status: "failed",
+                  errors: sql`${JSON.stringify(results.errors)}::jsonb`,
+                  updated_at: new Date(),
+                })
+                .where("task_id", "=", taskId)
+                .execute();
+
+              await appendServerLog(taskId, {
+                timestamp: new Date().toISOString(),
+                level: "error",
+                message: "🚨 Provider quota exceeded — batch terminated early",
+              });
+
+              // 向上抛出，不再继续其他题目
+              throw new Error("BATCH_PROVIDER_QUOTA_EXCEEDED");
+            }
+
+            console.error(`[BatchProcess] [${requestId}] Operation ${operation} failed: Q${question.id} - ${errorMsg}`);
+            
+            // 记录服务器日志
+            await appendServerLog(taskId, {
+              timestamp: new Date().toISOString(),
+              level: 'error',
+              message: `❌ Operation ${operation} failed: Q${question.id} - ${errorMsg}`,
+            });
             
             if (!input.continueOnError) {
               throw opError;
@@ -1049,6 +1541,9 @@ async function processBatchAsync(
               questionId: question.id,
               error: `${operation}: ${errorMsg}`,
             });
+            
+            // 记录操作失败日志
+            console.log(`[BatchProcess] [${requestId}] ⚠️ Operation ${operation} failed for Q${question.id}, continuing with next operation (continueOnError=true)`);
           }
         }
 
@@ -1060,32 +1555,55 @@ async function processBatchAsync(
         }
         results.details.push(questionResult);
 
+        console.log(`[BatchProcess] [${requestId}] ✅ Question ${question.id} processed: ${questionResult.status}, Operations: ${questionResult.operations.join(", ") || "none"}`);
+        console.log(`[BatchProcess] [${requestId}] Current progress: ${results.processed}/${results.total} (✓${results.succeeded} ✗${results.failed})`);
+
         // 实时更新任务进度（每10个题目或最后一个题目时输出日志）
         if (results.processed % 10 === 0 || results.processed === results.total) {
-          console.log(`[BatchProcess] Progress: ${results.processed}/${results.total} (✓${results.succeeded} ✗${results.failed})`);
+          console.log(`[BatchProcess] [${requestId}] 📊 Progress update: ${results.processed}/${results.total} (✓${results.succeeded} ✗${results.failed})`);
         }
         
         // 更新任务进度（使用try-catch确保即使失败也能继续）
+        // 每次题目处理完成后都更新，确保前端能看到最新进度
         try {
-          await db
+          console.log(`[BatchProcess] [${requestId}] 📝 Updating task progress in database for Q${question.id}...`);
+          const detailsObj = await updateDetailsWithServerLogs(taskId, results.details);
+          const updateResult = await db
             .updateTable("batch_process_tasks")
             .set({
               processed_count: results.processed,
               succeeded_count: results.succeeded,
               failed_count: results.failed,
               errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-              details: sql`${JSON.stringify(results.details)}::jsonb`,
+              details: sql`${JSON.stringify(detailsObj)}::jsonb`,
               updated_at: new Date(),
             })
             .where("task_id", "=", taskId)
             .execute();
+          console.log(`[BatchProcess] [${requestId}] ✅ Task progress updated in DB: processed=${results.processed}/${results.total}, succeeded=${results.succeeded}, failed=${results.failed}`);
+          
+          // 记录服务器日志
+          await appendServerLog(taskId, {
+            timestamp: new Date().toISOString(),
+            level: 'info',
+            message: `📊 Progress: ${results.processed}/${results.total} (✓${results.succeeded} ✗${results.failed}) - Q${question.id} ${questionResult.status}`,
+          });
         } catch (updateError: any) {
-          console.error(`[BatchProcess] Failed to update task progress for Q${question.id}:`, updateError?.message);
+          console.error(`[BatchProcess] [${requestId}] ❌ Failed to update task progress for Q${question.id}:`, updateError?.message);
+          console.error(`[BatchProcess] [${requestId}] Error stack:`, updateError?.stack);
+          
+          // 记录服务器日志
+          await appendServerLog(taskId, {
+            timestamp: new Date().toISOString(),
+            level: 'error',
+            message: `❌ Failed to update task progress for Q${question.id}: ${updateError?.message}`,
+          });
           // 不抛出错误，继续处理下一个题目
         }
       } catch (error: any) {
         const errorMsg = sanitizeError(error);
-        console.error(`[BatchProcess] Question ${question.id} processing failed: ${errorMsg}`);
+        console.error(`[BatchProcess] [${requestId}] ❌ Question ${question.id} processing failed: ${errorMsg}`);
+        console.error(`[BatchProcess] [${requestId}] Error stack:`, error?.stack);
         results.processed++;
         results.failed++;
         results.errors.push({
@@ -1104,6 +1622,7 @@ async function processBatchAsync(
 
         // 更新进度（使用try-catch确保即使失败也能继续）
         try {
+          const detailsObj = await updateDetailsWithServerLogs(taskId, results.details);
           await db
             .updateTable("batch_process_tasks")
             .set({
@@ -1111,7 +1630,7 @@ async function processBatchAsync(
               succeeded_count: results.succeeded,
               failed_count: results.failed,
               errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-              details: sql`${JSON.stringify(results.details)}::jsonb`,
+              details: sql`${JSON.stringify(detailsObj)}::jsonb`,
               updated_at: new Date(),
             })
             .where("task_id", "=", taskId)
@@ -1124,7 +1643,11 @@ async function processBatchAsync(
     }
   }
 
+  console.log(`[BatchProcess] [${requestId}] ========== All batches processed ==========`);
+  console.log(`[BatchProcess] [${requestId}] Final results: processed=${results.processed}, succeeded=${results.succeeded}, failed=${results.failed}`);
+  
   // 最终检查任务是否已被取消（可能在最后一批处理时被取消）
+  console.log(`[BatchProcess] [${requestId}] Checking if task was cancelled...`);
   const finalCheck = await db
     .selectFrom("batch_process_tasks")
     .select(["status"])
@@ -1132,16 +1655,22 @@ async function processBatchAsync(
     .executeTakeFirst();
 
   if (finalCheck?.status === "cancelled") {
+    console.log(`[BatchProcess] [${requestId}] ❌ Task ${taskId} was cancelled, stopping`);
     return;
   }
 
+  console.log(`[BatchProcess] [${requestId}] ✅ Task not cancelled, generating summary...`);
     // 生成任务完成简报（从数据库真实核验）
     const summary = await generateTaskSummary(taskId, results, questions, input);
+    console.log(`[BatchProcess] [${requestId}] Summary generated`);
     
     // 更新任务状态为已完成
     // 根据处理结果决定最终状态：如果有失败的题目，标记为部分成功；如果全部成功，标记为完成
     const finalStatus = results.failed > 0 ? "completed" : "completed"; // 即使有失败，也标记为完成（因为 continueOnError 允许继续）
     
+    console.log(`[BatchProcess] [${requestId}] Updating task status to '${finalStatus}'...`);
+    const finalDetailsArray = [...results.details, { summary }];
+    const finalDetailsObj = await updateDetailsWithServerLogs(taskId, finalDetailsArray);
     await db
       .updateTable("batch_process_tasks")
       .set({
@@ -1150,17 +1679,65 @@ async function processBatchAsync(
         succeeded_count: results.succeeded,
         failed_count: results.failed,
         errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-        details: sql`${JSON.stringify([...results.details, { summary }])}::jsonb`,
+        details: sql`${JSON.stringify(finalDetailsObj)}::jsonb`,
         completed_at: new Date(),
         updated_at: new Date(),
       })
       .where("task_id", "=", taskId)
       .execute();
       
-    console.log(`[BatchProcess] Task ${taskId} completed: ${results.succeeded} succeeded, ${results.failed} failed`);
-    console.log(`[BatchProcess] Task ${taskId} summary:`, JSON.stringify(summary, null, 2));
+    console.log(`[BatchProcess] [${requestId}] ========== Task ${taskId} COMPLETED ==========`);
+    console.log(`[BatchProcess] [${requestId}] Final status: ${finalStatus}, succeeded: ${results.succeeded}, failed: ${results.failed}`);
+    console.log(`[BatchProcess] [${requestId}] Summary:`, JSON.stringify(summary, null, 2));
   } catch (error: any) {
-    console.error(`[BatchProcess] Task ${taskId} failed: ${error.message}`);
+    const msg = String(error?.message || error);
+
+    // ✅ 识别特殊错误码：Provider 配额耗尽
+    if (msg === "BATCH_PROVIDER_QUOTA_EXCEEDED") {
+      // 状态和 errors 前面已经写入，这里只补充日志即可
+      console.warn(
+        `[BatchProcess] [${requestId}] Task aborted due to provider quota exceeded`
+      );
+      await appendServerLog(taskId, {
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        message: `Task aborted due to provider quota exhaustion`,
+      });
+      // 不再重新抛出错误，任务已优雅停止
+      return;
+    }
+
+    // ✅ 检查是否状态已经是 failed 且 errors 中包含 provider 配额错误，则不再覆盖
+    try {
+      const current = await db
+        .selectFrom("batch_process_tasks")
+        .select(["status", "errors"])
+        .where("task_id", "=", taskId)
+        .executeTakeFirst();
+
+      if (current?.status === "failed") {
+        try {
+          const errs = typeof current.errors === 'string' 
+            ? JSON.parse(current.errors || "[]")
+            : current.errors || [];
+          if (Array.isArray(errs) && errs.some((e: any) => e.type === "provider_quota_exceeded")) {
+            // 不覆盖状态，配额错误已经处理
+            console.log(`[BatchProcess] [${requestId}] Task already marked as failed due to quota exceeded, skipping status update`);
+            return;
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      }
+    } catch (checkError) {
+      // 忽略检查错误，继续正常处理
+      console.warn(`[BatchProcess] [${requestId}] Failed to check current task status:`, checkError);
+    }
+
+    // 其他错误：原有逻辑
+    console.error(`[BatchProcess] [${requestId}] ========== Task ${taskId} FAILED ==========`);
+    console.error(`[BatchProcess] [${requestId}] Error message: ${error.message}`);
+    console.error(`[BatchProcess] [${requestId}] Error stack:`, error?.stack);
     
     // 只有在处理过程中出现严重错误时才标记为失败
     // 如果所有题目都已处理完成，即使有错误也应该标记为完成（因为 continueOnError 允许继续）
@@ -1169,6 +1746,7 @@ async function processBatchAsync(
     
     // 更新任务状态
     try {
+      const detailsObj = await updateDetailsWithServerLogs(taskId, results.details);
       await db
         .updateTable("batch_process_tasks")
         .set({
@@ -1177,7 +1755,7 @@ async function processBatchAsync(
           succeeded_count: results.succeeded,
           failed_count: results.failed,
           errors: sql`${JSON.stringify(results.errors)}::jsonb`,
-          details: sql`${JSON.stringify(results.details)}::jsonb`,
+          details: sql`${JSON.stringify(detailsObj)}::jsonb`,
           completed_at: new Date(),
           updated_at: new Date(),
         })

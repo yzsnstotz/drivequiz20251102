@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import ProviderConfigManager from "@/components/ProviderConfigManager";
+import ProviderTimeoutManager from "@/components/ProviderTimeoutManager";
 
 type Config = {
   dailyAskLimit: number;
@@ -8,7 +10,13 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
-  aiProvider: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
+  aiProvider: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct" | "strategy";
+  timeoutOpenai?: number;
+  timeoutOpenaiDirect?: number;
+  timeoutOpenrouter?: number;
+  timeoutOpenrouterDirect?: number;
+  timeoutGeminiDirect?: number;
+  timeoutLocal?: number;
 };
 
 type ConfigResp = {
@@ -76,10 +84,17 @@ export default function AdminAiConfigPage() {
     cacheTtl: 86400,
     costAlertUsdThreshold: 10.0,
     aiProvider: "openai",
+    timeoutOpenai: 30000,
+    timeoutOpenaiDirect: 30000,
+    timeoutOpenrouter: 30000,
+    timeoutOpenrouterDirect: 30000,
+    timeoutGeminiDirect: 30000,
+    timeoutLocal: 120000,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<"basic" | "providers" | "timeout">("basic");
 
   useEffect(() => {
     loadConfig();
@@ -104,9 +119,16 @@ export default function AdminAiConfigPage() {
             data.aiProvider === "openrouter" ||
             data.aiProvider === "openrouter_direct" ||
             data.aiProvider === "openai_direct" ||
-            data.aiProvider === "gemini_direct"
+            data.aiProvider === "gemini_direct" ||
+            data.aiProvider === "strategy"
               ? data.aiProvider
               : "openai",
+          timeoutOpenai: typeof data.timeoutOpenai === "string" ? Number(data.timeoutOpenai) : (data.timeoutOpenai ?? 30000),
+          timeoutOpenaiDirect: typeof data.timeoutOpenaiDirect === "string" ? Number(data.timeoutOpenaiDirect) : (data.timeoutOpenaiDirect ?? 30000),
+          timeoutOpenrouter: typeof data.timeoutOpenrouter === "string" ? Number(data.timeoutOpenrouter) : (data.timeoutOpenrouter ?? 30000),
+          timeoutOpenrouterDirect: typeof data.timeoutOpenrouterDirect === "string" ? Number(data.timeoutOpenrouterDirect) : (data.timeoutOpenrouterDirect ?? 30000),
+          timeoutGeminiDirect: typeof data.timeoutGeminiDirect === "string" ? Number(data.timeoutGeminiDirect) : (data.timeoutGeminiDirect ?? 30000),
+          timeoutLocal: typeof data.timeoutLocal === "string" ? Number(data.timeoutLocal) : (data.timeoutLocal ?? 120000),
         });
       }
     } catch (err) {
@@ -120,7 +142,9 @@ export default function AdminAiConfigPage() {
     setSaving(true);
     setSaveSuccess(false);
     try {
-      const resp = await saveConfig(config);
+      // 从 basic tab 保存时，排除超时字段（超时设置由独立的 ProviderTimeoutManager 管理）
+      const { timeoutOpenai, timeoutOpenaiDirect, timeoutOpenrouter, timeoutOpenrouterDirect, timeoutGeminiDirect, timeoutLocal, ...basicConfig } = config;
+      const resp = await saveConfig(basicConfig);
       if (resp.ok) {
         setSaveSuccess(true);
         // 3秒后隐藏成功提示
@@ -154,7 +178,48 @@ export default function AdminAiConfigPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Tab 导航 */}
+      <div className="border-b">
+        <div className="flex space-x-4">
+          <button
+            onClick={() => setActiveTab("basic")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "basic"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            基础配置
+          </button>
+          <button
+            onClick={() => setActiveTab("providers")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "providers"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Provider 调用策略
+          </button>
+          <button
+            onClick={() => setActiveTab("timeout")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "timeout"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Provider 超时设置
+          </button>
+        </div>
+      </div>
+
+      {activeTab === "providers" ? (
+        <ProviderConfigManager />
+      ) : activeTab === "timeout" ? (
+        <ProviderTimeoutManager />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 左侧：配置表单 */}
         <div className="space-y-4">
           <div className="border rounded-lg p-4 space-y-4">
@@ -202,7 +267,7 @@ export default function AdminAiConfigPage() {
                 value={config.model}
                 onChange={(e) => setConfig({ ...config, model: e.target.value })}
                 className="w-full border rounded px-3 py-2"
-                disabled={config.aiProvider === "local"}
+                disabled={config.aiProvider === "local" || config.aiProvider === "strategy"}
               >
                 {config.aiProvider === "openai" || config.aiProvider === "openai_direct" ? (
                   <>
@@ -261,11 +326,18 @@ export default function AdminAiConfigPage() {
                   ? "当前使用的 OpenRouter 模型（通过 Render，支持多种 AI 服务商）"
                   : config.aiProvider === "openrouter_direct"
                   ? "当前使用的 OpenRouter 模型（直连，不通过 Render，支持多种 AI 服务商）"
+                  : config.aiProvider === "strategy"
+                  ? "使用调用策略时，模型由策略配置决定，此处显示为参考"
                   : "本地 AI 模型由 Ollama 服务配置，此处仅显示（不可修改）"}
               </p>
               {config.aiProvider === "local" && (
                 <p className="text-xs text-amber-600 mt-1">
                   ⚠️ 本地AI模型需要在Ollama服务中配置，此处显示为参考
+                </p>
+              )}
+              {config.aiProvider === "strategy" && (
+                <p className="text-xs text-blue-600 mt-1">
+                  💡 使用调用策略时，系统会根据 Provider 调用策略配置自动选择 Provider 和模型
                 </p>
               )}
             </div>
@@ -314,10 +386,12 @@ export default function AdminAiConfigPage() {
               <select
                 value={config.aiProvider}
                 onChange={(e) => {
-                  const newProvider = e.target.value as "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct";
+                  const newProvider = e.target.value as "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct" | "strategy";
                   // 切换服务提供商时，自动设置对应的默认模型
                   const defaultModel = 
-                    newProvider === "openai" || newProvider === "openai_direct"
+                    newProvider === "strategy"
+                      ? config.model // 使用策略时保持当前模型
+                      : newProvider === "openai" || newProvider === "openai_direct"
                       ? "gpt-4o-mini"
                       : newProvider === "gemini_direct"
                       ? "gemini-pro"
@@ -328,6 +402,7 @@ export default function AdminAiConfigPage() {
                 }}
                 className="w-full border rounded px-3 py-2"
               >
+                <option value="strategy">使用调用策略</option>
                 <option value="openai">OpenAI（通过 Render）</option>
                 <option value="openai_direct">直连 OpenAI</option>
                 <option value="gemini_direct">直连 Google Gemini</option>
@@ -336,7 +411,9 @@ export default function AdminAiConfigPage() {
                 <option value="local">本地 AI（Ollama）</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                {config.aiProvider === "openai"
+                {config.aiProvider === "strategy"
+                  ? "根据 Provider 调用策略配置自动选择 Provider，可在「Provider 调用策略」标签页中配置策略"
+                  : config.aiProvider === "openai"
                   ? "使用 OpenAI 服务（通过 Render），需要配置 AI_SERVICE_URL 和 AI_SERVICE_TOKEN"
                   : config.aiProvider === "openai_direct"
                   ? "使用 OpenAI 服务（直连，不通过 Render），需要配置 OPENAI_API_KEY 和 OPENAI_BASE_URL"
@@ -419,6 +496,7 @@ export default function AdminAiConfigPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

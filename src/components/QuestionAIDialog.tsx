@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
-import { apiFetch } from "@/lib/apiClient.front";
 import { loadAiAnswersForLocale, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getQuestionOptions } from "@/lib/questionUtils";
+import { callAiDirect } from "@/lib/aiClient.front";
+import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 
 // 前端内存缓存（按题目hash存储）
 // 格式：Map<questionHash, answer>
@@ -78,6 +79,8 @@ export default function QuestionAIDialog({
   const hasInitialized = useRef(false);
   const [localAiAnswers, setLocalAiAnswers] = useState<Record<string, string> | null>(null);
   const { language } = useLanguage();
+  const [currentProvider, setCurrentProvider] = useState<"local" | "render">("render");
+  const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
 
   // 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
   const cleanModelName = (model: string | undefined): string | undefined => {
@@ -120,6 +123,25 @@ export default function QuestionAIDialog({
       loadLocalAiAnswers();
     }
   }, [isOpen, language]);
+
+  // 获取当前配置的 provider（每次打开对话框时重新获取，确保使用最新配置）
+  useEffect(() => {
+    if (isOpen) {
+      getCurrentAiProvider()
+        .then((config) => {
+          console.log("[QuestionAIDialog] 获取到 provider 配置:", {
+            provider: config.provider,
+            model: config.model,
+          });
+          setCurrentProvider(config.provider);
+          setCurrentModel(config.model);
+        })
+        .catch((err) => {
+          console.warn("[QuestionAIDialog] 获取 provider 配置失败，使用默认值:", err);
+          setCurrentProvider("render");
+        });
+    }
+  }, [isOpen]);
 
   // 加载缓存的对话历史（每次打开对话框时）
   useEffect(() => {
@@ -353,36 +375,52 @@ export default function QuestionAIDialog({
         // 用户追问：不检查缓存，直接调用AI服务
       }
       
-      // 3. 请求后端（首次提问：如果缓存中没有；追问：直接请求）
-      const result = await apiFetch<{
-        answer: string;
-        sources?: Array<{
-          title: string;
-          url: string;
-          snippet?: string;
-        }>;
-        aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct";
-        model?: string;
-        cached?: boolean;
-        cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
-      }>("/api/ai/ask", {
-        method: "POST",
-        body: {
+      // 3. 直接调用 ai-service（首次提问：如果缓存中没有；追问：直接请求）
+      // 确保 provider 已初始化（如果还未获取到配置，重新获取一次）
+      let providerToUse = currentProvider;
+      if (!providerToUse || providerToUse === "render") {
+        // 如果 provider 未初始化或为默认值，尝试重新获取配置
+        try {
+          const config = await getCurrentAiProvider();
+          providerToUse = config.provider;
+          setCurrentProvider(config.provider);
+          setCurrentModel(config.model);
+          console.log("[QuestionAIDialog] 重新获取 provider 配置:", {
+            provider: providerToUse,
+            model: config.model,
+          });
+        } catch (err) {
+          console.warn("[QuestionAIDialog] 重新获取 provider 配置失败，使用默认值:", err);
+          providerToUse = "render";
+        }
+      }
+      
+      console.log("[QuestionAIDialog] 调用 AI 服务:", {
+        provider: providerToUse,
+        model: currentModel,
+        scene: "question_explanation",
+        questionLength: questionText.length,
+        isFollowUp: isFollowUpQuestion,
+        currentProviderState: currentProvider, // 调试：显示当前状态
+      });
+      
+      const payload = await callAiDirect({
+        provider: providerToUse,
           question: questionText,
           locale: language,
-          // 仅在首次提问时传递questionHash，追问时不传递（让后端知道这是追问，需要调用AI服务）
-          ...(questionHash ? { questionHash } : {}),
-          // 显式指定场景为 question_explanation（后端会根据 questionHash 自动推断，但显式指定更清晰）
           scene: "question_explanation",
-        },
+        model: currentModel,
+        // questionHash 不再传递给 ai-service，因为 ai-service 不处理缓存
+        // 缓存逻辑现在完全由前端处理
       });
 
-      if (result.ok && result.data?.answer) {
+      if (payload.ok && payload.data?.answer) {
         // TypeScript 类型守卫：确保 answer 存在
-        const answer = result.data.answer;
+        const answer = payload.data.answer;
         
-        // 如果是从缓存获取的，存入内存缓存（与localStorage同步）
-        if (result.data.cached && questionHash) {
+        // 如果 ai-service 返回了 cached 标记，存入内存缓存（与localStorage同步）
+        // 注意：ai-service 可能不返回 cached 字段，因为缓存逻辑现在由前端处理
+        if (payload.data.cached && questionHash) {
           memoryCache.set(questionHash, answer);
         }
         
@@ -390,11 +428,11 @@ export default function QuestionAIDialog({
           role: "assistant",
           content: answer,
           metadata: {
-            aiProvider: result.data.cached ? "cached" : (result.data.aiProvider || "openai"),
-            model: result.data.model,
-            sourceType: result.data.cached ? "cached" : "ai-generated",
-            cacheSource: result.data.cacheSource || (result.data.cached ? "database" : undefined), // 明确标记缓存来源
-            sources: result.data.sources || [], // 包含耗时信息等来源
+            aiProvider: payload.data.cached ? "cached" : (payload.data.aiProvider || "openai"),
+            model: payload.data.model,
+            sourceType: payload.data.cached ? "cached" : "ai-generated",
+            cacheSource: payload.data.cached ? "database" : undefined, // ai-service 返回的缓存标记为 database
+            sources: payload.data.sources || [], // 包含耗时信息等来源
           },
         };
         setMessages((prev) => [...prev, newMessage]);
@@ -412,16 +450,25 @@ export default function QuestionAIDialog({
           setMessages((prev) => [...prev, tipMessage]);
         }
       } else {
+        // 处理错误情况
         const errorMessage: Message = {
           role: "assistant",
-          content: "Sorry, AI service is temporarily unavailable. Please try again later.",
+          content: payload.message || "获取AI解析失败，请稍后重试。",
+          metadata: {
+            aiProvider: "system",
+            sourceType: "system-tip",
+          },
         };
         setMessages((prev) => [...prev, errorMessage]);
       }
     } catch (error) {
       const errorMessage: Message = {
         role: "assistant",
-        content: "Sorry, an error occurred while getting AI explanation. Please try again later.",
+        content: error instanceof Error ? error.message : "获取AI解析失败，请稍后重试。",
+        metadata: {
+          aiProvider: "system",
+          sourceType: "system-tip",
+        },
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
