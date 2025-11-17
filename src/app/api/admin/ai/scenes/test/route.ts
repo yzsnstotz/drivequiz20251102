@@ -41,6 +41,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
      *   lang?: string;              // 当前界面/输出语言，保持与现有逻辑一致
      *   model?: string;             // 使用的模型名
      *   provider?: "local" | "render"; // AI provider
+     *   questionType?: "single" | "multiple" | "truefalse"; // 题目类型（用于题目类场景）
      * }
      */
     const {
@@ -53,6 +54,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       lang,
       model,
       provider,
+      questionType,
     } = body;
 
     // 验证必需字段
