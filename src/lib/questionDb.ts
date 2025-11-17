@@ -162,13 +162,14 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
       }
     }
 
-    // 规范化license_types：从license_tags或category获取
+    // ⚠️ 兼容旧逻辑：从 license_tags 获取 license_types
+    // 注意：category 是卷类，不是标签，不应该用于 license_types
+    // 新代码应该使用 license_type_tag 字段（单个值）
     let licenseTypes: string[] | null = null;
     if (question.license_tags && question.license_tags.length > 0) {
       licenseTypes = question.license_tags;
-    } else if (question.category) {
-      licenseTypes = [question.category];
     }
+    // 不再从 category 获取 license_types（category 是卷类，不是标签）
 
     // 检查是否已存在
     const existing = await db

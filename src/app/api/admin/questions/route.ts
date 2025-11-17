@@ -211,11 +211,10 @@ async function collectAllQuestions(): Promise<(Question & { content_hash?: strin
 
     // 转换为前端格式（保留 content_hash）
     const allQuestions = allDbQuestions.map((q) => {
-      // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
-      const category = q.category || 
-        (Array.isArray(q.license_types) && q.license_types.length > 0
-          ? q.license_types[0]
-          : "其他");
+      // ⚠️ 兼容旧逻辑：category 是卷类，不是标签
+      // 注意：license_types 和 category 是不同的概念，不应该互相转换
+      // 这里保留兼容逻辑，但新代码应该明确区分
+      const category = q.category || "其他";
 
       // 处理content字段：保持原格式（可能是字符串或多语言对象）
       let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
