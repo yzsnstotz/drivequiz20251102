@@ -685,14 +685,27 @@ app.post("/batch-process", async (req, reply) => {
                   explanation: explanation || null
                 });
                 
-                // 更新题目的分类和标签
+                // 更新题目的标签（只更新非空值）
+                const updates: any = {
+                  updated_at: new Date()
+                };
+                
+                // 更新 license_type_tag（新字段）
+                if (result.license_type_tag) {
+                  updates.license_type_tag = result.license_type_tag;
+                }
+                // 更新 stage_tag
+                if (result.stage_tag) {
+                  updates.stage_tag = result.stage_tag;
+                }
+                // 更新 topic_tags
+                if (result.topic_tags && Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
+                  updates.topic_tags = result.topic_tags;
+                }
+                // 不再更新 category（category 是卷类，不是标签）
+                
                 await db.updateTable("questions")
-                  .set({
-                    category: result.category || question.category,
-                    stage_tag: result.stage_tag || question.stage_tag,
-                    topic_tags: result.topic_tags || question.topic_tags,
-                    updated_at: new Date()
-                  })
+                  .set(updates)
                   .where("id", "=", question.id)
                   .execute();
                 questionResult.operations.push("category_tags");

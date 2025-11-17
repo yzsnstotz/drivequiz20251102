@@ -20,9 +20,10 @@ interface QuestionTable {
     ja?: string;
     [key: string]: string | undefined; // 支持其他语言
   } | null; // JSONB - 多语言解析对象
-  license_types: string[] | null;
+  license_types: string[] | null; // 兼容旧字段（数组）
+  license_type_tag: string | null; // 驾照类型标签（单个值）
   category: string | null; // 题目分类（如 "12"）
-  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（兼容旧值，新值应为 "provisional" | "full" | "both"）
   topic_tags: string[] | null; // 主题标签数组（如 ['traffic_sign']）
   version: string | null;
   created_at: Generated<Date>;

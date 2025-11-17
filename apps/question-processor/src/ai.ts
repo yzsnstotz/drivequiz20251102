@@ -3,6 +3,7 @@ import { callAiServer } from "../../src/lib/aiClient.server";
 import { loadQpAiConfig, type QpAiProvider } from "./aiConfig";
 import { getAiCache, setAiCache } from "./aiCache";
 import { buildQuestionTranslationInput, buildQuestionPolishInput } from "../../src/lib/questionPromptBuilder";
+import { normalizeAIResult } from "../../src/lib/quizTags";
 
 // 在模块级提前加载一次配置（question-processor 通常是长跑任务，这样没问题）
 const qpAiConfig = loadQpAiConfig();
@@ -236,9 +237,11 @@ export async function polishContent(params: {
 }
 
 export interface CategoryAndTagsResult {
-  category?: string | null;
-  stage_tag?: "both" | "provisional" | "regular" | null;
-  topic_tags?: string[] | null;
+  license_type_tag?: string | null; // 驾照类型标签（单个值）
+  stage_tag?: "both" | "provisional" | "regular" | "full" | null; // 阶段标签（兼容旧值）
+  topic_tags?: string[] | null; // 主题标签数组
+  // 以下字段已废弃，保留用于兼容
+  category?: string | null; // 已废弃：category 是卷类，不是标签
 }
 
 /**
@@ -277,15 +280,26 @@ export async function generateCategoryAndTags(params: {
   if (!parsed || typeof parsed !== "object") {
     throw new Error("AI category/tags response missing JSON body");
   }
+
+  // 使用统一的规范化函数处理 AI 返回结果
+  const normalized = normalizeAIResult(parsed);
+
+  // 转换 stageTag：从新值（"provisional" | "full" | "both"）转换为旧值（兼容）
+  let stageTag: "both" | "provisional" | "regular" | "full" | null = null;
+  if (normalized.stageTag === "provisional") {
+    stageTag = "provisional";
+  } else if (normalized.stageTag === "full") {
+    stageTag = "regular"; // 兼容旧值：full -> regular
+  } else if (normalized.stageTag === "both") {
+    stageTag = "both";
+  }
   
   return {
-    category: parsed.category ? String(parsed.category) : null,
-    stage_tag: parsed.stage_tag && ["both", "provisional", "regular"].includes(parsed.stage_tag) 
-      ? parsed.stage_tag 
-      : null,
-    topic_tags: Array.isArray(parsed.topic_tags) 
-      ? parsed.topic_tags.map((s: any) => String(s)).filter(Boolean)
-      : null
+    license_type_tag: normalized.licenseTypeTag,
+    stage_tag: stageTag,
+    topic_tags: normalized.topicTags,
+    // 以下字段已废弃，保留 null 用于兼容
+    category: null, // category 是卷类，不是标签，不再从 AI 获取
   };
 }
 
