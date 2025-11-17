@@ -73,8 +73,9 @@ async function findQuestionCategory(questionId: number): Promise<{
       .executeTakeFirst();
     
     if (dbQuestion) {
-      // 从license_types中获取category
-      const category = dbQuestion.license_types?.[0] || "免许-1";
+      // ⚠️ 兼容旧逻辑：category 是卷类，不是标签
+      // 注意：license_types 和 category 是不同的概念，不应该互相转换
+      const category = dbQuestion.category || "免许-1";
       
       // 转换为前端格式
       // 处理content字段：保持原格式（可能是字符串或多语言对象）

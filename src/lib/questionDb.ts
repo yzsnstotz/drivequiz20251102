@@ -189,7 +189,8 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
           explanation: explanationMultilang as any,
-          license_types: licenseTypes,
+          license_types: licenseTypes, // 兼容旧字段
+          license_type_tag: (question as any).license_type_tag || null, // 新字段
           category: question.category || null,
           stage_tag: question.stage_tag || null,
           topic_tags: question.topic_tags || null,
@@ -211,7 +212,8 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
           explanation: explanationMultilang as any,
-          license_types: licenseTypes,
+          license_types: licenseTypes, // 兼容旧字段
+          license_type_tag: (question as any).license_type_tag || null, // 新字段
           category: question.category || null,
           stage_tag: question.stage_tag || null,
           topic_tags: question.topic_tags || null,
