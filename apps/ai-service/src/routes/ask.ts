@@ -140,7 +140,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         ensureServiceAuth(request, config);
 
         // 2) 校验请求体
-        const { question, lang, userId } = parseAndValidateBody(request.body);
+        const { question, lang } = parseAndValidateBody(request.body);
 
         // 3) 从数据库读取模型配置（优先）或使用环境变量
         const model = await getModelFromConfig();
