@@ -340,6 +340,13 @@ async function callAiAskInternal(
         }
         
         // 调用 ai-service
+        console.log(`[callAiAskInternal] 准备调用 AI 服务:`, {
+          provider,
+          scene: params.scene,
+          sourceLanguage: params.sourceLanguage,
+          targetLanguage: params.targetLanguage,
+          locale: params.locale,
+        });
         const aiResp = await callAiServer<{ answer: string; aiProvider?: string; model?: string }>(
           {
             provider,

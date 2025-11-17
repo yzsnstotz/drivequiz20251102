@@ -110,6 +110,8 @@ export async function callAiServer<T = any>(
       provider,
       url: `${url.substring(0, 50)}...`,
       scene: rest.scene,
+      sourceLanguage: rest.sourceLanguage,
+      targetLanguage: rest.targetLanguage,
       model: rest.model,
       timeoutMs: timeout,
     });
