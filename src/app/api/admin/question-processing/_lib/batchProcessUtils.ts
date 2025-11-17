@@ -476,18 +476,25 @@ export async function translateWithPolish(params: {
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
   const { source, from, to, adminToken, returnDetail } = params;
   
-  // 验证 from 和 to 参数
-  if (!from || !to) {
-    throw new Error(`translateWithPolish: from and to are required. Got from=${from}, to=${to}`);
+  // 验证 from 和 to 参数，并提供默认值
+  const sourceLang = from || "zh"; // 默认使用中文作为源语言
+  const targetLang = to;
+  
+  if (!targetLang) {
+    throw new Error(`translateWithPolish: to (targetLanguage) is required. Got from=${from}, to=${to}`);
   }
   
   console.log(`[translateWithPolish] 接收到的参数:`, {
     from,
     to,
+    sourceLang, // 处理后的值
+    targetLang, // 处理后的值
     fromType: typeof from,
     toType: typeof to,
     hasFrom: from !== undefined && from !== null && from !== "",
     hasTo: to !== undefined && to !== null && to !== "",
+    hasSourceLang: sourceLang !== undefined && sourceLang !== null && sourceLang !== "",
+    hasTargetLang: targetLang !== undefined && targetLang !== null && targetLang !== "",
   });
   const questionText = [
     `Content: ${source.content}`,
@@ -510,19 +517,21 @@ export async function translateWithPolish(params: {
   console.log(`[translateWithPolish] 准备调用 AI:`, {
     from,
     to,
+    sourceLang, // 处理后的值（有默认值）
+    targetLang, // 处理后的值
     sceneKey,
     questionLength: questionText.length,
-    hasSourceLanguage: from !== undefined && from !== null && from !== "",
-    hasTargetLanguage: to !== undefined && to !== null && to !== "",
+    hasSourceLanguage: sourceLang !== undefined && sourceLang !== null && sourceLang !== "",
+    hasTargetLanguage: targetLang !== undefined && targetLang !== null && targetLang !== "",
   });
   
   const data = await callAiAskInternal(
     {
       question: questionText,
-      locale: to,
+      locale: targetLang, // 使用处理后的值
       scene: sceneKey,
-      sourceLanguage: from,
-      targetLanguage: to,
+      sourceLanguage: sourceLang, // 使用处理后的值（确保有值）
+      targetLanguage: targetLang, // 使用处理后的值（确保有值）
       adminToken,
     },
     { mode: callMode, retries: 1 }
