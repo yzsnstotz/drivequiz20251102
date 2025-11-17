@@ -32,7 +32,7 @@ SET
 
 【维度 1：licenseTypeTag（驾照类型）】
 
-从下面列表中选出 **最适合本题的一个**，如果本题适用于所有驾照类型，则使用 "common_all"。
+从下面列表中选出 **适合本题的驾照类型**（可以是单个值或数组）。如果本题适用于所有驾照类型，则使用 ["common_all"]。如果本题适用于多个驾照类型，可以返回数组，如 ["ordinary", "medium"]。
 
 可选值：
 
@@ -93,8 +93,16 @@ SET
 
 只输出一个 JSON 对象，不要包含多余文字说明。键名必须如下：
 
+单个驾照类型示例：
 {
   "licenseTypeTag": "ordinary",
+  "stageTag": "provisional",
+  "topicTags": ["signals"]
+}
+
+多个驾照类型示例：
+{
+  "licenseTypeTag": ["ordinary", "medium"],
   "stageTag": "provisional",
   "topicTags": ["signals"]
 }',

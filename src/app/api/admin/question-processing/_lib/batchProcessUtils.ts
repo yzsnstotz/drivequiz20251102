@@ -31,7 +31,7 @@ export interface TranslateResult {
 }
 
 export interface CategoryAndTagsResult {
-  license_type_tag?: string | null; // 驾照类型标签（单个值）
+  license_type_tag?: string[] | null; // 驾照类型标签（数组，可包含多个值）
   stage_tag?: "both" | "provisional" | "regular" | "full" | null; // 阶段标签（兼容旧值）
   topic_tags?: string[] | null; // 主题标签数组
   // 以下字段已废弃，保留用于兼容

@@ -97,7 +97,7 @@ export function isTopicTag(v: unknown): v is TopicTag {
  * AI 自动打标签的返回结果（原始格式）
  */
 export interface QuestionTagsAIResult {
-  licenseTypeTag: string;
+  licenseTypeTag: string | string[]; // 可以是单个值或数组
   stageTag: string;
   topicTags: string[]; // 长度 1~2
 }
@@ -106,7 +106,7 @@ export interface QuestionTagsAIResult {
  * 规范化后的题目标签结果
  */
 export interface NormalizedQuestionTags {
-  licenseTypeTag: LicenseTypeTag;
+  licenseTypeTag: LicenseTypeTag[]; // 数组，可包含多个驾照类型
   stageTag: StageTag;
   topicTags: TopicTag[]; // 长度 1~2
 }
@@ -118,14 +118,22 @@ export interface NormalizedQuestionTags {
  * @returns 规范化后的标签结果，包含默认值兜底
  */
 export function normalizeAIResult(raw: any): NormalizedQuestionTags {
-  let licenseType: LicenseTypeTag = "common_all";
+  const licenseTypes: LicenseTypeTag[] = [];
   let stage: StageTag = "both";
   const topics: TopicTag[] = [];
 
   if (raw && typeof raw === "object") {
-    // 校验并设置 licenseTypeTag
-    if (isLicenseTypeTag(raw.licenseTypeTag)) {
-      licenseType = raw.licenseTypeTag;
+    // 校验并设置 licenseTypeTag（支持单个值或数组）
+    if (Array.isArray(raw.licenseTypeTag)) {
+      // 如果是数组，校验每个元素
+      for (const tag of raw.licenseTypeTag) {
+        if (isLicenseTypeTag(tag)) {
+          licenseTypes.push(tag);
+        }
+      }
+    } else if (isLicenseTypeTag(raw.licenseTypeTag)) {
+      // 如果是单个值，转换为数组
+      licenseTypes.push(raw.licenseTypeTag);
     }
 
     // 校验并设置 stageTag
@@ -143,13 +151,18 @@ export function normalizeAIResult(raw: any): NormalizedQuestionTags {
     }
   }
 
+  // 如果没有合法 licenseTypeTag，则兜底为 ["common_all"]
+  if (licenseTypes.length === 0) {
+    licenseTypes.push("common_all");
+  }
+
   // 如果没有合法 topic，则兜底为 ["other"]
   if (topics.length === 0) {
     topics.push("other");
   }
 
   return {
-    licenseTypeTag: licenseType,
+    licenseTypeTag: licenseTypes, // 返回数组
     stageTag: stage,
     topicTags: topics.slice(0, 2), // 限制最多 2 个
   };

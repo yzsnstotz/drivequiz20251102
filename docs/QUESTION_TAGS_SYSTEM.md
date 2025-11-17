@@ -14,7 +14,7 @@
 
 ### 定义
 
-`license_type_tag` 是一个**单个值**，表示题目最适合的驾照类型。
+`license_type_tag` 是一个**数组**，可以包含一个或多个驾照类型，表示题目适用的驾照类型。
 
 ### 可选值
 
@@ -39,7 +39,7 @@
 
 ### 选择规则
 
-1. 如果题目是纯粹的交通规则通用内容（信号灯、停止线、基础让行规则、一般道路标志等），使用 `common_all`。
+1. 如果题目是纯粹的交通规则通用内容（信号灯、停止线、基础让行规则、一般道路标志等），使用 `["common_all"]`。
 2. 如果题目明显只针对某种车辆：
    - 出现「原動機付自転車」「原付」相关 → 使用 `moped`
    - 出现「自動二輪車」「二輪車」且内容与二輪特性相关 → 使用 `motorcycle_std` 或 `motorcycle_large`
@@ -122,7 +122,7 @@
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
-| `license_type_tag` | `VARCHAR(50)` | 驾照类型标签（单个值） |
+| `license_type_tag` | `TEXT[]` | 驾照类型标签（数组，可包含多个值） |
 | `stage_tag` | `VARCHAR(20)` | 阶段标签（单个值） |
 | `topic_tags` | `TEXT[]` | 主题标签数组（1-2个） |
 | `category` | `VARCHAR(50)` | 题目分类（卷类，如 "12"）⚠️ 不是标签 |
@@ -145,14 +145,24 @@ AI 自动打标签时，必须输出以下 JSON 格式：
 }
 ```
 
+或多个驾照类型：
+```json
+{
+  "licenseTypeTag": ["ordinary", "medium"],
+  "stageTag": "provisional",
+  "topicTags": ["signals"]
+}
+```
+
 ### 字段说明
 
-- `licenseTypeTag`：驾照类型标签（单个值）
+- `licenseTypeTag`：驾照类型标签（可以是单个值或数组）
 - `stageTag`：阶段标签（单个值）
 - `topicTags`：主题标签数组（1-2个）
 
 ⚠️ **重要**：
 - 键名必须使用驼峰命名（`licenseTypeTag`、`stageTag`、`topicTags`）
+- `licenseTypeTag` 可以是单个值（字符串）或数组（字符串数组）
 - 不要输出 `category` 字段（category 是卷类，不是标签）
 - 不要输出 `license_types` 或 `license_tags` 字段（使用 `licenseTypeTag` 替代）
 
@@ -191,7 +201,7 @@ const normalized = normalizeAIResult(raw);
 await db
   .updateTable("questions")
   .set({
-    license_type_tag: normalized.licenseTypeTag,
+    license_type_tag: normalized.licenseTypeTag, // 数组格式
     stage_tag: normalized.stageTag, // 注意：可能需要转换为旧值 "regular" 以兼容
     topic_tags: normalized.topicTags,
   })
@@ -229,9 +239,19 @@ await db
 
 ### ✅ 正确示例
 
+单个驾照类型：
 ```json
 {
   "licenseTypeTag": "common_all",
+  "stageTag": "both",
+  "topicTags": ["signals", "right_of_way"]
+}
+```
+
+多个驾照类型：
+```json
+{
+  "licenseTypeTag": ["ordinary", "medium"],
   "stageTag": "both",
   "topicTags": ["signals", "right_of_way"]
 }
