@@ -102,3 +102,43 @@ export function buildQuestionPolishInput(payload: QuestionPolishPayload): string
   return parts.join("\n");
 }
 
+/**
+ * 用于 question_fill_missing 场景：
+ * 生成发给 AI 的 question 字段内容。
+ * 
+ * 注意：实现必须与当前业务中已有的格式完全一致。
+ * 参考：
+ * - src/app/api/admin/question-processing/_lib/batchProcessUtils.ts (fillMissingContent)
+ */
+export interface QuestionFillMissingPayload {
+  stem: string;
+  options?: string[] | null;
+  explanation?: string | null;
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
+}
+
+export function buildQuestionFillMissingInput(payload: QuestionFillMissingPayload): string {
+  const { stem, options, explanation, questionType } = payload;
+
+  // 根据题目类型决定是否提示 options
+  let optionsPrompt = "";
+  if (questionType === "truefalse") {
+    // 是非题不需要选项
+    optionsPrompt = "Question Type: True/False (判断题，不需要选项，options 字段应设为 null 或空数组 [])\n";
+  } else {
+    // 单选或多选题需要选项
+    optionsPrompt = options && options.length 
+      ? `Options:\n- ${options.join("\n- ")}` 
+      : `Options: [缺失]`;
+  }
+
+  const input = [
+    `Content: ${stem || "[缺失]"}`,
+    optionsPrompt,
+    explanation ? `Explanation: ${explanation}` : `Explanation: [缺失]`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return input;
+}
