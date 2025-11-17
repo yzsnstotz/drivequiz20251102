@@ -279,12 +279,15 @@ export default function AdminAiScenesPage() {
   };
 
   const handleTest = async (scene: SceneConfig) => {
+    // 获取或初始化测试状态，包含默认的源语言和目标语言
     const testState = testStates[scene.id] || {
       sceneId: scene.id,
       testing: false,
       testInput: "",
       testResult: null,
       testError: null,
+      sourceLanguage: "zh", // 默认源语言
+      targetLanguage: "ja", // 默认目标语言
     };
     
     const testInput = testState.testInput || "";
@@ -351,20 +354,35 @@ export default function AdminAiScenesPage() {
 
       // 如果是翻译场景，添加源语言和目标语言参数
       if (scene.scene_key === "question_translation") {
-        if (!testState.sourceLanguage || !testState.targetLanguage) {
-          alert("翻译场景需要指定源语言和目标语言");
+        // 使用默认值或用户选择的值
+        const sourceLang = testState.sourceLanguage || "zh";
+        const targetLang = testState.targetLanguage || "ja";
+        
+        // 验证源语言和目标语言不能相同
+        if (sourceLang === targetLang) {
+          alert("源语言和目标语言不能相同");
           setTestStates((prev) => ({
             ...prev,
             [scene.id]: {
               ...testState,
               testing: false,
-              testError: "翻译场景需要指定源语言和目标语言",
+              testError: "源语言和目标语言不能相同",
             },
           }));
           return;
         }
-        testPayload.sourceLanguage = testState.sourceLanguage;
-        testPayload.targetLanguage = testState.targetLanguage;
+        
+        testPayload.sourceLanguage = sourceLang;
+        testPayload.targetLanguage = targetLang;
+        
+        console.log(`[Scene Test] [${testId}] 翻译场景语言设置:`, {
+          sourceLanguage: sourceLang,
+          targetLanguage: targetLang,
+          fromState: {
+            sourceLanguage: testState.sourceLanguage,
+            targetLanguage: testState.targetLanguage,
+          },
+        });
       } else if (scene.scene_key === "question_polish") {
         // 润色场景使用 lang 或 sourceLanguage 作为 language
         if (testState.sourceLanguage) {
