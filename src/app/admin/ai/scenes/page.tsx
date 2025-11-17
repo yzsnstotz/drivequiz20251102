@@ -257,6 +257,7 @@ export default function AdminAiScenesPage() {
     lang?: string;
     model?: string;
     provider?: "local" | "render";
+    questionType?: "single" | "multiple" | "truefalse";
   }) => {
     const base = getBaseUrl();
     const token = getAuthToken();
@@ -270,12 +271,26 @@ export default function AdminAiScenesPage() {
       body: JSON.stringify(payload),
     });
 
+    const responseData = await res.json().catch(() => null);
+    
     if (!res.ok) {
-      const err = await res.json().catch(() => null);
-      throw new Error(err?.error || `Scene test failed: ${res.status}`);
+      // HTTP 状态码错误
+      const errorMessage = responseData?.error || responseData?.message || `Scene test failed: ${res.status}`;
+      throw new Error(errorMessage);
     }
 
-    return res.json();
+    // 检查响应格式
+    if (!responseData || typeof responseData !== "object") {
+      throw new Error("Invalid response format from test API");
+    }
+
+    // 如果响应格式是 { ok: true, data: {...} }，提取 data
+    if (responseData.ok && responseData.data) {
+      return responseData.data;
+    }
+
+    // 否则直接返回响应
+    return responseData;
   };
 
   const handleTest = async (scene: SceneConfig) => {
