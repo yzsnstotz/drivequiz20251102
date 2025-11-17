@@ -1787,9 +1787,18 @@ export default function QuestionsPage() {
                               
                               try {
                                 const payload: any = {
-                                  from: filters.locale || "zh",
-                                  to: selectedLangs.length === 1 ? selectedLangs[0] : selectedLangs,
-                                };
+                                  // 确保 from 有值，不能为空字符串或 null
+                                  const from = (filters.locale || "zh").trim() || "zh";
+                                  const payload: any = {
+                                    from: from,
+                                    to: selectedLangs.length === 1 ? selectedLangs[0] : selectedLangs,
+                                  };
+                                  
+                                  // 验证 from 是否有效
+                                  if (!from) {
+                                    alert("源语言不能为空");
+                                    return;
+                                  }
                                 if (item.hash) payload.contentHash = item.hash;
                                 else payload.questionId = item.id;
                                 
@@ -2117,8 +2126,15 @@ export default function QuestionsPage() {
                       
                       cancelBtn?.addEventListener("click", cleanup);
                       confirmBtn?.addEventListener("click", async () => {
-                        const from = fromSelect?.value || filters.locale || "zh";
-                        const to = toSelect?.value || "ja";
+                        // 确保 from 和 to 都有值，不能为空字符串
+                        const from = (fromSelect?.value || filters.locale || "zh").trim() || "zh";
+                        const to = (toSelect?.value || "ja").trim() || "ja";
+                        
+                        // 验证 from 和 to 是否有效
+                        if (!from || !to) {
+                          alert("源语言和目标语言不能为空");
+                          return;
+                        }
                         
                         if (from === to) {
                           alert("源语言和目标语言不能相同");
