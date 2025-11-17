@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { badRequest, internalError, success } from "@/app/api/_lib/errors";
 import { callAiServer } from "@/lib/aiClient.server";
-import { buildQuestionTranslationInput, buildQuestionPolishInput } from "@/lib/questionPromptBuilder";
+import { buildQuestionTranslationInput, buildQuestionPolishInput, buildQuestionFillMissingInput } from "@/lib/questionPromptBuilder";
 import { getCurrentAiProviderConfig } from "@/app/api/admin/question-processing/_lib/batchProcessUtils";
 
 /**
@@ -106,6 +106,14 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         options: options || [],
         explanation: explanation || undefined,
         language,
+        questionType: questionType || undefined, // 传递题目类型
+      });
+    } else if (sceneKey === "question_fill_missing") {
+      // 对于填漏场景，需要根据题目类型决定是否提示选项
+      question = buildQuestionFillMissingInput({
+        stem: rawInput,
+        options: options || null,
+        explanation: explanation || null,
         questionType: questionType || undefined, // 传递题目类型
       });
     }
