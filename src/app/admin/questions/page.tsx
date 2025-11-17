@@ -2031,8 +2031,15 @@ export default function QuestionsPage() {
                         const progressDialog = document.createElement("div");
                         progressDialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
                         progressDialog.innerHTML = `
-                          <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                            <h3 class="text-lg font-semibold mb-4">翻译处理中...</h3>
+                          <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                            <div class="flex justify-between items-center mb-4">
+                              <h3 class="text-lg font-semibold">翻译处理中...</h3>
+                              <button id="close-dialog" class="text-gray-400 hover:text-gray-600 transition-colors" style="display: none;">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                              </button>
+                            </div>
                             <div id="progress-content" class="mb-4">
                               <p class="text-sm text-gray-600">正在翻译到: ${to}</p>
                             </div>
@@ -2044,6 +2051,16 @@ export default function QuestionsPage() {
                         document.body.appendChild(progressDialog);
                         const progressContent = progressDialog.querySelector("#progress-content");
                         const progressBar = progressDialog.querySelector("#progress-bar") as HTMLElement;
+                        const closeBtn = progressDialog.querySelector("#close-dialog") as HTMLElement;
+                        const dialogTitle = progressDialog.querySelector("h3") as HTMLElement;
+                        
+                        // 关闭对话框的函数
+                        const closeDialog = () => {
+                          document.body.removeChild(progressDialog);
+                          window.location.reload();
+                        };
+                        
+                        closeBtn?.addEventListener("click", closeDialog);
                         
                         try {
                           const payload: any = {
@@ -2063,40 +2080,65 @@ export default function QuestionsPage() {
                           if (progressContent) {
                             const successCount = result.results?.filter(r => r.success).length || 0;
                             const failCount = result.results?.filter(r => !r.success).length || 0;
+                            const allSuccess = failCount === 0;
+                            
                             progressContent.innerHTML = `
-                              <p class="text-sm font-semibold ${failCount === 0 ? 'text-green-600' : 'text-yellow-600'} mb-2">
-                                ${failCount === 0 ? '✓ 翻译完成！' : '⚠ 翻译部分完成'}
-                              </p>
-                              <p class="text-sm text-gray-600 mb-2">成功: ${successCount} | 失败: ${failCount}</p>
-                              ${result.results?.map(r => `
-                                <p class="text-xs ${r.success ? 'text-green-600' : 'text-red-600'} mt-1">
-                                  ${r.locale}: ${r.success ? '✓ 成功' : '✗ ' + (r.error || '失败')}
-                                </p>
-                              `).join("") || ""}
+                              <div class="space-y-3">
+                                <div class="p-3 rounded-lg ${allSuccess ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}">
+                                  <p class="text-sm font-semibold ${allSuccess ? 'text-green-700' : 'text-yellow-700'} mb-2">
+                                    ${allSuccess ? '✓ 翻译完成！' : '⚠ 翻译部分完成'}
+                                  </p>
+                                  <p class="text-sm text-gray-700 mb-2">
+                                    <span class="font-medium">处理结果：</span>成功 ${successCount} 个，失败 ${failCount} 个
+                                  </p>
+                                </div>
+                                <div class="space-y-2">
+                                  <p class="text-sm font-medium text-gray-700">详细结果：</p>
+                                  ${result.results?.map(r => `
+                                    <div class="p-2 rounded ${r.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
+                                      <p class="text-xs font-medium ${r.success ? 'text-green-700' : 'text-red-700'}">
+                                        ${r.locale.toUpperCase()}: ${r.success ? '✓ 翻译成功' : '✗ 翻译失败'}
+                                      </p>
+                                      ${!r.success && r.error ? `
+                                        <p class="text-xs text-red-600 mt-1">错误: ${r.error}</p>
+                                      ` : ''}
+                                    </div>
+                                  `).join("") || ""}
+                                </div>
+                              </div>
                             `;
                           }
                           if (progressBar) {
                             progressBar.style.width = "100%";
                             progressBar.classList.remove("bg-blue-500");
-                            progressBar.classList.add(failCount === 0 ? "bg-green-500" : "bg-yellow-500");
+                            progressBar.classList.add(allSuccess ? "bg-green-500" : "bg-yellow-500");
                           }
-                          
-                          setTimeout(() => {
-                            document.body.removeChild(progressDialog);
-                            window.location.reload();
-                          }, 3000);
+                          if (dialogTitle) {
+                            dialogTitle.textContent = allSuccess ? "翻译完成" : "翻译部分完成";
+                          }
+                          if (closeBtn) {
+                            closeBtn.style.display = "block";
+                          }
                         } catch (e) {
                           if (progressContent) {
-                            progressContent.innerHTML = `<p class="text-sm text-red-600">翻译失败: ${e instanceof Error ? e.message : "未知错误"}</p>`;
+                            progressContent.innerHTML = `
+                              <div class="p-3 rounded-lg bg-red-50 border border-red-200">
+                                <p class="text-sm font-semibold text-red-700 mb-2">✗ 翻译失败</p>
+                                <p class="text-sm text-red-600">${e instanceof Error ? e.message : "未知错误"}</p>
+                              </div>
+                            `;
                           }
                           if (progressBar) {
                             progressBar.style.width = "100%";
                             progressBar.classList.remove("bg-blue-500");
                             progressBar.classList.add("bg-red-500");
                           }
-                          setTimeout(() => {
-                            document.body.removeChild(progressDialog);
-                          }, 3000);
+                          if (dialogTitle) {
+                            dialogTitle.textContent = "翻译失败";
+                          }
+                          if (closeBtn) {
+                            closeBtn.style.display = "block";
+                          }
                         }
                       });
                     }}
