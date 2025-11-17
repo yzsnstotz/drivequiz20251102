@@ -1010,6 +1010,7 @@ async function processBatchAsync(
                     source: sourceContentWithLatestExplanation,
                     from: input.translateOptions!.from,
                     to: targetLang,
+                    questionType: question.type, // 传递题目类型（single/multiple/truefalse）
                     adminToken,
                     returnDetail: true,
                     mode: "batch", // ✅ 批量处理模式
