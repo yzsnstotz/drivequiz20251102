@@ -19,10 +19,27 @@ export const POST = withAdminAuth(async (req: Request) => {
       return {};
     });
     const { questionId, contentHash, from, to } = body || {};
-    console.log(`[API Translate] [${requestId}] Body parsed:`, { questionId, contentHash, from, to });
+    console.log(`[API Translate] [${requestId}] Body parsed:`, { 
+      questionId, 
+      contentHash, 
+      from, 
+      to,
+      fromType: typeof from,
+      toType: typeof to,
+      hasFrom: from !== undefined && from !== null && from !== "",
+      hasTo: to !== undefined && to !== null && to !== "",
+      rawBody: JSON.stringify(body),
+    });
     
     if ((!questionId && !contentHash) || !from || !to) {
-      console.error(`[API Translate] [${requestId}] Missing required fields`);
+      console.error(`[API Translate] [${requestId}] Missing required fields`, {
+        hasQuestionId: !!questionId,
+        hasContentHash: !!contentHash,
+        hasFrom: !!from,
+        hasTo: !!to,
+        fromValue: from,
+        toValue: to,
+      });
       return badRequest("questionId/contentHash, from, to are required");
     }
     

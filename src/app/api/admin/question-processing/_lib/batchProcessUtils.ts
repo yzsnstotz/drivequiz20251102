@@ -493,6 +493,15 @@ export async function translateWithPolish(params: {
   // ✅ 根据调用模式决定超时策略
   const callMode = params.mode || "single"; // 默认为 single，批量处理需显式传入 "batch"
   
+  console.log(`[translateWithPolish] 准备调用 AI:`, {
+    from,
+    to,
+    sceneKey,
+    questionLength: questionText.length,
+    hasSourceLanguage: from !== undefined && from !== null && from !== "",
+    hasTargetLanguage: to !== undefined && to !== null && to !== "",
+  });
+  
   const data = await callAiAskInternal(
     {
       question: questionText,
