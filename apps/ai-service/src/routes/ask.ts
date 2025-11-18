@@ -2,11 +2,11 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { checkSafety } from "../lib/safety.js";
 import { getRagContext } from "../lib/rag.js";
-import { getOpenAIClient } from "../lib/openaiClient.js";
 import { cacheGet, cacheSet } from "../lib/cache.js";
 import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
+import { runScene } from "../lib/sceneRunner.js";
 
 /** 请求体类型 */
 type AskBody = {
@@ -145,6 +145,7 @@ export function buildCacheKey(question: string, lang: string, model: string, sce
 
 /**
  * 从 Supabase 读取场景配置
+ * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.getSceneConfig
  */
 async function getSceneConfig(
   sceneKey: string,
@@ -223,6 +224,7 @@ async function getSceneConfig(
 
 /**
  * 替换 prompt 中的占位符
+ * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.replacePlaceholders
  */
 function replacePlaceholders(
   prompt: string,
@@ -246,7 +248,10 @@ function replacePlaceholders(
   return result;
 }
 
-/** System Prompt（根据语言输出） */
+/** 
+ * System Prompt（根据语言输出）
+ * @deprecated 此函数已迁移到 sceneRunner.ts，场景执行应使用 sceneRunner.runScene
+ */
 function buildSystemPrompt(lang: string): string {
   const base =
     "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
@@ -366,139 +371,91 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
 
         const aiProvider = aiProviderResult;
 
-        // 6) 调用 OpenAI
-        let openai;
-        try {
-          openai = getOpenAIClient(config, aiProvider);
-          console.log("[ASK ROUTE] AI client initialized successfully", {
-            aiProvider,
-            baseUrl: openai.baseURL,
-            isOpenRouter: aiProvider === "openrouter",
-            hasOpenRouterKey: !!config.openrouterApiKey,
-            hasOpenAIKey: !!config.openaiApiKey,
-          });
-        } catch (e) {
-          const error = e as Error;
-          console.error("[ASK ROUTE] Failed to initialize AI client:", {
-            error: error.message,
-            stack: error.stack,
-            aiProvider,
-            openaiBaseUrl: process.env.OPENAI_BASE_URL,
-            openrouterBaseUrl: process.env.OPENROUTER_BASE_URL,
-          });
-          reply.code(500).send({
-            ok: false,
-            errorCode: "CONFIG_ERROR",
-            message: error.message || "Failed to initialize AI client",
-          });
-          return;
-        }
-
-        // 5) 构建系统 prompt（优先使用场景配置）
-        // 重要：对于翻译场景，应该使用 targetLanguage 来选择 prompt 语言，而不是 lang
-        // lang 是请求的语言标识，targetLanguage 是翻译的目标语言
-        let sys: string;
+        // 5) 使用统一的场景执行模块
+        // ⚠️ 注意：所有场景执行逻辑都在 sceneRunner.ts 中，这里只负责调用
         const promptLocale = targetLanguage || lang; // 优先使用 targetLanguage（翻译目标语言）
-        console.log("[AI-SERVICE] 构建系统 prompt:", { 
-          scene, 
-          sourceLanguage, 
-          targetLanguage, 
-          lang, 
-          promptLocale,
-          willUseTargetLanguage: !!targetLanguage
-        });
-        
-        if (scene) {
-          // 尝试从数据库读取场景配置
-          // 使用 targetLanguage 或 lang 来选择 prompt 的语言版本
-          const sceneConfig = await getSceneConfig(scene, promptLocale, config);
-          if (sceneConfig) {
-            // 使用场景配置的 prompt，并替换占位符
-            sys = replacePlaceholders(sceneConfig.prompt, sourceLanguage || undefined, targetLanguage || undefined);
-            console.log("[AI-SERVICE] 使用场景配置:", { 
-              scene, 
-              sourceLanguage, 
-              targetLanguage,
-              promptLocale,
-              promptLength: sys.length,
-              promptPreview: sys.substring(0, 200) + "..."
-            });
-          } else {
-            // 场景配置不存在，使用默认 prompt
-            // 对于翻译场景，如果 targetLanguage 存在，应该使用 targetLanguage 的语言
-            const defaultPromptLang = targetLanguage || lang;
-            sys = buildSystemPrompt(defaultPromptLang);
-            console.warn("[AI-SERVICE] 场景配置不存在，使用默认 prompt:", { scene, lang: defaultPromptLang });
-          }
-        } else {
-          // 没有指定场景，使用默认 prompt
-          const defaultPromptLang = targetLanguage || lang;
-          sys = buildSystemPrompt(defaultPromptLang);
-          console.log("[AI-SERVICE] 未指定场景，使用默认 prompt:", { lang: defaultPromptLang });
-        }
-        
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
 
-        let completion;
+        let sceneResult;
+        let inputTokens: number | undefined;
+        let outputTokens: number | undefined;
+        let totalTokens: number | undefined;
+        
         try {
-          console.log("[ASK ROUTE] Calling AI API", {
-            model,
-            questionLength: question.length,
-            hasReference: !!reference,
-            referenceLength: reference?.length || 0,
-          });
-          completion = await openai.chat.completions.create({
-            model: model, // 使用从数据库读取的模型配置
-            temperature: 0.4,
-            messages: [
-              { role: "system", content: sys },
-              {
-                role: "user",
-                content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
+          // 如果有场景，使用统一的场景执行模块
+          if (scene) {
+            console.log("[ASK ROUTE] 使用场景执行模块:", {
+              scene,
+              locale: promptLocale,
+              sourceLanguage,
+              targetLanguage,
+              model,
+              aiProvider,
+            });
+            
+            sceneResult = await runScene({
+              sceneKey: scene,
+              locale: promptLocale,
+              question,
+              reference: reference || null,
+              userPrefix,
+              refPrefix,
+              config: {
+                supabaseUrl: config.supabaseUrl,
+                supabaseServiceKey: config.supabaseServiceKey,
+                aiModel: config.aiModel,
               },
-            ],
-          });
-          console.log("[ASK ROUTE] AI API call successful", {
-            model,
-            hasAnswer: !!completion.choices?.[0]?.message?.content,
-            inputTokens: completion.usage?.prompt_tokens,
-            outputTokens: completion.usage?.completion_tokens,
-          });
+              providerKind: "openai",
+              aiProvider,
+              model,
+              serviceConfig: config,
+              sourceLanguage: sourceLanguage || null,
+              targetLanguage: targetLanguage || null,
+              temperature: 0.4,
+            });
+            
+            // 从 sceneResult 中获取 tokens 信息（如果可用）
+            inputTokens = sceneResult.tokens?.prompt;
+            outputTokens = sceneResult.tokens?.completion;
+            totalTokens = sceneResult.tokens?.total;
+          } else {
+            // 没有场景，使用默认逻辑（保留原有行为，但建议也迁移到 sceneRunner）
+            // 这里暂时保留原有逻辑，但应该考虑也使用 sceneRunner
+            throw new Error("Non-scene requests are not supported in unified scene runner. Please specify a scene.");
+          }
         } catch (e) {
           const error = e as Error & { status?: number; code?: string };
-          const resolvedBaseUrl = openai.baseURL;
-          console.error("[ASK ROUTE] AI API call failed:", {
+          console.error("[ASK ROUTE] 场景执行失败:", {
             error: error.message,
             name: error.name,
             status: error.status,
             code: error.code,
-            stack: error.stack,
+            stack: error.stack?.substring(0, 500),
+            scene,
             model,
-            baseUrl: resolvedBaseUrl,
             aiProvider,
           });
+          
           // 提取更详细的错误信息
-          let errorMessage = error.message || "AI API call failed";
+          let errorMessage = error.message || "Scene execution failed";
           let errorCode = "PROVIDER_ERROR";
           let statusCode = 502;
 
-          // 处理常见的 OpenRouter/OpenAI 错误
-          if (error.status === 401 || error.code === "invalid_api_key") {
+          // 处理常见的错误
+          if (error.message?.includes("Scene not found")) {
+            errorCode = "SCENE_NOT_FOUND";
+            errorMessage = `Scene '${scene}' not found or disabled`;
+            statusCode = 404;
+          } else if (error.message?.includes("timeout")) {
+            errorCode = "TIMEOUT";
+            errorMessage = "Scene execution timeout";
+            statusCode = 504;
+          } else if (error.message?.includes("API key") || error.message?.includes("auth")) {
             errorCode = "AUTH_REQUIRED";
-            errorMessage = "Invalid API key. Please check your OPENROUTER_API_KEY or OPENAI_API_KEY.";
+            errorMessage = "Invalid API key or authentication failed";
             statusCode = 401;
-          } else if (error.status === 429 || error.code === "rate_limit_exceeded") {
-            errorCode = "RATE_LIMIT_EXCEEDED";
-            errorMessage = "Rate limit exceeded. Please try again later.";
-            statusCode = 429;
-          } else if (error.status === 400 || error.code === "invalid_request_error") {
-            errorCode = "VALIDATION_FAILED";
-            errorMessage = `Invalid request: ${errorMessage}`;
-            statusCode = 400;
-          } else if (error.message?.includes("model")) {
-            errorMessage = `Model '${model}' not found or unavailable. Please check the model name.`;
           }
 
           reply.code(statusCode).send({
@@ -506,15 +463,15 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             errorCode,
             message: errorMessage,
             details: {
+              scene,
               model,
-              baseUrl: resolvedBaseUrl,
               aiProvider,
             },
           });
           return;
         }
 
-        const answer = completion.choices?.[0]?.message?.content?.trim() ?? "";
+        const answer = sceneResult.rawText;
         if (!answer) {
           reply.code(502).send({
             ok: false,
@@ -523,11 +480,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           });
           return;
         }
-
-        // 提取 tokens 信息
-        const inputTokens = completion.usage?.prompt_tokens;
-        const outputTokens = completion.usage?.completion_tokens;
-        const totalTokens = completion.usage?.total_tokens;
 
         // 计算成本估算
         const approxUsd = estimateCostUsd(model, inputTokens, outputTokens);

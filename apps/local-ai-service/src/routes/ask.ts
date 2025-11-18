@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getRagContext } from "../lib/rag.js";
-import { callOllamaChat } from "../lib/ollamaClient.js";
 import type { LocalAIConfig } from "../lib/config.js";
+// ⚠️ 注意：引用 ai-service 的 sceneRunner，确保使用同一套逻辑
+import { runScene } from "../../ai-service/src/lib/sceneRunner.js";
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
@@ -85,6 +86,7 @@ async function getProviderTimeout(config: LocalAIConfig): Promise<number> {
 
 /**
  * 从 Supabase 读取场景配置
+ * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.getSceneConfig
  */
 async function getSceneConfig(
   sceneKey: string,
@@ -205,6 +207,7 @@ async function getSceneConfig(
 
 /**
  * 替换 prompt 中的占位符
+ * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.replacePlaceholders
  */
 function replacePlaceholders(
   prompt: string,
@@ -244,6 +247,10 @@ function replacePlaceholders(
   return result;
 }
 
+/**
+ * System Prompt（根据语言输出）
+ * @deprecated 此函数已迁移到 sceneRunner.ts，场景执行应使用 sceneRunner.runScene
+ */
 function buildSystemPrompt(lang: string): string {
   const base =
     "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
@@ -384,123 +391,110 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           console.log("[LOCAL-AI] 翻译/润色场景，跳过 RAG 检索");
         }
 
-        // 5) 构建系统 prompt（优先使用场景配置）
-        // 重要：对于翻译场景，应该使用 targetLanguage 来选择 prompt 语言，而不是 lang
-        // lang 是请求的语言标识，targetLanguage 是翻译的目标语言
-        let sys: string;
+        // 5) 使用统一的场景执行模块
+        // ⚠️ 注意：所有场景执行逻辑都在 sceneRunner.ts 中，这里只负责调用
         const promptLocale = targetLanguage || lang; // 优先使用 targetLanguage（翻译目标语言）
-        console.log("[LOCAL-AI] 构建系统 prompt:", { 
-          scene, 
-          sourceLanguage, 
-          targetLanguage, 
-          lang, 
-          promptLocale,
-          willUseTargetLanguage: !!targetLanguage
-        });
+        const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
+        const refPrefix =
+          lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
+
+        let sceneResult;
         
-        if (scene) {
-          // 尝试从数据库读取场景配置
-          // 使用 targetLanguage 或 lang 来选择 prompt 的语言版本
-          const sceneConfig = await getSceneConfig(scene, promptLocale, config);
-          if (sceneConfig) {
-            // 使用场景配置的 prompt，并替换占位符
-            sys = replacePlaceholders(sceneConfig.prompt, sourceLanguage || undefined, targetLanguage || undefined);
-            console.log("[LOCAL-AI] 使用场景配置:", { 
-              scene, 
-              sourceLanguage, 
-              targetLanguage,
-              promptLocale,
-              promptLength: sys.length,
-              promptPreview: sys.substring(0, 300) + "...",
-              promptAfterReplace: sys.substring(0, 500) + "..."
-            });
-          } else {
-            // 场景配置不存在，使用默认 prompt
-            // 对于翻译场景，如果 targetLanguage 存在，应该使用 targetLanguage 的语言
-            const defaultPromptLang = targetLanguage || lang;
-            sys = buildSystemPrompt(defaultPromptLang);
-            console.warn("[LOCAL-AI] 场景配置不存在，使用默认 prompt:", { 
-              scene, 
-              lang: defaultPromptLang,
+        try {
+          // 如果有场景，使用统一的场景执行模块
+          if (scene) {
+            // 获取 AI Provider 超时配置（用于场景配置读取）
+            const timeoutMs = await getProviderTimeout(config);
+            
+            console.log("[LOCAL-AI] 使用场景执行模块:", {
+              scene,
+              locale: promptLocale,
               sourceLanguage,
               targetLanguage,
-              promptLocale,
-              warning: "⚠️ 翻译场景应该使用场景配置，默认 prompt 可能无法正确翻译"
+              model: config.aiModel,
+              timeoutMs,
             });
+            
+            sceneResult = await runScene({
+              sceneKey: scene,
+              locale: promptLocale,
+              question,
+              reference: reference || null,
+              userPrefix,
+              refPrefix,
+              config: {
+                supabaseUrl: config.supabaseUrl,
+                supabaseServiceKey: config.supabaseServiceKey,
+              },
+              providerKind: "ollama",
+              ollamaBaseUrl: config.ollamaBaseUrl,
+              ollamaModel: config.aiModel,
+              sourceLanguage: sourceLanguage || null,
+              targetLanguage: targetLanguage || null,
+              temperature: 0.4,
+              sceneConfigTimeoutMs: timeoutMs, // 使用从数据库读取的超时配置
+            });
+          } else {
+            // 没有场景，使用默认逻辑（保留原有行为，但建议也迁移到 sceneRunner）
+            throw new Error("Non-scene requests are not supported in unified scene runner. Please specify a scene.");
           }
-        } else {
-          // 没有指定场景，使用默认 prompt
-          const defaultPromptLang = targetLanguage || lang;
-          sys = buildSystemPrompt(defaultPromptLang);
-          console.log("[LOCAL-AI] 未指定场景，使用默认 prompt:", { lang: defaultPromptLang });
-        }
-        
-        // 构建完整的消息列表
-        const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-          { role: "system", content: sys },
-        ];
-
-        // 对于翻译和润色场景，直接使用 question 作为用户消息，不添加前缀和 RAG 上下文
-        // 对于其他场景，使用问答格式
-        if (scene === "question_translation" || scene === "question_polish") {
-          // 翻译/润色场景：直接使用 question 作为用户消息
-          messages.push({
-            role: "user",
-            content: question,
+        } catch (e) {
+          const error = e as Error & { statusCode?: number; code?: string };
+          console.error("[LOCAL-AI] 场景执行失败:", {
+            error: error.message,
+            name: error.name,
+            status: error.status,
+            code: error.code,
+            stack: error.stack?.substring(0, 500),
+            scene,
+            model: config.aiModel,
           });
-          console.log("[LOCAL-AI] 翻译/润色场景，直接使用 question 作为用户消息");
-        } else {
-          // 其他场景：使用问答格式，包含 RAG 上下文
-          const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
-          const refPrefix =
-            lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
+          
+          // 提取更详细的错误信息
+          let errorMessage = error.message || "Scene execution failed";
+          let errorCode = "PROVIDER_ERROR";
+          let statusCode = 502;
 
-          // 添加历史消息（如果有）
-          if (history.length > 0) {
-            // 过滤掉 system 消息（已经在上面添加了）
-            const historyMessages = history
-              .filter((msg) => msg.role !== "system")
-              .map((msg) => ({
-                role: msg.role as "user" | "assistant",
-                content: msg.content,
-              }));
-            messages.push(...historyMessages);
+          // 处理常见的错误
+          if (error.message?.includes("Scene not found")) {
+            errorCode = "SCENE_NOT_FOUND";
+            errorMessage = `Scene '${scene}' not found or disabled`;
+            statusCode = 404;
+          } else if (error.message?.includes("timeout")) {
+            errorCode = "TIMEOUT";
+            errorMessage = "Scene execution timeout";
+            statusCode = 504;
           }
 
-          // 添加当前问题和 RAG 上下文
-          messages.push({
-            role: "user",
-            content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
-          });
-        }
-
-        // 6) 调用 Ollama Chat（传递完整对话历史）
-        console.log("[LOCAL-AI] 发送给 Ollama 的消息:", {
-          messageCount: messages.length,
-          systemPromptLength: messages[0]?.content?.length || 0,
-          systemPromptPreview: messages[0]?.content?.substring(0, 300) + "...",
-          userMessageLength: messages[messages.length - 1]?.content?.length || 0,
-          userMessagePreview: messages[messages.length - 1]?.content?.substring(0, 200) + "...",
-          scene,
-        });
-        
-        const answer = await callOllamaChat(messages, 0.4);
-
-        if (!answer) {
-          console.error("[LOCAL-AI] Ollama返回空响应");
-          reply.code(502).send({
+          reply.code(statusCode).send({
             ok: false,
-            errorCode: "PROVIDER_ERROR",
-            message: "Empty response from Ollama",
+            errorCode,
+            message: errorMessage,
+            details: {
+              scene,
+              model: config.aiModel,
+            },
           });
           return;
         }
 
-        console.log("[LOCAL-AI] Ollama 返回的原始响应:", {
+        const answer = sceneResult.rawText;
+        if (!answer) {
+          console.error("[LOCAL-AI] 模型返回空响应");
+          reply.code(502).send({
+            ok: false,
+            errorCode: "PROVIDER_ERROR",
+            message: "Empty response from AI model",
+          });
+          return;
+        }
+
+        console.log("[LOCAL-AI] 场景执行成功:", {
           answerLength: answer.length,
           answerPreview: answer.substring(0, 500) + "...",
           answerEnd: answer.length > 500 ? "..." + answer.substring(answer.length - 200) : answer,
           scene,
+          hasJson: !!sceneResult.json,
           isJSON: answer.trim().startsWith("{") || answer.trim().startsWith("```json"),
         });
 
