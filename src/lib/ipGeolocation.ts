@@ -33,15 +33,15 @@ export async function getIPGeolocation(ip: string): Promise<IPGeolocationInfo | 
   try {
     // 使用后端API代理，避免CORS问题
     // 使用 apiGet 自动添加 Authorization 头
-    const result = await apiGet<IPGeolocationInfo>(
+    // apiGet 成功时直接返回 data，失败时抛出 ApiError
+    const data = await apiGet<IPGeolocationInfo>(
       `/api/admin/ip-geolocation`,
       {
         query: { ip },
       }
     );
 
-    if (result.ok && result.data) {
-      const data = result.data;
+    if (data) {
       const info: IPGeolocationInfo = {
         country: data.country,
         region: data.region,
@@ -54,7 +54,7 @@ export async function getIPGeolocation(ip: string): Promise<IPGeolocationInfo | 
       geolocationCache.set(ip, info);
       return info;
     } else {
-      // API返回失败，返回基本信息
+      // API返回空数据，返回基本信息
       const info: IPGeolocationInfo = {
         displayName: "未知位置",
         rawIP: ip,
