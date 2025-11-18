@@ -1461,9 +1461,11 @@ async function processBatchAsync(
               };
               
               // 更新 license_type_tag（新字段，TEXT[] 数组类型）
+              // 使用 sql 模板确保正确的 PostgreSQL 数组格式
               if (result.license_type_tag && Array.isArray(result.license_type_tag) && result.license_type_tag.length > 0) {
-                // TEXT[] 类型直接传递数组，Kysely 会自动处理
-                updates.license_type_tag = result.license_type_tag;
+                // 使用 ARRAY 构造函数将数组转换为 PostgreSQL TEXT[] 格式
+                const tags = result.license_type_tag.map(tag => sql.literal(tag));
+                updates.license_type_tag = sql`ARRAY[${sql.join(tags, sql`, `)}]::text[]`;
               }
               // 更新 stage_tag
               if (result.stage_tag) {
@@ -1471,8 +1473,9 @@ async function processBatchAsync(
               }
               // 更新 topic_tags（TEXT[] 数组类型）
               if (result.topic_tags && Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
-                // TEXT[] 类型直接传递数组，Kysely 会自动处理
-                updates.topic_tags = result.topic_tags;
+                // 使用 ARRAY 构造函数将数组转换为 PostgreSQL TEXT[] 格式
+                const tags = result.topic_tags.map(tag => sql.literal(tag));
+                updates.topic_tags = sql`ARRAY[${sql.join(tags, sql`, `)}]::text[]`;
               }
               // 不再更新 category（category 是卷类，不是标签）
               // 不再更新 license_types（使用 license_type_tag 替代）
