@@ -122,7 +122,7 @@
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
-| `license_type_tag` | `TEXT[]` | 驾照类型标签（数组，可包含多个值） |
+| `license_type_tag` | `JSONB` | 驾照类型标签（JSONB 数组，可包含多个值，如 `["ordinary", "medium"]`） |
 | `stage_tag` | `VARCHAR(20)` | 阶段标签（单个值） |
 | `topic_tags` | `TEXT[]` | 主题标签数组（1-2个） |
 | `category` | `VARCHAR(50)` | 题目分类（卷类，如 "12"）⚠️ 不是标签 |
@@ -198,11 +198,15 @@ const normalized = normalizeAIResult(raw);
 ### 写入数据库
 
 ```typescript
+import { sql } from "kysely";
+
 await db
   .updateTable("questions")
   .set({
-    license_type_tag: normalized.licenseTypeTag, // 数组格式
+    // license_type_tag 是 JSONB 类型，需要使用 sql 模板转换
+    license_type_tag: sql`${JSON.stringify(normalized.licenseTypeTag)}::jsonb`,
     stage_tag: normalized.stageTag, // 注意：可能需要转换为旧值 "regular" 以兼容
+    // topic_tags 是 TEXT[] 类型，Kysely 会自动处理数组
     topic_tags: normalized.topicTags,
   })
   .where("id", "=", questionId)
@@ -282,11 +286,16 @@ const licenseTypeTag = question.license_type_tag; // string | null
 ## 相关文件
 
 - **类型定义**：`src/lib/quizTags.ts`
-- **数据库迁移**：`src/migrations/20250122_add_license_type_tag.sql`
+- **数据库迁移**：
+  - `src/migrations/20250122_add_license_type_tag.sql`（初始创建）
+  - `src/migrations/20250122_fix_license_type_tag_to_jsonb.sql`（类型修复：TEXT[] → JSONB）
 - **AI Prompt 更新**：`src/migrations/20250122_update_question_category_tags_prompt.sql`
 - **解析逻辑**：`src/app/api/admin/question-processing/_lib/batchProcessUtils.ts`
 
 ## 更新历史
 
-- **2025-01-22**：统一标签系统，明确区分三个维度，修复 AI 错误地把 category 打了标签的问题
+- **2025-01-22**：
+  - 统一标签系统，明确区分三个维度，修复 AI 错误地把 category 打了标签的问题
+  - 修复 `license_type_tag` 字段类型：从 `TEXT[]` 改为 `JSONB`（匹配数据库实际类型）
+  - 确保 `topic_tags` 字段类型为 `TEXT[]`（如果当前是 `text`，自动转换）
 
