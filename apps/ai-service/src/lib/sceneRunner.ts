@@ -13,8 +13,10 @@
  *    严禁只修改某一个服务（例如仅修改 local-ai-service）。
  */
 
-import type { ServiceConfig } from "../index.js";
-import { getOpenAIClient } from "./openaiClient.js";
+// ⚠️ 注意：ServiceConfig 和 getOpenAIClient 只在 OpenAI provider 时使用
+// 使用动态导入，避免 local-ai-service 无法解析这些依赖
+type ServiceConfig = any; // 临时类型定义，避免直接导入
+let getOpenAIClient: any = null; // 将在需要时动态导入
 
 /**
  * 场景配置接口
@@ -49,7 +51,8 @@ export interface RunSceneOptions {
   aiProvider?: "openai" | "openrouter";
   model?: string;
   // OpenAI ServiceConfig（仅当 providerKind === "openai" 时使用）
-  serviceConfig?: ServiceConfig;
+  // 注意：使用 any 类型避免 local-ai-service 无法解析 ServiceConfig 类型
+  serviceConfig?: any;
   // Ollama 相关（仅当 providerKind === "ollama" 时使用）
   ollamaBaseUrl?: string;
   ollamaModel?: string;
@@ -308,7 +311,7 @@ export async function callModelWithProvider(
     model: string;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     responseFormat?: { type: "json_object" };
-    serviceConfig?: ServiceConfig;
+    serviceConfig?: any; // 使用 any 避免 local-ai-service 无法解析 ServiceConfig
     aiProvider?: "openai" | "openrouter";
     ollamaBaseUrl?: string;
     temperature?: number;
@@ -321,6 +324,17 @@ export async function callModelWithProvider(
     if (!serviceConfig) {
       throw new Error("ServiceConfig is required for OpenAI provider");
     }
+    
+    // 动态导入 OpenAI 客户端（避免 local-ai-service 无法解析）
+    if (!getOpenAIClient) {
+      try {
+        const openaiClientModule = await import("./openaiClient.js");
+        getOpenAIClient = openaiClientModule.getOpenAIClient;
+      } catch (error) {
+        throw new Error(`Failed to load OpenAI client: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    
     const openai = getOpenAIClient(serviceConfig, aiProvider);
     
     console.log("[SCENE-RUNNER] 调用 OpenAI API:", {

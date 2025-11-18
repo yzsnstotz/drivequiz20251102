@@ -3,7 +3,8 @@ import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getRagContext } from "../lib/rag.js";
 import type { LocalAIConfig } from "../lib/config.js";
 // ⚠️ 注意：引用 ai-service 的 sceneRunner，确保使用同一套逻辑
-import { runScene } from "../../ai-service/src/lib/sceneRunner.js";
+// 路径：从 apps/local-ai-service/src/routes/ 到 apps/ai-service/src/lib/
+import { runScene } from "../../../ai-service/src/lib/sceneRunner.js";
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
@@ -439,11 +440,11 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             throw new Error("Non-scene requests are not supported in unified scene runner. Please specify a scene.");
           }
         } catch (e) {
-          const error = e as Error & { statusCode?: number; code?: string };
+          const error = e as Error & { statusCode?: number; code?: string; status?: number };
           console.error("[LOCAL-AI] 场景执行失败:", {
             error: error.message,
             name: error.name,
-            status: error.status,
+            status: error.status || error.statusCode,
             code: error.code,
             stack: error.stack?.substring(0, 500),
             scene,
@@ -541,6 +542,14 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const err = e as Error & { statusCode?: number };
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";
+        
+        // 获取请求体中的变量（如果已定义）
+        const body = (request.body as AskBody) || {};
+        const scene = body.scene?.trim() || null;
+        const question = (body.question || "").trim();
+        const lang = (body.lang || "zh").toLowerCase().trim();
+        const sourceLanguage = body.sourceLanguage ? body.sourceLanguage.trim() || null : null;
+        const targetLanguage = body.targetLanguage ? body.targetLanguage.trim() || null : null;
         
         // 增强错误日志，包含更多上下文信息
         console.error("[LOCAL-AI] 处理请求时出错:", {
