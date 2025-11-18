@@ -406,7 +406,19 @@ async function callAiAskInternal(
           }
           
           // 其他错误直接抛出，不再重试
-          throw new Error(aiResp.message || "AI call failed");
+          // 增强错误信息，包含更多上下文
+          const errorMessage = aiResp.message || "AI call failed";
+          const errorCode = aiResp.errorCode || "AI_SERVICE_ERROR";
+          console.error(`[callAiAskInternal] AI 服务调用失败:`, {
+            provider,
+            scene: params.scene,
+            errorCode,
+            message: errorMessage,
+            status: (aiResp as any).status,
+            attempt: attempt + 1,
+            maxRetries: MAX_RETRIES + 1,
+          });
+          throw new Error(`${errorCode}: ${errorMessage}`);
         }
 
         // 验证响应数据
@@ -895,16 +907,47 @@ export async function generateCategoryAndTags(params: {
   const model = data.model || 'unknown';
 
   let parsed: any = null;
+  let rawAnswer = data.answer;
+  
+  // 尝试从代码块中提取 JSON（优先处理）
+  const codeBlockMatch = rawAnswer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch) {
+    rawAnswer = codeBlockMatch[1].trim();
+  }
+  
   try {
-    parsed = JSON.parse(data.answer);
-  } catch {
-    const m = data.answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (m) {
-      parsed = JSON.parse(m[1]);
+    parsed = JSON.parse(rawAnswer);
+  } catch (parseError) {
+    // 如果 JSON 解析失败，记录详细错误信息
+    console.error(`[generateCategoryAndTags] Failed to parse AI response. Full response length: ${rawAnswer.length}`);
+    console.error(`[generateCategoryAndTags] Response preview: ${rawAnswer.substring(0, 500)}`);
+    console.error(`[generateCategoryAndTags] Parse error:`, parseError);
+    
+    // 尝试修复截断的 JSON
+    try {
+      let fixedJson = rawAnswer.trim();
+      
+      // 尝试添加缺失的闭合括号
+      if (!fixedJson.endsWith("}")) {
+        const openBraces = (fixedJson.match(/\{/g) || []).length;
+        const closeBraces = (fixedJson.match(/\}/g) || []).length;
+        const missingBraces = openBraces - closeBraces;
+        if (missingBraces > 0) {
+          fixedJson += "\n" + "}".repeat(missingBraces);
+        }
+      }
+      parsed = JSON.parse(fixedJson);
+      console.warn(`[generateCategoryAndTags] Successfully fixed truncated JSON`);
+    } catch (fixError) {
+      // 如果修复后仍然失败，抛出详细错误
+      console.error(`[generateCategoryAndTags] Failed to fix JSON:`, fixError);
+      throw new Error(`AI category/tags response missing JSON body. Response preview: ${rawAnswer.substring(0, 200)}`);
     }
   }
+  
   if (!parsed || typeof parsed !== "object") {
-    throw new Error("AI category/tags response missing JSON body");
+    console.error(`[generateCategoryAndTags] Parsed result is not an object:`, typeof parsed, parsed);
+    throw new Error(`AI category/tags response missing JSON body. Response preview: ${rawAnswer.substring(0, 200)}`);
   }
 
   // 使用统一的规范化函数处理 AI 返回结果
