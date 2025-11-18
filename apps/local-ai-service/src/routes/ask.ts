@@ -548,7 +548,18 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";
         
-        console.error("[LOCAL-AI] 处理请求时出错:", err.message);
+        // 增强错误日志，包含更多上下文信息
+        console.error("[LOCAL-AI] 处理请求时出错:", {
+          error: err.message,
+          stack: err.stack?.substring(0, 500),
+          statusCode: err.statusCode,
+          scene,
+          questionLength: question?.length || 0,
+          questionPreview: question?.substring(0, 200) || "",
+          lang,
+          sourceLanguage,
+          targetLanguage,
+        });
         
         reply.code(status).send({
           ok: false,
