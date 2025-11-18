@@ -3,6 +3,8 @@
 // 功能: IP地址地理位置查询工具
 // ============================================================
 
+import { apiGet } from "./apiClient";
+
 export interface IPGeolocationInfo {
   country?: string;
   region?: string;
@@ -30,21 +32,13 @@ export async function getIPGeolocation(ip: string): Promise<IPGeolocationInfo | 
 
   try {
     // 使用后端API代理，避免CORS问题
-    const response = await fetch(
-      `/api/admin/ip-geolocation?ip=${encodeURIComponent(ip)}`,
+    // 使用 apiGet 自动添加 Authorization 头
+    const result = await apiGet<IPGeolocationInfo>(
+      `/api/admin/ip-geolocation`,
       {
-        method: "GET",
-        headers: {
-          "Accept": "application/json",
-        },
+        query: { ip },
       }
     );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
 
     if (result.ok && result.data) {
       const data = result.data;
@@ -68,9 +62,21 @@ export async function getIPGeolocation(ip: string): Promise<IPGeolocationInfo | 
       geolocationCache.set(ip, info);
       return info;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[IP Geolocation] Failed to fetch location for IP ${ip}:`, error);
-    // 出错时返回基本信息
+    
+    // 如果是认证错误（401），返回特殊提示
+    if (error?.status === 401 || error?.errorCode === "AUTH_REQUIRED") {
+      console.warn(`[IP Geolocation] Authentication required for IP ${ip}`);
+      const info: IPGeolocationInfo = {
+        displayName: "需要登录",
+        rawIP: ip,
+      };
+      geolocationCache.set(ip, info);
+      return info;
+    }
+    
+    // 其他错误，返回基本信息
     const info: IPGeolocationInfo = {
       displayName: "查询失败",
       rawIP: ip,
