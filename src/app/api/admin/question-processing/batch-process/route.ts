@@ -1187,6 +1187,7 @@ async function processBatchAsync(
               const polishResult = await polishContent({
                 text,
                 locale: input.polishOptions.locale,
+                questionType: question.type, // 传递题目类型
                 adminToken,
                 returnDetail: true,
                 mode: "batch", // ✅ 批量处理模式
@@ -1459,26 +1460,40 @@ async function processBatchAsync(
                 updated_at: new Date(),
               };
               
-              // 更新 license_type_tag（新字段）
-              if (result.license_type_tag) {
+              // 更新 license_type_tag（新字段，TEXT[] 数组类型）
+              if (result.license_type_tag && Array.isArray(result.license_type_tag) && result.license_type_tag.length > 0) {
+                // TEXT[] 类型直接传递数组，Kysely 会自动处理
                 updates.license_type_tag = result.license_type_tag;
               }
               // 更新 stage_tag
               if (result.stage_tag) {
                 updates.stage_tag = result.stage_tag;
               }
-              // 更新 topic_tags
+              // 更新 topic_tags（TEXT[] 数组类型）
               if (result.topic_tags && Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
+                // TEXT[] 类型直接传递数组，Kysely 会自动处理
                 updates.topic_tags = result.topic_tags;
               }
               // 不再更新 category（category 是卷类，不是标签）
               // 不再更新 license_types（使用 license_type_tag 替代）
 
-              await db
-                .updateTable("questions")
-                .set(updates)
-                .where("id", "=", question.id)
-                .execute();
+              try {
+                await db
+                  .updateTable("questions")
+                  .set(updates)
+                  .where("id", "=", question.id)
+                  .execute();
+              } catch (dbError: any) {
+                console.error(`[BatchProcess] Database update failed for Q${question.id}:`, {
+                  error: dbError.message,
+                  errorCode: dbError.code,
+                  license_type_tag: result.license_type_tag,
+                  stage_tag: result.stage_tag,
+                  topic_tags: result.topic_tags,
+                  updatesKeys: Object.keys(updates),
+                });
+                throw dbError;
+              }
                 
               console.log(`[BatchProcess] Updated category and tags for Q${question.id}`);
               questionResult.operations.push("category_tags");

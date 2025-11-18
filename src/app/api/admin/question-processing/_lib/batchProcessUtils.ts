@@ -10,6 +10,7 @@ import { mapDbProviderToClientProvider } from "@/lib/aiProviderMapping";
 import { loadQpAiConfig, type QpAiConfig } from "@/lib/qpAiConfig";
 import { getAiCache, setAiCache } from "@/lib/qpAiCache";
 import { normalizeAIResult } from "@/lib/quizTags";
+import { buildQuestionTranslationInput, buildQuestionPolishInput } from "@/lib/questionPromptBuilder";
 
 // 在模块级提前加载一次配置（与 question-processor 保持一致）
 const qpAiConfig = loadQpAiConfig();
@@ -690,11 +691,12 @@ export async function translateWithPolish(params: {
 export async function polishContent(params: {
   text: { content: string; options?: string[]; explanation?: string };
   locale: string;
+  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
   mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
-  const { text, locale } = params;
+  const { text, locale, questionType } = params;
   
   // 使用统一的题目拼装工具
   const input = buildQuestionPolishInput({
@@ -702,6 +704,7 @@ export async function polishContent(params: {
     options: text.options,
     explanation: text.explanation,
     language: locale,
+    questionType: questionType || undefined, // 传递题目类型
   });
 
   const sceneKey = "question_polish";
