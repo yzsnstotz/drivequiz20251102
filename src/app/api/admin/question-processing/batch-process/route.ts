@@ -1460,18 +1460,18 @@ async function processBatchAsync(
                 updated_at: new Date(),
               };
               
-              // 更新 license_type_tag（新字段，TEXT[] 数组类型）
-              // 使用 sql 模板确保正确的 PostgreSQL 数组格式
+              // 更新 license_type_tag（新字段，JSONB 数组类型）
+              // 根据文档和数据库实际类型，license_type_tag 是 JSONB 格式，存储数组
               if (result.license_type_tag && Array.isArray(result.license_type_tag) && result.license_type_tag.length > 0) {
-                // 使用 ARRAY 构造函数将数组转换为 PostgreSQL TEXT[] 格式
-                const tags = result.license_type_tag.map(tag => sql.literal(tag));
-                updates.license_type_tag = sql`ARRAY[${sql.join(tags, sql`, `)}]::text[]`;
+                // 使用 JSON.stringify 将数组转换为 JSONB 格式
+                updates.license_type_tag = sql`${JSON.stringify(result.license_type_tag)}::jsonb`;
               }
               // 更新 stage_tag
               if (result.stage_tag) {
                 updates.stage_tag = result.stage_tag;
               }
               // 更新 topic_tags（TEXT[] 数组类型）
+              // 根据文档和迁移文件，topic_tags 是 TEXT[] 类型
               if (result.topic_tags && Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
                 // 使用 ARRAY 构造函数将数组转换为 PostgreSQL TEXT[] 格式
                 const tags = result.topic_tags.map(tag => sql.literal(tag));
