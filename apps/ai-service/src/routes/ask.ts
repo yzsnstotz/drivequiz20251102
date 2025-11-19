@@ -6,14 +6,26 @@ import { cacheGet, cacheSet } from "../lib/cache.js";
 import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
-import { runScene } from "../lib/sceneRunner.js";
+import { runScene, type AiServiceConfig } from "@zalem/ai-core";
 
 /** 请求体类型 */
 type AskBody = {
-  question?: string;
+  question?: string | {
+    id?: number;
+    questionText?: string;
+    correctAnswer?: string;
+    type?: string;
+    options?: any;
+    explanation?: string;
+    licenseTypeTag?: string | null;
+    stageTag?: string | null;
+    topicTags?: any[];
+    sourceLanguage?: string;
+    [key: string]: any;
+  };
   userId?: string;
   lang?: string; // "zh" | "ja" | "en" | ...
-  // 场景标识（如 question_translation, question_polish 等）
+  // 场景标识（如 question_translation, question_polish, question_full_pipeline 等）
   scene?: string;
   // 源语言（用于翻译场景）
   sourceLanguage?: string;
@@ -80,7 +92,20 @@ function estimateCostUsd(
 
 /** 读取并校验请求体 */
 function parseAndValidateBody(body: unknown): {
-  question: string;
+  question: string | {
+    id?: number;
+    questionText?: string;
+    correctAnswer?: string;
+    type?: string;
+    options?: any;
+    explanation?: string;
+    licenseTypeTag?: string | null;
+    stageTag?: string | null;
+    topicTags?: any[];
+    sourceLanguage?: string;
+    [key: string]: any;
+  };
+  normalizedQuestion: string; // 规范化后的字符串，用于 prompt 构建
   lang: string;
   userId?: string | null;
   scene?: string | null;
@@ -89,13 +114,28 @@ function parseAndValidateBody(body: unknown): {
 } {
   const b = (body ?? {}) as AskBody & { userId?: string | null };
 
-  if (!b.question || typeof b.question !== "string") {
-    const err: Error & { statusCode?: number } = new Error("Missing or invalid 'question'");
+  // ✅ 修复：支持 question 为字符串或对象
+  if (!b.question) {
+    const err: Error & { statusCode?: number } = new Error("Missing 'question'");
     err.statusCode = 400;
     throw err;
   }
-  const question = b.question.trim();
-  if (question.length === 0 || question.length > MAX_QUESTION_LEN) {
+
+  // 规范化 question：如果是对象，提取 questionText；如果是字符串，直接使用
+  let normalizedQuestion: string;
+  if (typeof b.question === "string") {
+    normalizedQuestion = b.question.trim();
+  } else if (typeof b.question === "object" && b.question !== null) {
+    // 对象格式：优先使用 questionText，否则 JSON 化
+    normalizedQuestion = b.question.questionText || JSON.stringify(b.question, null, 2);
+  } else {
+    const err: Error & { statusCode?: number } = new Error("Invalid 'question' type");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 验证规范化后的 question 长度
+  if (normalizedQuestion.length === 0 || normalizedQuestion.length > MAX_QUESTION_LEN) {
     const err: Error & { statusCode?: number } = new Error("Question length out of range");
     err.statusCode = 400;
     throw err;
@@ -116,12 +156,20 @@ function parseAndValidateBody(body: unknown): {
     userId = null;
   }
 
-  // 处理场景相关参数
+  // ✅ 修复：确保 scene 从 body 正确解构
   const scene = typeof b.scene === "string" ? b.scene.trim() || null : null;
   const sourceLanguage = typeof b.sourceLanguage === "string" ? b.sourceLanguage.trim() || null : null;
   const targetLanguage = typeof b.targetLanguage === "string" ? b.targetLanguage.trim() || null : null;
 
-  return { question, lang: validLang, userId, scene, sourceLanguage, targetLanguage };
+  return { 
+    question: b.question, // 保留原始 question（可能是对象或字符串）
+    normalizedQuestion, // 规范化后的字符串
+    lang: validLang, 
+    userId, 
+    scene, 
+    sourceLanguage, 
+    targetLanguage 
+  };
 }
 
 /** 生成缓存 Key（包含语言、模型和场景，避免跨配置命中） */
@@ -276,20 +324,41 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         ensureServiceAuth(request, config);
 
         // 2) 校验请求体
-        const { question, lang, scene, sourceLanguage, targetLanguage } = parseAndValidateBody(request.body);
+        const { question, normalizedQuestion, lang, scene, sourceLanguage, targetLanguage } = parseAndValidateBody(request.body);
         
-        // 记录接收到的参数
-        console.log("[AI-SERVICE] 接收到的请求参数:", {
-          scene,
-          sourceLanguage,
-          targetLanguage,
-          lang,
-          questionLength: question.length
-        });
+        // ✅ 修复：确保 scene 已正确解构，并记录关键日志
+        if (!scene) {
+          reply.code(400).send({
+            ok: false,
+            errorCode: "VALIDATION_FAILED",
+            message: "scene is required",
+          });
+          return;
+        }
+
+        // 记录接收到的参数（注意：不打印完整 question 内容，避免日志爆炸）
+        const questionType = typeof question === "string" ? "string" : "object";
+        const questionLength = typeof question === "string" 
+          ? question.length 
+          : (question?.questionText?.length || JSON.stringify(question).length);
+        
+        app.log.info(
+          { 
+            scene, 
+            hasQuestion: !!question, 
+            questionType, 
+            questionLength,
+            sourceLanguage, 
+            targetLanguage,
+            lang 
+          },
+          "[ai-service] /v1/ask received"
+        );
 
         // 3) 从数据库读取模型配置（优先）或使用环境变量
         const model = await getModelFromConfig();
-        const cacheKey = buildCacheKey(question, lang, model, scene, sourceLanguage, targetLanguage);
+        // ✅ 修复：使用 normalizedQuestion 构建缓存 key（确保一致性）
+        const cacheKey = buildCacheKey(normalizedQuestion, lang, model, scene, sourceLanguage, targetLanguage);
         const cached = await cacheGet<AskResult>(cacheKey);
         if (cached) {
           // 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
@@ -345,11 +414,12 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return provider;
         })();
         
+        // ✅ 修复：使用 normalizedQuestion 进行安全审查和 RAG 检索
         // 并行执行：安全审查、RAG检索（需要aiProvider）、配置读取
         const [safe, reference, aiProviderResult] = await Promise.all([
-          checkSafety(question),
+          checkSafety(normalizedQuestion),
           // RAG 检索需要先获取 aiProvider，但可以并行执行
-          aiProviderPromise.then(provider => getRagContext(question, lang, config, provider).catch(() => "")),
+          aiProviderPromise.then(provider => getRagContext(normalizedQuestion, lang, config, provider).catch(() => "")),
           aiProviderPromise,
         ]);
 
@@ -384,47 +454,53 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         let totalTokens: number | undefined;
         
         try {
-          // 如果有场景，使用统一的场景执行模块
-          if (scene) {
-            console.log("[ASK ROUTE] 使用场景执行模块:", {
-              scene,
-              locale: promptLocale,
-              sourceLanguage,
-              targetLanguage,
-              model,
-              aiProvider,
-            });
+          // ✅ 修复：scene 已在上方验证，这里直接使用
+          app.log.debug({ scene }, "[ai-service] buildPromptForScene");
+          
+          console.log("[ASK ROUTE] 使用场景执行模块:", {
+            scene,
+            locale: promptLocale,
+            sourceLanguage,
+            targetLanguage,
+            model,
+            aiProvider,
+          });
+          
+          // 构建 AiServiceConfig（最小接口）
+          const aiServiceConfig: AiServiceConfig = {
+            model: model || config.aiModel || "gpt-4o-mini",
+            openaiApiKey: config.openaiApiKey,
+            openrouterApiKey: config.openrouterApiKey,
+            userPrefix,
+            refPrefix,
+            version: config.version,
+          };
+
+          // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
+          sceneResult = await runScene({
+            sceneKey: scene, // ✅ 确保 scene 从解构中获取，不是自由变量
+            locale: promptLocale,
+            question: normalizedQuestion, // 使用规范化后的字符串
+            reference: reference || null,
+            userPrefix,
+            refPrefix,
+            supabaseConfig: {
+              supabaseUrl: config.supabaseUrl,
+              supabaseServiceKey: config.supabaseServiceKey,
+            },
+            providerKind: "openai",
+            config: aiServiceConfig,
+            aiProvider,
+            model,
+            sourceLanguage: sourceLanguage || null,
+            targetLanguage: targetLanguage || null,
+            temperature: 0.4,
+          });
             
-            sceneResult = await runScene({
-              sceneKey: scene,
-              locale: promptLocale,
-              question,
-              reference: reference || null,
-              userPrefix,
-              refPrefix,
-              config: {
-                supabaseUrl: config.supabaseUrl,
-                supabaseServiceKey: config.supabaseServiceKey,
-                aiModel: config.aiModel,
-              },
-              providerKind: "openai",
-              aiProvider,
-              model,
-              serviceConfig: config,
-              sourceLanguage: sourceLanguage || null,
-              targetLanguage: targetLanguage || null,
-              temperature: 0.4,
-            });
-            
-            // 从 sceneResult 中获取 tokens 信息（如果可用）
-            inputTokens = sceneResult.tokens?.prompt;
-            outputTokens = sceneResult.tokens?.completion;
-            totalTokens = sceneResult.tokens?.total;
-          } else {
-            // 没有场景，使用默认逻辑（保留原有行为，但建议也迁移到 sceneRunner）
-            // 这里暂时保留原有逻辑，但应该考虑也使用 sceneRunner
-            throw new Error("Non-scene requests are not supported in unified scene runner. Please specify a scene.");
-          }
+          // 从 sceneResult 中获取 tokens 信息（如果可用）
+          inputTokens = sceneResult.tokens?.prompt;
+          outputTokens = sceneResult.tokens?.completion;
+          totalTokens = sceneResult.tokens?.total;
         } catch (e) {
           const error = e as Error & { status?: number; code?: string };
           console.error("[ASK ROUTE] 场景执行失败:", {
@@ -507,7 +583,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             approxUsd: approxUsd ?? undefined,
           },
           // 向后兼容字段
-          question,
+          question: normalizedQuestion, // 使用规范化后的字符串
           reference: reference || null,
           tokens: {
             prompt: inputTokens,

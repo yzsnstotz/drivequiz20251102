@@ -2,9 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getRagContext } from "../lib/rag.js";
 import type { LocalAIConfig } from "../lib/config.js";
-// ⚠️ 注意：引用 ai-service 的 sceneRunner，确保使用同一套逻辑
-// 路径：从 apps/local-ai-service/src/routes/ 到 apps/ai-service/src/lib/
-import { runScene } from "../../../ai-service/src/lib/sceneRunner.js";
+import { runScene, type AiServiceConfig } from "@zalem/ai-core";
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
@@ -12,7 +10,19 @@ type ChatMessage = {
 };
 
 type AskBody = {
-  question?: string;
+  question?: string | {
+    id?: number;
+    questionText?: string;
+    correctAnswer?: string | boolean;
+    type?: string;
+    options?: any;
+    explanation?: string;
+    licenseTypeTag?: string | null;
+    stageTag?: string | null;
+    topicTags?: string[] | null;
+    sourceLanguage?: string;
+    [key: string]: any;
+  };
   userId?: string;
   lang?: string;
   // 对话历史（可选，用于上下文连贯）
@@ -21,7 +31,7 @@ type AskBody = {
   maxHistory?: number;
   // 种子URL（可选，只返回该URL下的子页面）
   seedUrl?: string;
-  // 场景标识（如 question_translation）
+  // 场景标识（如 question_translation, question_polish, question_full_pipeline 等）
   scene?: string;
   // 源语言（用于翻译场景）
   sourceLanguage?: string;
@@ -323,6 +333,107 @@ function extractContextFromHistory(
   return [currentQuestion, ...contextParts].join(" ").slice(0, 1000);
 }
 
+/** 问题长度限制，避免滥用 */
+const MAX_QUESTION_LEN = 2000;
+
+/** 简单语言白名单（可按需扩展） */
+const LANG_WHITELIST = new Set(["zh", "ja", "en"]);
+
+/**
+ * 读取并校验请求体（与 ai-service 保持一致）
+ */
+function parseAndValidateBody(body: unknown): {
+  question: string | {
+    id?: number;
+    questionText?: string;
+    correctAnswer?: string | boolean;
+    type?: string;
+    options?: any;
+    explanation?: string;
+    licenseTypeTag?: string | null;
+    stageTag?: string | null;
+    topicTags?: string[] | null;
+    sourceLanguage?: string;
+    [key: string]: any;
+  };
+  normalizedQuestion: string; // 规范化后的字符串，用于 prompt 构建
+  lang: string;
+  userId?: string | null;
+  scene?: string | null;
+  sourceLanguage?: string | null;
+  targetLanguage?: string | null;
+  messages?: ChatMessage[];
+  maxHistory?: number;
+  seedUrl?: string | null;
+} {
+  const b = (body ?? {}) as AskBody & { userId?: string | null };
+
+  // ✅ 修复：支持 question 为字符串或对象
+  if (!b.question) {
+    const err: Error & { statusCode?: number } = new Error("Missing 'question'");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 规范化 question：如果是对象，提取 questionText；如果是字符串，直接使用
+  let normalizedQuestion: string;
+  if (typeof b.question === "string") {
+    normalizedQuestion = b.question.trim();
+  } else if (typeof b.question === "object" && b.question !== null) {
+    // 对象格式：优先使用 questionText，否则 JSON 化
+    normalizedQuestion = b.question.questionText || JSON.stringify(b.question, null, 2);
+  } else {
+    const err: Error & { statusCode?: number } = new Error("Invalid 'question' type");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 验证规范化后的 question 长度
+  if (normalizedQuestion.length === 0 || normalizedQuestion.length > MAX_QUESTION_LEN) {
+    const err: Error & { statusCode?: number } = new Error("Question length out of range");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const lang = (typeof b.lang === "string" ? b.lang.toLowerCase().trim() : "zh") || "zh";
+  const validLang = LANG_WHITELIST.has(lang) ? lang : "zh";
+
+  // 处理 userId：支持 string、null、undefined
+  let userId: string | null | undefined = undefined;
+  if (b.userId !== undefined && b.userId !== null) {
+    if (typeof b.userId === "string") {
+      userId = b.userId;
+    } else {
+      userId = null;
+    }
+  } else if (b.userId === null) {
+    userId = null;
+  }
+
+  // ✅ 修复：确保 scene 从 body 正确解构
+  const scene = typeof b.scene === "string" ? b.scene.trim() || null : null;
+  const sourceLanguage = typeof b.sourceLanguage === "string" ? b.sourceLanguage.trim() || null : null;
+  const targetLanguage = typeof b.targetLanguage === "string" ? b.targetLanguage.trim() || null : null;
+
+  // local-ai-service 特有字段
+  const messages = b.messages || undefined;
+  const maxHistory = b.maxHistory || 10;
+  const seedUrl = b.seedUrl ? b.seedUrl.trim() || null : null;
+
+  return { 
+    question: b.question, // 保留原始 question（可能是对象或字符串）
+    normalizedQuestion, // 规范化后的字符串
+    lang: validLang, 
+    userId, 
+    scene, 
+    sourceLanguage, 
+    targetLanguage,
+    messages,
+    maxHistory,
+    seedUrl,
+  };
+}
+
 export default async function askRoute(app: FastifyInstance): Promise<void> {
   app.post(
     "/v1/ask",
@@ -333,53 +444,50 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 1) 服务间鉴权
         ensureServiceAuth(request, config);
 
-        // 2) 校验请求体
-        const body = request.body as AskBody;
-        const question = (body.question || "").trim();
-        const lang = (body.lang || "zh").toLowerCase().trim();
-        const maxHistory = body.maxHistory || 10;
-        const seedUrl = body.seedUrl?.trim() || null;
-        const scene = body.scene?.trim() || null;
-        // 注意：如果 body.sourceLanguage 是 undefined，trim() 会报错，需要先检查
-        const sourceLanguage = body.sourceLanguage ? body.sourceLanguage.trim() || null : null;
-        const targetLanguage = body.targetLanguage ? body.targetLanguage.trim() || null : null;
+        // 2) 校验请求体（使用统一的 parseAndValidateBody 函数）
+        const { question, normalizedQuestion, lang, scene, sourceLanguage, targetLanguage, messages, maxHistory, seedUrl } = parseAndValidateBody(request.body);
         
-        // 记录接收到的参数（包括原始值）
-        console.log("[LOCAL-AI] 接收到的请求参数:", {
-          scene,
-          sourceLanguage,
-          targetLanguage,
-          lang,
-          questionLength: question.length,
-          rawBody: {
-            scene: body.scene,
-            sourceLanguage: body.sourceLanguage,
-            targetLanguage: body.targetLanguage,
-            hasSourceLanguage: body.sourceLanguage !== undefined,
-            hasTargetLanguage: body.targetLanguage !== undefined,
-          }
-        });
-
-        if (!question || question.length === 0 || question.length > 2000) {
+        // ✅ 修复：确保 scene 已正确解构，并记录关键日志
+        if (!scene) {
           reply.code(400).send({
             ok: false,
             errorCode: "VALIDATION_FAILED",
-            message: "Question is required and must be between 1 and 2000 characters",
+            message: "scene is required",
           });
           return;
         }
 
+        // 记录接收到的参数（注意：不打印完整 question 内容，避免日志爆炸）
+        const questionType = typeof question === "string" ? "string" : "object";
+        const questionLength = typeof question === "string" 
+          ? question.length 
+          : (question?.questionText?.length || JSON.stringify(question).length);
+        
+        app.log.info(
+          { 
+            scene, 
+            hasQuestion: !!question, 
+            questionType, 
+            questionLength,
+            sourceLanguage, 
+            targetLanguage,
+            lang 
+          },
+          "[local-ai-service] /v1/ask received"
+        );
+
         // 3) 处理对话历史
-        const history = processHistory(body.messages, maxHistory);
+        const history = processHistory(messages, maxHistory);
         
         // 4) RAG 检索（结合对话历史增强上下文）
         // 注意：对于翻译场景（question_translation），不需要 RAG 检索
+        // ✅ 修复：使用 normalizedQuestion 进行 RAG 检索
         let reference = "";
         if (scene !== "question_translation" && scene !== "question_polish") {
-          let ragQuery = question;
+          let ragQuery = normalizedQuestion;
           if (history.length > 0) {
             // 从对话历史中提取上下文，增强 RAG 检索
-            ragQuery = extractContextFromHistory(history, question);
+            ragQuery = extractContextFromHistory(history, normalizedQuestion);
           }
           
           // 使用种子URL过滤（如果提供）
@@ -402,43 +510,50 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         let sceneResult;
         
         try {
-          // 如果有场景，使用统一的场景执行模块
-          if (scene) {
-            // 获取 AI Provider 超时配置（用于场景配置读取）
-            const timeoutMs = await getProviderTimeout(config);
-            
-            console.log("[LOCAL-AI] 使用场景执行模块:", {
-              scene,
-              locale: promptLocale,
-              sourceLanguage,
-              targetLanguage,
-              model: config.aiModel,
-              timeoutMs,
-            });
-            
-            sceneResult = await runScene({
-              sceneKey: scene,
-              locale: promptLocale,
-              question,
-              reference: reference || null,
-              userPrefix,
-              refPrefix,
-              config: {
-                supabaseUrl: config.supabaseUrl,
-                supabaseServiceKey: config.supabaseServiceKey,
-              },
-              providerKind: "ollama",
-              ollamaBaseUrl: config.ollamaBaseUrl,
-              ollamaModel: config.aiModel,
-              sourceLanguage: sourceLanguage || null,
-              targetLanguage: targetLanguage || null,
-              temperature: 0.4,
-              sceneConfigTimeoutMs: timeoutMs, // 使用从数据库读取的超时配置
-            });
-          } else {
-            // 没有场景，使用默认逻辑（保留原有行为，但建议也迁移到 sceneRunner）
-            throw new Error("Non-scene requests are not supported in unified scene runner. Please specify a scene.");
-          }
+          // ✅ 修复：scene 已在上方验证，这里直接使用
+          app.log.debug({ scene }, "[local-ai-service] buildPromptForScene");
+          
+          // 获取 AI Provider 超时配置（用于场景配置读取）
+          const timeoutMs = await getProviderTimeout(config);
+          
+          console.log("[LOCAL-AI] 使用场景执行模块:", {
+            scene,
+            locale: promptLocale,
+            sourceLanguage,
+            targetLanguage,
+            model: config.aiModel,
+            timeoutMs,
+          });
+          
+          // 构建 AiServiceConfig（最小接口）
+          const aiServiceConfig: AiServiceConfig = {
+            model: config.aiModel,
+            ollamaUrl: config.ollamaBaseUrl,
+            userPrefix,
+            refPrefix,
+          };
+
+          // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
+          sceneResult = await runScene({
+            sceneKey: scene, // ✅ 确保 scene 从解构中获取，不是自由变量
+            locale: promptLocale,
+            question: normalizedQuestion, // 使用规范化后的字符串
+            reference: reference || null,
+            userPrefix,
+            refPrefix,
+            supabaseConfig: {
+              supabaseUrl: config.supabaseUrl,
+              supabaseServiceKey: config.supabaseServiceKey,
+            },
+            providerKind: "ollama",
+            config: aiServiceConfig,
+            ollamaBaseUrl: config.ollamaBaseUrl,
+            ollamaModel: config.aiModel,
+            sourceLanguage: sourceLanguage || null,
+            targetLanguage: targetLanguage || null,
+            temperature: 0.4,
+            sceneConfigTimeoutMs: timeoutMs, // 使用从数据库读取的超时配置
+          });
         } catch (e) {
           const error = e as Error & { statusCode?: number; code?: string; status?: number };
           console.error("[LOCAL-AI] 场景执行失败:", {
@@ -544,12 +659,29 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const message = status >= 500 ? "Internal Server Error" : err.message || "Bad Request";
         
         // 获取请求体中的变量（如果已定义）
-        const body = (request.body as AskBody) || {};
-        const scene = body.scene?.trim() || null;
-        const question = (body.question || "").trim();
-        const lang = (body.lang || "zh").toLowerCase().trim();
-        const sourceLanguage = body.sourceLanguage ? body.sourceLanguage.trim() || null : null;
-        const targetLanguage = body.targetLanguage ? body.targetLanguage.trim() || null : null;
+        // ✅ 修复：使用 parseAndValidateBody 统一处理，但捕获可能的解析错误
+        let scene: string | null = null;
+        let question: string | object | null = null;
+        let lang = "zh";
+        let sourceLanguage: string | null = null;
+        let targetLanguage: string | null = null;
+        
+        try {
+          const parsed = parseAndValidateBody(request.body);
+          scene = parsed.scene || null;
+          question = parsed.question;
+          lang = parsed.lang;
+          sourceLanguage = parsed.sourceLanguage || null;
+          targetLanguage = parsed.targetLanguage || null;
+        } catch (parseError) {
+          // parseAndValidateBody 已抛出错误，这里只是获取变量用于日志
+          const body = (request.body as AskBody) || {};
+          scene = body.scene?.trim() || null;
+          question = body.question || null;
+          lang = (body.lang || "zh").toLowerCase().trim();
+          sourceLanguage = body.sourceLanguage ? body.sourceLanguage.trim() || null : null;
+          targetLanguage = body.targetLanguage ? body.targetLanguage.trim() || null : null;
+        }
         
         // 增强错误日志，包含更多上下文信息
         console.error("[LOCAL-AI] 处理请求时出错:", {
