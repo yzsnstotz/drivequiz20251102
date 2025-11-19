@@ -61,8 +61,15 @@ function buildServer(config: LocalAIConfig): FastifyInstance {
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   try {
-    const askModule = await import("./routes/ask.js");
-    await askModule.default(app);
+    // 路由注册：/v1/**（问答主路由，与 ai-service 保持一致）
+    try {
+      const askModule = await import("./routes/ask.js");
+      await app.register(askModule.default, { prefix: "/v1" });
+      logger.info("[ROUTE] Registered /v1/ask route");
+    } catch (err) {
+      logger.error({ err }, "[ROUTE] Failed to register /v1/ask route");
+      throw err;
+    }
     
     const ragIngestModule = await import("./routes/ragIngest.js");
     await ragIngestModule.default(app);
