@@ -327,6 +327,93 @@ export function isChineseContent(text: string): boolean {
 }
 
 /**
+ * 从 AI 输出中获取源语言 explanation
+ * 
+ * 策略：
+ * 1. 优先使用 parsed.source.explanation（前提：parsed.source.language === sourceLanguage 且语言检测通过）
+ * 2. 若无效，再尝试 parsed.translations[sourceLanguage].explanation（只在 DB 中当前源语言解析缺失时启用）
+ * 
+ * @param params.parsed - AI 返回的完整解析对象
+ * @param params.sourceLanguage - 源语言（如 "zh"）
+ * @returns 提取到的源语言 explanation 文本，如果无效则返回 null
+ */
+function getSourceExplanationFromAiOutput(params: {
+  parsed: any;
+  sourceLanguage: string;
+}): string | null {
+  const { parsed, sourceLanguage } = params;
+  
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  // 1️⃣ 优先使用 parsed.source
+  const sourceBlock = parsed.source;
+  if (sourceBlock && typeof sourceBlock === "object") {
+    const aiSourceLanguage = sourceBlock.language;
+    const explanation = sourceBlock.explanation;
+
+    if (typeof explanation === "string" && explanation.trim()) {
+      // 要求 AI 明确标记与 sourceLanguage 一致，才认为是源语言解释
+      if (aiSourceLanguage === sourceLanguage) {
+        const isEn = isEnglishContent(explanation);
+        const isZh = isChineseContent(explanation);
+
+        // 根据 sourceLanguage 做语言校验
+        if (sourceLanguage === "zh" && isZh && !isEn) {
+          return explanation.trim();
+        }
+        if (sourceLanguage === "en" && isEn && !isZh) {
+          return explanation.trim();
+        }
+        // 其他语言暂时只做非空判断
+        if (sourceLanguage !== "zh" && sourceLanguage !== "en") {
+          return explanation.trim();
+        }
+      } else {
+        console.warn(
+          `[full_pipeline] AI 返回的 source.language=${aiSourceLanguage} 与期望的 ${sourceLanguage} 不匹配，跳过 source.explanation`,
+        );
+      }
+    }
+  }
+
+  // 2️⃣ 若 source 不可用，则尝试 translations[sourceLanguage]
+  const translations = parsed.translations;
+  if (translations && typeof translations === "object") {
+    const tl = translations[sourceLanguage];
+    if (tl && typeof tl === "object" && typeof tl.explanation === "string") {
+      const explanation = tl.explanation.trim();
+      if (!explanation) return null;
+
+      const isEn = isEnglishContent(explanation);
+      const isZh = isChineseContent(explanation);
+
+      if (sourceLanguage === "zh" && isZh && !isEn) {
+        console.log(
+          `[full_pipeline] 使用 translations.${sourceLanguage}.explanation 兜底补充源语言解析`,
+        );
+        return explanation;
+      }
+      if (sourceLanguage === "en" && isEn && !isZh) {
+        console.log(
+          `[full_pipeline] 使用 translations.${sourceLanguage}.explanation 兜底补充源语言解析`,
+        );
+        return explanation;
+      }
+      if (sourceLanguage !== "zh" && sourceLanguage !== "en") {
+        console.log(
+          `[full_pipeline] 使用 translations.${sourceLanguage}.explanation 兜底补充源语言解析`,
+        );
+        return explanation;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * 语言检测函数：通过字符集粗略判断语言类型
  */
 export function detectLanguageByChars(text: string): "zh_like" | "ja_like" | "latin_like" | "unknown" {
@@ -2222,52 +2309,47 @@ export async function processFullPipelineBatch(
       );
 
       // ✅ 处理源语言 explanation：如果数据库中没有，可以使用 AI 返回的（但要校验语言）
+      // 1️⃣ 计算当前是否已有源语言解析
       let hasSourceExplanation = false;
-      if (typeof question.explanation === "string" && question.explanation.trim()) {
-        hasSourceExplanation = true;
-      } else if (typeof question.explanation === "object" && question.explanation !== null) {
-        hasSourceExplanation = !!question.explanation[sourceLanguage];
-      }
+      let explanationObject: Record<string, string> = {};
       
-      if (!hasSourceExplanation && sourceExplanation) {
-        // 数据库中没有源语言 explanation，可以使用 AI 返回的（但要严格校验语言）
-        const isEn = isEnglishContent(sourceExplanation);
-        const isZh = isChineseContent(sourceExplanation);
+      if (typeof question.explanation === "string" && question.explanation.trim()) {
+        // 兼容历史数据：如果 explanation 还是 string，认为它就是源语言的解析
+        hasSourceExplanation = true;
+        explanationObject = { [sourceLanguage]: question.explanation.trim() };
+      } else if (
+        typeof question.explanation === "object" &&
+        question.explanation !== null
+      ) {
+        explanationObject = { ...(question.explanation as any) };
+        hasSourceExplanation = !!explanationObject[sourceLanguage];
+      } else {
+        explanationObject = {};
+      }
 
-        let shouldUseSourceExplanation = false;
-
-          if (sourceLanguage === "zh" && isZh && !isEn) {
-            shouldUseSourceExplanation = true;
-          } else if (sourceLanguage === "en" && isEn && !isZh) {
-            shouldUseSourceExplanation = true;
-          } else if (sourceLanguage !== "zh" && sourceLanguage !== "en") {
-            // 其他语言（ja等）暂时允许，打印警告
-            shouldUseSourceExplanation = true;
-            console.debug(
-              `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 源语言为 ${sourceLanguage}，AI 返回的 explanation 未进行语言校验`,
-            );
-          } else {
-            console.warn(
-              `[processFullPipelineBatch] [Q${question.id}] ⚠️ AI 返回的 sourceExplanation 语言不匹配（期望=${sourceLanguage}, isZh=${isZh}, isEn=${isEn}），跳过`,
-            );
-          }
-
-          if (shouldUseSourceExplanation) {
-            if (typeof question.explanation === "string") {
-              question.explanation = { [sourceLanguage]: sourceExplanation };
-            } else if (typeof question.explanation === "object" && question.explanation !== null) {
-              question.explanation[sourceLanguage] = sourceExplanation;
-            } else {
-              question.explanation = { [sourceLanguage]: sourceExplanation };
-            }
-            console.debug(
-              `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 数据库中无源语言 explanation，已使用 AI 返回的 sourceExplanation`,
-            );
-          }
-      } else if (hasSourceExplanation) {
+      // 2️⃣ 如果还没有源语言解释，则尝试从 AI 输出中提取
+      if (!hasSourceExplanation) {
+        const extracted = getSourceExplanationFromAiOutput({
+          parsed, // 使用 full_pipeline 解析后的原始 AI 响应对象
+          sourceLanguage,
+        });
+        
+        if (extracted) {
+          explanationObject[sourceLanguage] = extracted;
+          hasSourceExplanation = true;
+          console.log(
+            `[full_pipeline] question ${question.id} 补充源语言(${sourceLanguage}) explanation 来自 AI 输出`,
+          );
+        }
+      } else {
         console.debug(
           `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 保留源语言 explanation，不使用 AI 返回的 sourceExplanation（防止覆盖）`,
         );
+      }
+      
+      // 3️⃣ 更新 question.explanation 对象，供后续使用
+      if (Object.keys(explanationObject).length > 0) {
+        question.explanation = explanationObject;
       }
 
       // 准备多语言翻译数据（暂不写入数据库，使用过滤后的数据）
@@ -2415,6 +2497,45 @@ export async function processFullPipelineBatch(
         } as any);
         
         // 2. 保存多语言翻译（在事务中直接更新，不使用 saveQuestionTranslation 函数）
+        // ✅ 在进入翻译循环之前，先基于 explanationObject 初始化 updatedExplanation
+        // 获取当前题目内容（用于 content 更新）
+        const currentQuestion = await trx
+          .selectFrom("questions")
+          .select(["content", "explanation"])
+          .where("id", "=", question.id)
+          .executeTakeFirst();
+        
+        if (!currentQuestion) {
+          throw new Error(`Question with id ${question.id} not found in transaction`);
+        }
+        
+        // 初始化 updatedExplanation，优先使用 explanationObject（包含从 AI 提取的源语言 explanation）
+        let updatedExplanation: any = null;
+        if (explanationObject && Object.keys(explanationObject).length > 0) {
+          updatedExplanation = { ...explanationObject };
+        } else if (currentQuestion.explanation) {
+          // 如果 explanationObject 为空，使用数据库中的原有 explanation
+          if (typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
+            updatedExplanation = { ...(currentQuestion.explanation as any) };
+          } else if (typeof currentQuestion.explanation === "string") {
+            updatedExplanation = { [sourceLanguage]: currentQuestion.explanation };
+          } else {
+            updatedExplanation = {};
+          }
+        } else {
+          updatedExplanation = {};
+        }
+        
+        // 初始化 updatedContent，用于累积所有语言的翻译
+        let updatedContent: any;
+        if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
+          updatedContent = { ...currentQuestion.content };
+        } else if (typeof currentQuestion.content === "string") {
+          updatedContent = { [sourceLanguage]: currentQuestion.content };
+        } else {
+          updatedContent = {};
+        }
+        
         for (const { lang, translation } of translationsToSave) {
           // ✅ Phase 1.3 修复：确保翻译写入逻辑严格区分
           // 示例结构：lang = 'en', sourceLanguage = 'zh'
@@ -2438,7 +2559,7 @@ export async function processFullPipelineBatch(
           // 2）lang 不能等于 sourceLanguage（防止把翻译写回源语言 key）
           if (lang === sourceLanguage) {
             console.warn(
-              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 语言 ${lang} 为源语言，不应作为翻译保存，跳过`,
+              `[full_pipeline] 翻译语言 ${lang} 等于源语言 ${sourceLanguage}，作为翻译跳过（源语言解析已由 getSourceExplanationFromAiOutput 处理）`,
             );
             continue;
           }
@@ -2476,29 +2597,11 @@ export async function processFullPipelineBatch(
             continue;
           }
 
-          // 获取当前题目内容
-          const currentQuestion = await trx
-            .selectFrom("questions")
-            .select(["content", "explanation"])
-            .where("id", "=", question.id)
-            .executeTakeFirst();
+          // 更新 content JSONB 对象，添加目标语言（累积更新）
+          updatedContent[lang] = translation.content;
           
-          if (!currentQuestion) {
-            throw new Error(`Question with id ${question.id} not found in transaction`);
-          }
-          
-          // 更新 content JSONB 对象，添加目标语言
-          let updatedContent: any;
-          if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
-            updatedContent = { ...currentQuestion.content, [lang]: translation.content };
-          } else if (typeof currentQuestion.content === "string") {
-            updatedContent = { zh: currentQuestion.content, [lang]: translation.content };
-          } else {
-            updatedContent = { [lang]: translation.content };
-          }
-          
-          // ✅ Phase 1.3 修复：更新 explanation JSONB 对象，添加目标语言，使用统一的 Guard
-          let updatedExplanation: any = null;
+          // ✅ Phase 1.3 修复：更新 explanation JSONB 对象，添加目标语言
+          // 使用已初始化的 updatedExplanation 作为基础，只添加目标语言的 explanation
           if (translation.explanation && translation.explanation !== null) {
             const explanationStr = typeof translation.explanation === "string"
               ? translation.explanation
@@ -2539,23 +2642,15 @@ export async function processFullPipelineBatch(
             }
             
             if (shouldSaveExplanation) {
-              const sourceLanguage =
-                (currentQuestion.explanation && (currentQuestion as any).source_language) ||
-                (question as any).source_language ||
-                "zh";
-
+              // 使用 buildUpdatedExplanationWithGuard 来更新 explanation，确保语言一致性
               updatedExplanation = buildUpdatedExplanationWithGuard({
-                currentExplanation: currentQuestion.explanation,
+                currentExplanation: updatedExplanation, // 使用已初始化的 updatedExplanation（包含源语言 explanation）
                 newExplanation: explanationStr,
                 sourceLanguage,
                 targetLang: lang, // full_pipeline 中的目标语言
               });
-            } else {
-              // 语言不匹配，保留原有 explanation
-              updatedExplanation = currentQuestion.explanation;
             }
-          } else {
-            updatedExplanation = currentQuestion.explanation;
+            // 如果 shouldSaveExplanation 为 false，保持 updatedExplanation 不变（已包含源语言 explanation）
           }
           
           // 在事务中更新题目
@@ -2570,6 +2665,28 @@ export async function processFullPipelineBatch(
             .execute();
           
           console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 语言 ${lang} 翻译已在事务中保存`);
+        }
+        
+        // ✅ 如果没有任何翻译需要保存，但源语言的 explanation 已被补充，也需要更新数据库
+        if (translationsToSave.length === 0 && updatedExplanation && Object.keys(updatedExplanation).length > 0) {
+          const hasSourceExplanationInUpdated = !!updatedExplanation[sourceLanguage];
+          const hasSourceExplanationInDb = currentQuestion.explanation && 
+            (typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null
+              ? !!(currentQuestion.explanation as any)[sourceLanguage]
+              : typeof currentQuestion.explanation === "string");
+          
+          if (hasSourceExplanationInUpdated && !hasSourceExplanationInDb) {
+            await trx
+              .updateTable("questions")
+              .set({
+                explanation: updatedExplanation as any,
+                updated_at: new Date(),
+              })
+              .where("id", "=", question.id)
+              .execute();
+            
+            console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 无翻译需要保存，但已补充源语言(${sourceLanguage}) explanation`);
+          }
         }
       });
       
