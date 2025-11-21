@@ -58,6 +58,8 @@ type TaskItemsResponse = {
     aiRequest?: any;
     aiResponse?: any;
     processedData?: any;
+    // ✅ A-4: 新增错误详情字段
+    errorDetail?: any | null;
     // ✅ 添加请求体和回复体详情（兼容旧格式）
     requestBody: {
       prompt: string | null;
@@ -2345,11 +2347,12 @@ export default function QuestionProcessingPage() {
                             <React.Fragment key={item.id}>
                               <tr className="hover:bg-gray-50">
                                 <td className="px-4 py-3 text-sm">
-                                  {/* 📊 新增：检查是否有调试数据 */}
+                                  {/* 📊 新增：检查是否有调试数据或错误详情 */}
                                   {(() => {
                                     const hasDebugData = !!(item.aiRequest || item.aiResponse || item.processedData);
                                     const hasLegacyDetails = !!(item.requestBody || item.responseBody);
-                                    const hasAnyDetails = hasDebugData || hasLegacyDetails;
+                                    const hasErrorDetail = !!(item.errorDetail); // ✅ A-4: 检查是否有错误详情
+                                    const hasAnyDetails = hasDebugData || hasLegacyDetails || hasErrorDetail;
                                     return hasAnyDetails && (
                                       <button
                                         onClick={() => {
@@ -2428,11 +2431,150 @@ export default function QuestionProcessingPage() {
                               {isExpanded && (() => {
                                 const hasDebugData = !!(item.aiRequest || item.aiResponse || item.processedData);
                                 const hasLegacyDetails = !!(item.requestBody || item.responseBody);
-                                return hasDebugData || hasLegacyDetails;
+                                const hasErrorDetail = !!(item.errorDetail);
+                                return hasDebugData || hasLegacyDetails || hasErrorDetail;
                               })() && (
                                 <tr>
                                   <td colSpan={8} className="px-4 py-4 bg-gray-50">
                                     <div className="space-y-4">
+                                      {/* ✅ A-4: 诊断详情（当 status === failed 或 errorDetail 不为空时显示） */}
+                                      {item.errorDetail && (item.status === "failed" || item.errorDetail) && (
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-red-700 mb-2">🔍 诊断详情</h4>
+                                          <div className="bg-white border border-red-200 rounded-lg p-4 space-y-3">
+                                            {/* 错误阶段 */}
+                                            {item.errorDetail.errorStage && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">错误阶段</label>
+                                                <div className="mt-1 text-sm text-gray-900 font-mono bg-red-50 border border-red-200 rounded p-2">
+                                                  {item.errorDetail.errorStage}
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {/* 错误码 */}
+                                            {item.errorDetail.errorCode && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">错误码</label>
+                                                <div className="mt-1 text-sm text-gray-900 font-mono bg-red-50 border border-red-200 rounded p-2">
+                                                  {item.errorDetail.errorCode}
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {/* 错误信息 */}
+                                            {item.errorDetail.errorMessage && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">错误信息</label>
+                                                <div className="mt-1 text-sm text-red-800 bg-red-50 border border-red-200 rounded p-2 whitespace-pre-wrap">
+                                                  {item.errorDetail.errorMessage}
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {/* 语言信息 */}
+                                            <div className="grid grid-cols-3 gap-3">
+                                              {item.errorDetail.sourceLanguage && (
+                                                <div>
+                                                  <label className="text-xs font-medium text-gray-600">源语言</label>
+                                                  <div className="mt-1 text-sm text-gray-900">{item.errorDetail.sourceLanguage}</div>
+                                                </div>
+                                              )}
+                                              {item.errorDetail.targetLanguage && (
+                                                <div>
+                                                  <label className="text-xs font-medium text-gray-600">目标语言</label>
+                                                  <div className="mt-1 text-sm text-gray-900">{item.errorDetail.targetLanguage}</div>
+                                                </div>
+                                              )}
+                                              {item.errorDetail.detectedLanguage && (
+                                                <div>
+                                                  <label className="text-xs font-medium text-gray-600">检测结果</label>
+                                                  <div className="mt-1 text-sm text-gray-900">{item.errorDetail.detectedLanguage}</div>
+                                                </div>
+                                              )}
+                                            </div>
+                                            
+                                            {/* parsedSourceLanguage */}
+                                            {item.errorDetail.parsedSourceLanguage && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">parsed.source.language</label>
+                                                <div className="mt-1 text-sm text-gray-900 font-mono bg-gray-50 border border-gray-200 rounded p-2">
+                                                  {item.errorDetail.parsedSourceLanguage}
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {/* translationsKeys */}
+                                            {item.errorDetail.translationsKeys && Array.isArray(item.errorDetail.translationsKeys) && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">translations 中的所有语言 key</label>
+                                                <div className="mt-1 text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded p-2">
+                                                  {item.errorDetail.translationsKeys.join(", ")}
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {/* sampleText */}
+                                            {item.errorDetail.sampleText && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">示例文本</label>
+                                                <div className="mt-1 text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded p-2 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                                  {item.errorDetail.sampleText}
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {/* 可折叠 JSON 区块 */}
+                                            <details className="mt-3">
+                                              <summary className="text-xs font-medium text-gray-700 cursor-pointer hover:text-gray-900">
+                                                展开完整诊断数据（JSON）
+                                              </summary>
+                                              <div className="mt-2 space-y-2">
+                                                {/* parsed */}
+                                                {item.errorDetail.parsed && (
+                                                  <div>
+                                                    <label className="text-xs font-medium text-gray-600">parsed（原始 AI 响应）</label>
+                                                    <pre className="text-xs text-gray-900 bg-gray-50 border border-gray-200 rounded p-3 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                                      {JSON.stringify(item.errorDetail.parsed, null, 2)}
+                                                    </pre>
+                                                  </div>
+                                                )}
+                                                
+                                                {/* sanitized */}
+                                                {item.errorDetail.sanitized && (
+                                                  <div>
+                                                    <label className="text-xs font-medium text-gray-600">sanitized（清洗后的 JSON）</label>
+                                                    <pre className="text-xs text-gray-900 bg-gray-50 border border-gray-200 rounded p-3 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                                      {JSON.stringify(item.errorDetail.sanitized, null, 2)}
+                                                    </pre>
+                                                  </div>
+                                                )}
+                                                
+                                                {/* rawAiResponse */}
+                                                {item.errorDetail.rawAiResponse && (
+                                                  <div>
+                                                    <label className="text-xs font-medium text-gray-600">rawAiResponse（原始 AI 响应字符串）</label>
+                                                    <pre className="text-xs text-gray-900 bg-gray-50 border border-gray-200 rounded p-3 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                                      {item.errorDetail.rawAiResponse}
+                                                    </pre>
+                                                  </div>
+                                                )}
+                                                
+                                                {/* errorStack */}
+                                                {item.errorDetail.errorStack && (
+                                                  <div>
+                                                    <label className="text-xs font-medium text-gray-600">errorStack（错误堆栈）</label>
+                                                    <pre className="text-xs text-red-800 bg-red-50 border border-red-200 rounded p-3 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                                      {item.errorDetail.errorStack}
+                                                    </pre>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </details>
+                                          </div>
+                                        </div>
+                                      )}
+                                      
                                       {/* 📊 新格式：AI 请求体 */}
                                       {item.aiRequest && (
                                         <div>

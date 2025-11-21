@@ -790,6 +790,7 @@ async function processBatchAsync(
       aiRequest?: any;
       aiResponse?: any;
       processedData?: any;
+      errorDetail?: any; // ✅ A-2: 添加 error_detail 字段
     }
   ): Promise<void> => {
     if (!itemId) return;
@@ -821,6 +822,10 @@ async function processBatchAsync(
         }
         if (debugData.processedData !== undefined) {
           updateData.processed_data = JSON.stringify(debugData.processedData);
+        }
+        // ✅ A-2: 保存错误详情
+        if (debugData.errorDetail !== undefined) {
+          updateData.error_detail = debugData.errorDetail;
         }
       }
       

@@ -107,6 +107,7 @@ async function getTaskItems(
       let aiRequest = null;
       let aiResponse = null;
       let processedData = null;
+      let errorDetail = null;
       
       try {
         if (item.ai_request) {
@@ -137,6 +138,17 @@ async function getTaskItems(
       } catch (e) {
         console.error(`[API Task Items] Failed to parse processed_data for item ${item.id}`);
       }
+      
+      // ✅ A-3: 解析 error_detail
+      try {
+        if (item.error_detail) {
+          errorDetail = typeof item.error_detail === 'string' 
+            ? JSON.parse(item.error_detail) 
+            : item.error_detail;
+        }
+      } catch (e) {
+        console.error(`[API Task Items] Failed to parse error_detail for item ${item.id}`);
+      }
 
       return {
         id: Number(item.id),
@@ -152,6 +164,8 @@ async function getTaskItems(
         aiRequest,
         aiResponse,
         processedData,
+        // ✅ A-3: 返回 error_detail
+        errorDetail,
         // ✅ 兼容旧格式（保留以防前端还在使用）
         requestBody: subtaskDetail ? {
           prompt: subtaskDetail.prompt || null,

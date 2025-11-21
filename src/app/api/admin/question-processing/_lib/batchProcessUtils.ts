@@ -43,6 +43,34 @@ interface TranslationConstraints {
   hasOriginalExplanation: boolean;
 }
 
+/**
+ * 翻译诊断信息类型
+ * 用于收集和存储结构化的错误诊断信息
+ */
+export type TranslationDiagnostic = {
+  questionId: string | number | null;
+  scene?: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
+  model?: string | null;
+  // AI 原始响应 / 清洗后
+  parsed?: any;
+  sanitized?: any;
+  rawAiResponse?: string | null;
+  // 语言识别相关
+  parsedSourceLanguage?: string | null;
+  translationsKeys?: string[];
+  detectedLanguage?: string | null;
+  // 错误信息
+  errorStage?: string | null;   // 如 "JSON_PARSE_ERROR", "TARGET_LANG_MISMATCH"
+  errorCode?: string | null;    // 如 "TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE"
+  errorMessage?: string | null;
+  errorStack?: string | null;
+  // 触发条件描述（方便肉眼看）
+  conditionDescription?: string | null;
+  sampleText?: string | null;   // 截断后的示例文本
+};
+
 export interface CategoryAndTagsResult {
   license_type_tag?: string[] | null; // 驾照类型标签（数组，可包含多个值）
   stage_tag?: "both" | "provisional" | "regular" | "full" | null; // 阶段标签（兼容旧值）
@@ -454,6 +482,12 @@ export function enforceTranslationConstraints(
   result: TranslateResult,
   original: { content: string; options?: string[] | null; explanation?: string | null },
   constraints: TranslationConstraints,
+  diagnosticData?: {
+    parsed?: any;
+    sanitized?: any;
+    questionId?: number | string;
+    diagnostic?: TranslationDiagnostic; // ✅ A-2: 添加 diagnostic 参数
+  },
 ): TranslateResult {
   const strip = (s?: string | null) => (s || "").replace(/\s+/g, "").trim();
   const { sourceLanguage, targetLanguage, type, hasOriginalOptions } = constraints; // ✅ 修复：统一使用 type
@@ -516,6 +550,88 @@ export function enforceTranslationConstraints(
 
   if (tgt === "ja") {
     if (langHint === "latin_like") {
+      // ========== 诊断输出开始 ==========
+      console.error("=".repeat(80));
+      console.error("[TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE] 诊断报告");
+      console.error("=".repeat(80));
+      
+      // 1. 打印本次任务中失败题目的原始 AI 响应（parsed 原文）
+      if (diagnosticData?.parsed) {
+        console.error("\n【1. 原始 AI 响应 (parsed)】");
+        console.error(JSON.stringify(diagnosticData.parsed, null, 2));
+      } else {
+        console.error("\n【1. 原始 AI 响应 (parsed)】");
+        console.error("⚠️ parsed 数据不可用（diagnosticData 未传入）");
+      }
+      
+      // 2. 打印 sanitized JSON（清洗后的 JSON）
+      if (diagnosticData?.sanitized) {
+        console.error("\n【2. 清洗后的 JSON (sanitized)】");
+        console.error(JSON.stringify(diagnosticData.sanitized, null, 2));
+      } else {
+        console.error("\n【2. 清洗后的 JSON (sanitized)】");
+        console.error("⚠️ sanitized 数据不可用（diagnosticData 未传入）");
+      }
+      
+      // 3. 打印 translation 识别模块中的信息
+      console.error("\n【3. Translation 识别模块信息】");
+      console.error(`- 检测到的 targetLanguage: ${tgt}`);
+      if (diagnosticData?.parsed?.source?.language) {
+        console.error(`- parsed.source.language: ${diagnosticData.parsed.source.language}`);
+      } else {
+        console.error(`- parsed.source.language: ⚠️ 不存在或未定义`);
+      }
+      if (diagnosticData?.parsed?.translations) {
+        const translationKeys = Object.keys(diagnosticData.parsed.translations);
+        console.error(`- parsed.translations 中的所有语言 key: [${translationKeys.join(", ")}]`);
+      } else {
+        console.error(`- parsed.translations 中的所有语言 key: ⚠️ 不存在或未定义`);
+      }
+      
+      // 4. 标记出导致失败的判断条件
+      console.error("\n【4. 导致失败的判断条件】");
+      console.error(`- targetLanguage (${tgt}) === "ja"`);
+      console.error(`- detectLanguageByChars(result.content) === "latin_like"`);
+      console.error(`- 判断结果: ❌ 目标语言为 ja，但检测为 latin_like，拒绝写入`);
+      console.error(`- 翻译内容样本: ${result.content?.slice(0, 200) || "[空]"}`);
+      
+      // 5. 输出该判断是在文件中的具体位置
+      console.error("\n【5. 错误位置】");
+      console.error(`- 文件: batchProcessUtils.ts`);
+      console.error(`- 函数: enforceTranslationConstraints`);
+      console.error(`- 行号: 517-523`);
+      console.error(`- 判断条件: if (tgt === "ja" && langHint === "latin_like")`);
+      
+      // 6. 最后输出分析结论
+      console.error("\n【6. 分析结论】");
+      if (diagnosticData?.parsed?.source?.language) {
+        console.error(`- parsed.source.language = "${diagnosticData.parsed.source.language}"`);
+        console.error(`- 题目 sourceLanguage = "${sourceLanguage}"`);
+        if (diagnosticData.parsed.source.language !== sourceLanguage) {
+          console.error(`- ⚠️ parsed.source.language 与题目 sourceLanguage 不一致`);
+        }
+      }
+      console.error(`- 检测到的语言类型: ${langHint}`);
+      console.error(`- 目标语言: ${tgt}`);
+      console.error(`- 可能原因:`);
+      console.error(`  1. AI 输出错语言？${langHint === "latin_like" && tgt === "ja" ? " ✅ 是（AI 返回了英文而非日文）" : " ❌ 否"}`);
+      console.error(`  2. 语言检测逻辑错误？${langHint === "latin_like" && result.content && /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(result.content) ? " ✅ 可能（检测逻辑可能有问题）" : " ❌ 否"}`);
+      console.error(`  3. 正则清洗导致语言字段缺失？${!diagnosticData?.parsed?.source?.language ? " ✅ 可能（source.language 缺失）" : " ❌ 否"}`);
+      
+      console.error("=".repeat(80));
+      // ========== 诊断输出结束 ==========
+      
+      // ✅ A-2: 填充 diagnostic 信息
+      if (diagnosticData?.diagnostic) {
+        diagnosticData.diagnostic.errorStage = "TARGET_LANG_MISMATCH";
+        diagnosticData.diagnostic.errorCode = "TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE";
+        diagnosticData.diagnostic.detectedLanguage = langHint;
+        diagnosticData.diagnostic.conditionDescription = `Expected targetLanguage=ja, but detected ${langHint}`;
+        diagnosticData.diagnostic.sampleText = result.content?.slice(0, 200) ?? null;
+        diagnosticData.diagnostic.targetLanguage = tgt;
+        diagnosticData.diagnostic.sourceLanguage = src;
+      }
+      
       console.error(
         "[enforceTranslationConstraints] 目标语言 ja，但检测为 latin_like，拒绝写入",
         { sample: result.content.slice(0, 80) },
@@ -527,6 +643,88 @@ export function enforceTranslationConstraints(
 
   if (tgt === "zh") {
     if (langHint === "latin_like" || langHint === "ja_like") {
+      // ========== 诊断输出开始 ==========
+      console.error("=".repeat(80));
+      console.error("[TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE] 诊断报告");
+      console.error("=".repeat(80));
+      
+      // 1. 打印本次任务中失败题目的原始 AI 响应（parsed 原文）
+      if (diagnosticData?.parsed) {
+        console.error("\n【1. 原始 AI 响应 (parsed)】");
+        console.error(JSON.stringify(diagnosticData.parsed, null, 2));
+      } else {
+        console.error("\n【1. 原始 AI 响应 (parsed)】");
+        console.error("⚠️ parsed 数据不可用（diagnosticData 未传入）");
+      }
+      
+      // 2. 打印 sanitized JSON（清洗后的 JSON）
+      if (diagnosticData?.sanitized) {
+        console.error("\n【2. 清洗后的 JSON (sanitized)】");
+        console.error(JSON.stringify(diagnosticData.sanitized, null, 2));
+      } else {
+        console.error("\n【2. 清洗后的 JSON (sanitized)】");
+        console.error("⚠️ sanitized 数据不可用（diagnosticData 未传入）");
+      }
+      
+      // 3. 打印 translation 识别模块中的信息
+      console.error("\n【3. Translation 识别模块信息】");
+      console.error(`- 检测到的 targetLanguage: ${tgt}`);
+      if (diagnosticData?.parsed?.source?.language) {
+        console.error(`- parsed.source.language: ${diagnosticData.parsed.source.language}`);
+      } else {
+        console.error(`- parsed.source.language: ⚠️ 不存在或未定义`);
+      }
+      if (diagnosticData?.parsed?.translations) {
+        const translationKeys = Object.keys(diagnosticData.parsed.translations);
+        console.error(`- parsed.translations 中的所有语言 key: [${translationKeys.join(", ")}]`);
+      } else {
+        console.error(`- parsed.translations 中的所有语言 key: ⚠️ 不存在或未定义`);
+      }
+      
+      // 4. 标记出导致失败的判断条件
+      console.error("\n【4. 导致失败的判断条件】");
+      console.error(`- targetLanguage (${tgt}) === "zh"`);
+      console.error(`- detectLanguageByChars(result.content) === "${langHint}"`);
+      console.error(`- 判断结果: ❌ 目标语言为 zh，但检测为 ${langHint}，拒绝写入`);
+      console.error(`- 翻译内容样本: ${result.content?.slice(0, 200) || "[空]"}`);
+      
+      // 5. 输出该判断是在文件中的具体位置
+      console.error("\n【5. 错误位置】");
+      console.error(`- 文件: batchProcessUtils.ts`);
+      console.error(`- 函数: enforceTranslationConstraints`);
+      console.error(`- 行号: 528-535`);
+      console.error(`- 判断条件: if (tgt === "zh" && (langHint === "latin_like" || langHint === "ja_like"))`);
+      
+      // 6. 最后输出分析结论
+      console.error("\n【6. 分析结论】");
+      if (diagnosticData?.parsed?.source?.language) {
+        console.error(`- parsed.source.language = "${diagnosticData.parsed.source.language}"`);
+        console.error(`- 题目 sourceLanguage = "${sourceLanguage}"`);
+        if (diagnosticData.parsed.source.language !== sourceLanguage) {
+          console.error(`- ⚠️ parsed.source.language 与题目 sourceLanguage 不一致`);
+        }
+      }
+      console.error(`- 检测到的语言类型: ${langHint}`);
+      console.error(`- 目标语言: ${tgt}`);
+      console.error(`- 可能原因:`);
+      console.error(`  1. AI 输出错语言？${(langHint === "latin_like" || langHint === "ja_like") && tgt === "zh" ? " ✅ 是（AI 返回了非中文内容）" : " ❌ 否"}`);
+      console.error(`  2. 语言检测逻辑错误？${langHint === "ja_like" && result.content && !/[\u3040-\u309F\u30A0-\u30FF]/.test(result.content) ? " ✅ 可能（检测逻辑可能有问题）" : " ❌ 否"}`);
+      console.error(`  3. 正则清洗导致语言字段缺失？${!diagnosticData?.parsed?.source?.language ? " ✅ 可能（source.language 缺失）" : " ❌ 否"}`);
+      
+      console.error("=".repeat(80));
+      // ========== 诊断输出结束 ==========
+      
+      // ✅ A-2: 填充 diagnostic 信息
+      if (diagnosticData?.diagnostic) {
+        diagnosticData.diagnostic.errorStage = "TARGET_LANG_MISMATCH";
+        diagnosticData.diagnostic.errorCode = "TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE";
+        diagnosticData.diagnostic.detectedLanguage = langHint;
+        diagnosticData.diagnostic.conditionDescription = `Expected targetLanguage=zh, but detected ${langHint}`;
+        diagnosticData.diagnostic.sampleText = result.content?.slice(0, 200) ?? null;
+        diagnosticData.diagnostic.targetLanguage = tgt;
+        diagnosticData.diagnostic.sourceLanguage = src;
+      }
+      
       console.error(
         "[enforceTranslationConstraints] 目标语言 zh，但检测为非中文风格，拒绝写入",
         { sample: result.content.slice(0, 80), langHint },
@@ -537,6 +735,88 @@ export function enforceTranslationConstraints(
 
   if (tgt === "en") {
     if (langHint === "zh_like" || langHint === "ja_like") {
+      // ========== 诊断输出开始 ==========
+      console.error("=".repeat(80));
+      console.error("[TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE] 诊断报告");
+      console.error("=".repeat(80));
+      
+      // 1. 打印本次任务中失败题目的原始 AI 响应（parsed 原文）
+      if (diagnosticData?.parsed) {
+        console.error("\n【1. 原始 AI 响应 (parsed)】");
+        console.error(JSON.stringify(diagnosticData.parsed, null, 2));
+      } else {
+        console.error("\n【1. 原始 AI 响应 (parsed)】");
+        console.error("⚠️ parsed 数据不可用（diagnosticData 未传入）");
+      }
+      
+      // 2. 打印 sanitized JSON（清洗后的 JSON）
+      if (diagnosticData?.sanitized) {
+        console.error("\n【2. 清洗后的 JSON (sanitized)】");
+        console.error(JSON.stringify(diagnosticData.sanitized, null, 2));
+      } else {
+        console.error("\n【2. 清洗后的 JSON (sanitized)】");
+        console.error("⚠️ sanitized 数据不可用（diagnosticData 未传入）");
+      }
+      
+      // 3. 打印 translation 识别模块中的信息
+      console.error("\n【3. Translation 识别模块信息】");
+      console.error(`- 检测到的 targetLanguage: ${tgt}`);
+      if (diagnosticData?.parsed?.source?.language) {
+        console.error(`- parsed.source.language: ${diagnosticData.parsed.source.language}`);
+      } else {
+        console.error(`- parsed.source.language: ⚠️ 不存在或未定义`);
+      }
+      if (diagnosticData?.parsed?.translations) {
+        const translationKeys = Object.keys(diagnosticData.parsed.translations);
+        console.error(`- parsed.translations 中的所有语言 key: [${translationKeys.join(", ")}]`);
+      } else {
+        console.error(`- parsed.translations 中的所有语言 key: ⚠️ 不存在或未定义`);
+      }
+      
+      // 4. 标记出导致失败的判断条件
+      console.error("\n【4. 导致失败的判断条件】");
+      console.error(`- targetLanguage (${tgt}) === "en"`);
+      console.error(`- detectLanguageByChars(result.content) === "${langHint}"`);
+      console.error(`- 判断结果: ❌ 目标语言为 en，但检测为 CJK 风格，拒绝写入`);
+      console.error(`- 翻译内容样本: ${result.content?.slice(0, 200) || "[空]"}`);
+      
+      // 5. 输出该判断是在文件中的具体位置
+      console.error("\n【5. 错误位置】");
+      console.error(`- 文件: batchProcessUtils.ts`);
+      console.error(`- 函数: enforceTranslationConstraints`);
+      console.error(`- 行号: 538-545`);
+      console.error(`- 判断条件: if (tgt === "en" && (langHint === "zh_like" || langHint === "ja_like"))`);
+      
+      // 6. 最后输出分析结论
+      console.error("\n【6. 分析结论】");
+      if (diagnosticData?.parsed?.source?.language) {
+        console.error(`- parsed.source.language = "${diagnosticData.parsed.source.language}"`);
+        console.error(`- 题目 sourceLanguage = "${sourceLanguage}"`);
+        if (diagnosticData.parsed.source.language !== sourceLanguage) {
+          console.error(`- ⚠️ parsed.source.language 与题目 sourceLanguage 不一致`);
+        }
+      }
+      console.error(`- 检测到的语言类型: ${langHint}`);
+      console.error(`- 目标语言: ${tgt}`);
+      console.error(`- 可能原因:`);
+      console.error(`  1. AI 输出错语言？${(langHint === "zh_like" || langHint === "ja_like") && tgt === "en" ? " ✅ 是（AI 返回了 CJK 内容而非英文）" : " ❌ 否"}`);
+      console.error(`  2. 语言检测逻辑错误？${langHint === "zh_like" && result.content && !/[\u4E00-\u9FFF]/.test(result.content) ? " ✅ 可能（检测逻辑可能有问题）" : " ❌ 否"}`);
+      console.error(`  3. 正则清洗导致语言字段缺失？${!diagnosticData?.parsed?.source?.language ? " ✅ 可能（source.language 缺失）" : " ❌ 否"}`);
+      
+      console.error("=".repeat(80));
+      // ========== 诊断输出结束 ==========
+      
+      // ✅ A-2: 填充 diagnostic 信息
+      if (diagnosticData?.diagnostic) {
+        diagnosticData.diagnostic.errorStage = "TARGET_LANG_MISMATCH";
+        diagnosticData.diagnostic.errorCode = "TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE";
+        diagnosticData.diagnostic.detectedLanguage = langHint;
+        diagnosticData.diagnostic.conditionDescription = `Expected targetLanguage=en, but detected ${langHint}`;
+        diagnosticData.diagnostic.sampleText = result.content?.slice(0, 200) ?? null;
+        diagnosticData.diagnostic.targetLanguage = tgt;
+        diagnosticData.diagnostic.sourceLanguage = src;
+      }
+      
       console.error(
         "[enforceTranslationConstraints] 目标语言 en，但检测为 CJK 风格，拒绝写入",
         { sample: result.content.slice(0, 80), langHint },
@@ -2123,6 +2403,14 @@ export async function processFullPipelineBatch(
     let aiProvider = "";
     let aiCorrectAnswerUsed = false;
     
+    // ✅ A-2: 初始化诊断信息收集器
+    const diagnostic: TranslationDiagnostic = {
+      questionId: question.id,
+      scene: "question_full_pipeline",
+      sourceLanguage,
+      targetLanguage: targetLanguages.join(","),
+    };
+    
     try {
       // ========== STAGE 1: LOAD_QUESTION ==========
       currentStage = "LOAD_QUESTION";
@@ -2244,7 +2532,19 @@ export async function processFullPipelineBatch(
       try {
         parsed = JSON.parse(rawAnswer);
         console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] JSON 解析成功 | 包含字段: ${Object.keys(parsed || {}).join(", ")}`);
+        
+        // ✅ A-2: JSON 解析成功，填充诊断信息
+        diagnostic.parsed = parsed;
+        diagnostic.parsedSourceLanguage = parsed?.source?.language ?? null;
+        diagnostic.translationsKeys = parsed?.translations ? Object.keys(parsed.translations) : [];
       } catch (parseError) {
+        // ✅ A-2: JSON 解析失败，填充诊断信息
+        diagnostic.errorStage = "JSON_PARSE_ERROR";
+        diagnostic.errorCode = "AI_JSON_PARSE_FAILED";
+        diagnostic.errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+        diagnostic.errorStack = parseError instanceof Error ? parseError.stack ?? null : null;
+        diagnostic.rawAiResponse = rawAnswer?.substring(0, 5000) ?? null; // 限制长度避免过大
+        
         console.error(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] JSON 解析失败:`, {
           error: parseError instanceof Error ? parseError.message : String(parseError),
           rawAnswerPreview: rawAnswer.substring(0, 500),
@@ -2254,10 +2554,16 @@ export async function processFullPipelineBatch(
 
       // 验证解析结果
       if (!parsed || typeof parsed !== "object") {
+        diagnostic.errorStage = "JSON_PARSE_ERROR";
+        diagnostic.errorCode = "AI_JSON_PARSE_FAILED";
+        diagnostic.errorMessage = "Parsed result is not an object";
         throw new Error("AI_JSON_PARSE_FAILED: AI full pipeline response missing JSON body");
       }
 
       if (!parsed.source || !parsed.source.content) {
+        diagnostic.errorStage = "AI_VALIDATION_ERROR";
+        diagnostic.errorCode = "AI_VALIDATION_FAILED";
+        diagnostic.errorMessage = "AI full pipeline response missing source.content";
         throw new Error("AI_VALIDATION_FAILED: AI full pipeline response missing source.content");
       }
 
@@ -2276,6 +2582,10 @@ export async function processFullPipelineBatch(
       // ✅ 安全过滤：只允许白名单字段写入 question 模型
       const sanitized = sanitizeAiPayload(parsed);
       console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] AI payload 安全过滤完成 | 原始字段数=${Object.keys(parsed).length} | 过滤后字段数=${Object.keys(sanitized).length}`);
+      
+      // ✅ A-2: 填充清洗后的数据
+      diagnostic.sanitized = sanitized;
+      diagnostic.model = aiResp.model ?? null;
       
       console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 4: PARSE_AND_VALIDATE_AI_RESULT 完成 | source.content存在 | 翻译数量=${sanitized.translations ? Object.keys(sanitized.translations).length : 0}`);
 
@@ -2403,6 +2713,12 @@ export async function processFullPipelineBatch(
               type: type as QuestionType, // ✅ 修复：统一使用 type 字段
               hasOriginalOptions: dbSourceOptions.length > 0,
               hasOriginalExplanation: !!dbSourceExplanation,
+            },
+            {
+              parsed, // 传入原始 AI 响应用于诊断
+              sanitized, // 传入清洗后的 JSON 用于诊断
+              questionId: question.id, // 传入题目 ID 用于诊断
+              diagnostic, // ✅ A-2: 传入 diagnostic 对象用于填充错误信息
             },
           );
 
@@ -2777,6 +3093,33 @@ export async function processFullPipelineBatch(
         errorCode = "AI_VALIDATION_FAILED";
       } else if (errorMessage.includes("LOAD_QUESTION_FAILED")) {
         errorCode = "LOAD_QUESTION_FAILED";
+      } else if (errorMessage.includes("TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE")) {
+        errorCode = "TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE";
+      }
+      
+      // ✅ A-2: 填充 diagnostic 的 errorMessage 和 errorStack（如果还没有填充）
+      if (!diagnostic.errorMessage) {
+        diagnostic.errorMessage = errorMessage;
+      }
+      if (!diagnostic.errorStack) {
+        diagnostic.errorStack = error instanceof Error ? error.stack ?? null : null;
+      }
+      if (!diagnostic.errorCode) {
+        diagnostic.errorCode = errorCode;
+      }
+      if (!diagnostic.errorStage) {
+        diagnostic.errorStage = failedStage;
+      }
+      
+      // ✅ A-2: 通过 onProgress 回调传递 error_detail
+      if (onProgress) {
+        try {
+          await onProgress(question.id, {
+            errorDetail: diagnostic, // 传递诊断信息
+          } as any);
+        } catch (progressError) {
+          console.error(`[processFullPipelineBatch] [Q${question.id}] 保存 error_detail 失败:`, progressError);
+        }
       }
       
       const summary = {

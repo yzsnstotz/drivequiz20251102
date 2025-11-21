@@ -609,6 +609,7 @@ interface QuestionProcessingTaskItemsTable {
   ai_request: any | null;          // AI 请求体（JSONB）
   ai_response: any | null;          // AI 响应（JSONB）
   processed_data: any | null;       // 处理后要入库的数据（JSONB）
+  error_detail: any | null;         // 错误详情（JSONB），包含结构化的诊断信息
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
