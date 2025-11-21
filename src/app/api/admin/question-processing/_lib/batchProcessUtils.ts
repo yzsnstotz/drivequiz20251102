@@ -10,7 +10,8 @@ import { mapDbProviderToClientProvider } from "@/lib/aiProviderMapping";
 import { loadQpAiConfig, type QpAiConfig } from "@/lib/qpAiConfig";
 import { getAiCache, setAiCache } from "@/lib/qpAiCache";
 import { normalizeAIResult } from "@/lib/quizTags";
-import { buildQuestionTranslationInput, buildQuestionPolishInput } from "@/lib/questionPromptBuilder";
+import { buildQuestionTranslationInput, buildQuestionPolishInput, buildQuestionFillMissingInput, buildQuestionFullPipelineInput } from "@/lib/questionPromptBuilder";
+import { buildNormalizedQuestion } from "@/lib/questionNormalize";
 
 // 在模块级提前加载一次配置（与 question-processor 保持一致）
 const qpAiConfig = loadQpAiConfig();
@@ -27,8 +28,19 @@ console.log("[batchProcessUtils] AI config:", {
 
 export interface TranslateResult {
   content: string;
-  options?: string[];
-  explanation?: string;
+  options?: string[] | null;
+  explanation?: string | null;
+  language?: string | null; // 可选：AI 端未来可以返回检测到的语言
+}
+
+import { QuestionType } from "@/types/question";
+
+interface TranslationConstraints {
+  sourceLanguage: string;      // "zh" | "ja" | "en"
+  targetLanguage: string;      // "zh" | "ja" | "en"
+  type: QuestionType; // ✅ 修复：统一使用 type 字段
+  hasOriginalOptions: boolean;
+  hasOriginalExplanation: boolean;
 }
 
 export interface CategoryAndTagsResult {
@@ -112,6 +124,363 @@ class AiRequestQueue {
 
 // 创建全局队列实例
 const aiRequestQueue = new AiRequestQueue();
+
+/**
+ * 分析文本语言特征
+ * @param text 待分析的文本
+ * @returns 语言特征统计
+ */
+function analyzeTextLanguage(text: string): {
+  englishChars: number;
+  chineseChars: number;
+  totalChars: number;
+  englishRatio: number;
+  chineseRatio: number;
+} {
+  if (!text || typeof text !== "string") {
+    return { englishChars: 0, chineseChars: 0, totalChars: 1, englishRatio: 0, chineseRatio: 0 };
+  }
+
+  const englishChars = (text.match(/[A-Za-z]/g) ?? []).length;
+  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
+  const totalChars = text.length || 1;
+  const englishRatio = englishChars / totalChars;
+  const chineseRatio = chineseChars / totalChars;
+
+  return { englishChars, chineseChars, totalChars, englishRatio, chineseRatio };
+}
+
+/**
+ * 判断文本内容是否为英语（用于 explanation 语言检查）
+ * @param text 待检查的文本
+ * @returns 如果英文占比 > 30% 且中文占比 < 10%，返回 true
+ */
+export function isEnglishContent(text: string): boolean {
+  const { englishRatio, chineseRatio } = analyzeTextLanguage(text);
+  
+  // 决策：当英文占比 > 30% 且中文占比 < 10% 时认为是"明显英文"
+  const isEnglish = englishRatio > 0.3 && chineseRatio < 0.1;
+  
+  // 调试日志（通过环境变量控制）
+  if (process.env.DEBUG_BATCH_LANG === "1") {
+    const { totalChars, englishChars, chineseChars } = analyzeTextLanguage(text);
+    console.debug(
+      `[isEnglishContent] total=${totalChars}, en=${englishChars} (${englishRatio.toFixed(3)}), zh=${chineseChars} (${chineseRatio.toFixed(3)}), preview="${text.slice(0, 80)}", result=${isEnglish}`,
+    );
+  }
+  
+  return isEnglish;
+}
+
+/**
+ * 判断内容是否几乎为空（只有标点/空格）
+ */
+function isTrivialText(text: string): boolean {
+  return !text || text.trim().length === 0;
+}
+
+type ExplanationWriteContext = {
+  currentExplanation: any;          // questions.explanation 当前值
+  newExplanation: string;           // 准备写入的 explanation 文本
+  sourceLanguage: string;           // 源语言，如 "zh"
+  targetLang: string;               // 要写入的 key，如 "zh" / "en" / "ja"
+};
+
+/**
+ * 统一的 explanation 更新函数：
+ * - 防止英语误写入 zh
+ * - 防止把翻译结果写回源语言 key
+ * - 保留原有 explanation 结构（string → { zh: string } 升级）
+ */
+export function buildUpdatedExplanationWithGuard(ctx: ExplanationWriteContext): any {
+  const { currentExplanation, newExplanation, sourceLanguage, targetLang } = ctx;
+
+  if (isTrivialText(newExplanation)) {
+    // 空内容：直接返回原值
+    return currentExplanation ?? null;
+  }
+
+  // 1）禁止把翻译写回"源语言 key"
+  //    批量场景里，sourceLanguage 是题目的原始语言，比如 zh
+  //    如果 targetLang === sourceLanguage，则直接跳过写入，避免 sourceExplanation 被错写
+  if (targetLang === sourceLanguage) {
+    console.warn(
+      `[ExplanationGuard] Skip writing explanation to source key "${targetLang}" to avoid overwriting original source explanation.`,
+    );
+    return currentExplanation ?? null;
+  }
+
+  // 2）防止英语写入 zh
+  if (targetLang === "zh" && isEnglishContent(newExplanation)) {
+    console.warn(
+      `[ExplanationGuard] Detected English content but targetLang=zh, skip writing explanation.`,
+    );
+    return currentExplanation ?? null;
+  }
+
+  // 3）构造统一的 JSON 结构，并清理语言不匹配的 key
+  let base: any;
+  if (currentExplanation && typeof currentExplanation === "object" && currentExplanation !== null) {
+    base = { ...currentExplanation };
+    
+    // ✅ 清理语言不匹配的 key（防止保留错误的 explanation）
+    // 例如：如果 base.zh 存在但是内容是英文，应该删除
+    for (const key of Object.keys(base)) {
+      const value = base[key];
+      if (typeof value !== "string" || !value) {
+        // 删除非字符串或空值
+        delete base[key];
+        continue;
+      }
+      
+      // 检查语言是否匹配
+      const isValueEnglish = isEnglishContent(value);
+      const isValueChinese = isChineseContent(value);
+      
+      if (key === "zh") {
+        // zh key 应该包含中文内容
+        if (isValueEnglish && !isValueChinese) {
+          console.warn(
+            `[ExplanationGuard] 检测到 explanation.zh 包含英文内容，已清理`,
+          );
+          delete base[key];
+        }
+      } else if (key === "en") {
+        // en key 应该包含英文内容
+        if (isValueChinese && !isValueEnglish) {
+          console.warn(
+            `[ExplanationGuard] 检测到 explanation.en 包含中文内容，已清理`,
+          );
+          delete base[key];
+        }
+      } else if (key === "ja" || key === "ko") {
+        // ja/ko key 不应该包含中文或英文（严格检查）
+        if (isValueChinese) {
+          console.warn(
+            `[ExplanationGuard] 检测到 explanation.${key} 包含中文内容，已清理`,
+          );
+          delete base[key];
+        }
+        if (isValueEnglish) {
+          console.warn(
+            `[ExplanationGuard] 检测到 explanation.${key} 包含英文内容，已清理`,
+          );
+          delete base[key];
+        }
+      }
+    }
+  } else if (typeof currentExplanation === "string") {
+    // 兼容旧数据：string → { zh: string }
+    // 但需要检查语言是否匹配
+    if (isChineseContent(currentExplanation)) {
+      base = { zh: currentExplanation };
+    } else if (isEnglishContent(currentExplanation)) {
+      base = { en: currentExplanation };
+    } else {
+      // 语言不明确，根据 sourceLanguage 决定
+      base = { [sourceLanguage]: currentExplanation };
+    }
+  } else {
+    base = {};
+  }
+
+  base[targetLang] = newExplanation;
+  return base;
+}
+
+/**
+ * 检查文本是否为中文内容
+ * @param text 待检查的文本
+ * @returns 如果中文占比 > 20% 且英文占比 < 30%，返回 true
+ */
+export function isChineseContent(text: string): boolean {
+  const { englishRatio, chineseRatio } = analyzeTextLanguage(text);
+  
+  // 📊 改进：检测日文假名来区分中文和日文
+  // 如果包含平假名或片假名，大概率是日文，不是中文
+  const hasHiragana = /[\u3040-\u309F]/.test(text); // 平假名
+  const hasKatakana = /[\u30A0-\u30FF]/.test(text); // 片假名
+  const hasJapaneseKana = hasHiragana || hasKatakana;
+  
+  // 如果有日文假名，不判定为中文
+  if (hasJapaneseKana) {
+    if (process.env.DEBUG_BATCH_LANG === "1") {
+      console.debug(
+        `[isChineseContent] 检测到日文假名（平假名=${hasHiragana}, 片假名=${hasKatakana}），不判定为中文, preview="${text.slice(0, 80)}"`,
+      );
+    }
+    return false;
+  }
+  
+  // 约定：当中文占比 > 20% 且英文占比 < 30% 时认为是"主要中文"
+  const isChinese = chineseRatio > 0.2 && englishRatio < 0.3;
+  
+  // 调试日志（通过环境变量控制）
+  if (process.env.DEBUG_BATCH_LANG === "1") {
+    const { totalChars, englishChars, chineseChars } = analyzeTextLanguage(text);
+    console.debug(
+      `[isChineseContent] total=${totalChars}, en=${englishChars} (${englishRatio.toFixed(3)}), zh=${chineseChars} (${chineseRatio.toFixed(3)}), preview="${text.slice(0, 80)}", result=${isChinese}`,
+    );
+  }
+  
+  return isChinese;
+}
+
+/**
+ * 语言检测函数：通过字符集粗略判断语言类型
+ */
+export function detectLanguageByChars(text: string): "zh_like" | "ja_like" | "latin_like" | "unknown" {
+  const s = text || "";
+  let hasHiragana = false;
+  let hasKatakana = false;
+  let hasLatin = false;
+  let hasCJK = false;
+
+  for (const ch of s) {
+    const code = ch.charCodeAt(0);
+    // CJK 统一表意文字
+    if (code >= 0x4e00 && code <= 0x9fff) hasCJK = true;
+    // 平假名
+    else if (code >= 0x3040 && code <= 0x309f) hasHiragana = true;
+    // 片假名
+    else if (code >= 0x30a0 && code <= 0x30ff) hasKatakana = true;
+    // 拉丁字母
+    else if (
+      (code >= 0x0041 && code <= 0x005a) ||
+      (code >= 0x0061 && code <= 0x007a)
+    ) {
+      hasLatin = true;
+    }
+  }
+
+  if ((hasHiragana || hasKatakana) && hasCJK) return "ja_like";
+  if (hasLatin && !hasCJK) return "latin_like";
+  if (hasCJK && !hasHiragana && !hasKatakana) return "zh_like";
+  return "unknown";
+}
+
+/**
+ * 统一翻译结果约束函数：在写库前做总兜底
+ * 所有翻译结果（无论通过哪个函数产生）在写入数据库前必须经过此函数校验
+ */
+export function enforceTranslationConstraints(
+  result: TranslateResult,
+  original: { content: string; options?: string[] | null; explanation?: string | null },
+  constraints: TranslationConstraints,
+): TranslateResult {
+  const strip = (s?: string | null) => (s || "").replace(/\s+/g, "").trim();
+  const { sourceLanguage, targetLanguage, type, hasOriginalOptions } = constraints; // ✅ 修复：统一使用 type
+
+  const src = sourceLanguage.toLowerCase();
+  const tgt = targetLanguage.toLowerCase();
+
+  // 1) from != to 且内容几乎完全一致 => 标记为无效翻译（不应写入数据库）
+  if (
+    src &&
+    tgt &&
+    src !== tgt &&
+    strip(result.content) &&
+    strip(original.content) &&
+    strip(result.content) === strip(original.content)
+  ) {
+    console.warn(
+      "[enforceTranslationConstraints] ❌ 翻译结果与原文相同（AI 未翻译），标记为无效翻译",
+      { from: src, to: tgt, contentSample: result.content.slice(0, 80) },
+    );
+    // ⚠️ 重要：不能把原文内容赋值给 result（会导致中文写入 ja/en key）
+    // 应该标记为无效翻译，让调用方跳过该翻译
+    // 使用特殊标记：content 为 null 表示无效翻译
+    result.content = null as any;
+    result.options = null;
+    result.explanation = null as any;
+    // 不抛出异常，返回 null 让调用方判断
+  }
+
+  // 2) True/False 题：不允许有 options
+  if (type === "truefalse") {
+    if (result.options && result.options.length > 0) {
+      console.warn(
+        "[enforceTranslationConstraints] True/False 题翻译返回了 options，强制清空",
+      );
+    }
+    result.options = null;
+  }
+
+  // 3) 原题没有 options，则翻译结果也必须没有 options
+  if (!hasOriginalOptions) {
+    if (result.options && result.options.length > 0) {
+      console.warn(
+        "[enforceTranslationConstraints] 原题没有 options，但翻译结果返回了 options，强制清空",
+      );
+    }
+    result.options = null;
+  }
+
+  // 4) explanation 存在性：源有解析但翻译没返回 -> 先打日志，保持为空由人工复核
+  if (constraints.hasOriginalExplanation && !result.explanation) {
+    console.warn(
+      "[enforceTranslationConstraints] 源有 explanation，但翻译未返回，保持为空，建议人工检查",
+      { from: src, to: tgt, explanationSample: original.explanation?.slice(0, 80) },
+    );
+  }
+
+  // 5) 目标语言粗略校验
+  const langHint = detectLanguageByChars(result.content || "");
+
+  if (tgt === "ja") {
+    if (langHint === "latin_like") {
+      console.error(
+        "[enforceTranslationConstraints] 目标语言 ja，但检测为 latin_like，拒绝写入",
+        { sample: result.content.slice(0, 80) },
+      );
+      throw new Error("TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE");
+    }
+    // 对于日文 & 中文都使用 CJK 的情况，只能放宽处理：ja_like 或 zh_like 都允许，交给人工抽样检查
+  }
+
+  if (tgt === "zh") {
+    if (langHint === "latin_like" || langHint === "ja_like") {
+      console.error(
+        "[enforceTranslationConstraints] 目标语言 zh，但检测为非中文风格，拒绝写入",
+        { sample: result.content.slice(0, 80), langHint },
+      );
+      throw new Error("TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE");
+    }
+  }
+
+  if (tgt === "en") {
+    if (langHint === "zh_like" || langHint === "ja_like") {
+      console.error(
+        "[enforceTranslationConstraints] 目标语言 en，但检测为 CJK 风格，拒绝写入",
+        { sample: result.content.slice(0, 80), langHint },
+      );
+      throw new Error("TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE");
+    }
+  }
+
+  // 6) 解析 explanation 的语言大致与 content 保持一致（只做弱约束 + 日志）
+  if (result.explanation) {
+    const contentHint = detectLanguageByChars(result.content || "");
+    const explanationHint = detectLanguageByChars(result.explanation || "");
+
+    if (contentHint !== "unknown" && explanationHint !== "unknown" && contentHint !== explanationHint) {
+      console.warn(
+        "[enforceTranslationConstraints] content 与 explanation 语言风格不一致，建议人工复核",
+        {
+          from: src,
+          to: tgt,
+          contentHint,
+          explanationHint,
+          contentSample: result.content.slice(0, 50),
+          explanationSample: result.explanation.slice(0, 50),
+        },
+      );
+      // 暂不强制抛错，避免误伤，但日志会暴露这类问题
+    }
+  }
+
+  return result;
+}
 
 async function getSceneConfig(sceneKey: string, locale: string = "zh"): Promise<{
   prompt: string;
@@ -292,6 +661,7 @@ async function callAiAskInternal(
     sourceLanguage?: string;
     targetLanguage?: string;
     adminToken?: string; // 管理员 token（保留用于兼容，但不再使用）
+    questionPayload?: any; // ✅ Task 1: 新增：完整的题目 payload 对象，用于 full_pipeline 场景
   },
   options?: {
     mode?: "batch" | "single";
@@ -348,23 +718,48 @@ async function callAiAskInternal(
         }
         
         // 调用 ai-service
-        console.log(`[callAiAskInternal] 准备调用 AI 服务:`, {
+        // ✅ 修复：使用语言代码规范化工具，确保在整个链路中保持一致
+        const normalizeLanguageCode = (raw?: string | null): string | undefined => {
+          if (!raw) return undefined;
+          const s = raw.toLowerCase().trim();
+          if (s === "en" || s === "en-us" || s === "english" || s.startsWith("en-")) return "en";
+          if (s === "ja" || s === "ja-jp" || s === "jp" || s === "japanese" || s.startsWith("ja-")) return "ja";
+          if (s === "zh" || s === "zh-cn" || s === "zh-tw" || s === "chinese" || s.startsWith("zh-")) return "zh";
+          return s;
+        };
+        
+        const normalizedTargetLang = normalizeLanguageCode(params.targetLanguage);
+        const normalizedSourceLang = normalizeLanguageCode(params.sourceLanguage);
+        
+        console.log(`[callAiAskInternal] [req-${attempt}] 准备调用 AI 服务:`, {
           provider,
           scene: params.scene,
           sourceLanguage: params.sourceLanguage,
+          normalizedSourceLang,
           targetLanguage: params.targetLanguage,
+          normalizedTargetLang,
           locale: params.locale,
         });
+        
+        // ✅ 修复：在 AI 请求参数中强制加入 targetLanguage 和 sourceLanguage
+        // ✅ Task 1: 如果提供了 questionPayload，将其传递给 ai-service
+        const aiRequestParams: any = {
+          provider,
+          question: params.question, // 保留原有的 question 字符串（用于 prompt）
+          locale: params.locale || "zh-CN",
+          scene: params.scene,
+          sourceLanguage: normalizedSourceLang || params.sourceLanguage || undefined,
+          targetLanguage: normalizedTargetLang || params.targetLanguage || undefined,
+          model: model,
+        };
+        
+        // ✅ Task 1: 如果提供了 questionPayload，将其作为 question 字段传递（覆盖字符串 question）
+        if (params.questionPayload) {
+          aiRequestParams.question = params.questionPayload;
+        }
+        
         const aiResp = await callAiServer<{ answer: string; aiProvider?: string; model?: string }>(
-          {
-            provider,
-              question: params.question,
-              locale: params.locale || "zh-CN",
-              scene: params.scene,
-              sourceLanguage: params.sourceLanguage,
-              targetLanguage: params.targetLanguage,
-            model: model,
-          },
+          aiRequestParams,
           { timeoutMs: singleRequestTimeout }
         );
 
@@ -486,12 +881,12 @@ export async function translateWithPolish(params: {
   source: { content: string; options?: string[]; explanation?: string };
   from: string;
   to: string;
-  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
+  type?: "single" | "multiple" | "truefalse"; // ✅ 修复：统一使用 type 字段
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
   mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
-  const { source, from, to, adminToken, returnDetail } = params;
+  const { source, from, to, type, adminToken, returnDetail } = params; // ✅ 修复：统一使用 type
   
   // 验证 from 和 to 参数，并提供默认值
   const sourceLang = from || "zh"; // 默认使用中文作为源语言
@@ -501,11 +896,27 @@ export async function translateWithPolish(params: {
     throw new Error(`translateWithPolish: to (targetLanguage) is required. Got from=${from}, to=${to}`);
   }
   
-  console.log(`[translateWithPolish] 接收到的参数:`, {
+  // ✅ 修复：使用语言代码规范化工具，确保在整个链路中保持一致
+  // 导入 normalizeLanguageCode（如果不存在则使用内联实现）
+  const normalizeLanguageCode = (raw?: string | null): string | undefined => {
+    if (!raw) return undefined;
+    const s = raw.toLowerCase().trim();
+    if (s === "en" || s === "en-us" || s === "english" || s.startsWith("en-")) return "en";
+    if (s === "ja" || s === "ja-jp" || s === "jp" || s === "japanese" || s.startsWith("ja-")) return "ja";
+    if (s === "zh" || s === "zh-cn" || s === "zh-tw" || s === "chinese" || s.startsWith("zh-")) return "zh";
+    return s;
+  };
+  
+  const normalizedTargetLang = normalizeLanguageCode(targetLang);
+  const normalizedSourceLang = normalizeLanguageCode(sourceLang);
+  
+  console.log(`[translateWithPolish] [req-${Date.now()}] 接收到的参数:`, {
     from,
     to,
     sourceLang, // 处理后的值
+    normalizedSourceLang,
     targetLang, // 处理后的值
+    normalizedTargetLang,
     fromType: typeof from,
     toType: typeof to,
     hasFrom: from !== undefined && from !== null && from !== "",
@@ -519,39 +930,42 @@ export async function translateWithPolish(params: {
     stem: source.content,
     options: source.options,
     explanation: source.explanation,
-    sourceLanguage: sourceLang,
-    targetLanguage: targetLang,
-    questionType: params.questionType, // 传递题目类型
+    sourceLanguage: normalizedSourceLang || sourceLang,
+    targetLanguage: normalizedTargetLang || targetLang,
+    type: params.type, // ✅ 修复：统一使用 type 字段
   });
 
   const sceneKey = "question_translation";
   let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;
   
   if (returnDetail) {
-    sceneConfig = await getSceneConfig(sceneKey, to);
+    sceneConfig = await getSceneConfig(sceneKey, normalizedTargetLang || to);
   }
 
   // ✅ 根据调用模式决定超时策略
   const callMode = params.mode || "single"; // 默认为 single，批量处理需显式传入 "batch"
   
-  console.log(`[translateWithPolish] 准备调用 AI:`, {
+  console.log(`[translateWithPolish] [req-${Date.now()}] 准备调用 AI:`, {
     from,
     to,
     sourceLang, // 处理后的值（有默认值）
+    normalizedSourceLang,
     targetLang, // 处理后的值
+    normalizedTargetLang,
     sceneKey,
     questionLength: questionText.length,
-    hasSourceLanguage: sourceLang !== undefined && sourceLang !== null && sourceLang !== "",
-    hasTargetLanguage: targetLang !== undefined && targetLang !== null && targetLang !== "",
+    hasSourceLanguage: normalizedSourceLang !== null,
+    hasTargetLanguage: normalizedTargetLang !== null,
   });
   
+  // ✅ 修复：确保 targetLanguage 在整个链路中保持一致
   const data = await callAiAskInternal(
     {
       question: questionText,
-      locale: targetLang, // 使用处理后的值
+      locale: normalizedTargetLang || targetLang || "zh-CN", // 使用规范化后的值
       scene: sceneKey,
-      sourceLanguage: sourceLang, // 使用处理后的值（确保有值）
-      targetLanguage: targetLang, // 使用处理后的值（确保有值）
+      sourceLanguage: normalizedSourceLang || sourceLang || undefined, // 使用规范化后的值（确保有值）
+      targetLanguage: normalizedTargetLang || targetLang || undefined, // 使用规范化后的值（确保有值）
       adminToken,
     },
     { mode: callMode, retries: 1 }
@@ -560,6 +974,15 @@ export async function translateWithPolish(params: {
   // 提取 AI provider 和 model 信息
   const aiProvider = data.aiProvider || 'unknown';
   const model = data.model || 'unknown';
+
+  // ✅ 修复 Task 5：必须打印 AI 原始返回（在 dev 环境即可）
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[translateWithPolish] [AI Raw Response]`, {
+      rawAnswer: data.answer,
+      rawAnswerLength: data.answer.length,
+      rawAnswerPreview: data.answer.substring(0, 500),
+    });
+  }
 
   // 解析 JSON 响应
   let parsed: any = null;
@@ -574,6 +997,14 @@ export async function translateWithPolish(params: {
   try {
     parsed = JSON.parse(rawAnswer);
   } catch (parseError) {
+    // ✅ 修复 Task 5：JSON 解析失败时必须抛出 error，不允许 silent fallback
+    console.error(`[translateWithPolish] JSON 解析失败:`, {
+      error: parseError instanceof Error ? parseError.message : String(parseError),
+      rawAnswerLength: data.answer.length,
+      rawAnswerPreview: data.answer.substring(0, 500),
+      extractedJsonLength: rawAnswer.length,
+      extractedJsonPreview: rawAnswer.substring(0, 500),
+    });
     // 如果 JSON 解析失败，尝试修复截断的 JSON
     try {
       let fixedJson = rawAnswer.trim();
@@ -636,31 +1067,17 @@ export async function translateWithPolish(params: {
         }
         parsed = JSON.parse(fixedJson);
       }
-    } catch {
-      // 如果修复后仍然失败，尝试将整个响应作为纯文本内容处理
-      // 这种情况可能是AI没有按照JSON格式返回，而是直接返回了翻译文本
-      const trimmedAnswer = rawAnswer.trim();
-      if (trimmedAnswer.length > 0) {
-        console.warn(`[translateWithPolish] AI response is not JSON format, treating as plain text. Response length: ${trimmedAnswer.length}`);
-        console.warn(`[translateWithPolish] Response preview: ${trimmedAnswer.substring(0, 200)}`);
-        
-        // 将纯文本作为content字段
-        // 注意：如果AI只返回了纯文本，我们假设它只翻译了content部分
-        // options和explanation保持原样（如果源语言有的话，后续可能需要单独翻译）
-        parsed = {
-          content: trimmedAnswer,
-          // 不设置options和explanation，让它们保持undefined
-          // 这样至少能保存content的翻译结果
-        };
-      } else {
-        // 如果修复后仍然失败，记录完整响应用于调试
-        console.error(`[translateWithPolish] Failed to parse AI response. Full response length: ${data.answer.length}`);
-        console.error(`[translateWithPolish] Response preview: ${data.answer.substring(0, 500)}`);
-        throw new Error("AI translation response missing JSON body");
-      }
+    } catch (finalError) {
+      // ✅ 修复 Task 5：JSON 解析失败时必须抛出 error，不允许 silent fallback
+      // 如果修复后仍然失败，记录完整响应用于调试并抛出错误
+      console.error(`[translateWithPolish] Failed to parse AI response after all attempts. Full response length: ${data.answer.length}`);
+      console.error(`[translateWithPolish] Response preview: ${data.answer.substring(0, 500)}`);
+      console.error(`[translateWithPolish] Final parse error:`, finalError instanceof Error ? finalError.message : String(finalError));
+      throw new Error(`AI translation response missing JSON body. Raw response preview: ${data.answer.substring(0, 200)}`);
     }
   }
   
+  // ✅ 修复 Task 5：parsed.content / parsed.explanation 必须都存在，否则标记失败
   if (!parsed || typeof parsed !== "object") {
     throw new Error("AI translation response missing JSON body");
   }
@@ -671,11 +1088,117 @@ export async function translateWithPolish(params: {
     throw new Error("AI translation response missing content field");
   }
   
-  const result: TranslateResult = {
+  // ✅ 修复 Task 5：验证 parsed.content 和 parsed.explanation 必须都存在（如果源内容有 explanation）
+  // 注意：如果源内容没有 explanation，则翻译结果也可以没有 explanation
+  let result: TranslateResult = {
     content: contentStr,
     options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : undefined,
-    explanation: parsed.explanation ? String(parsed.explanation) : undefined,
+    explanation: parsed.explanation !== undefined && parsed.explanation !== null ? String(parsed.explanation) : undefined,
   };
+
+  // ✅ 修复：使用统一约束函数进行翻译结果校验
+  const original = {
+    content: source.content,
+    options: source.options || null,
+    explanation: source.explanation || null,
+  };
+
+  result = enforceTranslationConstraints(result, original, {
+    sourceLanguage: normalizedSourceLang || sourceLang,
+    targetLanguage: normalizedTargetLang || targetLang,
+    type: (type || "single") as QuestionType,
+    hasOriginalOptions: !!(source.options && source.options.length),
+    hasOriginalExplanation: !!source.explanation,
+  });
+  
+  // ✅ 修复 Task 2：在 translateWithPolish 内部实现「缺失 explanation 时的二次补救」
+  const hasSourceExplanation = !!source.explanation && source.explanation.trim().length > 0;
+  const hasTargetExplanation = !!result.explanation && String(result.explanation).trim().length > 0;
+  
+  if (hasSourceExplanation && !hasTargetExplanation) {
+    const requestId = `translate-retry-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    console.warn(`[translateWithPolish] ⚠️ 源有 explanation，但 AI 第一轮未返回。尝试第二轮 explanation-only 翻译。`, {
+      requestId,
+      sourceExplanationPreview: source.explanation?.substring(0, 80) || "[empty]",
+      targetLanguage: normalizedTargetLang || targetLang,
+    });
+
+    try {
+      // 构建只翻译 explanation 的问题文本
+      const explanationOnlyQuestionText = buildQuestionTranslationInput({
+        stem: "", // 不翻译 content
+        options: undefined, // 不翻译 options
+        explanation: source.explanation, // 只翻译 explanation
+        sourceLanguage: normalizedSourceLang || sourceLang,
+        targetLanguage: normalizedTargetLang || targetLang,
+        type: params.type, // ✅ 修复：统一使用 type 字段
+      });
+
+      // 调用 AI 服务，只翻译 explanation
+      const explanationOnlyData = await callAiAskInternal(
+        {
+          question: explanationOnlyQuestionText,
+          locale: normalizedTargetLang || targetLang || "zh-CN",
+          scene: sceneKey, // 复用 question_translation 场景
+          sourceLanguage: normalizedSourceLang || sourceLang || undefined,
+          targetLanguage: normalizedTargetLang || targetLang || undefined,
+          adminToken: params.adminToken,
+        },
+        { mode: callMode, retries: 1 }
+      );
+
+      // 解析 explanation-only 响应
+      let explanationParsed: any = null;
+      let explanationRawAnswer = explanationOnlyData.answer;
+      
+      // 尝试从代码块中提取 JSON
+      const codeBlockMatch = explanationRawAnswer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (codeBlockMatch) {
+        explanationRawAnswer = codeBlockMatch[1].trim();
+      }
+      
+      try {
+        explanationParsed = JSON.parse(explanationRawAnswer);
+      } catch (parseError) {
+        // 如果 JSON 解析失败，尝试提取 explanation 字段
+        const explanationMatch = explanationRawAnswer.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"/);
+        if (explanationMatch) {
+          explanationParsed = { explanation: explanationMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n') };
+        } else {
+          // 如果无法提取，尝试直接使用原始响应作为 explanation
+          const trimmed = explanationRawAnswer.trim();
+          if (trimmed.length > 0) {
+            explanationParsed = { explanation: trimmed };
+          }
+        }
+      }
+
+      if (explanationParsed?.explanation) {
+        result.explanation = String(explanationParsed.explanation);
+        console.log(`[translateWithPolish] ✅ 第二轮 explanation-only 翻译成功`, {
+          requestId,
+          explanationLength: result.explanation.length,
+        });
+      } else if (typeof explanationParsed === "string" && explanationParsed.trim().length > 0) {
+        result.explanation = explanationParsed.trim();
+        console.log(`[translateWithPolish] ✅ 第二轮 explanation-only 翻译成功（字符串格式）`, {
+          requestId,
+          explanationLength: result.explanation.length,
+        });
+      } else {
+        console.warn(`[translateWithPolish] ⚠️ 第二轮 explanation-only 翻译未返回有效 explanation`, {
+          requestId,
+          rawAnswerPreview: explanationOnlyData.answer.substring(0, 200),
+        });
+      }
+    } catch (e) {
+      console.error(`[translateWithPolish] ⚠️ explanation-only 重试失败，将保留原 explanation 或置空`, {
+        requestId,
+        error: String(e),
+      });
+      // 不再 throw，交由上层容错
+    }
+  }
 
   if (returnDetail) {
     const detail: SubtaskDetail = {
@@ -698,17 +1221,40 @@ export async function translateWithPolish(params: {
 }
 
 /**
+ * 规范化题目数据（在写库前统一处理）
+ * 确保 True/False 题的 options 被清空
+ */
+export function normalizeQuestionBeforeSave(question: {
+  id?: number;
+  type: "single" | "multiple" | "truefalse";
+  options?: string[] | null;
+  [key: string]: any;
+}): typeof question {
+  if (question.type === "truefalse") {
+    if (question.options && question.options.length) {
+      console.warn(
+        "[normalizeQuestionBeforeSave] truefalse 题检测到 options，强制清空",
+        { id: question.id, optionsCount: question.options.length },
+      );
+    }
+    question.options = []; // 或者 null，按你的 schema 来
+  }
+
+  return question;
+}
+
+/**
  * 润色内容
  */
 export async function polishContent(params: {
   text: { content: string; options?: string[]; explanation?: string };
   locale: string;
-  questionType?: "single" | "multiple" | "truefalse"; // 题目类型，用于区分是非题
+  type?: "single" | "multiple" | "truefalse"; // ✅ 修复：统一使用 type 字段
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
   mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
-  const { text, locale, questionType } = params;
+  const { text, locale, type } = params; // ✅ 修复：统一使用 type
   
   // 使用统一的题目拼装工具
   const input = buildQuestionPolishInput({
@@ -716,7 +1262,7 @@ export async function polishContent(params: {
     options: text.options,
     explanation: text.explanation,
     language: locale,
-    questionType: questionType || undefined, // 传递题目类型
+    type: type || undefined, // ✅ 修复：统一使用 type 字段
   });
 
   const sceneKey = "question_polish";
@@ -1000,32 +1546,20 @@ export async function fillMissingContent(params: {
   options?: string[] | null;
   explanation?: string | null;
   locale?: string;
-  questionType?: "single" | "multiple" | "truefalse"; // 题目类型
+  type?: "single" | "multiple" | "truefalse"; // ✅ 修复：统一使用 type 字段
   adminToken?: string; // 管理员 token，用于跳过配额限制
   returnDetail?: boolean; // 是否返回详细信息
   mode?: "batch" | "single"; // 调用模式：batch（批量处理）或 single（单题操作）
 }): Promise<TranslateResult | { result: TranslateResult; detail: SubtaskDetail }> {
-  const { content, options, explanation, locale = "zh-CN", questionType } = params;
+  const { content, options, explanation, locale = "zh-CN", type } = params; // ✅ 修复：统一使用 type
 
-  // 根据题目类型决定是否提示 options
-  let optionsPrompt = "";
-  if (questionType === "truefalse") {
-    // 是非题不需要选项
-    optionsPrompt = "Question Type: True/False (判断题，不需要选项，options 字段应设为 null 或空数组 [])\n";
-  } else {
-    // 单选或多选题需要选项
-    optionsPrompt = options && options.length 
-      ? `Options:\n- ${options.join("\n- ")}` 
-      : `Options: [缺失]`;
-  }
-
-  const input = [
-    `Content: ${content || "[缺失]"}`,
-    optionsPrompt,
-    explanation ? `Explanation: ${explanation}` : `Explanation: [缺失]`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  // ✅ 修复：使用统一的题目拼装工具，不再在输入中添加"Question Type"说明文字
+  const input = buildQuestionFillMissingInput({
+    stem: content,
+    options: options,
+    explanation: explanation,
+    type: type, // ✅ 修复：统一使用 type 字段
+  });
 
   const sceneKey = "question_fill_missing";
   let sceneConfig: { prompt: string; outputFormat: string | null; sceneName: string } | null = null;
@@ -1136,6 +1670,43 @@ export async function fillMissingContent(params: {
     throw new Error("AI fill missing response missing JSON body");
   }
 
+  // ✅ 修复：添加结果验证逻辑
+  const originalContent = content;
+  const resultContent = parsed.content;
+  const resultExplanation = parsed.explanation;
+
+  // 1) content 结果校验：有原文就必须保持
+  if (
+    originalContent &&
+    originalContent.trim() !== "" &&
+    originalContent.trim() !== "[缺失]" &&
+    resultContent &&
+    String(resultContent).trim() === "[缺失]"
+  ) {
+    console.warn(
+      "[fillMissingContent] AI 返回 content 为 [缺失]，但原始 content 存在，强制回退为原始内容",
+      { originalContentPreview: originalContent.substring(0, 100) }
+    );
+    parsed.content = originalContent;
+  }
+
+  // 2) explanation 结果简单校验：明显是格式说明时拒收
+  const explanationStr = typeof resultExplanation === "string" ? String(resultExplanation) : "";
+  const looksLikeFormatHint =
+    explanationStr.includes("options 字段") ||
+    explanationStr.includes("JSON 格式") ||
+    explanationStr.includes("output_format") ||
+    explanationStr.includes("应设为 null") ||
+    explanationStr.includes("空数组");
+
+  if (looksLikeFormatHint) {
+    console.warn(
+      "[fillMissingContent] AI 返回的 explanation 疑似格式说明，丢弃并留空，建议人工复核",
+      { explanationPreview: explanationStr.substring(0, 100) }
+    );
+    parsed.explanation = "";
+  }
+
   const result: TranslateResult = {
     content: String(parsed.content ?? content ?? "").trim(),
     options: Array.isArray(parsed.options) ? parsed.options.map((s: any) => String(s)) : options || undefined,
@@ -1162,3 +1733,952 @@ export async function fillMissingContent(params: {
   return result;
 }
 
+
+/**
+ * 保存题目翻译到数据库
+ * 将翻译结果写入 questions.content 和 questions.explanation 的 JSONB 字段
+ */
+async function saveQuestionTranslation(
+  questionId: number,
+  contentHash: string,
+  locale: string,
+  translation: TranslateResult
+): Promise<void> {
+  const { db } = await import("@/lib/db");
+  
+  // 获取当前题目内容
+  const currentQuestion = await db
+    .selectFrom("questions")
+    .select(["content", "explanation"])
+    .where("id", "=", questionId)
+    .executeTakeFirst();
+
+  if (!currentQuestion) {
+    throw new Error(`Question with id ${questionId} not found`);
+  }
+
+  // 更新 content JSONB 对象，添加目标语言
+  let updatedContent: any;
+  if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
+    updatedContent = { ...currentQuestion.content, [locale]: translation.content };
+  } else if (typeof currentQuestion.content === "string") {
+    // 如果原本是字符串，转换为 JSONB 对象
+    updatedContent = { zh: currentQuestion.content, [locale]: translation.content };
+  } else {
+    // 如果 content 为空或 null，直接创建新的 JSONB 对象
+    updatedContent = { [locale]: translation.content };
+  }
+
+  // 更新 explanation JSONB 对象，添加目标语言
+  let updatedExplanation: any = null;
+  if (translation.explanation) {
+    const explanationStr =
+      typeof translation.explanation === "string"
+        ? translation.explanation
+        : String(translation.explanation);
+    // 这里假设 locale 即为目标语言，如 "en"/"ja"
+    const sourceLanguage =
+      (currentQuestion as any).source_language ??
+      (translation as any).sourceLanguage ??
+      "zh";
+
+    updatedExplanation = buildUpdatedExplanationWithGuard({
+      currentExplanation: currentQuestion.explanation,
+      newExplanation: explanationStr,
+      sourceLanguage,
+      targetLang: locale,
+    });
+  } else if (currentQuestion.explanation) {
+    updatedExplanation = currentQuestion.explanation;
+  }
+
+  // 更新题目
+  await db
+    .updateTable("questions")
+    .set({
+      content: updatedContent as any,
+      explanation: updatedExplanation as any,
+      updated_at: new Date(),
+    })
+    .where("id", "=", questionId)
+    .execute();
+}
+
+/**
+ * 应用一体化处理返回的 tags 到题目
+ * ✅ Phase 2.1 修复：统一代码层字段名为 license_tags
+ */
+function applyTagsFromFullPipeline(
+  tags: {
+    license_type_tags?: string[] | null;
+    license_tags?: string[] | null; // 兼容两种字段名
+    stage_tags?: string[] | null;
+    topic_tags?: string[] | null;
+    difficulty_level?: "easy" | "medium" | "hard" | null;
+  },
+  question: any
+): void {
+  if (!tags) {
+    console.warn(`[processFullPipelineBatch] [Q${question.id}] AI 未返回 tags，跳过 tag 应用`);
+    return;
+  }
+
+  // ✅ Phase 2.1 修复：统一使用 license_tags 字段名（代码层），兼容 license_type_tags
+  const licenseTags = tags.license_type_tags ?? tags.license_tags ?? [];
+  if (Array.isArray(licenseTags) && licenseTags.length > 0) {
+    const normalized = licenseTags
+      .filter((t) => typeof t === "string" && t.trim().length > 0)
+      .map((t) => t.trim().toUpperCase());
+
+    // 统一使用 license_tags 字段名（代码层）
+    (question as any).license_tags = Array.from(new Set(normalized));
+    
+    // 保留兼容：如果已经有 question.license_type_tag，同步到 license_tags（例如从数据库初始加载的旧数据）
+    if ((question as any).license_type_tag && !(question as any).license_tags) {
+      (question as any).license_tags = (question as any).license_type_tag;
+    }
+  }
+
+  // ✅ 修复问题 2：确保 license_tags 同步给 question.license_tags（用于落库）
+  if ((question as any).license_type_tag) {
+    // 确保 question.license_tags 是最终写入数据库用的字段
+    (question as any).license_tags = (question as any).license_type_tag;
+  }
+  
+  // 处理 stage_tag
+  const stageTag = tags.stage_tags?.[0] ?? question.stage_tag ?? null;
+  if (tags.stage_tags && Array.isArray(tags.stage_tags) && tags.stage_tags.length > 0) {
+    const normalized = tags.stage_tags
+      .filter((t) => typeof t === "string" && t.trim().length > 0)
+      .map((t) => t.trim().toUpperCase());
+
+    if (normalized.length > 0) {
+      // ✅ 修复 B1：使用更宽松的匹配逻辑，支持 FULL_LICENSE 等多种格式
+      const hasBoth = normalized.some((t) => t.includes("BOTH"));
+      const hasFull = normalized.some((t) => t.includes("FULL") || t.includes("REGULAR") || t.includes("FULL_LICENSE"));
+      const hasProvisional = normalized.some((t) => t.includes("PROVISIONAL"));
+
+      if (hasBoth) {
+        question.stage_tag = "both";
+      } else if (hasFull) {
+        question.stage_tag = "regular";
+      } else if (hasProvisional) {
+        question.stage_tag = "provisional";
+      } else {
+        // 兜底：直接用第一个，转小写
+        question.stage_tag = normalized[0].toLowerCase();
+      }
+    }
+  } else if (stageTag) {
+    question.stage_tag = stageTag;
+  }
+  
+  // 处理 topic_tags
+  const topicTags = tags.topic_tags ?? question.topic_tags ?? [];
+  if (Array.isArray(tags.topic_tags) && tags.topic_tags.length > 0) {
+    const normalized = tags.topic_tags
+      .filter((t) => typeof t === "string" && t.trim().length > 0)
+      .map((t) => t.trim());
+
+    question.topic_tags = Array.from(new Set(normalized));
+  } else if (Array.isArray(topicTags) && topicTags.length > 0) {
+    question.topic_tags = topicTags;
+  }
+  
+  // ✅ Phase 2.1 修复：添加调试日志
+  console.debug(
+    `[processFullPipelineBatch] [Q${question.id}] [DEBUG] tags 应用完成: ${JSON.stringify({
+      license_tags: (question as any).license_tags,
+      stage_tag: question.stage_tag,
+      topic_tags: question.topic_tags,
+    })}`,
+  );
+  
+  // difficulty_level 目前没有对应的数据库字段，暂不处理
+  // 如果需要，可以在后续添加 difficulty_level 字段
+}
+
+/**
+ * 安全过滤 AI 返回的 payload，只允许白名单字段写入 question 模型
+ * 防止 AI 输出多余字段污染数据库
+ * 
+ * @param aiResult AI 返回的完整结果对象
+ * @returns 过滤后的安全对象，只包含允许的字段
+ */
+function sanitizeAiPayload(aiResult: any): {
+  source?: {
+    content?: string;
+    options?: string[];
+    explanation?: string;
+  };
+  translations?: Record<string, {
+    content?: string;
+    options?: string[];
+    explanation?: string;
+  }>;
+  tags?: {
+    license_type_tags?: string[];
+    stage_tags?: string[];
+    topic_tags?: string[];
+    difficulty_level?: "easy" | "medium" | "hard" | null;
+  };
+  correct_answer?: any; // 允许 correct_answer，但会在后续阶段通过 buildNormalizedQuestion 校验
+} {
+  const sanitized: any = {};
+
+  // 白名单：source 字段
+  if (aiResult.source && typeof aiResult.source === "object") {
+    sanitized.source = {};
+    if (typeof aiResult.source.content === "string") {
+      sanitized.source.content = aiResult.source.content;
+    }
+    if (Array.isArray(aiResult.source.options)) {
+      sanitized.source.options = aiResult.source.options.filter((opt: any) => typeof opt === "string");
+    }
+    if (typeof aiResult.source.explanation === "string") {
+      sanitized.source.explanation = aiResult.source.explanation;
+    }
+  }
+
+  // 白名单：translations 字段
+  if (aiResult.translations && typeof aiResult.translations === "object") {
+    sanitized.translations = {};
+    for (const [lang, translation] of Object.entries(aiResult.translations)) {
+      if (translation && typeof translation === "object") {
+        const sanitizedTranslation: any = {};
+        if (typeof (translation as any).content === "string") {
+          sanitizedTranslation.content = (translation as any).content;
+        }
+        if (Array.isArray((translation as any).options)) {
+          sanitizedTranslation.options = (translation as any).options.filter((opt: any) => typeof opt === "string");
+        }
+        if (typeof (translation as any).explanation === "string") {
+          sanitizedTranslation.explanation = (translation as any).explanation;
+        }
+        if (Object.keys(sanitizedTranslation).length > 0) {
+          sanitized.translations[lang] = sanitizedTranslation;
+        }
+      }
+    }
+  }
+
+  // 白名单：tags 字段
+  if (aiResult.tags && typeof aiResult.tags === "object") {
+    sanitized.tags = {};
+    if (Array.isArray(aiResult.tags.license_type_tags)) {
+      sanitized.tags.license_type_tags = aiResult.tags.license_type_tags.filter((t: any) => typeof t === "string");
+    }
+    if (Array.isArray(aiResult.tags.stage_tags)) {
+      sanitized.tags.stage_tags = aiResult.tags.stage_tags.filter((t: any) => typeof t === "string");
+    }
+    if (Array.isArray(aiResult.tags.topic_tags)) {
+      sanitized.tags.topic_tags = aiResult.tags.topic_tags.filter((t: any) => typeof t === "string");
+    }
+    if (["easy", "medium", "hard"].includes(aiResult.tags.difficulty_level)) {
+      sanitized.tags.difficulty_level = aiResult.tags.difficulty_level;
+    }
+  }
+
+  // 白名单：correct_answer 字段（允许，但会在后续阶段校验）
+  if ("correct_answer" in aiResult) {
+    sanitized.correct_answer = aiResult.correct_answer;
+  }
+
+  return sanitized;
+}
+
+/**
+ * 一体化 AI 处理批量处理函数
+ * 
+ * 输入：题干 + 正确答案 + 源语言 + 题型 + 选项
+ * 输出：
+ * - 源语言的：润色题干 + 补漏选项/解析
+ * - 完整 tag：license_type_tag / stage_tag / topic_tag / difficulty
+ * - 多语言翻译（多选 zh/ja/en）
+ * - 最后一次性写入完整 question
+ */
+export async function processFullPipelineBatch(
+  questions: Array<{
+    id: number;
+    content_hash: string;
+    type: "single" | "multiple" | "truefalse";
+    content: any;
+    options: any;
+    correct_answer: any;
+    explanation?: any;
+  }>,
+  params: {
+    sourceLanguage: "zh" | "ja" | "en";
+    targetLanguages: string[]; // ["zh","ja","en"] 子集
+    type: "single" | "multiple" | "truefalse"; // ✅ 修复：统一使用 type 字段
+    adminToken?: string;
+    mode?: "batch" | "single";
+    // 📊 新增：用于保存调试数据的回调函数
+    onProgress?: (questionId: number, debugData: {
+      aiRequest?: any;
+      aiResponse?: any;
+      processedData?: any;
+    }) => Promise<void>;
+  }
+): Promise<Array<{
+  questionId: number;
+  success: boolean;
+  error?: string;
+}>> {
+  const { sourceLanguage, targetLanguages, type, adminToken, mode = "batch", onProgress } = params; // ✅ 修复：统一使用 type
+  const results: Array<{ questionId: number; success: boolean; error?: string }> = [];
+
+  console.log(`[processFullPipelineBatch] 开始处理 | 题目数量: ${questions.length} | 源语言: ${sourceLanguage} | 目标语言: ${targetLanguages.join(", ")} | 题型: ${type} | 模式: ${mode}`);
+
+  for (const question of questions) {
+    const startTime = Date.now();
+    let currentStage = "";
+    let aiProvider = "";
+    let aiCorrectAnswerUsed = false;
+    
+    try {
+      // ========== STAGE 1: LOAD_QUESTION ==========
+      currentStage = "LOAD_QUESTION";
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 1: LOAD_QUESTION | 题型=${question.type} | correct_answer=${question.correct_answer ?? "null"}`);
+      
+      // 基本校验
+      if (!question.id || !question.type) {
+        throw new Error("LOAD_QUESTION_FAILED: 题目缺少必要字段 (id 或 type)");
+      }
+      
+      const sourceLang = sourceLanguage ?? "zh";
+      const questionSourceContent =
+        typeof question.content === "object"
+          ? question.content?.[sourceLang] ?? null
+          : question.content ?? null;
+
+      // ========== STAGE 2: BUILD_AI_INPUT ==========
+      currentStage = "BUILD_AI_INPUT";
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 2: BUILD_AI_INPUT`);
+      
+      // 构造完整的 question payload 传给 ai-service
+      const aiQuestionPayload = {
+        id: question.id,
+        sourceLanguage: sourceLang,
+        questionText: questionSourceContent?.questionText ?? (typeof questionSourceContent === "string" ? questionSourceContent : null) ?? null,
+        correctAnswer: question.correct_answer ?? null,
+        type: question.type ?? null,
+        options: questionSourceContent?.options ?? question.options ?? null,
+        explanation: questionSourceContent?.explanation ?? question.explanation ?? null,
+        licenseTypeTag: (question as any).license_type_tag ?? null,
+        stageTag: (question as any).stage_tag ?? null,
+        topicTags: (question as any).topic_tags ?? [],
+      };
+
+      // 构建输入（用于 prompt）
+      const stem = typeof question.content === "string" 
+        ? question.content 
+        : (question.content?.zh || question.content?.[sourceLanguage] || "");
+      
+      const options = Array.isArray(question.options) 
+        ? question.options 
+        : (question.options ? [question.options] : null);
+      
+      const answer = Array.isArray(question.correct_answer)
+        ? question.correct_answer.join(",")
+        : String(question.correct_answer || "");
+
+      const input = buildQuestionFullPipelineInput({
+        stem,
+        options,
+        answer,
+        sourceLanguage,
+        targetLanguages,
+        type: type, // ✅ 修复：统一使用 type 字段
+      });
+
+      // ========== STAGE 3: CALL_AI_FULL_PIPELINE ==========
+      currentStage = "CALL_AI_FULL_PIPELINE";
+      const aiCallStartTime = Date.now();
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 3: CALL_AI_FULL_PIPELINE | scene=question_full_pipeline`);
+      
+      // 📊 获取 scene 配置（包含 prompt），用于调试数据
+      const sceneConfig = await getSceneConfig("question_full_pipeline", sourceLanguage);
+      
+      const aiResp = await callAiAskInternal(
+        {
+          question: input,
+          scene: "question_full_pipeline",
+          sourceLanguage,
+          targetLanguage: targetLanguages[0] || sourceLanguage,
+          locale: sourceLanguage,
+          adminToken,
+          questionPayload: aiQuestionPayload, // ✅ Task 1: 传递完整的 question payload
+        },
+        { mode, retries: 1 }
+      );
+      
+      aiProvider = aiResp.aiProvider || "unknown";
+      const aiCallDuration = Date.now() - aiCallStartTime;
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 3: CALL_AI_FULL_PIPELINE 完成 | provider=${aiProvider} | 耗时=${aiCallDuration}ms | 响应长度=${aiResp.answer?.length ?? 0}`);
+      
+      // 📊 调试日志：构造完整的 AI 请求和响应数据（包含 prompt）
+      const aiRequestDebug = {
+        scene: "question_full_pipeline",
+        sceneName: sceneConfig?.sceneName || "question_full_pipeline",
+        prompt: sceneConfig?.prompt || "[无法获取 prompt]",
+        question: input, // 格式化后的题目文本
+        questionPayload: aiQuestionPayload, // 额外的题目元数据
+        sourceLanguage,
+        targetLanguage: targetLanguages[0] || sourceLanguage,
+        locale: sourceLanguage,
+        type,
+        targetLanguages, // 所有目标语言
+        outputFormat: sceneConfig?.outputFormat || null,
+      };
+      const aiResponseDebug = {
+        provider: aiProvider,
+        answer: aiResp.answer,
+        model: aiResp.model,
+        duration: aiCallDuration,
+      };
+      console.log(`[processFullPipelineBatch] [Q${question.id}] 📊 AI 完整请求（含 prompt）:`, JSON.stringify(aiRequestDebug, null, 2));
+      console.log(`[processFullPipelineBatch] [Q${question.id}] 📊 AI 完整响应:`, JSON.stringify(aiResponseDebug, null, 2));
+
+      // ========== STAGE 4: PARSE_AND_VALIDATE_AI_RESULT ==========
+      currentStage = "PARSE_AND_VALIDATE_AI_RESULT";
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 4: PARSE_AND_VALIDATE_AI_RESULT`);
+      
+      let parsed: any = null;
+      let rawAnswer = aiResp.answer;
+      
+      // 尝试从代码块中提取 JSON（内部 debug log）
+      const codeBlockMatch = rawAnswer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (codeBlockMatch) {
+        rawAnswer = codeBlockMatch[1].trim();
+        console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 从代码块中提取 JSON`);
+      }
+      
+      try {
+        parsed = JSON.parse(rawAnswer);
+        console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] JSON 解析成功 | 包含字段: ${Object.keys(parsed || {}).join(", ")}`);
+      } catch (parseError) {
+        console.error(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] JSON 解析失败:`, {
+          error: parseError instanceof Error ? parseError.message : String(parseError),
+          rawAnswerPreview: rawAnswer.substring(0, 500),
+        });
+        throw new Error("AI_JSON_PARSE_FAILED: AI full pipeline response missing valid JSON body");
+      }
+
+      // 验证解析结果
+      if (!parsed || typeof parsed !== "object") {
+        throw new Error("AI_JSON_PARSE_FAILED: AI full pipeline response missing JSON body");
+      }
+
+      if (!parsed.source || !parsed.source.content) {
+        throw new Error("AI_VALIDATION_FAILED: AI full pipeline response missing source.content");
+      }
+
+      // 检查 AI 输出是否包含 correct_answer（内部 debug log）
+      if (
+        !("correct_answer" in parsed) ||
+        parsed.correct_answer === null ||
+        parsed.correct_answer === undefined
+      ) {
+        console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] AI 输出缺少 correct_answer，将使用 DB correct_answer 兜底`);
+      } else {
+        aiCorrectAnswerUsed = true;
+        console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] AI 输出包含 correct_answer: ${parsed.correct_answer}`);
+      }
+
+      // ✅ 安全过滤：只允许白名单字段写入 question 模型
+      const sanitized = sanitizeAiPayload(parsed);
+      console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] AI payload 安全过滤完成 | 原始字段数=${Object.keys(parsed).length} | 过滤后字段数=${Object.keys(sanitized).length}`);
+      
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 4: PARSE_AND_VALIDATE_AI_RESULT 完成 | source.content存在 | 翻译数量=${sanitized.translations ? Object.keys(sanitized.translations).length : 0}`);
+
+      // ========== STAGE 5: APPLY_AI_RESULT_TO_MODEL ==========
+      currentStage = "APPLY_AI_RESULT_TO_MODEL";
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 5: APPLY_AI_RESULT_TO_MODEL`);
+      
+      // 提取源语言内容（使用过滤后的数据）
+      const sourceContent = sanitized.source?.content || "";
+      const sourceOptions = Array.isArray(sanitized.source?.options) ? sanitized.source.options : [];
+      const sourceExplanation = sanitized.source?.explanation || "";
+      
+      // 应用 tags（使用过滤后的数据）
+      if (sanitized.tags) {
+        applyTagsFromFullPipeline(sanitized.tags, question);
+        console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] tags 应用完成: ${JSON.stringify(sanitized.tags)}`);
+        // ✅ 修复：添加调试日志，确认 tags 是否正确应用到 question 对象
+        console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] question 对象上的 tags:`, {
+          license_type_tag: (question as any).license_type_tag,
+          stage_tag: (question as any).stage_tag,
+          topic_tags: (question as any).topic_tags,
+        });
+      }
+
+      // ⚠️ 重要：full_pipeline 不应修改源语言的 content 和 options
+      // 原因：AI 可能返回错误的 source（比如把翻译当成 source），导致覆盖原有内容
+      // 只在必要时更新源语言的 explanation（需严格校验）
+      // 保持 question.content 和 question.options 不变，只添加翻译
+      console.debug(
+        `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 保留源语言 content 和 options，不使用 AI 返回的 source（防止覆盖）`,
+      );
+
+      // ✅ 处理源语言 explanation：如果数据库中没有，可以使用 AI 返回的（但要校验语言）
+      let hasSourceExplanation = false;
+      if (typeof question.explanation === "string" && question.explanation.trim()) {
+        hasSourceExplanation = true;
+      } else if (typeof question.explanation === "object" && question.explanation !== null) {
+        hasSourceExplanation = !!question.explanation[sourceLanguage];
+      }
+      
+      if (!hasSourceExplanation && sourceExplanation) {
+        // 数据库中没有源语言 explanation，可以使用 AI 返回的（但要严格校验语言）
+        const isEn = isEnglishContent(sourceExplanation);
+        const isZh = isChineseContent(sourceExplanation);
+
+        let shouldUseSourceExplanation = false;
+
+          if (sourceLanguage === "zh" && isZh && !isEn) {
+            shouldUseSourceExplanation = true;
+          } else if (sourceLanguage === "en" && isEn && !isZh) {
+            shouldUseSourceExplanation = true;
+          } else if (sourceLanguage !== "zh" && sourceLanguage !== "en") {
+            // 其他语言（ja等）暂时允许，打印警告
+            shouldUseSourceExplanation = true;
+            console.debug(
+              `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 源语言为 ${sourceLanguage}，AI 返回的 explanation 未进行语言校验`,
+            );
+          } else {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ AI 返回的 sourceExplanation 语言不匹配（期望=${sourceLanguage}, isZh=${isZh}, isEn=${isEn}），跳过`,
+            );
+          }
+
+          if (shouldUseSourceExplanation) {
+            if (typeof question.explanation === "string") {
+              question.explanation = { [sourceLanguage]: sourceExplanation };
+            } else if (typeof question.explanation === "object" && question.explanation !== null) {
+              question.explanation[sourceLanguage] = sourceExplanation;
+            } else {
+              question.explanation = { [sourceLanguage]: sourceExplanation };
+            }
+            console.debug(
+              `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 数据库中无源语言 explanation，已使用 AI 返回的 sourceExplanation`,
+            );
+          }
+      } else if (hasSourceExplanation) {
+        console.debug(
+          `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 保留源语言 explanation，不使用 AI 返回的 sourceExplanation（防止覆盖）`,
+        );
+      }
+
+      // 准备多语言翻译数据（暂不写入数据库，使用过滤后的数据）
+      const translationsToSave: Array<{ lang: string; translation: any }> = [];
+      if (sanitized.translations) {
+        // 获取数据库中原有的源语言内容（不使用 AI 返回的 source）
+        let dbSourceContent = "";
+        let dbSourceOptions: any[] = [];
+        let dbSourceExplanation = "";
+        
+        if (typeof question.content === "string") {
+          dbSourceContent = question.content;
+        } else if (typeof question.content === "object" && question.content !== null) {
+          dbSourceContent = question.content[sourceLanguage] || "";
+        }
+        
+        dbSourceOptions = Array.isArray(question.options) ? question.options : [];
+        
+        if (typeof question.explanation === "string") {
+          dbSourceExplanation = question.explanation;
+        } else if (typeof question.explanation === "object" && question.explanation !== null) {
+          dbSourceExplanation = question.explanation[sourceLanguage] || "";
+        }
+        
+        console.debug(
+          `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 使用数据库源内容进行翻译校验（不使用 AI 返回的 source）`,
+        );
+        
+        for (const lang of targetLanguages) {
+          const t = sanitized.translations[lang];
+          if (!t || !t.content) {
+            console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 跳过语言 ${lang}（无翻译内容）`);
+            continue;
+          }
+
+          // 使用统一约束函数进行翻译结果校验（使用数据库源内容）
+          const constrained = enforceTranslationConstraints(
+            {
+              content: t.content,
+              options: t.options,
+              explanation: t.explanation,
+            },
+            {
+              content: dbSourceContent,
+              options: dbSourceOptions,
+              explanation: dbSourceExplanation,
+            },
+            {
+              sourceLanguage,
+              targetLanguage: lang,
+              type: type as QuestionType, // ✅ 修复：统一使用 type 字段
+              hasOriginalOptions: dbSourceOptions.length > 0,
+              hasOriginalExplanation: !!dbSourceExplanation,
+            },
+          );
+
+          translationsToSave.push({ lang, translation: constrained });
+          console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 语言 ${lang} 翻译校验完成`);
+        }
+      }
+      
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 5: APPLY_AI_RESULT_TO_MODEL 完成 | 翻译语言数=${translationsToSave.length}`);
+
+      // ========== STAGE 6: NORMALIZE_AND_VALIDATE_QUESTION ==========
+      currentStage = "NORMALIZE_AND_VALIDATE_QUESTION";
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 6: NORMALIZE_AND_VALIDATE_QUESTION`);
+      
+      // 使用归一化函数构建题目（强制保证 correctAnswer 非空）
+      let normalizedQuestion;
+      try {
+        normalizedQuestion = buildNormalizedQuestion({
+          type: question.type,
+          aiResult: {
+            type: question.type,
+            correct_answer: question.correct_answer,
+            source: {
+              content: sourceContent,
+              options: sourceOptions,
+              explanation: sourceExplanation,
+            },
+          },
+          inputPayload: undefined, // full_pipeline 从 DB 跑，不一定有导入 payload
+          currentQuestion: question, // ✅ Task 2: 把 DB 原题传进去，用于 correct_answer 兜底
+        });
+        console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 归一化完成 | correctAnswer=${normalizedQuestion.correctAnswer ?? "null"}`);
+      } catch (err: any) {
+        // ✅ Task 3: 捕获 MISSING_CORRECT_ANSWER 错误，附加 debug 信息
+        if (err?.message?.includes("MISSING_CORRECT_ANSWER")) {
+          const debugInfo = {
+            questionId: question.id,
+            questionType: question.type,
+            dbCorrectAnswer: question.correct_answer ?? null,
+            aiCorrectAnswer:
+              typeof parsed === "object"
+                ? parsed?.correct_answer ?? null
+                : null,
+          };
+          throw new Error(
+            `MISSING_CORRECT_ANSWER | debug=${JSON.stringify(debugInfo)}`,
+          );
+        }
+        throw err;
+      }
+
+      // 规范化题目（True/False options 清理等）
+      const normalized = normalizeQuestionBeforeSave({
+        id: question.id,
+        type: normalizedQuestion.type,
+        options: normalizedQuestion.options,
+      });
+      normalizedQuestion.options = normalized.options;
+      
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 6: NORMALIZE_AND_VALIDATE_QUESTION 完成 | correctAnswer=${normalizedQuestion.correctAnswer ?? "null"}`);
+
+      // ========== STAGE 7: SAVE_ALL_CHANGES_IN_TX ==========
+      currentStage = "SAVE_ALL_CHANGES_IN_TX";
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 7: SAVE_ALL_CHANGES_IN_TX`);
+      
+      const { db } = await import("@/lib/db");
+      const { saveQuestionToDb } = await import("@/lib/questionDb");
+      
+      // ✅ 使用事务确保保存到 questions 与 translations 的一致性
+      await db.transaction().execute(async (trx) => {
+        // 先读取数据库中的 explanation（保留原有内容）
+        const dbQuestion = await trx
+          .selectFrom("questions")
+          .select(["explanation"])
+          .where("id", "=", question.id)
+          .executeTakeFirst();
+        
+        // 1. 保存题目主表
+        // ⚠️ 重要：传入数据库中的原有 explanation，让事务的第二步来添加新翻译
+        // ✅ Phase 2.3 修复：确保批量处理调用时传入正确 tags，统一使用 license_tags 字段名
+        await saveQuestionToDb({
+          id: question.id,
+          type: normalizedQuestion.type,
+          content: question.content, // 使用更新后的多语言内容
+          options: normalizedQuestion.options,
+          correctAnswer: normalizedQuestion.correctAnswer, // ⚠️ 注意：这里已经保证非空了
+          explanation: dbQuestion?.explanation || null, // ✅ 使用数据库中的原有 explanation
+          license_tags: (question as any).license_tags, // ✅ Phase 2.3 修复：统一使用 license_tags 字段名
+          stage_tag: (question as any).stage_tag,
+          topic_tags: (question as any).topic_tags,
+          mode: "updateOnly", // ✅ 修复问题 3：防止插入幽灵题
+        } as any);
+        
+        // 2. 保存多语言翻译（在事务中直接更新，不使用 saveQuestionTranslation 函数）
+        for (const { lang, translation } of translationsToSave) {
+          // ✅ Phase 1.3 修复：确保翻译写入逻辑严格区分
+          // 示例结构：lang = 'en', sourceLanguage = 'zh'
+          
+          // 0）检查翻译是否有效（content 不为 null）
+          if (!translation.content || translation.content === null) {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 语言 ${lang} 的翻译内容为空或无效（AI 未翻译），跳过`,
+            );
+            continue;
+          }
+          
+          // 1）lang 必须在 targetLanguages 中，否则跳过
+          if (!targetLanguages.includes(lang)) {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 语言 ${lang} 不在目标翻译语言列表中，跳过`,
+            );
+            continue;
+          }
+
+          // 2）lang 不能等于 sourceLanguage（防止把翻译写回源语言 key）
+          if (lang === sourceLanguage) {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 语言 ${lang} 为源语言，不应作为翻译保存，跳过`,
+            );
+            continue;
+          }
+          
+          // 3）检查翻译内容的语言是否匹配目标语言（防止中文写入 ja/en）
+          const translatedContent = String(translation.content);
+          const isContentChinese = isChineseContent(translatedContent);
+          const isContentEnglish = isEnglishContent(translatedContent);
+          
+          if (lang === "zh" && !isContentChinese) {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 zh，但翻译内容不是中文，跳过`,
+            );
+            continue;
+          }
+          
+          if (lang === "en" && !isContentEnglish) {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 en，但翻译内容不是英文，跳过`,
+            );
+            continue;
+          }
+          
+          if (lang === "ja" && isContentChinese) {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 ja，但翻译内容是中文，跳过`,
+            );
+            continue;
+          }
+          
+          if ((lang === "ja" || lang === "ko") && isContentEnglish) {
+            console.warn(
+              `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 ${lang}，但翻译内容是英文，跳过`,
+            );
+            continue;
+          }
+
+          // 获取当前题目内容
+          const currentQuestion = await trx
+            .selectFrom("questions")
+            .select(["content", "explanation"])
+            .where("id", "=", question.id)
+            .executeTakeFirst();
+          
+          if (!currentQuestion) {
+            throw new Error(`Question with id ${question.id} not found in transaction`);
+          }
+          
+          // 更新 content JSONB 对象，添加目标语言
+          let updatedContent: any;
+          if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
+            updatedContent = { ...currentQuestion.content, [lang]: translation.content };
+          } else if (typeof currentQuestion.content === "string") {
+            updatedContent = { zh: currentQuestion.content, [lang]: translation.content };
+          } else {
+            updatedContent = { [lang]: translation.content };
+          }
+          
+          // ✅ Phase 1.3 修复：更新 explanation JSONB 对象，添加目标语言，使用统一的 Guard
+          let updatedExplanation: any = null;
+          if (translation.explanation && translation.explanation !== null) {
+            const explanationStr = typeof translation.explanation === "string"
+              ? translation.explanation
+              : String(translation.explanation);
+            
+            // 检查 explanation 的语言是否匹配目标语言
+            const isExplanationChinese = isChineseContent(explanationStr);
+            const isExplanationEnglish = isEnglishContent(explanationStr);
+            
+            let shouldSaveExplanation = true;
+            
+            if (lang === "zh" && !isExplanationChinese) {
+              console.warn(
+                `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 zh，但 explanation 不是中文，跳过写入`,
+              );
+              shouldSaveExplanation = false;
+            }
+            
+            if (lang === "en" && !isExplanationEnglish) {
+              console.warn(
+                `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 en，但 explanation 不是英文，跳过写入`,
+              );
+              shouldSaveExplanation = false;
+            }
+            
+            if (lang === "ja" && isExplanationChinese) {
+              console.warn(
+                `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 ja，但 explanation 是中文，跳过写入`,
+              );
+              shouldSaveExplanation = false;
+            }
+            
+            if ((lang === "ja" || lang === "ko") && isExplanationEnglish) {
+              console.warn(
+                `[processFullPipelineBatch] [Q${question.id}] ⚠️ 目标语言为 ${lang}，但 explanation 是英文，跳过写入`,
+              );
+              shouldSaveExplanation = false;
+            }
+            
+            if (shouldSaveExplanation) {
+              const sourceLanguage =
+                (currentQuestion.explanation && (currentQuestion as any).source_language) ||
+                (question as any).source_language ||
+                "zh";
+
+              updatedExplanation = buildUpdatedExplanationWithGuard({
+                currentExplanation: currentQuestion.explanation,
+                newExplanation: explanationStr,
+                sourceLanguage,
+                targetLang: lang, // full_pipeline 中的目标语言
+              });
+            } else {
+              // 语言不匹配，保留原有 explanation
+              updatedExplanation = currentQuestion.explanation;
+            }
+          } else {
+            updatedExplanation = currentQuestion.explanation;
+          }
+          
+          // 在事务中更新题目
+          await trx
+            .updateTable("questions")
+            .set({
+              content: updatedContent as any,
+              explanation: updatedExplanation as any,
+              updated_at: new Date(),
+            })
+            .where("id", "=", question.id)
+            .execute();
+          
+          console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 语言 ${lang} 翻译已在事务中保存`);
+        }
+      });
+      
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 7: SAVE_ALL_CHANGES_IN_TX 完成 | 翻译语言数=${translationsToSave.length}`);
+      
+      // 📊 调试日志：输出最终入库的数据
+      const finalDbData = await db
+        .selectFrom("questions")
+        .select(["content", "explanation", "license_type_tag", "stage_tag", "topic_tags"])
+        .where("id", "=", question.id)
+        .executeTakeFirst();
+      const processedDataDebug = {
+        questionId: question.id,
+        content: finalDbData?.content,
+        explanation: finalDbData?.explanation,
+        license_tags: finalDbData?.license_type_tag,
+        stage_tag: finalDbData?.stage_tag,
+        topic_tags: finalDbData?.topic_tags,
+      };
+      console.log(`[processFullPipelineBatch] [Q${question.id}] 📊 最终入库数据:`, JSON.stringify(processedDataDebug, null, 2));
+      
+      // 📊 调用回调函数保存调试数据到数据库
+      if (onProgress) {
+        await onProgress(question.id, {
+          aiRequest: aiRequestDebug,
+          aiResponse: aiResponseDebug,
+          processedData: processedDataDebug,
+        });
+      }
+
+      // ========== STAGE 8: FINALIZE_RESULT ==========
+      currentStage = "FINALIZE_RESULT";
+      const totalDuration = Date.now() - startTime;
+      const summary = {
+        questionId: question.id,
+        stage: currentStage,
+        success: true,
+        duration: totalDuration,
+        aiProvider,
+        aiCorrectAnswerUsed,
+        translationsCount: translationsToSave.length,
+        tagsApplied: !!parsed.tags,
+      };
+      
+      console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 8: FINALIZE_RESULT | 成功 | 总耗时=${totalDuration}ms | provider=${aiProvider} | 翻译数=${translationsToSave.length}`);
+      results.push({ questionId: question.id, success: true });
+    } catch (error: any) {
+      const totalDuration = Date.now() - startTime;
+      const failedStage = currentStage || "UNKNOWN";
+      
+      console.error(`[processFullPipelineBatch] [Q${question.id}] STAGE 8: FINALIZE_RESULT | 失败 | 失败阶段=${failedStage} | 总耗时=${totalDuration}ms | 错误:`, error);
+      
+      // ✅ 增强错误处理：针对 MISSING_CORRECT_ANSWER 错误提供详细信息和修复建议
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      let errorCode = "PROCESSING_FAILED";
+      
+      if (errorMessage.includes("MISSING_CORRECT_ANSWER")) {
+        errorCode = "MISSING_CORRECT_ANSWER";
+        // 解析错误信息，提取题目类型、三层 correct_answer 值
+        const errorMatch = errorMessage.match(/questionType=(\w+)/);
+        const questionType = errorMatch ? errorMatch[1] : question.type || "unknown";
+        
+        // 提取各层 correct_answer 值
+        const inputPayloadMatch = errorMessage.match(/inputPayload=([^|]+)/);
+        const dbMatch = errorMessage.match(/db=([^|]+)/);
+        const aiMatch = errorMessage.match(/ai=([^|]+)/);
+        const suggestionMatch = errorMessage.match(/suggestion=([^|]+)/);
+        
+        const inputPayloadValue = inputPayloadMatch ? inputPayloadMatch[1] : "null";
+        const dbValue = dbMatch ? dbMatch[1] : "null";
+        const aiValue = aiMatch ? aiMatch[1] : "null";
+        const suggestion = suggestionMatch ? suggestionMatch[1] : "请为该题补充正确答案。";
+        
+        // 构造友好的错误信息
+        errorMessage = `MISSING_CORRECT_ANSWER | 题目ID: ${question.id} | 题目类型: ${questionType} | 输入层: ${inputPayloadValue} | 数据库层: ${dbValue} | AI层: ${aiValue} | 修复建议: ${suggestion} | 请在后台补齐该题的正确答案再重新运行任务`;
+        
+        console.error(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] MISSING_CORRECT_ANSWER 详细信息:`, {
+          questionId: question.id,
+          questionType,
+          inputPayloadCorrectAnswer: inputPayloadValue,
+          dbCorrectAnswer: dbValue,
+          aiCorrectAnswer: aiValue,
+          suggestion,
+        });
+      } else if (errorMessage.includes("AI_JSON_PARSE_FAILED")) {
+        errorCode = "AI_JSON_PARSE_FAILED";
+      } else if (errorMessage.includes("AI_VALIDATION_FAILED")) {
+        errorCode = "AI_VALIDATION_FAILED";
+      } else if (errorMessage.includes("LOAD_QUESTION_FAILED")) {
+        errorCode = "LOAD_QUESTION_FAILED";
+      }
+      
+      const summary = {
+        questionId: question.id,
+        stage: failedStage,
+        success: false,
+        duration: totalDuration,
+        errorCode,
+        error: errorMessage,
+      };
+      
+      results.push({
+        questionId: question.id,
+        success: false,
+        error: errorMessage,
+      });
+    }
+  }
+
+  console.log(`[processFullPipelineBatch] 处理完成 | 总数=${questions.length} | 成功=${results.filter(r => r.success).length} | 失败=${results.filter(r => !r.success).length}`);
+  return results;
+}

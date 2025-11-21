@@ -594,6 +594,26 @@ interface BatchProcessTaskTable {
 }
 
 // ------------------------------------------------------------
+// 2️⃣1️⃣ question_processing_task_items 表结构定义
+// ------------------------------------------------------------
+interface QuestionProcessingTaskItemsTable {
+  id: Generated<number>;
+  task_id: string;
+  question_id: number;
+  operation: string;
+  target_lang: string | null;
+  status: "pending" | "processing" | "succeeded" | "failed" | "skipped";
+  error_message: string | null;
+  started_at: Date | null;
+  finished_at: Date | null;
+  ai_request: any | null;          // AI 请求体（JSONB）
+  ai_response: any | null;          // AI 响应（JSONB）
+  processed_data: any | null;       // 处理后要入库的数据（JSONB）
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
 // 1️⃣1️⃣ 数据库总接口定义
 // ------------------------------------------------------------
 interface Database {
@@ -625,10 +645,11 @@ interface Database {
   question_ai_answer_pending_updates: QuestionAiAnswerPendingUpdateTable;
   question_package_versions: QuestionPackageVersionTable;
   languages: LanguageTable;
-  question_translations: QuestionTranslationsTable;
+  // question_translations: QuestionTranslationsTable; // 已废弃：翻译现在存储在 questions.content JSONB 中
   question_polish_reviews: QuestionPolishReviewsTable;
   question_polish_history: QuestionPolishHistoryTable;
   batch_process_tasks: BatchProcessTaskTable;
+  question_processing_task_items: QuestionProcessingTaskItemsTable;
 }
 
 // ------------------------------------------------------------

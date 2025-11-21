@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { apiFetch, apiPost, apiDelete, ApiError } from "@/lib/apiClient";
+import { TaskErrorPanel } from "./_components/TaskErrorPanel";
 
 type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
@@ -18,6 +19,68 @@ type SubtaskDetail = {
   timestamp: string;
 };
 
+// ✅ 修复 Task 5：新的任务类型定义（任务粒度）
+type TaskProgress = {
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  perOperation: Record<string, {
+    total: number;
+    succeeded: number;
+    failed: number;
+    processing: number;
+    pending: number;
+  }>;
+};
+
+type TaskListItem = {
+  taskId: string;
+  id: string; // 兼容字段
+  createdAt: string;
+  status: "pending" | "processing" | "succeeded" | "failed" | "completed" | "cancelled";
+  questionCount: number;
+  operations: string[];
+  progress: TaskProgress;
+};
+
+type TaskItemsResponse = {
+  items: Array<{
+    id: number;
+    taskId: string;
+    questionId: number;
+    operation: "translate" | "polish" | "fill_missing" | "category_tags" | "full_pipeline";
+    targetLang: string | null;
+    status: "pending" | "processing" | "succeeded" | "failed" | "skipped";
+    errorMessage: string | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+    // 📊 新增：调试数据字段
+    aiRequest?: any;
+    aiResponse?: any;
+    processedData?: any;
+    // ✅ 添加请求体和回复体详情（兼容旧格式）
+    requestBody: {
+      prompt: string | null;
+      question: string | null;
+      expectedFormat: string | null;
+      scene: string | null;
+      sceneName: string | null;
+    } | null;
+    responseBody: {
+      answer: string | null;
+      aiProvider: string | null;
+      model: string | null;
+      status: string | null;
+      error: string | null;
+      timestamp: string | null;
+    } | null;
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+// 保留旧类型用于兼容
 type BatchProcessTask = {
   id: number;
   task_id: string;
@@ -52,7 +115,7 @@ type BatchProcessTask = {
 };
 
 type TasksResponse = {
-  tasks: BatchProcessTask[];
+  tasks: TaskListItem[];
   total: number;
   limit: number;
   offset: number;
@@ -82,7 +145,8 @@ export default function QuestionProcessingPage() {
     return [];
   }, []);
 
-  const [tasks, setTasks] = useState<BatchProcessTask[]>([]);
+  // ✅ 修复 Task 5：使用新的任务列表类型
+  const [tasks, setTasks] = useState<TaskListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -99,7 +163,11 @@ export default function QuestionProcessingPage() {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<BatchProcessTask | null>(null);
+  const [selectedTask, setSelectedTask] = useState<TaskListItem | null>(null);
+  const [selectedTaskItems, setSelectedTaskItems] = useState<TaskItemsResponse['items']>([]);
+  const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
+  const [loadingTaskItems, setLoadingTaskItems] = useState(false);
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<number>>(new Set());
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
@@ -116,6 +184,7 @@ export default function QuestionProcessingPage() {
     operations: string[];
     translateOptions: { from: string; to: string | string[] };
     polishOptions: { locale: string };
+    fullPipelineOptions: { sourceLanguage: "zh" | "ja" | "en"; targetLanguages: string[]; type: "single" | "multiple" | "truefalse" }; // ✅ 修复：统一使用 type 字段
     batchSize: number;
     continueOnError: boolean;
   } => {
@@ -128,6 +197,7 @@ export default function QuestionProcessingPage() {
           operations: parsed.operations || [],
           translateOptions: parsed.translateOptions || { from: "zh", to: ["ja"] },
           polishOptions: parsed.polishOptions || { locale: "zh-CN" },
+          fullPipelineOptions: parsed.fullPipelineOptions || { sourceLanguage: "zh", targetLanguages: ["ja"], type: "single" }, // ✅ 修复：使用 type 字段
           batchSize: parsed.batchSize || 10,
           continueOnError: parsed.continueOnError !== undefined ? parsed.continueOnError : true,
         };
@@ -141,6 +211,7 @@ export default function QuestionProcessingPage() {
       operations: [],
       translateOptions: { from: "zh", to: ["ja"] },
       polishOptions: { locale: "zh-CN" },
+      fullPipelineOptions: { sourceLanguage: "zh", targetLanguages: ["ja"], type: "single" }, // ✅ 修复：使用 type 字段
       batchSize: 10,
       continueOnError: true,
     };
@@ -151,6 +222,7 @@ export default function QuestionProcessingPage() {
     operations: string[];
     translateOptions: { from: string; to: string | string[] };
     polishOptions: { locale: string };
+    fullPipelineOptions: { sourceLanguage: "zh" | "ja" | "en"; targetLanguages: string[]; type: "single" | "multiple" | "truefalse" }; // ✅ 修复：统一使用 type 字段
     batchSize: number;
     continueOnError: boolean;
   }) => {
@@ -168,6 +240,7 @@ export default function QuestionProcessingPage() {
     operations: string[];
     translateOptions: { from: string; to: string | string[] };
     polishOptions: { locale: string };
+    fullPipelineOptions: { sourceLanguage: "zh" | "ja" | "en"; targetLanguages: string[]; type: "single" | "multiple" | "truefalse" }; // ✅ 修复：统一使用 type 字段
     batchSize: number;
     continueOnError: boolean;
   }>(loadCachedFormData());
@@ -199,64 +272,34 @@ export default function QuestionProcessingPage() {
     }
     
     try {
+      // ✅ 修复 Task 5：使用新的任务列表 API
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
       params.set("limit", "50");
       params.set("offset", "0");
 
       const response = await apiFetch<TasksResponse>(
-        `/api/admin/question-processing/batch-process?${params.toString()}`
+        `/api/admin/question-processing/tasks?${params.toString()}`
       );
 
       if (response.data) {
-        // 去重：按 task_id 去重，保留最新的任务
-        const taskMap = new Map<string, BatchProcessTask>();
-        (response.data.tasks || []).forEach((task: BatchProcessTask) => {
-          const existing = taskMap.get(task.task_id);
-          if (!existing || new Date(task.updated_at) > new Date(existing.updated_at)) {
-            taskMap.set(task.task_id, task);
-          }
-        });
-        
-        const loadedTasks = Array.from(taskMap.values()).map((task: BatchProcessTask): BatchProcessTask => {
-          // 使用辅助函数提取 details 数组
-          const detailsArray = getDetailsArray(task.details);
-          
-          // 提取简报信息（如果存在）
-          if (detailsArray.length > 0) {
-            const summaryItem = detailsArray.find((d) => d && d.summary);
-            if (summaryItem && summaryItem.summary) {
-              // 创建新对象而不是直接修改原对象
-              return {
-                ...task,
-                summary: summaryItem.summary,
-                details: detailsArray.filter((d) => !d || !d.summary),
-              } as BatchProcessTask;
-            }
-          }
-          
-          // 确保 details 是数组格式
-          return {
-            ...task,
-            details: detailsArray,
-          } as BatchProcessTask;
-        });
+        const loadedTasks = response.data.tasks || [];
         
         // 按创建时间倒序排序
-        loadedTasks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        loadedTasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         
         // 只在任务列表真正变化时才更新状态
         setTasks(prevTasks => {
-          const prevTaskIds = new Set(prevTasks.map(t => t.task_id));
-          const newTaskIds = new Set(loadedTasks.map(t => t.task_id));
+          const prevTaskIds = new Set(prevTasks.map(t => t.taskId));
+          const newTaskIds = new Set(loadedTasks.map(t => t.taskId));
           const taskIdsChanged = prevTaskIds.size !== newTaskIds.size || 
             !Array.from(prevTaskIds).every(id => newTaskIds.has(id));
           
-          // 检查任务状态是否有变化
+          // 检查任务状态或进度是否有变化
           const statusChanged = prevTasks.some(prevTask => {
-            const newTask = loadedTasks.find(t => t.task_id === prevTask.task_id);
+            const newTask = loadedTasks.find(t => t.taskId === prevTask.taskId);
             return !newTask || newTask.status !== prevTask.status || 
-                   newTask.processed_count !== prevTask.processed_count;
+                   newTask.progress.completedItems !== prevTask.progress.completedItems;
           });
           
           // 如果任务列表或状态有变化，更新状态
@@ -282,7 +325,26 @@ export default function QuestionProcessingPage() {
           });
         }
         
-        return loadedTasks;
+        // 返回兼容格式（用于向后兼容）
+        return loadedTasks.map(task => ({
+          id: 0,
+          task_id: task.taskId,
+          status: task.status as TaskStatus,
+          operations: task.operations,
+          question_ids: null,
+          total_questions: task.questionCount,
+          processed_count: task.progress.completedItems,
+          succeeded_count: task.progress.completedItems - task.progress.failedItems,
+          failed_count: task.progress.failedItems,
+          current_batch: 0,
+          errors: null,
+          details: null,
+          created_by: null,
+          started_at: null,
+          completed_at: null,
+          created_at: task.createdAt,
+          updated_at: task.createdAt,
+        })) as any;
       } else {
         if (!silent) {
           setError("加载任务列表失败");
@@ -311,6 +373,31 @@ export default function QuestionProcessingPage() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  // ✅ 修复 Task 5：加载任务详情（子任务列表）- 提前定义以避免初始化顺序问题
+  const loadTaskItems = useCallback(async (taskId: string) => {
+    setLoadingTaskItems(true);
+    try {
+      const response = await apiFetch<TaskItemsResponse>(
+        `/api/admin/question-processing/tasks/${taskId}/items?limit=1000&offset=0`
+      );
+      if (response.data) {
+        setSelectedTaskItems(response.data.items || []);
+      }
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.message || "加载任务详情失败");
+    } finally {
+      setLoadingTaskItems(false);
+    }
+  }, []);
+
+  // ✅ 修复 Task 5：打开任务详情弹窗
+  const handleOpenTaskDetail = useCallback(async (task: TaskListItem) => {
+    setSelectedTask(task);
+    setShowTaskDetailModal(true);
+    await loadTaskItems(task.taskId);
+  }, [loadTaskItems]);
 
   // 当打开创建表单时，从缓存恢复配置
   useEffect(() => {
@@ -412,19 +499,19 @@ export default function QuestionProcessingPage() {
         // 重置错误计数（成功加载）
         errorCountRef.current = 0;
         
-        // 如果任务详情窗口打开且未被手动关闭，更新选中的任务
+        // ✅ 修复 Task 5：如果任务详情窗口打开且未被手动关闭，更新选中的任务（使用新的任务列表格式）
         if (selectedTask && !isManuallyClosedRef.current) {
-          const updatedTask = latestTasks.find(t => t.task_id === selectedTask.task_id);
+          const updatedTask = tasks.find(t => t.taskId === selectedTask.taskId);
           if (updatedTask) {
             console.log('[Frontend] [checkAndRefresh] Selected task updated:', {
-              task_id: updatedTask.task_id.substring(0, 8),
+              taskId: updatedTask.taskId.substring(0, 8),
               status: updatedTask.status,
-              processed: updatedTask.processed_count,
-              total: updatedTask.total_questions
+              completedItems: updatedTask.progress.completedItems,
+              totalItems: updatedTask.progress.totalItems
             });
             setSelectedTask(updatedTask);
             // 如果任务已完成、失败或取消，停止刷新
-            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled") {
+            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled" || updatedTask.status === "succeeded") {
               console.log('[Frontend] [checkAndRefresh] Task finished, stopping refresh');
               if (detailRefreshRef.current) {
                 clearInterval(detailRefreshRef.current);
@@ -432,28 +519,28 @@ export default function QuestionProcessingPage() {
               }
               return;
             }
-            // 如果任务正在处理，加载详细日志
+            // 如果任务正在处理，刷新子任务列表
             if (updatedTask.status === "processing") {
-              console.log('[Frontend] [checkAndRefresh] Task still processing, loading logs...');
-              loadProcessingLogs(updatedTask.task_id).catch((e) => {
-                console.error("Failed to load processing logs:", e);
+              console.log('[Frontend] [checkAndRefresh] Task still processing, refreshing task items...');
+              loadTaskItems(updatedTask.taskId).catch((e) => {
+                console.error("Failed to load task items:", e);
               });
             }
           }
         }
         
-        // 检查是否有正在处理的任务
-        const processingTasks = latestTasks.filter(
+        // ✅ 修复 Task 5：检查是否有正在处理的任务（使用新的任务列表格式）
+        const processingTasks = tasks.filter(
           (t) => t.status === "pending" || t.status === "processing"
         );
         console.log('[Frontend] [checkAndRefresh] Processing tasks found:', processingTasks.length);
-
+        
         // 为每个正在处理的任务添加日志（只在进度变化时）
         processingTasks.forEach(task => {
           setProcessingLogs(prev => {
             // 检查是否已经有这个任务的最新日志
-            const lastLog = prev.filter(l => l.taskId === task.task_id && l.message.includes('进度:')).pop();
-            const currentProgress = `${task.processed_count}/${task.total_questions} (${getProgress(task)}%)`;
+            const lastLog = prev.filter(l => l.taskId === task.taskId && l.message.includes('进度:')).pop();
+            const currentProgress = `${task.progress.completedItems}/${task.progress.totalItems} (${getProgress(task)}%)`;
             
             // 如果进度没有变化，不添加新日志
             if (lastLog && lastLog.message.includes(currentProgress)) {
@@ -466,8 +553,8 @@ export default function QuestionProcessingPage() {
               {
                 timestamp: new Date().toISOString(),
                 level: 'info' as const,
-                message: `${statusEmoji} 任务 ${task.task_id.substring(0, 8)}... 进度: ${currentProgress} | 成功: ${task.succeeded_count} | 失败: ${task.failed_count}`,
-                taskId: task.task_id,
+                message: `${statusEmoji} 任务 ${task.taskId.substring(0, 8)}... 进度: ${currentProgress} | 成功: ${task.progress.completedItems - task.progress.failedItems} | 失败: ${task.progress.failedItems}`,
+                taskId: task.taskId,
                 logType: 'task-processing' as const,
               }
             ];
@@ -480,8 +567,8 @@ export default function QuestionProcessingPage() {
           // 没有正在处理的任务，停止自动刷新
           setAutoRefresh(false);
           setProcessingLogs(prev => {
-            const completedTasks = latestTasks.filter(t => t.status === 'completed');
-            const failedTasks = latestTasks.filter(t => t.status === 'failed');
+            const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'succeeded');
+            const failedTasks = tasks.filter(t => t.status === 'failed');
             const newLogs = [
               ...prev,
               {
@@ -500,12 +587,13 @@ export default function QuestionProcessingPage() {
         const now = Date.now();
         const STUCK_TIMEOUT = 5 * 60 * 1000; // 5 分钟
         
+        // ✅ 修复 Task 5：检查任务是否卡住（使用新的任务列表格式）
         const hasStuckTasks = processingTasks.some((task) => {
-          const taskUpdatedAt = task.updated_at ? new Date(task.updated_at).getTime() : now;
-          const timeSinceTaskUpdate = now - taskUpdatedAt;
+          const taskCreatedAt = task.createdAt ? new Date(task.createdAt).getTime() : now;
+          const timeSinceTaskCreate = now - taskCreatedAt;
           
-          // 如果任务更新时间超过 5 分钟，认为任务卡住了
-          if (timeSinceTaskUpdate > STUCK_TIMEOUT) {
+          // 如果任务创建时间超过 5 分钟且仍在处理中，认为任务可能卡住了
+          if (timeSinceTaskCreate > STUCK_TIMEOUT && task.status === "processing") {
             return true;
           }
           
@@ -588,7 +676,7 @@ export default function QuestionProcessingPage() {
         intervalRef.current = null;
       }
     };
-  }, [autoRefresh, selectedTask?.task_id ?? null, loadTasks]); // 包含 loadTasks 依赖
+  }, [autoRefresh, selectedTask?.taskId ?? null, tasks, loadTasks, loadTaskItems]); // 包含 loadTasks 和 loadTaskItems 依赖
 
   // 当任务详情窗口打开时，自动刷新该任务
   useEffect(() => {
@@ -600,12 +688,12 @@ export default function QuestionProcessingPage() {
         clearInterval(detailRefreshRef.current);
         detailRefreshRef.current = null;
       }
-      setCurrentAiLogs([]);
       shouldRefresh = false;
       return;
     }
 
-    const taskId = selectedTask.task_id; // 保存 taskId 到局部变量
+    // ✅ 修复 Task 5：使用新的任务格式（兼容旧弹窗）
+    const taskId = selectedTask.taskId || (selectedTask as any).task_id; // 保存 taskId 到局部变量
 
     // 如果任务正在处理，设置定时刷新
     if (selectedTask.status === "processing" || selectedTask.status === "pending") {
@@ -698,8 +786,8 @@ export default function QuestionProcessingPage() {
         clearInterval(detailRefreshRef.current);
         detailRefreshRef.current = null;
       }
-    };
-  }, [selectedTask?.task_id ?? null, selectedTask?.status ?? null, loadTasks]); // 使用 null 确保依赖数组大小一致
+      };
+    }, [selectedTask?.taskId ?? null, selectedTask?.status ?? null, tasks, loadTasks, loadTaskItems]); // 使用新的任务格式
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -731,24 +819,47 @@ export default function QuestionProcessingPage() {
       if (formData.operations.includes("polish")) {
         payload.polishOptions = formData.polishOptions;
       }
+      if (formData.operations.includes("full_pipeline")) {
+        if (!formData.fullPipelineOptions) {
+          // 如果 fullPipelineOptions 不存在，使用默认值
+          payload.fullPipelineOptions = {
+            sourceLanguage: "zh",
+            targetLanguages: ["ja"],
+            type: "single", // ✅ 修复：使用 type 字段
+          };
+        } else {
+          payload.fullPipelineOptions = formData.fullPipelineOptions;
+        }
+      }
 
+      // 批量处理任务创建可能需要较长时间（加载题目等），增加超时时间到 60 秒
       const response = await apiPost<{ taskId?: string; task_id?: string }>(
         "/api/admin/question-processing/batch-process",
-        payload
+        payload,
+        { timeoutMs: 60_000 } // 60 秒超时
       );
 
       // apiPost 直接返回 data，不是包装对象
       // API返回的是 taskId 或 task_id
       const taskId = response?.taskId || response?.task_id;
       
-      // 保存任务配置到 localStorage（不保存 questionIds，因为每次可能不同）
+      console.log('[handleCreateTask] Task created, taskId:', taskId, 'response:', response);
+      
+      if (!taskId) {
+        console.error('[handleCreateTask] ❌ Task ID is missing! Response:', response);
+        throw new Error('任务创建成功但未返回任务ID');
+      }
+
+      // ✅ 问题3修复：任务创建成功后，保存当前配置到 localStorage
       saveCachedFormData({
         operations: formData.operations,
         translateOptions: formData.translateOptions,
         polishOptions: formData.polishOptions,
+        fullPipelineOptions: formData.fullPipelineOptions,
         batchSize: formData.batchSize,
         continueOnError: formData.continueOnError,
       });
+      console.log("[question-processing] 批量配置已保存到 localStorage");
       
       setShowCreateForm(false);
       // 重置表单，但保留配置（下次打开时会从缓存加载）
@@ -760,12 +871,6 @@ export default function QuestionProcessingPage() {
         batchSize: formData.batchSize, // 保留批次大小
         continueOnError: formData.continueOnError, // 保留错误处理选项
       });
-      console.log('[handleCreateTask] Task created, taskId:', taskId, 'response:', response);
-      
-      if (!taskId) {
-        console.error('[handleCreateTask] ❌ Task ID is missing! Response:', response);
-        throw new Error('任务创建成功但未返回任务ID');
-      }
       
       await loadTasks();
       setAutoRefresh(true);
@@ -857,12 +962,22 @@ export default function QuestionProcessingPage() {
     return new Date(dateStr).toLocaleString("zh-CN");
   };
 
-  const getProgress = (task: BatchProcessTask) => {
-    if (task.total_questions === 0) return 0;
-    return Math.round((task.processed_count / task.total_questions) * 100);
+  const getProgress = (task: TaskListItem) => {
+    if (task.progress.totalItems === 0) return 0;
+    return Math.round((task.progress.completedItems / task.progress.totalItems) * 100);
   };
 
   const handleCancelTask = async (taskId: string) => {
+    // ✅ 修复：先检查任务状态，避免尝试取消已完成的任务
+    const task = tasks.find(t => t.taskId === taskId);
+    if (task) {
+      const finalStatuses = ["completed", "failed", "cancelled", "succeeded"];
+      if (finalStatuses.includes(task.status)) {
+        setError(`无法取消任务：任务状态为 "${getStatusText(task.status as TaskStatus)}"，只能取消等待中或处理中的任务。`);
+        return;
+      }
+    }
+
     if (!confirm("确定要取消这个任务吗？")) {
       return;
     }
@@ -875,9 +990,44 @@ export default function QuestionProcessingPage() {
         `/api/admin/question-processing/batch-process?taskId=${taskId}&action=cancel`
       );
       await loadTasks();
+      // 显示成功消息
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'info' as const,
+            message: `✅ 任务 ${taskId.substring(0, 8)}... 已取消`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
     } catch (err) {
       const apiErr = err as ApiError;
-      setError(apiErr.message || "取消任务失败");
+      // ✅ 改进错误处理：提供更友好的错误信息
+      let errorMessage = apiErr.message || "取消任务失败";
+      
+      // 如果错误信息包含状态相关的提示，提供更友好的说明
+      if (errorMessage.includes("cannot be cancelled") || errorMessage.includes("Current status")) {
+        errorMessage = `无法取消任务：任务可能已经完成或失败。只能取消等待中或处理中的任务。`;
+      }
+      
+      setError(errorMessage);
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'error' as const,
+            message: `❌ 取消任务失败: ${errorMessage}`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
     } finally {
       setCancellingTaskId(null);
     }
@@ -969,6 +1119,7 @@ export default function QuestionProcessingPage() {
                   { value: "fill_missing", label: "填漏" },
                   { value: "category_tags", label: "分类标签" },
                   { value: "translate", label: "翻译" }, // 翻译放到最后
+                  { value: "full_pipeline", label: "一体化处理" }, // 新增：一体化处理
                 ].map((op) => (
                   <label key={op.value} className="flex items-center gap-2">
                     <input
@@ -976,10 +1127,20 @@ export default function QuestionProcessingPage() {
                       checked={formData.operations.includes(op.value)}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setFormData({
+                          // 如果选择 full_pipeline，确保 fullPipelineOptions 存在
+                          const newOperations = [...formData.operations, op.value];
+                          const newFormData: any = {
                             ...formData,
-                            operations: [...formData.operations, op.value],
-                          });
+                            operations: newOperations,
+                          };
+                          if (op.value === "full_pipeline" && !formData.fullPipelineOptions) {
+                            newFormData.fullPipelineOptions = {
+                              sourceLanguage: "zh",
+                              targetLanguages: ["ja"],
+                              type: "single", // ✅ 修复：使用 type 字段
+                            };
+                          }
+                          setFormData(newFormData);
                         } else {
                           setFormData({
                             ...formData,
@@ -1128,6 +1289,104 @@ export default function QuestionProcessingPage() {
               </div>
             )}
 
+            {/* 一体化处理选项 */}
+            {formData.operations.includes("full_pipeline") && formData.fullPipelineOptions && (
+              <div className="border-l-4 border-purple-500 pl-4 space-y-3 mt-4">
+                <h3 className="font-medium text-purple-700">一体化处理选项</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">源语言</label>
+                    <select
+                      value={formData.fullPipelineOptions?.sourceLanguage || "zh"}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fullPipelineOptions: {
+                            ...(formData.fullPipelineOptions || { sourceLanguage: "zh", targetLanguages: ["ja"], type: "single" }), // ✅ 修复：使用 type 字段
+                            sourceLanguage: e.target.value as "zh" | "ja" | "en",
+                          },
+                        })
+                      }
+                      className="w-full border rounded px-3 py-2"
+                    >
+                      <option value="zh">中文 (zh)</option>
+                      <option value="ja">日文 (ja)</option>
+                      <option value="en">英文 (en)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">题目类型</label>
+                    <select
+                      value={formData.fullPipelineOptions?.type || "single"} // ✅ 修复：使用 type 字段
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fullPipelineOptions: {
+                            ...(formData.fullPipelineOptions || { sourceLanguage: "zh", targetLanguages: ["ja"], type: "single" }), // ✅ 修复：使用 type 字段
+                            type: e.target.value as "single" | "multiple" | "truefalse", // ✅ 修复：使用 type 字段
+                          },
+                        })
+                      }
+                      className="w-full border rounded px-3 py-2"
+                    >
+                      <option value="single">单选题</option>
+                      <option value="multiple">多选题</option>
+                      <option value="truefalse">判断题</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    目标语言 <span className="text-purple-600 font-semibold">(可多选)</span>
+                  </label>
+                  <div className="space-y-2 border-2 border-purple-300 rounded-lg px-3 py-3 min-h-[120px] max-h-[180px] overflow-y-auto bg-purple-50">
+                    {[
+                      { value: "zh", label: "中文 (zh)" },
+                      { value: "ja", label: "日文 (ja)" },
+                      { value: "en", label: "英文 (en)" },
+                    ].map((lang) => {
+                      const isChecked = (formData.fullPipelineOptions?.targetLanguages || []).includes(lang.value);
+                      return (
+                        <label key={lang.value} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-purple-100 rounded">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const current = formData.fullPipelineOptions?.targetLanguages || ["ja"];
+                              let newLanguages: string[];
+                              if (e.target.checked) {
+                                newLanguages = [...current, lang.value];
+                              } else {
+                                newLanguages = current.filter((l) => l !== lang.value);
+                                if (newLanguages.length === 0) {
+                                  newLanguages = [lang.value];
+                                }
+                              }
+                              setFormData({
+                                ...formData,
+                                fullPipelineOptions: {
+                                  ...(formData.fullPipelineOptions || { sourceLanguage: "zh", targetLanguages: ["ja"], type: "single" }), // ✅ 修复：使用 type 字段
+                                  targetLanguages: newLanguages,
+                                },
+                              });
+                            }}
+                            className="rounded w-4 h-4 text-purple-600"
+                          />
+                          <span className="text-sm font-medium">{lang.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-purple-600 font-medium mt-2">
+                    ✓ 已选择: {(formData.fullPipelineOptions?.targetLanguages || []).join(", ")}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  一体化处理将执行：润色题干 + 补漏选项/解析 + 生成标签 + 多语言翻译
+                </p>
+              </div>
+            )}
+
             {/* 批量大小 */}
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -1239,10 +1498,10 @@ export default function QuestionProcessingPage() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {tasks.map((task) => (
-                <tr key={task.id} className="hover:bg-gray-50">
+                <tr key={task.taskId} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm">
                     <code className="text-xs bg-gray-100 px-2 py-1 rounded">
-                      {task.task_id}
+                      {task.taskId.length > 20 ? `${task.taskId.substring(0, 20)}...` : task.taskId}
                     </code>
                   </td>
                   <td className="px-4 py-3 text-sm">
@@ -1252,7 +1511,9 @@ export default function QuestionProcessingPage() {
                           key={op}
                           className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
                         >
-                          {op === "translate"
+                          {op === "full_pipeline"
+                            ? "一体化"
+                            : op === "translate"
                             ? "翻译"
                             : op === "polish"
                             ? "润色"
@@ -1268,18 +1529,18 @@ export default function QuestionProcessingPage() {
                   <td className="px-4 py-3 text-sm">
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(
-                        task.status
+                        task.status as TaskStatus
                       )}`}
                     >
-                      {getStatusText(task.status)}
+                      {getStatusText(task.status as TaskStatus)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {task.status === "processing" || task.status === "completed" ? (
+                    {task.status === "processing" || task.status === "completed" || task.status === "succeeded" || task.status === "failed" ? (
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
                           <span>
-                            {task.processed_count} / {task.total_questions}
+                            {task.progress.completedItems} / {task.progress.totalItems}
                           </span>
                           <span>{getProgress(task)}%</span>
                         </div>
@@ -1290,7 +1551,7 @@ export default function QuestionProcessingPage() {
                           />
                         </div>
                         <div className="text-xs text-gray-500">
-                          成功: {task.succeeded_count} | 失败: {task.failed_count}
+                          成功: {task.progress.succeededCount ?? 0} | 失败: {task.progress.failedItems ?? 0} | 题目数: {task.questionCount ?? 0}
                         </div>
                       </div>
                     ) : (
@@ -1298,35 +1559,33 @@ export default function QuestionProcessingPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
-                    {formatDate(task.created_at)}
+                    {formatDate(task.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => {
-                          isManuallyClosedRef.current = false; // 重置手动关闭标记
-                          setSelectedTask(task);
-                        }}
+                        onClick={() => handleOpenTaskDetail(task)}
                         className="text-blue-600 hover:text-blue-800"
                       >
                         查看详情
                       </button>
                       {(task.status === "pending" || task.status === "processing") && (
                         <button
-                          onClick={() => handleCancelTask(task.task_id)}
-                          disabled={cancellingTaskId === task.task_id}
+                          onClick={() => handleCancelTask(task.taskId)}
+                          disabled={cancellingTaskId === task.taskId || task.status !== "pending" && task.status !== "processing"}
                           className="text-orange-600 hover:text-orange-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={task.status !== "pending" && task.status !== "processing" ? "只能取消等待中或处理中的任务" : "取消任务"}
                         >
-                          {cancellingTaskId === task.task_id ? "取消中..." : "取消"}
+                          {cancellingTaskId === task.taskId ? "取消中..." : "取消"}
                         </button>
                       )}
-                      {(task.status === "completed" || task.status === "failed" || task.status === "cancelled") && (
+                      {(task.status === "completed" || task.status === "failed" || task.status === "cancelled" || task.status === "succeeded") && (
                         <button
-                          onClick={() => handleDeleteTask(task.task_id)}
-                          disabled={deletingTaskId === task.task_id}
+                          onClick={() => handleDeleteTask(task.taskId)}
+                          disabled={deletingTaskId === task.taskId}
                           className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {deletingTaskId === task.task_id ? "删除中..." : "删除"}
+                          {deletingTaskId === task.taskId ? "删除中..." : "删除"}
                         </button>
                       )}
                     </div>
@@ -1693,22 +1952,22 @@ export default function QuestionProcessingPage() {
                   </div>
                 </div>
 
-                {/* 错误列表 */}
-                {selectedTask.errors && selectedTask.errors.length > 0 && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">
-                      错误列表
-                    </label>
-                    <div className="mt-2 max-h-48 overflow-y-auto border rounded p-3 bg-red-50">
-                      {selectedTask.errors.map((err, idx) => (
-                        <div key={idx} className="text-sm text-red-700 mb-2">
-                          <span className="font-medium">题目 {err.questionId}:</span>{" "}
-                          {err.error}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* 错误信息面板（支持点击复制） */}
+                {/* 从 selectedTaskItems 中收集错误信息，或从 selectedTask.errors 中获取（如果存在） */}
+                <TaskErrorPanel 
+                  errors={
+                    // 优先使用 selectedTaskItems 中的错误信息
+                    selectedTaskItems.length > 0
+                      ? selectedTaskItems
+                          .filter(item => item.errorMessage)
+                          .map(item => ({
+                            questionId: item.questionId,
+                            error: item.errorMessage || ""
+                          }))
+                      : // 如果没有 selectedTaskItems，尝试从 selectedTask.errors 获取（兼容旧数据结构）
+                        (selectedTask as any)?.errors || null
+                  }
+                />
 
                 {/* 任务完成简报 */}
                 {selectedTask.status === "completed" && selectedTask.summary && (
@@ -1941,6 +2200,365 @@ export default function QuestionProcessingPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ 修复 Task 5：任务详情弹窗（展示子任务列表，含 questionId） */}
+      {showTaskDetailModal && selectedTask && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b flex items-center justify-between">
+              <h2 className="text-xl font-bold">任务详情</h2>
+              <button
+                onClick={() => {
+                  setShowTaskDetailModal(false);
+                  setSelectedTask(null);
+                  setSelectedTaskItems([]);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              {/* 任务基本信息 */}
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">任务ID</label>
+                  <div className="mt-1 text-sm text-gray-900 font-mono">{selectedTask.taskId}</div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">状态</label>
+                  <div className="mt-1">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(selectedTask.status as TaskStatus)}`}>
+                      {getStatusText(selectedTask.status as TaskStatus)}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">创建时间</label>
+                  <div className="mt-1 text-sm text-gray-900">{formatDate(selectedTask.createdAt)}</div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">题目数量</label>
+                  <div className="mt-1 text-sm text-gray-900">{selectedTask.questionCount}</div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">操作类型</label>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {selectedTask.operations.map((op) => (
+                      <span key={op} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                        {op === "translate" ? "翻译" : op === "polish" ? "润色" : op === "fill_missing" ? "填漏" : op === "category_tags" ? "分类标签" : op}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">进度</label>
+                  <div className="mt-1 text-sm text-gray-900">
+                    {selectedTask.progress.completedItems} / {selectedTask.progress.totalItems} 
+                    ({getProgress(selectedTask)}%)
+                  </div>
+                </div>
+              </div>
+
+              {/* 错误信息面板（支持点击复制） */}
+              <TaskErrorPanel 
+                errors={selectedTaskItems
+                  .filter(item => item.errorMessage)
+                  .map(item => ({
+                    questionId: item.questionId,
+                    error: item.errorMessage || ""
+                  }))}
+              />
+
+              {/* 子任务列表 */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">子任务列表</h3>
+                  <div className="flex items-center gap-2">
+                    <select
+                      onChange={(e) => {
+                        const status = e.target.value;
+                        if (status) {
+                          loadTaskItems(selectedTask.taskId);
+                        }
+                      }}
+                      className="border rounded px-2 py-1 text-sm"
+                    >
+                      <option value="">全部状态</option>
+                      <option value="pending">待处理</option>
+                      <option value="processing">处理中</option>
+                      <option value="succeeded">成功</option>
+                      <option value="failed">失败</option>
+                      <option value="skipped">跳过</option>
+                    </select>
+                    <select
+                      onChange={(e) => {
+                        const operation = e.target.value;
+                        if (operation) {
+                          loadTaskItems(selectedTask.taskId);
+                        }
+                      }}
+                      className="border rounded px-2 py-1 text-sm"
+                    >
+                      <option value="">全部操作</option>
+                      <option value="translate">翻译</option>
+                      <option value="polish">润色</option>
+                      <option value="fill_missing">填漏</option>
+                      <option value="category_tags">分类标签</option>
+                    </select>
+                  </div>
+                </div>
+
+                {loadingTaskItems ? (
+                  <div className="text-center py-8 text-gray-500">加载中...</div>
+                ) : selectedTaskItems.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">暂无子任务</div>
+                ) : (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-12"></th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">题目ID</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">目标语言</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">状态</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">错误信息</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">开始时间</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">完成时间</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {selectedTaskItems.map((item) => {
+                          const isExpanded = expandedItemIds.has(item.id);
+                          const hasDetails = !!(item.requestBody || item.responseBody);
+                          
+                          return (
+                            <React.Fragment key={item.id}>
+                              <tr className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm">
+                                  {/* 📊 新增：检查是否有调试数据 */}
+                                  {(() => {
+                                    const hasDebugData = !!(item.aiRequest || item.aiResponse || item.processedData);
+                                    const hasLegacyDetails = !!(item.requestBody || item.responseBody);
+                                    const hasAnyDetails = hasDebugData || hasLegacyDetails;
+                                    return hasAnyDetails && (
+                                      <button
+                                        onClick={() => {
+                                          setExpandedItemIds(prev => {
+                                            const newSet = new Set(prev);
+                                            if (newSet.has(item.id)) {
+                                              newSet.delete(item.id);
+                                            } else {
+                                              newSet.add(item.id);
+                                            }
+                                            return newSet;
+                                          });
+                                        }}
+                                        className="text-gray-500 hover:text-gray-700"
+                                        title={isExpanded ? "收起详情" : "展开详情"}
+                                      >
+                                        {isExpanded ? "▼" : "▶"}
+                                      </button>
+                                    );
+                                  })()}
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(String(item.questionId));
+                                      alert(`已复制题目ID: ${item.questionId}`);
+                                    }}
+                                    className="text-blue-600 hover:text-blue-800 font-mono"
+                                    title="点击复制"
+                                  >
+                                    {item.questionId}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                                    {item.operation === "translate" ? "翻译" : item.operation === "polish" ? "润色" : item.operation === "fill_missing" ? "填漏" : item.operation === "category_tags" ? "分类标签" : item.operation}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">
+                                  {item.targetLang || "-"}
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    item.status === "succeeded" ? "bg-green-100 text-green-800" :
+                                    item.status === "failed" ? "bg-red-100 text-red-800" :
+                                    item.status === "processing" ? "bg-blue-100 text-blue-800" :
+                                    item.status === "pending" ? "bg-yellow-100 text-yellow-800" :
+                                    "bg-gray-100 text-gray-800"
+                                  }`}>
+                                    {item.status === "succeeded" ? "成功" :
+                                     item.status === "failed" ? "失败" :
+                                     item.status === "processing" ? "处理中" :
+                                     item.status === "pending" ? "待处理" :
+                                     item.status === "skipped" ? "跳过" : item.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  {item.errorMessage ? (
+                                    <div className="max-w-xs">
+                                      <div className="text-red-600 truncate" title={item.errorMessage}>
+                                        {item.errorMessage.length > 50 ? `${item.errorMessage.substring(0, 50)}...` : item.errorMessage}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">
+                                  {item.startedAt ? formatDate(item.startedAt) : "-"}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">
+                                  {item.finishedAt ? formatDate(item.finishedAt) : "-"}
+                                </td>
+                              </tr>
+                              {/* ✅ 展开详情行：显示请求体和回复体 */}
+                              {isExpanded && (() => {
+                                const hasDebugData = !!(item.aiRequest || item.aiResponse || item.processedData);
+                                const hasLegacyDetails = !!(item.requestBody || item.responseBody);
+                                return hasDebugData || hasLegacyDetails;
+                              })() && (
+                                <tr>
+                                  <td colSpan={8} className="px-4 py-4 bg-gray-50">
+                                    <div className="space-y-4">
+                                      {/* 📊 新格式：AI 请求体 */}
+                                      {item.aiRequest && (
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-gray-700 mb-2">📤 AI 请求体（完整）</h4>
+                                          <div className="bg-white border rounded-lg p-4">
+                                            <pre className="text-xs text-gray-900 bg-blue-50 border border-blue-200 rounded p-3 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                              {JSON.stringify(item.aiRequest, null, 2)}
+                                            </pre>
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* 📊 新格式：AI 响应 */}
+                                      {item.aiResponse && (
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-gray-700 mb-2">📥 AI 响应（完整）</h4>
+                                          <div className="bg-white border rounded-lg p-4">
+                                            <pre className="text-xs text-gray-900 bg-green-50 border border-green-200 rounded p-3 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                              {JSON.stringify(item.aiResponse, null, 2)}
+                                            </pre>
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* 📊 新格式：最终入库数据 */}
+                                      {item.processedData && (
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-gray-700 mb-2">💾 最终入库数据</h4>
+                                          <div className="bg-white border rounded-lg p-4">
+                                            <pre className="text-xs text-gray-900 bg-purple-50 border border-purple-200 rounded p-3 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                              {JSON.stringify(item.processedData, null, 2)}
+                                            </pre>
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* 兼容旧格式：请求体详情 */}
+                                      {!item.aiRequest && item.requestBody && (
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-gray-700 mb-2">📤 请求体（旧格式）</h4>
+                                          <div className="bg-white border rounded-lg p-4 space-y-3">
+                                            {item.requestBody.sceneName && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">场景名称</label>
+                                                <div className="mt-1 text-sm text-gray-900">{item.requestBody.sceneName}</div>
+                                              </div>
+                                            )}
+                                            {item.requestBody.prompt && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">Prompt</label>
+                                                <div className="mt-1 text-sm text-gray-900 bg-yellow-50 border border-yellow-200 rounded p-2 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                                  {item.requestBody.prompt}
+                                                </div>
+                                              </div>
+                                            )}
+                                            {item.requestBody.question && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">发送给AI的问题</label>
+                                                <div className="mt-1 text-sm text-gray-900 bg-blue-50 border border-blue-200 rounded p-2 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                                  {item.requestBody.question}
+                                                </div>
+                                              </div>
+                                            )}
+                                            {item.requestBody.expectedFormat && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">预期输出格式</label>
+                                                <div className="mt-1 text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded p-2 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                                  {item.requestBody.expectedFormat}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* 兼容旧格式：回复体详情 */}
+                                      {!item.aiResponse && item.responseBody && (
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-gray-700 mb-2">📥 AI 回复体（旧格式）</h4>
+                                          <div className="bg-white border rounded-lg p-4 space-y-3">
+                                            {item.responseBody.aiProvider && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">AI 服务提供商</label>
+                                                <div className="mt-1 text-sm text-gray-900">{item.responseBody.aiProvider}</div>
+                                              </div>
+                                            )}
+                                            {item.responseBody.model && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">AI 模型</label>
+                                                <div className="mt-1 text-sm text-gray-900">{item.responseBody.model}</div>
+                                              </div>
+                                            )}
+                                            {item.responseBody.answer && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">AI 回答</label>
+                                                <div className="mt-1 text-sm text-gray-900 bg-green-50 border border-green-200 rounded p-2 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto">
+                                                  {item.responseBody.answer}
+                                                </div>
+                                              </div>
+                                            )}
+                                            {item.responseBody.error && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">错误信息</label>
+                                                <div className="mt-1 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                                  {item.responseBody.error}
+                                                </div>
+                                              </div>
+                                            )}
+                                            {item.responseBody.timestamp && (
+                                              <div>
+                                                <label className="text-xs font-medium text-gray-600">时间戳</label>
+                                                <div className="mt-1 text-sm text-gray-900">{formatDate(item.responseBody.timestamp)}</div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
