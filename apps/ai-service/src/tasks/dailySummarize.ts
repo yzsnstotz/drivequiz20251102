@@ -100,7 +100,9 @@ export async function runDailySummarize(
 
     // 5) 生成摘要草案（让模型归纳常见问题、知识缺口与安全观察）
     const aiProvider = await getAiProviderFromConfig();
-    const openai = getOpenAIClient(config, aiProvider);
+    // Gemini 不支持，回退到 OpenAI
+    const finalProvider = aiProvider === "gemini" ? "openai" : aiProvider;
+    const openai = getOpenAIClient(config, finalProvider as "openai" | "openrouter");
     const model = resolveModel(config);
     const prompt = composePrompt(dateUtc, agg, ragContext);
 

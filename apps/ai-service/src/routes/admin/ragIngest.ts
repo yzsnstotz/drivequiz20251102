@@ -79,8 +79,12 @@ async function createEmbedding(
   config: ServiceConfig,
   text: string,
 ): Promise<number[]> {
-  const aiProvider = await getAiProviderFromConfig();
-  const openai = getOpenAIClient(config, aiProvider);
+  let aiProvider = await getAiProviderFromConfig();
+  // Gemini 不支持 embeddings，回退到 OpenAI
+  if (aiProvider === "gemini") {
+    aiProvider = "openai";
+  }
+  const openai = getOpenAIClient(config, aiProvider as "openai" | "openrouter");
   try {
     const resp = await openai.embeddings.create({
       model: EMBEDDING_MODEL,

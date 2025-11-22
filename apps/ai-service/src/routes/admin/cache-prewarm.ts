@@ -101,9 +101,12 @@ async function prewarmQuestion(
           .join("\n\n---\n\n")
       : "";
 
-    // 调用 OpenAI
-    const aiProvider = await getAiProviderFromConfig();
-    const openai = getOpenAIClient(config, aiProvider);
+    // 调用 AI Provider（Gemini 不支持，回退到 OpenAI）
+    let aiProvider = await getAiProviderFromConfig();
+    if (aiProvider === "gemini") {
+      aiProvider = "openai";
+    }
+    const openai = getOpenAIClient(config, aiProvider as "openai" | "openrouter");
     const sys = buildSystemPrompt(lang);
     const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
     const refPrefix =

@@ -6,7 +6,7 @@ import { cacheGet, cacheSet } from "../lib/cache.js";
 import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
-import { runScene, type AiServiceConfig } from "../lib/sceneRunner.js";
+import { runScene } from "../lib/sceneRunner.js";
 
 /** 请求体类型 */
 type AskBody = {
@@ -189,127 +189,6 @@ export function buildCacheKey(question: string, lang: string, model: string, sce
     parts.push(`to=${encodeURIComponent(targetLanguage)}`);
   }
   return `ask:v1:${parts.join(":")}`;
-}
-
-/**
- * 从 Supabase 读取场景配置
- * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.getSceneConfig
- */
-async function getSceneConfig(
-  sceneKey: string,
-  locale: string,
-  config: ServiceConfig
-): Promise<{ prompt: string; outputFormat: string | null } | null> {
-  const SUPABASE_URL = config.supabaseUrl;
-  const SUPABASE_SERVICE_KEY = config.supabaseServiceKey;
-
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    return null;
-  }
-
-  try {
-    const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
-    console.log("[AI-SERVICE] 读取场景配置:", { sceneKey, locale, url: url.substring(0, 100) + "..." });
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        apikey: SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!res.ok) {
-      console.warn("[AI-SERVICE] 场景配置请求失败:", { status: res.status, statusText: res.statusText });
-      return null;
-    }
-
-    const data = (await res.json()) as Array<{
-      system_prompt_zh: string;
-      system_prompt_ja: string | null;
-      system_prompt_en: string | null;
-      output_format: string | null;
-    }>;
-
-    if (!data || data.length === 0) {
-      console.warn("[AI-SERVICE] 场景配置不存在:", { sceneKey });
-      return null;
-    }
-
-    const sceneConfig = data[0];
-    const lang = locale.toLowerCase();
-
-    // 根据语言选择 prompt
-    let prompt = sceneConfig.system_prompt_zh;
-    if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
-      prompt = sceneConfig.system_prompt_ja;
-      console.log("[AI-SERVICE] 使用日文 prompt");
-    } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
-      prompt = sceneConfig.system_prompt_en;
-      console.log("[AI-SERVICE] 使用英文 prompt");
-    } else {
-      console.log("[AI-SERVICE] 使用中文 prompt (locale:", locale, "lang:", lang, ")");
-    }
-
-    const finalPrompt = prompt || sceneConfig.system_prompt_zh;
-    console.log("[AI-SERVICE] 场景配置读取成功:", { 
-      sceneKey, 
-      locale, 
-      promptLength: finalPrompt.length,
-      promptPreview: finalPrompt.substring(0, 100) + "..."
-    });
-
-    return {
-      prompt: finalPrompt,
-      outputFormat: sceneConfig.output_format,
-    };
-  } catch (error) {
-    console.error("[AI-SERVICE] 读取场景配置失败:", error instanceof Error ? error.message : String(error));
-    return null;
-  }
-}
-
-/**
- * 替换 prompt 中的占位符
- * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.replacePlaceholders
- */
-function replacePlaceholders(
-  prompt: string,
-  sourceLanguage?: string,
-  targetLanguage?: string
-): string {
-  let result = prompt;
-
-  // 替换 {sourceLanguage} 和 {源语言}
-  if (sourceLanguage) {
-    result = result.replace(/{sourceLanguage}/gi, sourceLanguage);
-    result = result.replace(/{源语言}/g, sourceLanguage);
-  }
-
-  // 替换 {targetLanguage} 和 {目标语言}
-  if (targetLanguage) {
-    result = result.replace(/{targetLanguage}/gi, targetLanguage);
-    result = result.replace(/{目标语言}/g, targetLanguage);
-  }
-
-  return result;
-}
-
-/** 
- * System Prompt（根据语言输出）
- * @deprecated 此函数已迁移到 sceneRunner.ts，场景执行应使用 sceneRunner.runScene
- */
-function buildSystemPrompt(lang: string): string {
-  const base =
-    "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
-  if (lang === "ja") {
-    return "あなたは ZALEM の運転免許学習アシスタントです。日本の交通法規と問題集の知識に基づいて、簡潔かつ正確に回答してください。推測や捏造は禁止し、関係のない内容は出力しないでください。";
-  }
-  if (lang === "en") {
-    return "You are ZALEM's driving-test study assistant. Answer based on Japan's traffic laws and question bank. Be concise and accurate. Do not fabricate or include unrelated content.";
-  }
-  return base;
 }
 
 export default async function askRoute(app: FastifyInstance): Promise<void> {
