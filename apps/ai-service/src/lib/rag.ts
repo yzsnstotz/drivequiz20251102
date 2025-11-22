@@ -47,10 +47,15 @@ function safeSlice(s: string, max = 3000): string {
 async function embedQuery(
   config: ServiceConfig,
   text: string,
-  aiProvider?: "openai" | "openrouter"
+  aiProvider?: "openai" | "openrouter" | "gemini"
 ): Promise<number[]> {
   // 如果未提供 aiProvider，才从配置读取（避免重复查询）
-  const provider = aiProvider || await getAiProviderFromConfig();
+  let provider = aiProvider || await getAiProviderFromConfig();
+  // Gemini 不支持 embeddings，使用 OpenAI/OpenRouter
+  if (provider === "gemini") {
+    // 回退到 OpenAI 进行 embeddings
+    provider = "openai" as const;
+  }
   const openai = getOpenAIClient(config, provider);
   const input = safeSlice(text, 3000);
   try {
@@ -151,7 +156,7 @@ export async function getRagContext(
   question: string,
   lang = "zh",
   config?: ServiceConfig,
-  aiProvider?: "openai" | "openrouter"
+  aiProvider?: "openai" | "openrouter" | "gemini"
 ): Promise<string> {
   try {
     if (!config) return "";
@@ -176,7 +181,7 @@ export async function ragSearch(
   topK = 3,
   threshold = 0.75,
   config?: ServiceConfig,
-  aiProvider?: "openai" | "openrouter"
+  aiProvider?: "openai" | "openrouter" | "gemini"
 ): Promise<SourceRef[]> {
   try {
     if (!config) return [];

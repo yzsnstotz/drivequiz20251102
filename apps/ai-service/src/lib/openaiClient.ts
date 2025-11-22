@@ -35,6 +35,7 @@ export function clearOpenAIClient(): void {
  * @returns OpenAI 客户端实例
  */
 export function getOpenAIClient(config: ServiceConfig, aiProvider: "openai" | "openrouter"): OpenAI {
+  
   let isOpenRouter: boolean;
   let baseUrl: string;
 

@@ -15,7 +15,6 @@
 
 // ⚠️ 注意：ServiceConfig 和 getOpenAIClient 只在 OpenAI provider 时使用
 // 使用动态导入，避免 local-ai-service 无法解析这些依赖
-type ServiceConfig = any; // 临时类型定义，避免直接导入
 let getOpenAIClient: any = null; // 将在需要时动态导入
 
 /**
@@ -36,6 +35,19 @@ export interface CommonConfig {
 }
 
 /**
+ * AI 服务配置接口（用于 runScene）
+ */
+export interface AiServiceConfig {
+  model: string;
+  openaiApiKey?: string;
+  openrouterApiKey?: string;
+  geminiApiKey?: string;
+  userPrefix: string;
+  refPrefix: string;
+  version?: string;
+}
+
+/**
  * 运行场景的选项
  */
 export interface RunSceneOptions {
@@ -48,7 +60,7 @@ export interface RunSceneOptions {
   config: CommonConfig;
   providerKind: "openai" | "ollama";
   // OpenAI 相关
-  aiProvider?: "openai" | "openrouter";
+  aiProvider?: "openai" | "openrouter" | "gemini";
   model?: string;
   // OpenAI ServiceConfig（仅当 providerKind === "openai" 时使用）
   // 注意：使用 any 类型避免 local-ai-service 无法解析 ServiceConfig 类型
@@ -312,12 +324,48 @@ export async function callModelWithProvider(
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     responseFormat?: { type: "json_object" };
     serviceConfig?: any; // 使用 any 避免 local-ai-service 无法解析 ServiceConfig
-    aiProvider?: "openai" | "openrouter";
+    aiProvider?: "openai" | "openrouter" | "gemini";
     ollamaBaseUrl?: string;
     temperature?: number;
   }
 ): Promise<{ text: string; tokens?: { prompt?: number; completion?: number; total?: number } }> {
   const { model, messages, responseFormat, serviceConfig, aiProvider = "openai", ollamaBaseUrl, temperature = 0.4 } = params;
+
+  // 处理 Gemini provider
+  if (aiProvider === "gemini") {
+    if (!serviceConfig) {
+      throw new Error("ServiceConfig is required for Gemini provider");
+    }
+    
+    // 动态导入 Gemini 客户端（避免 local-ai-service 无法解析）
+    let callGeminiChat: any = null;
+    try {
+      const geminiClientModule = await import("./geminiClient.js");
+      callGeminiChat = geminiClientModule.callGeminiChat;
+    } catch (error) {
+      throw new Error(`Failed to load Gemini client: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    
+    console.log("[SCENE-RUNNER] 调用 Gemini API:", {
+      provider: "gemini",
+      model,
+      messageCount: messages.length,
+      hasResponseFormat: !!responseFormat,
+      responseFormat,
+      temperature,
+    });
+    
+    const result = await callGeminiChat(serviceConfig, model, messages, temperature, responseFormat);
+    
+    console.log("[SCENE-RUNNER] Gemini API 调用成功:", {
+      model,
+      hasAnswer: !!result.text,
+      tokens: result.tokens,
+      usedResponseFormat: !!responseFormat,
+    });
+    
+    return result;
+  }
 
   if (providerKind === "openai") {
     // OpenAI/OpenRouter 调用

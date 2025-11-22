@@ -18,7 +18,7 @@
 // 配置缓存（5分钟过期）
 const CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5分钟
 
-type NormalizedProvider = "openai" | "openrouter" | "local" | "openrouter_direct";
+type NormalizedProvider = "openai" | "openrouter" | "gemini" | "local" | "openrouter_direct";
 
 type ConfigCache = {
   model?: string;
@@ -121,12 +121,15 @@ export async function getModelFromConfig(): Promise<string> {
  * 获取当前配置的 AI 提供商
  * 优先从数据库读取，如果失败则抛出错误
  */
-export async function getAiProviderFromConfig(): Promise<"openai" | "openrouter"> {
+export async function getAiProviderFromConfig(): Promise<"openai" | "openrouter" | "gemini"> {
   // 检查缓存是否有效
   const now = Date.now();
   if (configCache && now - configCache.lastUpdated < CONFIG_CACHE_TTL) {
     if (configCache.aiProvider && isRemoteProvider(configCache.aiProvider)) {
       return mapRemoteProvider(configCache.aiProvider);
+    }
+    if (configCache.aiProvider === "gemini") {
+      return "gemini";
     }
   }
 
@@ -145,13 +148,17 @@ export async function getAiProviderFromConfig(): Promise<"openai" | "openrouter"
       return mapRemoteProvider(normalized);
     }
 
+    if (normalized === "gemini") {
+      return "gemini";
+    }
+
     if (normalized === "local") {
       throw new Error("AI provider is set to 'local', remote AI service should not be accessed.");
     }
     throw new Error(`Unsupported aiProvider value: ${dbConfig.aiProvider}`);
   }
 
-  throw new Error("AI provider is not configured. Please set ai_config.aiProvider to 'openai' or 'openrouter'.");
+  throw new Error("AI provider is not configured. Please set ai_config.aiProvider to 'openai', 'openrouter', or 'gemini'.");
 }
 
 /**
@@ -210,6 +217,8 @@ function normalizeProvider(value: string | undefined): NormalizedProvider | unde
       return "openai";
     case "openrouter":
       return "openrouter";
+    case "gemini":
+      return "gemini";
     case "local":
       return "local";
     case "openrouter-direct":
@@ -221,7 +230,7 @@ function normalizeProvider(value: string | undefined): NormalizedProvider | unde
 }
 
 function isRemoteProvider(provider: NormalizedProvider): provider is "openai" | "openrouter" | "openrouter_direct" {
-  return provider !== "local";
+  return provider !== "local" && provider !== "gemini";
 }
 
 function mapRemoteProvider(provider: "openai" | "openrouter" | "openrouter_direct"): "openai" | "openrouter" {

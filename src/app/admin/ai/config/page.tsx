@@ -10,7 +10,7 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
-  aiProvider: "render" | "local"; // 简化：只支持 render 和 local
+  aiProvider: "render" | "local" | "openai" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini" | "gemini_direct" | "strategy";
   aiModelProvider?: "openai" | "openrouter" | "gemini"; // 当 aiProvider 为 render 时，选择具体的大模型提供商
   timeoutOpenai?: number;
   timeoutOpenaiDirect?: number;
@@ -18,6 +18,12 @@ type Config = {
   timeoutOpenrouterDirect?: number;
   timeoutGeminiDirect?: number;
   timeoutLocal?: number;
+};
+
+type ModelOption = {
+  id: string;
+  name: string;
+  description?: string;
 };
 
 type ConfigResp = {
@@ -97,10 +103,52 @@ export default function AdminAiConfigPage() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<"basic" | "providers" | "timeout">("basic");
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
 
   useEffect(() => {
     loadConfig();
   }, []);
+
+  // 当 aiProvider 改变时，加载对应的模型列表
+  useEffect(() => {
+    const loadModels = async () => {
+      // 只对需要动态加载的 provider 获取模型列表
+      if (
+        config.aiProvider === "gemini" ||
+        config.aiProvider === "gemini_direct" ||
+        config.aiProvider === "openrouter" ||
+        config.aiProvider === "openrouter_direct"
+      ) {
+        setLoadingModels(true);
+        try {
+          const base = getBaseUrl();
+          const token = getAuthToken();
+          const res = await fetch(
+            `${base}/api/admin/ai/models?provider=${config.aiProvider}`,
+            {
+              cache: "no-store",
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            }
+          );
+          const data = await res.json();
+          if (data.ok && data.data?.models) {
+            setAvailableModels(data.data.models);
+          }
+        } catch (err) {
+          console.error("Failed to load models:", err);
+          setAvailableModels([]);
+        } finally {
+          setLoadingModels(false);
+        }
+      } else {
+        // 其他 provider 使用静态列表，清空动态列表
+        setAvailableModels([]);
+      }
+    };
+
+    loadModels();
+  }, [config.aiProvider]);
 
   const loadConfig = async () => {
     setLoading(true);
@@ -121,6 +169,7 @@ export default function AdminAiConfigPage() {
             data.aiProvider === "openrouter" ||
             data.aiProvider === "openrouter_direct" ||
             data.aiProvider === "openai_direct" ||
+            data.aiProvider === "gemini" ||
             data.aiProvider === "gemini_direct" ||
             data.aiProvider === "strategy"
               ? data.aiProvider
@@ -269,43 +318,69 @@ export default function AdminAiConfigPage() {
                 value={config.model}
                 onChange={(e) => setConfig({ ...config, model: e.target.value })}
                 className="w-full border rounded px-3 py-2"
-                disabled={config.aiProvider === "local" || config.aiProvider === "strategy"}
+                disabled={config.aiProvider === "local" || config.aiProvider === "strategy" || loadingModels}
               >
-                {config.aiProvider === "openai" || config.aiProvider === "openai_direct" ? (
+                {loadingModels ? (
+                  <option value="">加载模型中...</option>
+                ) : config.aiProvider === "openai" || config.aiProvider === "openai_direct" ? (
                   <>
                     <option value="gpt-4o-mini">gpt-4o-mini</option>
                     <option value="gpt-4o">gpt-4o</option>
                     <option value="gpt-4-turbo">gpt-4-turbo</option>
                     <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                   </>
-                ) : config.aiProvider === "gemini_direct" ? (
-                  <>
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (推荐)</option>
-                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                    <option value="gemini-2.0-flash-001">Gemini 2.0 Flash 001</option>
-                    {/* 旧模型名称（已停用，会自动映射到新模型） */}
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (已停用，将映射到 2.5 Flash)</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (已停用，将映射到 2.5 Pro)</option>
-                  </>
+                ) : config.aiProvider === "gemini" || config.aiProvider === "gemini_direct" ? (
+                  availableModels.length > 0 ? (
+                    availableModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} {model.description ? `- ${model.description}` : ""}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      {/* 默认模型列表（当 API 加载失败时使用） */}
+                      <option value="gemini-3.0-pro">Gemini 3.0 Pro (最新，推荐)</option>
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                      <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                      <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                      <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                      <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
+                      <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                      <option value="gemini-2.5-pro-preview">Gemini 2.5 Pro Preview</option>
+                      <option value="gemini-2.5-flash-preview-09-2025">Gemini 2.5 Flash Preview 09-2025</option>
+                      {/* 旧模型（向后兼容） */}
+                      <option value="gemini-1.5-flash">Gemini 1.5 Flash (已停用，将映射到 2.5 Flash)</option>
+                      <option value="gemini-1.5-pro">Gemini 1.5 Pro (已停用，将映射到 2.5 Pro)</option>
+                      <option value="gemini-pro">Gemini Pro (已停用，将映射到 2.5 Pro)</option>
+                    </>
+                  )
                 ) : (config.aiProvider === "openrouter" || config.aiProvider === "openrouter_direct") ? (
-                  <>
-                    <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>
-                    <option value="openai/gpt-4o">OpenAI GPT-4o</option>
-                    <option value="openai/gpt-4-turbo">OpenAI GPT-4 Turbo</option>
-                    <option value="openai/gpt-3.5-turbo">OpenAI GPT-3.5 Turbo</option>
-                    <option value="anthropic/claude-3.5-sonnet">Anthropic Claude 3.5 Sonnet</option>
-                    <option value="anthropic/claude-3-opus">Anthropic Claude 3 Opus</option>
-                    <option value="anthropic/claude-3-haiku">Anthropic Claude 3 Haiku</option>
-                    <option value="google/gemini-pro">Google Gemini Pro</option>
-                    <option value="google/gemini-pro-1.5">Google Gemini Pro 1.5</option>
-                    <option value="meta-llama/llama-3.1-70b-instruct">Meta Llama 3.1 70B</option>
-                    <option value="meta-llama/llama-3.1-8b-instruct">Meta Llama 3.1 8B</option>
-                    <option value="mistralai/mistral-7b-instruct">Mistral 7B Instruct</option>
-                    <option value="mistralai/mixtral-8x7b-instruct">Mistral Mixtral 8x7B</option>
-                    <option value="qwen/qwen-2.5-7b-instruct">Qwen 2.5 7B Instruct</option>
-                    <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B Instruct</option>
-                  </>
+                  availableModels.length > 0 ? (
+                    availableModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} {model.description ? `- ${model.description}` : ""}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      {/* 默认模型列表（当 API 加载失败时使用） */}
+                      <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>
+                      <option value="openai/gpt-4o">OpenAI GPT-4o</option>
+                      <option value="openai/gpt-4-turbo">OpenAI GPT-4 Turbo</option>
+                      <option value="openai/gpt-3.5-turbo">OpenAI GPT-3.5 Turbo</option>
+                      <option value="anthropic/claude-3.5-sonnet">Anthropic Claude 3.5 Sonnet</option>
+                      <option value="anthropic/claude-3-opus">Anthropic Claude 3 Opus</option>
+                      <option value="anthropic/claude-3-haiku">Anthropic Claude 3 Haiku</option>
+                      <option value="google/gemini-pro">Google Gemini Pro</option>
+                      <option value="google/gemini-pro-1.5">Google Gemini Pro 1.5</option>
+                      <option value="meta-llama/llama-3.1-70b-instruct">Meta Llama 3.1 70B</option>
+                      <option value="meta-llama/llama-3.1-8b-instruct">Meta Llama 3.1 8B</option>
+                      <option value="mistralai/mistral-7b-instruct">Mistral 7B Instruct</option>
+                      <option value="mistralai/mixtral-8x7b-instruct">Mistral Mixtral 8x7B</option>
+                      <option value="qwen/qwen-2.5-7b-instruct">Qwen 2.5 7B Instruct</option>
+                      <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B Instruct</option>
+                    </>
+                  )
                 ) : (
                   <>
                     <option value="llama3.2:3b">llama3.2:3b</option>
@@ -322,12 +397,14 @@ export default function AdminAiConfigPage() {
                   ? "当前使用的 OpenAI 模型（通过 Render）"
                   : config.aiProvider === "openai_direct"
                   ? "当前使用的 OpenAI 模型（直连，不通过 Render）"
+                  : config.aiProvider === "gemini"
+                  ? "当前使用的 Google Gemini 模型（通过 Render），模型列表已自动更新"
                   : config.aiProvider === "gemini_direct"
-                  ? "当前使用的 Google Gemini 模型（直连，不通过 Render）"
+                  ? "当前使用的 Google Gemini 模型（直连，不通过 Render），模型列表已自动更新"
                   : config.aiProvider === "openrouter"
-                  ? "当前使用的 OpenRouter 模型（通过 Render，支持多种 AI 服务商）"
+                  ? "当前使用的 OpenRouter 模型（通过 Render，支持多种 AI 服务商），模型列表已自动更新"
                   : config.aiProvider === "openrouter_direct"
-                  ? "当前使用的 OpenRouter 模型（直连，不通过 Render，支持多种 AI 服务商）"
+                  ? "当前使用的 OpenRouter 模型（直连，不通过 Render，支持多种 AI 服务商），模型列表已自动更新"
                   : config.aiProvider === "strategy"
                   ? "使用调用策略时，模型由策略配置决定，此处显示为参考"
                   : "本地 AI 模型由 Ollama 服务配置，此处仅显示（不可修改）"}
@@ -388,15 +465,15 @@ export default function AdminAiConfigPage() {
               <select
                 value={config.aiProvider}
                 onChange={(e) => {
-                  const newProvider = e.target.value as "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct" | "strategy";
+                  const newProvider = e.target.value as "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini" | "gemini_direct" | "strategy";
                   // 切换服务提供商时，自动设置对应的默认模型
                   const defaultModel = 
                     newProvider === "strategy"
                       ? config.model // 使用策略时保持当前模型
                       : newProvider === "openai" || newProvider === "openai_direct"
                       ? "gpt-4o-mini"
-                      : newProvider === "gemini_direct"
-                      ? "gemini-pro"
+                      : newProvider === "gemini" || newProvider === "gemini_direct"
+                      ? "gemini-2.5-flash"
                       : (newProvider === "openrouter" || newProvider === "openrouter_direct")
                       ? "openai/gpt-4o-mini"
                     : "llama3.2:3b";
@@ -407,6 +484,7 @@ export default function AdminAiConfigPage() {
                 <option value="strategy">使用调用策略</option>
                 <option value="openai">OpenAI（通过 Render）</option>
                 <option value="openai_direct">直连 OpenAI</option>
+                <option value="gemini">Google Gemini（通过 Render）</option>
                 <option value="gemini_direct">直连 Google Gemini</option>
                 <option value="openrouter">OpenRouter（通过 Render）</option>
                 <option value="openrouter_direct">直连 OpenRouter</option>
@@ -419,6 +497,8 @@ export default function AdminAiConfigPage() {
                   ? "使用 OpenAI 服务（通过 Render），需要配置 AI_SERVICE_URL 和 AI_SERVICE_TOKEN"
                   : config.aiProvider === "openai_direct"
                   ? "使用 OpenAI 服务（直连，不通过 Render），需要配置 OPENAI_API_KEY 和 OPENAI_BASE_URL"
+                  : config.aiProvider === "gemini"
+                  ? "使用 Google Gemini 服务（通过 Render），需要配置 AI_SERVICE_URL、AI_SERVICE_TOKEN 和 GEMINI_API_KEY"
                   : config.aiProvider === "gemini_direct"
                   ? "使用 Google Gemini 服务（直连，不通过 Render），需要配置 GEMINI_API_KEY 和 GEMINI_BASE_URL（可选，默认为 https://generativelanguage.googleapis.com/v1beta）"
                   : config.aiProvider === "openrouter"

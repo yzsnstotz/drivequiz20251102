@@ -6,7 +6,7 @@ import { cacheGet, cacheSet } from "../lib/cache.js";
 import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
-import { runScene, type AiServiceConfig } from "@zalem/ai-core";
+import { runScene, type AiServiceConfig } from "../lib/sceneRunner.js";
 
 /** 请求体类型 */
 type AskBody = {
@@ -396,8 +396,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         // 获取 aiProvider（用于 RAG 检索）
         // 注意：HTTP 头名称是大小写不敏感的，但 Fastify 会将其转换为小写
         const headerProvider = (request.headers["x-ai-provider"] || request.headers["X-AI-Provider"]) as string | undefined;
-        const aiProviderPromise = (async (): Promise<"openai" | "openrouter"> => {
-          if (headerProvider === "openai" || headerProvider === "openrouter") {
+        const aiProviderPromise = (async (): Promise<"openai" | "openrouter" | "gemini"> => {
+          if (headerProvider === "openai" || headerProvider === "openrouter" || headerProvider === "gemini") {
             console.log("[ASK ROUTE] AI provider from header", { 
               aiProvider: headerProvider,
               rawHeader: request.headers["x-ai-provider"] || request.headers["X-AI-Provider"],
@@ -466,16 +466,6 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             aiProvider,
           });
           
-          // 构建 AiServiceConfig（最小接口）
-          const aiServiceConfig: AiServiceConfig = {
-            model: model || config.aiModel || "gpt-4o-mini",
-            openaiApiKey: config.openaiApiKey,
-            openrouterApiKey: config.openrouterApiKey,
-            userPrefix,
-            refPrefix,
-            version: config.version,
-          };
-
           // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
           sceneResult = await runScene({
             sceneKey: scene, // ✅ 确保 scene 从解构中获取，不是自由变量
@@ -484,12 +474,13 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             reference: reference || null,
             userPrefix,
             refPrefix,
-            supabaseConfig: {
+            config: {
               supabaseUrl: config.supabaseUrl,
               supabaseServiceKey: config.supabaseServiceKey,
+              aiModel: model,
             },
             providerKind: "openai",
-            config: aiServiceConfig,
+            serviceConfig: config,
             aiProvider,
             model,
             sourceLanguage: sourceLanguage || null,

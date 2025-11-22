@@ -16,6 +16,7 @@ export type ServiceConfig = {
   aiModel: string;
   openaiApiKey: string;
   openrouterApiKey?: string; // OpenRouter API key（可选）
+  geminiApiKey?: string; // Gemini API key（可选）
   supabaseUrl: string;
   supabaseServiceKey: string;
   cacheRedisUrl?: string;
@@ -49,6 +50,7 @@ export function loadConfig(): ServiceConfig {
     AI_MODEL,
     OPENAI_API_KEY,
     OPENROUTER_API_KEY,
+    GEMINI_API_KEY,
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY,
     AI_CACHE_REDIS_URL,
@@ -135,6 +137,7 @@ export function loadConfig(): ServiceConfig {
     aiModel: AI_MODEL || "gpt-4o-mini",
     openaiApiKey: OPENAI_API_KEY as string,
     openrouterApiKey: OPENROUTER_API_KEY,
+    geminiApiKey: GEMINI_API_KEY,
     supabaseUrl: SUPABASE_URL as string,
     supabaseServiceKey: SUPABASE_SERVICE_KEY as string,
     cacheRedisUrl: AI_CACHE_REDIS_URL,
