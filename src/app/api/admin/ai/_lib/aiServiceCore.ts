@@ -90,19 +90,4 @@ export async function callAiServiceCore(params: {
     errorCode: answer ? undefined : "AI_SERVICE_ERROR",
     message: answer ? undefined : "AI service returned empty answer",
   };
-
-  // 直接调用用户接口的 AI 服务核心函数
-  // 但设置 userId=null 和 isAnonymous=false，跳过用户配额检查
-  // 这样后台请求就不会经过用户接口，也不会触发配额限制
-  return await callAiServiceCoreFromUserLib({
-    question,
-    locale,
-    scene,
-    sourceLanguage,
-    targetLanguage,
-    requestId,
-    timeout,
-    userId: null, // 后台调用不使用用户ID，跳过配额检查
-    isAnonymous: false, // 后台调用不是匿名用户
-  });
 }
