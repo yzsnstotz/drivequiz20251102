@@ -47,7 +47,7 @@ async function getTaskItems(
     }
 
     if (status) {
-      query = query.where("status", "=", status);
+      query = query.where("status", "=", status as any);
     }
 
     if (targetLang) {
