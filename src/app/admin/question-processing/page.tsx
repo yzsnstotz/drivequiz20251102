@@ -1882,7 +1882,7 @@ export default function QuestionProcessingPage() {
                   
                   {/* AI 对话详情 - 从子任务详细信息中显示 */}
                   {(() => {
-                    const detailsArray = getDetailsArray(selectedTask.details);
+                    const detailsArray = getDetailsArray((selectedTask as any).details);
                     const validDetails = detailsArray.filter((d: any) => d && !d.summary && d.subtasks && Array.isArray(d.subtasks) && d.subtasks.length > 0);
                     return validDetails.length > 0;
                   })() && (
@@ -1891,7 +1891,7 @@ export default function QuestionProcessingPage() {
                         AI 服务对话详情（所有操作）
                       </label>
                       <div className="mt-2 max-h-96 overflow-y-auto border rounded p-3 bg-gray-50 space-y-4">
-                        {getDetailsArray(selectedTask.details)
+                        {getDetailsArray((selectedTask as any).details)
                           .filter((d: any) => d && !d.summary && d.subtasks && Array.isArray(d.subtasks) && d.subtasks.length > 0)
                           .map((detail: any, detailIdx: number) => (
                             <div key={detailIdx} className="border-b border-gray-200 pb-4 last:border-b-0">
@@ -1981,13 +1981,13 @@ export default function QuestionProcessingPage() {
                             questionId: item.questionId,
                             error: item.errorMessage || ""
                           }))
-                      : // 如果没有 selectedTaskItems，尝试从 selectedTask.errors 获取（兼容旧数据结构）
+                      : // 如果没有 selectedTaskItems，尝试从 (selectedTask as any).errors 获取（兼容旧数据结构）
                         (selectedTask as any)?.errors || null
                   }
                 />
 
                 {/* 任务完成简报 */}
-                {selectedTask.status === "completed" && selectedTask.summary && (
+                {selectedTask.status === "completed" && (selectedTask as any).summary && (
                   <div className="col-span-2 border-t pt-4 mt-4">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">任务完成简报</h3>
                     
@@ -2121,7 +2121,7 @@ export default function QuestionProcessingPage() {
 
                 {/* 详情列表 */}
                 {(() => {
-                  const detailsArray = getDetailsArray(selectedTask.details);
+                  const detailsArray = getDetailsArray((selectedTask as any).details);
                   const validDetails = detailsArray.filter((d: any) => d && !d.summary);
                   return validDetails.length > 0;
                 })() && (
@@ -2209,7 +2209,7 @@ export default function QuestionProcessingPage() {
                         </div>
                       ))}
                       {(() => {
-                        const detailsArray = getDetailsArray(selectedTask.details);
+                        const detailsArray = getDetailsArray((selectedTask as any).details);
                         return detailsArray.length > 10;
                       })() && (
                         <div className="text-xs text-gray-500 mt-2 text-center">
