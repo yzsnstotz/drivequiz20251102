@@ -490,7 +490,7 @@ export const POST = withAdminAuth(async (req: Request) => {
           message: `🔥 About to call processBatchAsync...`,
         });
         
-        await processBatchAsync(requestId, taskId, questionIdsToProcess, input, results, adminToken);
+        await processBatchAsync(requestId, taskId, questionIdsToProcess || null, input, results, adminToken);
         console.log(`[API BatchProcess] [${requestId}] ✅ processBatchAsync completed successfully`);
         
         // 记录完成日志
