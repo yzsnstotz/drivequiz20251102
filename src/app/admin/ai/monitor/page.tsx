@@ -431,8 +431,16 @@ export default function AdminAiMonitorPage() {
   const topQuestions = d?.topQuestions || [];
 
   // 计算 locales 饼图数据
-  const localeEntries = Object.entries(locales).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const localeTotal = Object.values(locales).reduce((sum, v) => sum + v, 0);
+  // 确保 locales 的值都是数字
+  const normalizedLocales = Object.entries(locales).reduce((acc, [key, value]) => {
+    const numValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : 0;
+    if (numValue > 0) {
+      acc[key] = numValue;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+  const localeEntries = Object.entries(normalizedLocales).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const localeTotal = Object.values(normalizedLocales).reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0);
 
   // 检查是否有实际数据（避免渲染空对象）
   const hasData = d && typeof d === "object" && Object.keys(d).length > 0;
@@ -716,10 +724,12 @@ export default function AdminAiMonitorPage() {
           <div className="border rounded-lg p-4">
             <div className="space-y-2">
               {localeEntries.map(([locale, count]) => {
-                const percentage = localeTotal > 0 ? ((count / localeTotal) * 100).toFixed(1) : "0";
+                // 确保 count 是数字
+                const countNum = typeof count === "number" ? count : typeof count === "string" ? Number(count) : 0;
+                const percentage = localeTotal > 0 ? ((countNum / localeTotal) * 100).toFixed(1) : "0";
                 return (
                   <div key={locale} className="flex items-center gap-2">
-                    <div className="text-sm font-medium w-20">{locale}</div>
+                    <div className="text-sm font-medium w-20">{String(locale)}</div>
                     <div className="flex-1 bg-gray-200 rounded-full h-4 relative">
                       <div
                         className="bg-blue-500 h-4 rounded-full"
@@ -727,7 +737,7 @@ export default function AdminAiMonitorPage() {
                       />
                     </div>
                     <div className="text-sm text-neutral-600 w-20 text-right">
-                      {count} ({percentage}%)
+                      {countNum} ({percentage}%)
                     </div>
                   </div>
                 );
@@ -742,10 +752,22 @@ export default function AdminAiMonitorPage() {
               <ul className="list-disc pl-6">
                 {topQuestions.length > 0 ? (
                   topQuestions.map((x, i) => {
-                    const question = "q" in x ? x.q : x.question;
+                    // 确保 question 是字符串
+                    const questionRaw = "q" in x ? x.q : x.question;
+                    const question = typeof questionRaw === "string" 
+                      ? questionRaw 
+                      : typeof questionRaw === "object" 
+                        ? JSON.stringify(questionRaw) 
+                        : String(questionRaw || "");
+                    // 确保 count 是数字
+                    const count = typeof x.count === "number" 
+                      ? x.count 
+                      : typeof x.count === "string" 
+                        ? Number(x.count) 
+                        : 0;
                     return (
                       <li key={i} className="text-sm">
-                        {question} <span className="text-neutral-400">({x.count})</span>
+                        {question} <span className="text-neutral-400">({count})</span>
                       </li>
                     );
                   })
