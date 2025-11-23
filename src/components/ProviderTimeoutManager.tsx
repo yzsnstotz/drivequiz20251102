@@ -118,7 +118,7 @@ export default function ProviderTimeoutManager() {
       if (resp.ok && resp.data) {
         const data = resp.data;
         setConfigs(
-          PROVIDER_TIMEOUT_CONFIGS.map((config) => ({
+          PROVIDER_TIMEOUT_CONFIGS.map((config): TimeoutConfig => ({
             ...config,
             timeout:
               typeof data[config.provider] === "string"
