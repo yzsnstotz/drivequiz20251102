@@ -120,12 +120,16 @@ export default function ProviderTimeoutManager() {
         setConfigs(
           PROVIDER_TIMEOUT_CONFIGS.map((config): TimeoutConfig => ({
             ...config,
-            timeout:
-              typeof data[config.provider] === "string"
-                ? Number(data[config.provider])
-                : typeof data[config.provider] === "number"
-                ? data[config.provider]
-                : config.defaultTimeout,
+            timeout: (() => {
+              const value = data[config.provider];
+              if (typeof value === "string") {
+                return Number(value);
+              } else if (typeof value === "number") {
+                return value;
+              } else {
+                return config.defaultTimeout;
+              }
+            })(),
           }))
         );
       } else {
