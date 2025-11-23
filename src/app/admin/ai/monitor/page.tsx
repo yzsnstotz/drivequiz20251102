@@ -443,16 +443,28 @@ export default function AdminAiMonitorPage() {
 
   // 过滤和规范化 topQuestions，确保所有元素都是有效对象
   const topQuestions = Array.isArray(topQuestionsRaw) 
-    ? topQuestionsRaw.filter((x): x is { q?: string; question?: string; count: number } => {
-        if (!x || typeof x !== "object") return false;
-        const hasQuestion = ("q" in x && x.q) || ("question" in x && x.question);
-        const hasCount = "count" in x && (typeof x.count === "number" || typeof x.count === "string");
-        return !!(hasQuestion && hasCount);
-      }).map((x) => ({
-        q: "q" in x ? (typeof x.q === "string" ? x.q : String(x.q || "")) : undefined,
-        question: "question" in x ? (typeof x.question === "string" ? x.question : String(x.question || "")) : undefined,
-        count: typeof x.count === "number" ? x.count : typeof x.count === "string" ? Number(x.count) || 0 : 0,
-      }))
+    ? topQuestionsRaw
+        .filter((x): boolean => {
+          if (!x || typeof x !== "object") return false;
+          const hasQuestion = ("q" in x && x.q) || ("question" in x && x.question);
+          const hasCount = "count" in x && (typeof x.count === "number" || typeof x.count === "string");
+          return !!(hasQuestion && hasCount);
+        })
+        .map((x): { q: string; count: number } | { question: string; count: number } => {
+          const q = "q" in x ? (typeof x.q === "string" ? x.q : String(x.q || "")) : undefined;
+          const question = "question" in x ? (typeof x.question === "string" ? x.question : String(x.question || "")) : undefined;
+          const count = typeof x.count === "number" ? x.count : typeof x.count === "string" ? Number(x.count) || 0 : 0;
+          
+          // 优先使用 q，如果没有则使用 question
+          if (q) {
+            return { q, count };
+          } else if (question) {
+            return { question, count };
+          } else {
+            // 兜底：返回一个有效的对象
+            return { q: "", count };
+          }
+        })
     : [];
 
   // 计算 locales 饼图数据
