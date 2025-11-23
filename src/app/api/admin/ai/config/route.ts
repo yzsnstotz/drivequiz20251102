@@ -41,6 +41,7 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
         "timeout_openai_direct",
         "timeout_openrouter",
         "timeout_openrouter_direct",
+        "timeout_gemini",
         "timeout_gemini_direct",
         "timeout_local",
         "rate_limit_openai_max",
@@ -51,6 +52,8 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
         "rate_limit_openrouter_time_window",
         "rate_limit_openrouter_direct_max",
         "rate_limit_openrouter_direct_time_window",
+        "rate_limit_gemini_max",
+        "rate_limit_gemini_time_window",
         "rate_limit_gemini_direct_max",
         "rate_limit_gemini_direct_time_window",
         "rate_limit_local_max",
@@ -76,6 +79,7 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       timeoutOpenaiDirect: config.timeout_openai_direct || "30000",
       timeoutOpenrouter: config.timeout_openrouter || "30000",
       timeoutOpenrouterDirect: config.timeout_openrouter_direct || "30000",
+      timeoutGemini: config.timeout_gemini || "30000",
       timeoutGeminiDirect: config.timeout_gemini_direct || "30000",
       timeoutLocal: config.timeout_local || "120000",
       rateLimitOpenaiMax: config.rate_limit_openai_max || "60",
@@ -86,6 +90,8 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       rateLimitOpenrouterTimeWindow: config.rate_limit_openrouter_time_window || "60",
       rateLimitOpenrouterDirectMax: config.rate_limit_openrouter_direct_max || "60",
       rateLimitOpenrouterDirectTimeWindow: config.rate_limit_openrouter_direct_time_window || "60",
+      rateLimitGeminiMax: config.rate_limit_gemini_max || "60",
+      rateLimitGeminiTimeWindow: config.rate_limit_gemini_time_window || "60",
       rateLimitGeminiDirectMax: config.rate_limit_gemini_direct_max || "60",
       rateLimitGeminiDirectTimeWindow: config.rate_limit_gemini_direct_time_window || "60",
       rateLimitLocalMax: config.rate_limit_local_max || "120",
@@ -124,11 +130,12 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           model?: string;
           cacheTtl?: number;
           costAlertUsdThreshold?: number;
-          aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct" | "strategy";
+          aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini" | "gemini_direct" | "strategy";
           timeoutOpenai?: number;
           timeoutOpenaiDirect?: number;
           timeoutOpenrouter?: number;
           timeoutOpenrouterDirect?: number;
+          timeoutGemini?: number;
           timeoutGeminiDirect?: number;
           timeoutLocal?: number;
           rateLimitOpenaiMax?: number;
@@ -139,6 +146,8 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           rateLimitOpenrouterTimeWindow?: number;
           rateLimitOpenrouterDirectMax?: number;
           rateLimitOpenrouterDirectTimeWindow?: number;
+          rateLimitGeminiMax?: number;
+          rateLimitGeminiTimeWindow?: number;
           rateLimitGeminiDirectMax?: number;
           rateLimitGeminiDirectTimeWindow?: number;
           rateLimitLocalMax?: number;
@@ -199,10 +208,11 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         body.aiProvider !== "openrouter" &&
         body.aiProvider !== "openrouter_direct" &&
         body.aiProvider !== "openai_direct" &&
+        body.aiProvider !== "gemini" &&
         body.aiProvider !== "gemini_direct" &&
         body.aiProvider !== "strategy"
       ) {
-        return badRequest("aiProvider must be either 'strategy', 'openai', 'local', 'openrouter', 'openrouter_direct', 'openai_direct', or 'gemini_direct'.");
+        return badRequest("aiProvider must be either 'strategy', 'openai', 'local', 'openrouter', 'openrouter_direct', 'openai_direct', 'gemini', or 'gemini_direct'.");
       }
       updates.push({ key: "aiProvider", value: body.aiProvider });
     }
@@ -238,6 +248,14 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         return badRequest("timeoutOpenrouterDirect must be a number between 1000 and 600000 (1秒到10分钟).");
       }
       updates.push({ key: "timeout_openrouter_direct", value: String(timeout) });
+    }
+
+    if (body.timeoutGemini !== undefined) {
+      const timeout = Number(body.timeoutGemini);
+      if (isNaN(timeout) || timeout < 1000 || timeout > 600000) {
+        return badRequest("timeoutGemini must be a number between 1000 and 600000 (1秒到10分钟).");
+      }
+      updates.push({ key: "timeout_gemini", value: String(timeout) });
     }
 
     if (body.timeoutGeminiDirect !== undefined) {
@@ -319,6 +337,22 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         return badRequest("rateLimitOpenrouterDirectTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
       }
       updates.push({ key: "rate_limit_openrouter_direct_time_window", value: String(timeWindow) });
+    }
+
+    if (body.rateLimitGeminiMax !== undefined) {
+      const max = Number(body.rateLimitGeminiMax);
+      if (isNaN(max) || max < 1 || max > 10000) {
+        return badRequest("rateLimitGeminiMax must be a number between 1 and 10000.");
+      }
+      updates.push({ key: "rate_limit_gemini_max", value: String(max) });
+    }
+
+    if (body.rateLimitGeminiTimeWindow !== undefined) {
+      const timeWindow = Number(body.rateLimitGeminiTimeWindow);
+      if (isNaN(timeWindow) || timeWindow < 1 || timeWindow > 3600) {
+        return badRequest("rateLimitGeminiTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
+      }
+      updates.push({ key: "rate_limit_gemini_time_window", value: String(timeWindow) });
     }
 
     if (body.rateLimitGeminiDirectMax !== undefined) {
@@ -417,6 +451,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         "timeout_openai_direct",
         "timeout_openrouter",
         "timeout_openrouter_direct",
+        "timeout_gemini",
         "timeout_gemini_direct",
         "timeout_local",
         "rate_limit_openai_max",
@@ -427,6 +462,8 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         "rate_limit_openrouter_time_window",
         "rate_limit_openrouter_direct_max",
         "rate_limit_openrouter_direct_time_window",
+        "rate_limit_gemini_max",
+        "rate_limit_gemini_time_window",
         "rate_limit_gemini_direct_max",
         "rate_limit_gemini_direct_time_window",
         "rate_limit_local_max",
@@ -450,6 +487,7 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       timeoutOpenaiDirect: configMap.timeout_openai_direct || "30000",
       timeoutOpenrouter: configMap.timeout_openrouter || "30000",
       timeoutOpenrouterDirect: configMap.timeout_openrouter_direct || "30000",
+      timeoutGemini: configMap.timeout_gemini || "30000",
       timeoutGeminiDirect: configMap.timeout_gemini_direct || "30000",
       timeoutLocal: configMap.timeout_local || "120000",
       rateLimitOpenaiMax: configMap.rate_limit_openai_max || "60",
@@ -460,6 +498,8 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       rateLimitOpenrouterTimeWindow: configMap.rate_limit_openrouter_time_window || "60",
       rateLimitOpenrouterDirectMax: configMap.rate_limit_openrouter_direct_max || "60",
       rateLimitOpenrouterDirectTimeWindow: configMap.rate_limit_openrouter_direct_time_window || "60",
+      rateLimitGeminiMax: configMap.rate_limit_gemini_max || "60",
+      rateLimitGeminiTimeWindow: configMap.rate_limit_gemini_time_window || "60",
       rateLimitGeminiDirectMax: configMap.rate_limit_gemini_direct_max || "60",
       rateLimitGeminiDirectTimeWindow: configMap.rate_limit_gemini_direct_time_window || "60",
       rateLimitLocalMax: configMap.rate_limit_local_max || "120",

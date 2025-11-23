@@ -170,6 +170,7 @@ docs/问题修复/<问题文件夹>/执行报告/<任务名>_执行报告.md
 - `openai_direct` (直连)
 - `openrouter` (通过 Render)
 - `openrouter_direct` (直连)
+- `gemini` (通过 Render)
 - `gemini_direct` (直连)
 - `local` (本地 AI)
 
@@ -195,7 +196,7 @@ npm install @fastify/rate-limit
 - 从 `ai_config` 表读取频率限制配置
 - 配置 key 格式：`rate_limit_{provider}_max` 和 `rate_limit_{provider}_time_window`
 - 如果配置不存在，使用默认值：
-  - `openai`, `openai_direct`, `openrouter`, `openrouter_direct`, `gemini_direct`: 60 次/60秒
+  - `openai`, `openai_direct`, `openrouter`, `openrouter_direct`, `gemini`, `gemini_direct`: 60 次/60秒
   - `local`: 120 次/60秒
 
 **配置刷新机制**：

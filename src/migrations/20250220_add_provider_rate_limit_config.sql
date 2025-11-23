@@ -21,6 +21,8 @@ INSERT INTO ai_config (key, value, description) VALUES
   ('rate_limit_openrouter_time_window', '60', 'OpenRouter (通过 Render) 频率限制：时间窗口（秒），默认 60 秒'),
   ('rate_limit_openrouter_direct_max', '60', 'OpenRouter (直连) 频率限制：每个时间窗口内的最大请求数，默认 60 次'),
   ('rate_limit_openrouter_direct_time_window', '60', 'OpenRouter (直连) 频率限制：时间窗口（秒），默认 60 秒'),
+  ('rate_limit_gemini_max', '60', 'Google Gemini (通过 Render) 频率限制：每个时间窗口内的最大请求数，默认 60 次'),
+  ('rate_limit_gemini_time_window', '60', 'Google Gemini (通过 Render) 频率限制：时间窗口（秒），默认 60 秒'),
   ('rate_limit_gemini_direct_max', '60', 'Google Gemini (直连) 频率限制：每个时间窗口内的最大请求数，默认 60 次'),
   ('rate_limit_gemini_direct_time_window', '60', 'Google Gemini (直连) 频率限制：时间窗口（秒），默认 60 秒'),
   ('rate_limit_local_max', '120', '本地 AI (Ollama) 频率限制：每个时间窗口内的最大请求数，默认 120 次（本地服务可承受更高频率）'),

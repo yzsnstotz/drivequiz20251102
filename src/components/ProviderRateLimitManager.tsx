@@ -96,6 +96,15 @@ const PROVIDER_RATE_LIMIT_CONFIGS: RateLimitConfig[] = [
     description: "默认：60 次/60秒，范围：1-10000 次，时间窗口：1-3600 秒",
   },
   {
+    provider: "rateLimitGemini",
+    name: "Google Gemini (通过 Render)",
+    max: 60,
+    timeWindow: 60,
+    defaultMax: 60,
+    defaultTimeWindow: 60,
+    description: "默认：60 次/60秒，范围：1-10000 次，时间窗口：1-3600 秒",
+  },
+  {
     provider: "rateLimitGeminiDirect",
     name: "Google Gemini (直连)",
     max: 60,

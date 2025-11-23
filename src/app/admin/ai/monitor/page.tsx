@@ -169,6 +169,27 @@ function saveRefreshConfig(config: { enabled: boolean; intervalMinutes: number }
   }
 }
 
+// 从 localStorage 读取心跳启用状态
+function getHeartbeatEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem("ai_monitor_heartbeat_enabled");
+  if (stored !== null) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return true;
+    }
+  }
+  return true; // 默认启用
+}
+
+// 保存心跳启用状态到 localStorage
+function saveHeartbeatEnabled(enabled: boolean) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("ai_monitor_heartbeat_enabled", JSON.stringify(enabled));
+  }
+}
+
 export default function AdminAiMonitorPage() {
   const [dateISO, setDateISO] = useState(() => new Date().toISOString().slice(0, 10));
   const [resp, setResp] = useState<SummaryResp | null>(null);
@@ -184,6 +205,7 @@ export default function AdminAiMonitorPage() {
   const [heartbeat, setHeartbeat] = useState<HeartbeatResp | null>(null);
   const [loadingHeartbeat, setLoadingHeartbeat] = useState(false);
   const [heartbeatError, setHeartbeatError] = useState<string | null>(null);
+  const [heartbeatEnabled, setHeartbeatEnabled] = useState(getHeartbeatEnabled);
 
   const loadData = async () => {
     try {
@@ -251,12 +273,14 @@ export default function AdminAiMonitorPage() {
       }, intervalMs);
     }
 
-    // 心跳监控轮询（每60秒）
-    heartbeatTimer = setInterval(() => {
-      if (mounted) {
-        fetchHeartbeatData();
-      }
-    }, 60000);
+    // 心跳监控轮询（每60秒）- 仅在启用时执行
+    if (heartbeatEnabled) {
+      heartbeatTimer = setInterval(() => {
+        if (mounted) {
+          fetchHeartbeatData();
+        }
+      }, 60000);
+    }
 
     return () => {
       mounted = false;
@@ -264,7 +288,7 @@ export default function AdminAiMonitorPage() {
       if (autoRefreshTimer) clearInterval(autoRefreshTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
     };
-  }, [dateISO, rebuildMessage, refreshConfig.enabled, refreshConfig.intervalMinutes, fetchHeartbeatData]);
+  }, [dateISO, rebuildMessage, refreshConfig.enabled, refreshConfig.intervalMinutes, fetchHeartbeatData, heartbeatEnabled]);
 
   const handleRebuild = async () => {
     try {
@@ -567,13 +591,31 @@ export default function AdminAiMonitorPage() {
       <div className="border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">AI 服务状态</h2>
-          <button
-            onClick={fetchHeartbeatData}
-            disabled={loadingHeartbeat}
-            className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:bg-gray-400"
-          >
-            {loadingHeartbeat ? "刷新中..." : "立刻刷新"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const newEnabled = !heartbeatEnabled;
+                setHeartbeatEnabled(newEnabled);
+                saveHeartbeatEnabled(newEnabled);
+              }}
+              className={`px-3 py-1 text-sm rounded transition-colors ${
+                heartbeatEnabled
+                  ? "bg-green-500 text-white hover:bg-green-600"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+              title={heartbeatEnabled ? "停止自动心跳检查" : "开始自动心跳检查"}
+            >
+              {heartbeatEnabled ? "⏸️ 停止心跳" : "▶️ 开始心跳"}
+            </button>
+            <button
+              onClick={fetchHeartbeatData}
+              disabled={loadingHeartbeat}
+              className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:bg-gray-400"
+              title="立即执行一次心跳检查"
+            >
+              {loadingHeartbeat ? "刷新中..." : "立刻刷新"}
+            </button>
+          </div>
         </div>
         {heartbeatError && (
           <p className="mb-2 text-sm text-red-500">
