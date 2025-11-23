@@ -680,9 +680,10 @@ async function processBatchAsync(
   taskId: string,
   questionIdsToProcess: number[] | null, // null 表示处理所有题目
   input: {
-    operations: ("translate" | "polish" | "fill_missing" | "category_tags")[];
+    operations: ("translate" | "polish" | "fill_missing" | "category_tags" | "full_pipeline")[];
     translateOptions?: { from: string; to: string | string[] };
     polishOptions?: { locale: string };
+    fullPipelineOptions?: { sourceLanguage: "zh" | "ja" | "en"; targetLanguages: string[]; type: "single" | "multiple" | "truefalse" };
     batchSize: number;
     continueOnError: boolean;
   },
