@@ -91,9 +91,13 @@ async function appendServerLog(
  * 更新 details 字段，保留 server_logs
  */
 async function updateDetailsWithServerLogs(
-  taskId: string,
+  taskId: string | null,
   detailsArray: any[]
 ): Promise<any> {
+  if (!taskId) {
+    console.warn("[updateDetailsWithServerLogs] taskId is null, returning detailsArray as-is");
+    return detailsArray;
+  }
   try {
     // 获取当前任务的 details
     const task = await db
