@@ -48,7 +48,18 @@ export async function callAiServiceCore(params: {
   // 后台接口直接调用 AI 服务，跳过用户配额检查
   const { callAiServer } = await import("@/lib/aiClient.server");
   
+  // 获取当前配置的 provider（默认使用 render）
+  let provider: "render" | "local" = "render";
+  try {
+    const { getCurrentAiProviderConfig } = await import("@/app/api/admin/question-processing/_lib/batchProcessUtils");
+    const config = await getCurrentAiProviderConfig();
+    provider = config.provider as "render" | "local";
+  } catch (error) {
+    console.warn("[callAiServiceCore] 获取 provider 配置失败，使用默认值 render:", error);
+  }
+  
   const result = await callAiServer({
+    provider,
     question,
     locale: locale || "zh-CN",
     scene: scene || undefined,
