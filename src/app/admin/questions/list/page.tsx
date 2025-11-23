@@ -2235,7 +2235,7 @@ export default function QuestionsPage() {
                                             <div class="mt-1">
                                               <p class="text-xs font-medium text-gray-700">解析：</p>
                                               <div class="bg-white p-2 rounded border border-gray-200">
-                                                <p class="text-xs text-gray-800 whitespace-pre-wrap">${r.explanation}</p>
+                                                <p class="text-xs text-gray-800 whitespace-pre-wrap">${(r as any).explanation}</p>
                                               </div>
                                             </div>
                                           ` : ''}
