@@ -324,7 +324,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   correct_answer: any;
                   image: string | null;
                   explanation: any;
-                  license_types: any;
+                  license_type_tag: any;
                   category: string;
                   stage_tag: "both" | "provisional" | "regular" | null;
                   topic_tags: any;
@@ -337,7 +337,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   correct_answer: any;
                   image: string | null;
                   explanation: any;
-                  license_types: any;
+                  license_type_tag: any;
                   category: string;
                   stage_tag: "both" | "provisional" | "regular" | null;
                   topic_tags: any;
@@ -361,9 +361,9 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     const optionsNormalized = normalizeOptions(question.options);
                     const correctAnswerNormalized = normalizeCorrectAnswer(question.correctAnswer, question.type as "single" | "multiple" | "truefalse");
                     const questionCategory = question.category || "其他";
-                    const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
-                      ? question.license_tags 
-                      : null;
+                    // 优先使用 license_type_tag，如果没有则使用 license_tags（兼容旧格式）
+                    const licenseTypeTag = (question as any).license_type_tag 
+                      || (question.license_tags && question.license_tags.length > 0 ? question.license_tags : null);
                     const stageTag: "both" | "provisional" | "regular" | null = 
                       (question.stage_tag === "both" || question.stage_tag === "provisional" || question.stage_tag === "regular")
                         ? question.stage_tag
@@ -381,7 +381,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         correct_answer: correctAnswerNormalized,
                         image: question.image || null,
                         explanation: explanationMultilang as any,
-                        license_types: licenseTypes,
+                        license_type_tag: licenseTypeTag,
                         category: questionCategory,
                         stage_tag: stageTag,
                         topic_tags: topicTags,
@@ -396,7 +396,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                         correct_answer: correctAnswerNormalized,
                         image: question.image || null,
                         explanation: explanationMultilang as any,
-                        license_types: licenseTypes,
+                        license_type_tag: licenseTypeTag,
                         category: questionCategory,
                         stage_tag: stageTag,
                         topic_tags: topicTags,
@@ -521,7 +521,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                           correct_answer: item.correct_answer,
                           image: item.image,
                           explanation: item.explanation,
-                          license_types: item.license_types,
+                          license_type_tag: item.license_type_tag,
                           category: item.category,
                           stage_tag: item.stage_tag,
                           topic_tags: item.topic_tags,
@@ -755,7 +755,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
             correct_answer: any;
             image: string | null;
             explanation: any;
-            license_types: any;
+            license_type_tag: any;
             category: string;
             stage_tag: "both" | "provisional" | "regular" | null;
             topic_tags: any;
@@ -768,7 +768,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
             correct_answer: any;
             image: string | null;
             explanation: any;
-            license_types: any;
+            license_type_tag: any;
             category: string;
             stage_tag: "both" | "provisional" | "regular" | null;
             topic_tags: any;
@@ -785,9 +785,9 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
               const optionsNormalized = normalizeOptions(question.options);
               const correctAnswerNormalized = normalizeCorrectAnswer(question.correctAnswer, question.type as "single" | "multiple" | "truefalse");
               const questionCategory = question.category || "其他";
-              const licenseTypes = (question.license_tags && question.license_tags.length > 0) 
-                ? question.license_tags 
-                : null;
+              // 优先使用 license_type_tag，如果没有则使用 license_tags（兼容旧格式）
+              const licenseTypeTag = (question as any).license_type_tag 
+                || (question.license_tags && question.license_tags.length > 0 ? question.license_tags : null);
               const stageTag: "both" | "provisional" | "regular" | null = 
                 (question.stage_tag === "both" || question.stage_tag === "provisional" || question.stage_tag === "regular")
                   ? question.stage_tag
@@ -806,7 +806,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   correct_answer: correctAnswerNormalized,
                   image: question.image || null,
                   explanation: explanationMultilang as any,
-                  license_types: licenseTypes,
+                  license_type_tag: licenseTypeTag,
                   category: questionCategory,
                   stage_tag: stageTag,
                   topic_tags: topicTags,
@@ -821,7 +821,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                   correct_answer: correctAnswerNormalized,
                   image: question.image || null,
                   explanation: explanationMultilang as any,
-                  license_types: licenseTypes,
+                  license_type_tag: licenseTypeTag,
                   category: questionCategory,
                   stage_tag: stageTag,
                   topic_tags: topicTags,
@@ -933,7 +933,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     correct_answer: item.correct_answer,
                     image: item.image,
                     explanation: item.explanation,
-                    license_types: item.license_types,
+                    license_type_tag: item.license_type_tag,
                     category: item.category,
                     stage_tag: item.stage_tag,
                     topic_tags: item.topic_tags,
