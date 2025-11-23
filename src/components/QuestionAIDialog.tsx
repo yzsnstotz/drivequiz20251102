@@ -5,7 +5,7 @@ import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { loadAiAnswersForLocale, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { getQuestionOptions } from "@/lib/questionUtils";
+import { getQuestionOptions, getQuestionContent } from "@/lib/questionUtils";
 import { callAiDirect } from "@/lib/aiClient.front";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 
@@ -44,7 +44,7 @@ interface Question {
   image?: string;
   options?: string[] | Array<{ zh: string; en?: string; ja?: string; [key: string]: string | undefined }>; // 支持单语言字符串数组或多语言对象数组
   correctAnswer: string | string[];
-  explanation?: string;
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   hash?: string; // 题目的hash值（与数据库的content_hash是同一个值）
 }
 
@@ -268,7 +268,10 @@ export default function QuestionAIDialog({
     questionText += `正确答案：${correctAnswerText}\n\n`;
 
     if (question.explanation) {
-      questionText += `解析：${question.explanation}\n\n`;
+      const explanationText = getQuestionContent(question.explanation as any, language) || "";
+      if (explanationText) {
+        questionText += `解析：${explanationText}\n\n`;
+      }
     }
 
     questionText += "请进一步解析这道题目。";
