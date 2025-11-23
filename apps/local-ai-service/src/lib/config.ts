@@ -15,6 +15,9 @@ export type LocalAIConfig = {
   supabaseServiceKey: string;
   nodeEnv: string;
   version: string;
+  allowedOrigins: string[]; // CORS 允许的来源列表
+  rateLimitMax: number; // 速率限制：最大请求数
+  rateLimitTimeWindow: number; // 速率限制：时间窗口（秒）
 };
 
 function requireEnv(key: keyof NodeJS.ProcessEnv): string {
@@ -34,11 +37,23 @@ export function loadConfig(): LocalAIConfig {
     SUPABASE_SERVICE_KEY,
     NODE_ENV,
     npm_package_version,
+    ALLOWED_ORIGINS,
+    RATE_LIMIT_MAX,
+    RATE_LIMIT_TIME_WINDOW,
   } = process.env;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     throw new Error("SUPABASE_URL 和 SUPABASE_SERVICE_KEY 必须配置");
   }
+
+  // 解析允许的 CORS 来源
+  const allowedOrigins = ALLOWED_ORIGINS
+    ? ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    : []; // 如果未设置，默认空数组（将使用函数判断）
+
+  // 速率限制配置
+  const rateLimitMax = Number(RATE_LIMIT_MAX || 60);
+  const rateLimitTimeWindow = Number(RATE_LIMIT_TIME_WINDOW || 60);
 
   return {
     port: Number(PORT || 8788),
@@ -56,6 +71,9 @@ export function loadConfig(): LocalAIConfig {
     supabaseServiceKey: SUPABASE_SERVICE_KEY,
     nodeEnv: NODE_ENV || "development",
     version: npm_package_version || "0.0.0",
+    allowedOrigins,
+    rateLimitMax,
+    rateLimitTimeWindow,
   };
 }
 

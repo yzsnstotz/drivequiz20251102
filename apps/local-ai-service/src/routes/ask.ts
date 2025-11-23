@@ -2,7 +2,15 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getRagContext } from "../lib/rag.js";
 import type { LocalAIConfig } from "../lib/config.js";
-import { runScene, type AiServiceConfig } from "@zalem/ai-core";
+import { runScene, type AiServiceConfig } from "../../../ai-service/src/lib/sceneRunner.ts";
+import { providerRateLimitMiddleware } from "../lib/rateLimit.js";
+
+// 扩展 FastifyInstance 类型以包含 config
+declare module "fastify" {
+  interface FastifyInstance {
+    config: LocalAIConfig;
+  }
+}
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
@@ -434,11 +442,17 @@ function parseAndValidateBody(body: unknown): {
   };
 }
 
-export default async function askRoute(app: FastifyInstance): Promise<void> {
+export default async function askRoute(app: FastifyInstance, options: { prefix?: string }): Promise<void> {
+  const config = app.config as LocalAIConfig;
+
+  // 为 /ask 路由注册 Provider 频率限制中间件（与 ai-service 保持一致）
+  app.addHook("onRequest", async (request, reply) => {
+    await providerRateLimitMiddleware(request, reply);
+  });
+
   app.post(
     "/ask",
     async (request: FastifyRequest<{ Body: AskBody }>, reply: FastifyReply): Promise<void> => {
-      const config = app.config as LocalAIConfig;
       const startTime = Date.now(); // 记录开始时间
       try {
         // 1) 服务间鉴权
@@ -535,24 +549,29 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
 
           // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
           sceneResult = await runScene({
-            sceneKey: scene, // ✅ 确保 scene 从解构中获取，不是自由变量
+            sceneKey: scene,
             locale: promptLocale,
-            question: normalizedQuestion, // 使用规范化后的字符串
+            question: normalizedQuestion,
             reference: reference || null,
             userPrefix,
             refPrefix,
-            supabaseConfig: {
+
+            // 正确的 Supabase 注入
+            config: {
               supabaseUrl: config.supabaseUrl,
-              supabaseServiceKey: config.supabaseServiceKey,
+              supabaseServiceKey: config.supabaseServiceKey
             },
+
+            // provider / 模型 / 超时等配置
+            serviceConfig: aiServiceConfig,
+
             providerKind: "ollama",
-            config: aiServiceConfig,
             ollamaBaseUrl: config.ollamaBaseUrl,
             ollamaModel: config.aiModel,
             sourceLanguage: sourceLanguage || null,
             targetLanguage: targetLanguage || null,
             temperature: 0.4,
-            sceneConfigTimeoutMs: timeoutMs, // 使用从数据库读取的超时配置
+            sceneConfigTimeoutMs: timeoutMs
           });
         } catch (e) {
           const error = e as Error & { statusCode?: number; code?: string; status?: number };
@@ -684,13 +703,14 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         }
         
         // 增强错误日志，包含更多上下文信息
+        const questionStr = typeof question === "string" ? question : (question ? JSON.stringify(question).substring(0, 200) : "");
         console.error("[LOCAL-AI] 处理请求时出错:", {
           error: err.message,
           stack: err.stack?.substring(0, 500),
           statusCode: err.statusCode,
           scene,
-          questionLength: question?.length || 0,
-          questionPreview: question?.substring(0, 200) || "",
+          questionLength: typeof question === "string" ? question.length : (question ? JSON.stringify(question).length : 0),
+          questionPreview: questionStr,
           lang,
           sourceLanguage,
           targetLanguage,

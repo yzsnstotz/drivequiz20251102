@@ -2,6 +2,7 @@
 // apps/ai-service/src/index.ts
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import dotenv from "dotenv";
 import { registerCronDailySummarize } from "./jobs/cron.dailySummarize.js";
 
@@ -22,6 +23,9 @@ export type ServiceConfig = {
   cacheRedisUrl?: string;
   nodeEnv: string;
   version: string;
+  allowedOrigins: string[]; // CORS 允许的来源列表
+  rateLimitMax: number; // 速率限制：最大请求数
+  rateLimitTimeWindow: number; // 速率限制：时间窗口（秒）
   /** 可选：注入 provider（如问答日志拉取） */
   providers?: {
     fetchAskLogs?: (fromIso: string, toIso: string) => Promise<
@@ -56,6 +60,9 @@ export function loadConfig(): ServiceConfig {
     AI_CACHE_REDIS_URL,
     NODE_ENV,
     npm_package_version,
+    ALLOWED_ORIGINS,
+    RATE_LIMIT_MAX,
+    RATE_LIMIT_TIME_WINDOW,
   } = process.env;
 
   const errors: string[] = [];
@@ -125,6 +132,15 @@ export function loadConfig(): ServiceConfig {
     fetchAskLogs,
   };
 
+  // 解析允许的 CORS 来源
+  const allowedOrigins = ALLOWED_ORIGINS
+    ? ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    : []; // 如果未设置，默认空数组（将使用函数判断）
+
+  // 速率限制配置
+  const rateLimitMax = Number(RATE_LIMIT_MAX || 60);
+  const rateLimitTimeWindow = Number(RATE_LIMIT_TIME_WINDOW || 60);
+
   return {
     port: Number(PORT || 8787),
     host: HOST || "0.0.0.0",
@@ -143,6 +159,9 @@ export function loadConfig(): ServiceConfig {
     cacheRedisUrl: AI_CACHE_REDIS_URL,
     nodeEnv: NODE_ENV || "development",
     version: npm_package_version || "0.0.0",
+    allowedOrigins,
+    rateLimitMax,
+    rateLimitTimeWindow,
     providers: defaultProviders,
   };
 }
@@ -163,9 +182,22 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     bodyLimit: 1 * 1024 * 1024, // 1MB
   });
 
-  // 允许浏览器直接调用 ai-service（支持跨域）
+  // CORS 配置：通过环境变量控制允许的来源
+  const corsOrigin = config.allowedOrigins.length > 0
+    ? (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+        if (!origin) {
+          // 没有 origin 头（如 Postman、curl），允许通过
+          cb(null, true);
+          return;
+        }
+        // 检查是否在允许列表中
+        const isAllowed = config.allowedOrigins.includes(origin);
+        cb(null, isAllowed);
+      }
+    : true; // 如果未配置，默认允许所有来源（向后兼容）
+
   app.register(cors, {
-    origin: true, // 允许所有来源
+    origin: corsOrigin,
     credentials: false,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type", "X-AI-Provider"],
@@ -176,10 +208,19 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
   // 为所有路由添加 CORS 头（确保所有响应都包含 CORS 头）
   app.addHook("onSend", async (request, reply) => {
     const origin = request.headers.origin;
-    if (origin) {
-      reply.header("Access-Control-Allow-Origin", origin);
+    if (config.allowedOrigins.length > 0) {
+      // 如果配置了允许的来源，只允许列表中的来源
+      if (origin && config.allowedOrigins.includes(origin)) {
+        reply.header("Access-Control-Allow-Origin", origin);
+      }
+      // 如果 origin 不在列表中，不设置 CORS 头（浏览器会拒绝）
     } else {
-      reply.header("Access-Control-Allow-Origin", "*");
+      // 如果未配置，默认允许所有来源（向后兼容）
+      if (origin) {
+        reply.header("Access-Control-Allow-Origin", origin);
+      } else {
+        reply.header("Access-Control-Allow-Origin", "*");
+      }
     }
     reply.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     reply.header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-AI-Provider");
@@ -189,8 +230,17 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
   // 为 /v1/ask 注册 OPTIONS 预检请求处理（确保 CORS 正常工作）
   app.options("/v1/ask", async (req, reply) => {
     const origin = req.headers.origin;
+    if (config.allowedOrigins.length > 0) {
+      // 如果配置了允许的来源，只允许列表中的来源
+      if (origin && config.allowedOrigins.includes(origin)) {
+        reply.header("Access-Control-Allow-Origin", origin);
+      }
+      // 如果 origin 不在列表中，不设置 CORS 头（浏览器会拒绝）
+    } else {
+      // 如果未配置，默认允许所有来源（向后兼容）
+      reply.header("Access-Control-Allow-Origin", origin || "*");
+    }
     reply
-      .header("Access-Control-Allow-Origin", origin || "*")
       .header("Access-Control-Allow-Methods", "POST, OPTIONS")
       .header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-AI-Provider")
       .header("Access-Control-Max-Age", "86400")

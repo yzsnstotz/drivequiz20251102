@@ -7,6 +7,7 @@ import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
 import { runScene } from "../lib/sceneRunner.js";
+import { providerRateLimitMiddleware } from "../lib/rateLimit.js";
 
 /** 请求体类型 */
 type AskBody = {
@@ -192,6 +193,13 @@ export function buildCacheKey(question: string, lang: string, model: string, sce
 }
 
 export default async function askRoute(app: FastifyInstance): Promise<void> {
+  const config = app.config as ServiceConfig;
+
+  // 为 /ask 路由注册 Provider 频率限制中间件
+  app.addHook("onRequest", async (request, reply) => {
+    await providerRateLimitMiddleware(request, reply);
+  });
+
   app.post(
     "/ask",
     async (request: FastifyRequest<{ Body: AskBody }>, reply: FastifyReply): Promise<void> => {
