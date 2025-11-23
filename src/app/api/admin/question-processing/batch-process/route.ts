@@ -157,7 +157,7 @@ async function generateTaskSummary(
     processed: number;
     succeeded: number;
     failed: number;
-    errors: Array<{ questionId: number; error: string }>;
+    errors: Array<{ questionId: number; error: string; [key: string]: any }>;
     details: Array<{ questionId: number; operations: string[]; status: string }>;
   },
   questions: Array<{ id: number; content_hash: string }>,
@@ -696,7 +696,7 @@ async function processBatchAsync(
     processed: number;
     succeeded: number;
     failed: number;
-    errors: Array<{ questionId: number; error: string }>;
+    errors: Array<{ questionId: number; error: string; [key: string]: any }>;
     details: Array<{ questionId: number; operations: string[]; status: string }>;
   },
   adminToken?: string // 管理员 token，用于跳过配额限制
