@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import ProviderConfigManager from "@/components/ProviderConfigManager";
 import ProviderTimeoutManager from "@/components/ProviderTimeoutManager";
+import ProviderRateLimitManager from "@/components/ProviderRateLimitManager";
 
 type Config = {
   dailyAskLimit: number;
@@ -96,7 +97,7 @@ export default function AdminAiConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<"basic" | "providers" | "timeout">("basic");
+  const [activeTab, setActiveTab] = useState<"basic" | "providers" | "timeout" | "rateLimit">("basic");
 
   useEffect(() => {
     loadConfig();
@@ -207,6 +208,16 @@ export default function AdminAiConfigPage() {
           >
             Provider 超时设置
           </button>
+          <button
+            onClick={() => setActiveTab("rateLimit")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "rateLimit"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Provider 频率限制
+          </button>
         </div>
       </div>
 
@@ -214,6 +225,8 @@ export default function AdminAiConfigPage() {
         <ProviderConfigManager />
       ) : activeTab === "timeout" ? (
         <ProviderTimeoutManager />
+      ) : activeTab === "rateLimit" ? (
+        <ProviderRateLimitManager />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 左侧：配置表单 */}

@@ -43,6 +43,18 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
         "timeout_openrouter_direct",
         "timeout_gemini_direct",
         "timeout_local",
+        "rate_limit_openai_max",
+        "rate_limit_openai_time_window",
+        "rate_limit_openai_direct_max",
+        "rate_limit_openai_direct_time_window",
+        "rate_limit_openrouter_max",
+        "rate_limit_openrouter_time_window",
+        "rate_limit_openrouter_direct_max",
+        "rate_limit_openrouter_direct_time_window",
+        "rate_limit_gemini_direct_max",
+        "rate_limit_gemini_direct_time_window",
+        "rate_limit_local_max",
+        "rate_limit_local_time_window",
       ])
       .execute() as ConfigRow[];
 
@@ -66,6 +78,18 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       timeoutOpenrouterDirect: config.timeout_openrouter_direct || "30000",
       timeoutGeminiDirect: config.timeout_gemini_direct || "30000",
       timeoutLocal: config.timeout_local || "120000",
+      rateLimitOpenaiMax: config.rate_limit_openai_max || "60",
+      rateLimitOpenaiTimeWindow: config.rate_limit_openai_time_window || "60",
+      rateLimitOpenaiDirectMax: config.rate_limit_openai_direct_max || "60",
+      rateLimitOpenaiDirectTimeWindow: config.rate_limit_openai_direct_time_window || "60",
+      rateLimitOpenrouterMax: config.rate_limit_openrouter_max || "60",
+      rateLimitOpenrouterTimeWindow: config.rate_limit_openrouter_time_window || "60",
+      rateLimitOpenrouterDirectMax: config.rate_limit_openrouter_direct_max || "60",
+      rateLimitOpenrouterDirectTimeWindow: config.rate_limit_openrouter_direct_time_window || "60",
+      rateLimitGeminiDirectMax: config.rate_limit_gemini_direct_max || "60",
+      rateLimitGeminiDirectTimeWindow: config.rate_limit_gemini_direct_time_window || "60",
+      rateLimitLocalMax: config.rate_limit_local_max || "120",
+      rateLimitLocalTimeWindow: config.rate_limit_local_time_window || "60",
     };
 
     return success(result);
@@ -107,6 +131,18 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
           timeoutOpenrouterDirect?: number;
           timeoutGeminiDirect?: number;
           timeoutLocal?: number;
+          rateLimitOpenaiMax?: number;
+          rateLimitOpenaiTimeWindow?: number;
+          rateLimitOpenaiDirectMax?: number;
+          rateLimitOpenaiDirectTimeWindow?: number;
+          rateLimitOpenrouterMax?: number;
+          rateLimitOpenrouterTimeWindow?: number;
+          rateLimitOpenrouterDirectMax?: number;
+          rateLimitOpenrouterDirectTimeWindow?: number;
+          rateLimitGeminiDirectMax?: number;
+          rateLimitGeminiDirectTimeWindow?: number;
+          rateLimitLocalMax?: number;
+          rateLimitLocalTimeWindow?: number;
         }
       | null;
 
@@ -220,6 +256,103 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       updates.push({ key: "timeout_local", value: String(timeout) });
     }
 
+    // 处理频率限制配置
+    if (body.rateLimitOpenaiMax !== undefined) {
+      const max = Number(body.rateLimitOpenaiMax);
+      if (isNaN(max) || max < 1 || max > 10000) {
+        return badRequest("rateLimitOpenaiMax must be a number between 1 and 10000.");
+      }
+      updates.push({ key: "rate_limit_openai_max", value: String(max) });
+    }
+
+    if (body.rateLimitOpenaiTimeWindow !== undefined) {
+      const timeWindow = Number(body.rateLimitOpenaiTimeWindow);
+      if (isNaN(timeWindow) || timeWindow < 1 || timeWindow > 3600) {
+        return badRequest("rateLimitOpenaiTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
+      }
+      updates.push({ key: "rate_limit_openai_time_window", value: String(timeWindow) });
+    }
+
+    if (body.rateLimitOpenaiDirectMax !== undefined) {
+      const max = Number(body.rateLimitOpenaiDirectMax);
+      if (isNaN(max) || max < 1 || max > 10000) {
+        return badRequest("rateLimitOpenaiDirectMax must be a number between 1 and 10000.");
+      }
+      updates.push({ key: "rate_limit_openai_direct_max", value: String(max) });
+    }
+
+    if (body.rateLimitOpenaiDirectTimeWindow !== undefined) {
+      const timeWindow = Number(body.rateLimitOpenaiDirectTimeWindow);
+      if (isNaN(timeWindow) || timeWindow < 1 || timeWindow > 3600) {
+        return badRequest("rateLimitOpenaiDirectTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
+      }
+      updates.push({ key: "rate_limit_openai_direct_time_window", value: String(timeWindow) });
+    }
+
+    if (body.rateLimitOpenrouterMax !== undefined) {
+      const max = Number(body.rateLimitOpenrouterMax);
+      if (isNaN(max) || max < 1 || max > 10000) {
+        return badRequest("rateLimitOpenrouterMax must be a number between 1 and 10000.");
+      }
+      updates.push({ key: "rate_limit_openrouter_max", value: String(max) });
+    }
+
+    if (body.rateLimitOpenrouterTimeWindow !== undefined) {
+      const timeWindow = Number(body.rateLimitOpenrouterTimeWindow);
+      if (isNaN(timeWindow) || timeWindow < 1 || timeWindow > 3600) {
+        return badRequest("rateLimitOpenrouterTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
+      }
+      updates.push({ key: "rate_limit_openrouter_time_window", value: String(timeWindow) });
+    }
+
+    if (body.rateLimitOpenrouterDirectMax !== undefined) {
+      const max = Number(body.rateLimitOpenrouterDirectMax);
+      if (isNaN(max) || max < 1 || max > 10000) {
+        return badRequest("rateLimitOpenrouterDirectMax must be a number between 1 and 10000.");
+      }
+      updates.push({ key: "rate_limit_openrouter_direct_max", value: String(max) });
+    }
+
+    if (body.rateLimitOpenrouterDirectTimeWindow !== undefined) {
+      const timeWindow = Number(body.rateLimitOpenrouterDirectTimeWindow);
+      if (isNaN(timeWindow) || timeWindow < 1 || timeWindow > 3600) {
+        return badRequest("rateLimitOpenrouterDirectTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
+      }
+      updates.push({ key: "rate_limit_openrouter_direct_time_window", value: String(timeWindow) });
+    }
+
+    if (body.rateLimitGeminiDirectMax !== undefined) {
+      const max = Number(body.rateLimitGeminiDirectMax);
+      if (isNaN(max) || max < 1 || max > 10000) {
+        return badRequest("rateLimitGeminiDirectMax must be a number between 1 and 10000.");
+      }
+      updates.push({ key: "rate_limit_gemini_direct_max", value: String(max) });
+    }
+
+    if (body.rateLimitGeminiDirectTimeWindow !== undefined) {
+      const timeWindow = Number(body.rateLimitGeminiDirectTimeWindow);
+      if (isNaN(timeWindow) || timeWindow < 1 || timeWindow > 3600) {
+        return badRequest("rateLimitGeminiDirectTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
+      }
+      updates.push({ key: "rate_limit_gemini_direct_time_window", value: String(timeWindow) });
+    }
+
+    if (body.rateLimitLocalMax !== undefined) {
+      const max = Number(body.rateLimitLocalMax);
+      if (isNaN(max) || max < 1 || max > 10000) {
+        return badRequest("rateLimitLocalMax must be a number between 1 and 10000.");
+      }
+      updates.push({ key: "rate_limit_local_max", value: String(max) });
+    }
+
+    if (body.rateLimitLocalTimeWindow !== undefined) {
+      const timeWindow = Number(body.rateLimitLocalTimeWindow);
+      if (isNaN(timeWindow) || timeWindow < 1 || timeWindow > 3600) {
+        return badRequest("rateLimitLocalTimeWindow must be a number between 1 and 3600 (1秒到1小时).");
+      }
+      updates.push({ key: "rate_limit_local_time_window", value: String(timeWindow) });
+    }
+
     if (updates.length === 0) {
       return badRequest("At least one config field must be provided.");
     }
@@ -286,6 +419,18 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
         "timeout_openrouter_direct",
         "timeout_gemini_direct",
         "timeout_local",
+        "rate_limit_openai_max",
+        "rate_limit_openai_time_window",
+        "rate_limit_openai_direct_max",
+        "rate_limit_openai_direct_time_window",
+        "rate_limit_openrouter_max",
+        "rate_limit_openrouter_time_window",
+        "rate_limit_openrouter_direct_max",
+        "rate_limit_openrouter_direct_time_window",
+        "rate_limit_gemini_direct_max",
+        "rate_limit_gemini_direct_time_window",
+        "rate_limit_local_max",
+        "rate_limit_local_time_window",
       ])
       .execute() as ConfigRow[];
 
@@ -307,6 +452,18 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       timeoutOpenrouterDirect: configMap.timeout_openrouter_direct || "30000",
       timeoutGeminiDirect: configMap.timeout_gemini_direct || "30000",
       timeoutLocal: configMap.timeout_local || "120000",
+      rateLimitOpenaiMax: configMap.rate_limit_openai_max || "60",
+      rateLimitOpenaiTimeWindow: configMap.rate_limit_openai_time_window || "60",
+      rateLimitOpenaiDirectMax: configMap.rate_limit_openai_direct_max || "60",
+      rateLimitOpenaiDirectTimeWindow: configMap.rate_limit_openai_direct_time_window || "60",
+      rateLimitOpenrouterMax: configMap.rate_limit_openrouter_max || "60",
+      rateLimitOpenrouterTimeWindow: configMap.rate_limit_openrouter_time_window || "60",
+      rateLimitOpenrouterDirectMax: configMap.rate_limit_openrouter_direct_max || "60",
+      rateLimitOpenrouterDirectTimeWindow: configMap.rate_limit_openrouter_direct_time_window || "60",
+      rateLimitGeminiDirectMax: configMap.rate_limit_gemini_direct_max || "60",
+      rateLimitGeminiDirectTimeWindow: configMap.rate_limit_gemini_direct_time_window || "60",
+      rateLimitLocalMax: configMap.rate_limit_local_max || "120",
+      rateLimitLocalTimeWindow: configMap.rate_limit_local_time_window || "60",
     };
 
     return success(result);
