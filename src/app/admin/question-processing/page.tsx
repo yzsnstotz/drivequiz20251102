@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { apiFetch, apiPost, apiDelete, ApiError } from "@/lib/apiClient";
 import { TaskErrorPanel } from "./_components/TaskErrorPanel";
 
-type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
+type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled" | "succeeded";
 
 type SubtaskDetail = {
   operation: string;
@@ -1791,7 +1791,7 @@ export default function QuestionProcessingPage() {
                     <label className="text-sm font-medium text-gray-700">任务ID</label>
                     <p className="mt-1 text-sm">
                       <code className="bg-gray-100 px-2 py-1 rounded">
-                        {selectedTask.task_id}
+                        {selectedTask.taskId}
                       </code>
                     </p>
                   </div>
@@ -1819,14 +1819,14 @@ export default function QuestionProcessingPage() {
                     <label className="text-sm font-medium text-gray-700">
                       总题目数
                     </label>
-                    <p className="mt-1 text-sm">{selectedTask.total_questions}</p>
+                     <p className="mt-1 text-sm">{selectedTask.questionCount}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700">
                       已处理
                     </label>
                     <p className="mt-1 text-sm">
-                      {selectedTask.processed_count} / {selectedTask.total_questions} (
+                      {selectedTask.progress.completedItems} / {selectedTask.questionCount} (
                       {getProgress(selectedTask)}%)
                     </p>
                     {selectedTask.status === "processing" && (
@@ -1838,7 +1838,7 @@ export default function QuestionProcessingPage() {
                           />
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
-                          当前批次: {selectedTask.current_batch} / {Math.ceil(selectedTask.total_questions / 10)}
+                          当前批次: {Math.ceil(selectedTask.progress.completedItems / 10)} / {Math.ceil(selectedTask.questionCount / 10)}
                         </p>
                       </div>
                     )}
@@ -1848,7 +1848,7 @@ export default function QuestionProcessingPage() {
                       成功/失败
                     </label>
                     <p className="mt-1 text-sm">
-                      {selectedTask.succeeded_count} / {selectedTask.failed_count}
+                      {(selectedTask.progress.completedItems - selectedTask.progress.failedItems)} / {selectedTask.progress.failedItems}
                     </p>
                   </div>
                   {selectedTask.status === "processing" && (
@@ -1874,7 +1874,7 @@ export default function QuestionProcessingPage() {
                           }).join("")}
                         </p>
                         <p className="text-xs text-blue-600 mt-1">
-                          正在处理第 {selectedTask.processed_count + 1} 个题目...
+                          正在处理第 {selectedTask.progress.completedItems + 1} 个题目...
                         </p>
                       </div>
                     </div>
@@ -1948,7 +1948,7 @@ export default function QuestionProcessingPage() {
                       创建时间
                     </label>
                     <p className="mt-1 text-sm">
-                      {formatDate(selectedTask.created_at)}
+                      {formatDate(selectedTask.createdAt)}
                     </p>
                   </div>
                   <div>
@@ -1956,7 +1956,7 @@ export default function QuestionProcessingPage() {
                       开始时间
                     </label>
                     <p className="mt-1 text-sm">
-                      {formatDate(selectedTask.started_at)}
+                      {(selectedTask as any).started_at ? formatDate((selectedTask as any).started_at) : "-"}
                     </p>
                   </div>
                   <div>
@@ -1964,7 +1964,7 @@ export default function QuestionProcessingPage() {
                       完成时间
                     </label>
                     <p className="mt-1 text-sm">
-                      {formatDate(selectedTask.completed_at)}
+                      {(selectedTask as any).completed_at ? formatDate((selectedTask as any).completed_at) : "-"}
                     </p>
                   </div>
                 </div>
