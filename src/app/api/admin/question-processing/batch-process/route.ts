@@ -162,9 +162,10 @@ async function generateTaskSummary(
   },
   questions: Array<{ id: number; content_hash: string }>,
   input: {
-    operations: ("translate" | "polish" | "fill_missing" | "category_tags")[];
+    operations: ("translate" | "polish" | "fill_missing" | "category_tags" | "full_pipeline")[];
     translateOptions?: { from: string; to: string | string[] };
     polishOptions?: { locale: string };
+    fullPipelineOptions?: { sourceLanguage: "zh" | "ja" | "en"; targetLanguages: string[]; type: "single" | "multiple" | "truefalse" };
     batchSize: number;
     continueOnError: boolean;
   }
