@@ -442,7 +442,8 @@ export default function AdminAiMonitorPage() {
   const topQuestionsRaw = d?.topQuestions || [];
 
   // 过滤和规范化 topQuestions，确保所有元素都是有效对象
-  const topQuestions = Array.isArray(topQuestionsRaw) 
+  // 统一为包含 question 字段的格式，方便后续使用
+  const topQuestions: Array<{ question: string; count: number }> = Array.isArray(topQuestionsRaw) 
     ? topQuestionsRaw
         .filter((x): boolean => {
           if (!x || typeof x !== "object") return false;
@@ -450,20 +451,17 @@ export default function AdminAiMonitorPage() {
           const hasCount = "count" in x && (typeof x.count === "number" || typeof x.count === "string");
           return !!(hasQuestion && hasCount);
         })
-        .map((x): { q: string; count: number } | { question: string; count: number } => {
+        .map((x): { question: string; count: number } => {
+          // 优先使用 q，如果没有则使用 question
           const q = "q" in x ? (typeof x.q === "string" ? x.q : String(x.q || "")) : undefined;
           const question = "question" in x ? (typeof x.question === "string" ? x.question : String(x.question || "")) : undefined;
           const count = typeof x.count === "number" ? x.count : typeof x.count === "string" ? Number(x.count) || 0 : 0;
           
-          // 优先使用 q，如果没有则使用 question
-          if (q) {
-            return { q, count };
-          } else if (question) {
-            return { question, count };
-          } else {
-            // 兜底：返回一个有效的对象
-            return { q: "", count };
-          }
+          // 统一返回包含 question 字段的格式
+          return {
+            question: q || question || "",
+            count,
+          };
         })
     : [];
 
@@ -827,8 +825,8 @@ export default function AdminAiMonitorPage() {
               <ul className="list-disc pl-6">
                 {topQuestions.length > 0 ? (
                   topQuestions.map((x, i) => {
-                    // 数据已经在前面规范化了，直接使用
-                    const question = x.q || x.question || "";
+                    // 数据已经在前面规范化了，统一为 { question, count } 格式
+                    const question = x.question || "";
                     const count = x.count || 0;
                     return (
                       <li key={i} className="text-sm">
