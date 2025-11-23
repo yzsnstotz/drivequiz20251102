@@ -12,7 +12,7 @@ type TimeoutConfig = {
 
 type TimeoutConfigResponse = {
   ok: boolean;
-  data?: Record<string, string>;
+  data?: Record<string, string | number>;
   message?: string;
 };
 
