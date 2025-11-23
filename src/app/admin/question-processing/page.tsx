@@ -2130,7 +2130,7 @@ export default function QuestionProcessingPage() {
                       处理详情（包含子任务级别的AI对答追踪）
                     </label>
                     <div className="mt-2 max-h-96 overflow-y-auto border rounded p-3 bg-gray-50 space-y-4">
-                      {getDetailsArray(selectedTask.details)
+                      {getDetailsArray((selectedTask as any).details)
                         .filter((d: any) => d && !d.summary)
                         .slice(0, 10)
                         .map((detail, idx) => (
@@ -2213,7 +2213,7 @@ export default function QuestionProcessingPage() {
                         return detailsArray.length > 10;
                       })() && (
                         <div className="text-xs text-gray-500 mt-2 text-center">
-                          还有 {getDetailsArray(selectedTask.details).length - 10} 条记录...
+                          还有 {getDetailsArray((selectedTask as any).details).length - 10} 条记录...
                         </div>
                       )}
                     </div>
