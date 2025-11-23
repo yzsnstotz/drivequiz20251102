@@ -732,8 +732,22 @@ export default function QuestionProcessingPage() {
             
             // 只有在任务详情窗口仍然打开时才更新
             setSelectedTask((current) => {
-              if (current && current.task_id === taskId) {
-                return updatedTask;
+              if (current && current.taskId === taskId) {
+                // 将 BatchProcessTask 转换为 TaskListItem
+                return {
+                  taskId: updatedTask.task_id,
+                  id: String(updatedTask.id),
+                  createdAt: updatedTask.created_at,
+                  status: updatedTask.status as "pending" | "processing" | "succeeded" | "failed" | "completed" | "cancelled",
+                  questionCount: updatedTask.total_questions,
+                  operations: updatedTask.operations,
+                  progress: {
+                    totalItems: updatedTask.total_questions,
+                    completedItems: updatedTask.processed_count,
+                    failedItems: updatedTask.failed_count,
+                    perOperation: {},
+                  },
+                };
               }
               return current;
             });
@@ -870,6 +884,7 @@ export default function QuestionProcessingPage() {
         operations: formData.operations, // 保留操作类型
         translateOptions: formData.translateOptions, // 保留翻译选项
         polishOptions: formData.polishOptions, // 保留润色选项
+        fullPipelineOptions: formData.fullPipelineOptions, // 保留完整流程选项
         batchSize: formData.batchSize, // 保留批次大小
         continueOnError: formData.continueOnError, // 保留错误处理选项
       });

@@ -10,7 +10,7 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
-  aiProvider: "render" | "local"; // 简化：只支持 render 和 local
+  aiProvider: "render" | "local" | "openai" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini_direct" | "strategy"; // 支持所有 provider 类型
   aiModelProvider?: "openai" | "openrouter" | "gemini"; // 当 aiProvider 为 render 时，选择具体的大模型提供商
   timeoutOpenai?: number;
   timeoutOpenaiDirect?: number;
@@ -116,15 +116,9 @@ export default function AdminAiConfigPage() {
           cacheTtl: typeof data.cacheTtl === "string" ? Number(data.cacheTtl) : (data.cacheTtl ?? 86400),
           costAlertUsdThreshold: typeof data.costAlertUsdThreshold === "string" ? Number(data.costAlertUsdThreshold) : (data.costAlertUsdThreshold ?? 10.0),
           aiProvider:
-            data.aiProvider === "local" ||
-            data.aiProvider === "openai" ||
-            data.aiProvider === "openrouter" ||
-            data.aiProvider === "openrouter_direct" ||
-            data.aiProvider === "openai_direct" ||
-            data.aiProvider === "gemini_direct" ||
-            data.aiProvider === "strategy"
-              ? data.aiProvider
-              : "openai",
+            data.aiProvider === "local"
+              ? "local"
+              : "render", // 所有其他 provider（openai, openrouter, gemini 等）都映射为 render
           timeoutOpenai: typeof data.timeoutOpenai === "string" ? Number(data.timeoutOpenai) : (data.timeoutOpenai ?? 30000),
           timeoutOpenaiDirect: typeof data.timeoutOpenaiDirect === "string" ? Number(data.timeoutOpenaiDirect) : (data.timeoutOpenaiDirect ?? 30000),
           timeoutOpenrouter: typeof data.timeoutOpenrouter === "string" ? Number(data.timeoutOpenrouter) : (data.timeoutOpenrouter ?? 30000),
