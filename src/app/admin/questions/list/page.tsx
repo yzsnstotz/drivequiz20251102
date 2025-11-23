@@ -2215,18 +2215,18 @@ export default function QuestionsPage() {
                                       <p class="text-xs font-medium ${r.success ? 'text-green-700' : 'text-red-700'} mb-2">
                                         ${r.locale.toUpperCase()}: ${r.success ? '✓ 翻译成功' : '✗ 翻译失败'}
                                       </p>
-                                      ${r.success && r.content ? `
+                                      ${r.success && (r as any).content ? `
                                         <div class="mt-2 space-y-1">
                                           <p class="text-xs font-medium text-gray-700">翻译后的内容：</p>
                                           <div class="bg-white p-2 rounded border border-gray-200">
-                                            <p class="text-xs text-gray-800 whitespace-pre-wrap">${r.content}</p>
+                                            <p class="text-xs text-gray-800 whitespace-pre-wrap">${(r as any).content}</p>
                                           </div>
-                                          ${r.options && r.options.length > 0 ? `
+                                          ${(r as any).options && (r as any).options.length > 0 ? `
                                             <div class="mt-1">
                                               <p class="text-xs font-medium text-gray-700">选项：</p>
                                               <div class="bg-white p-2 rounded border border-gray-200">
                                                 <ul class="text-xs text-gray-800 space-y-0.5">
-                                                  ${r.options.map((opt: string, idx: number) => `<li>${idx + 1}. ${opt}</li>`).join('')}
+                                                  ${(r as any).options.map((opt: string, idx: number) => `<li>${idx + 1}. ${opt}</li>`).join('')}
                                                 </ul>
                                               </div>
                                             </div>
