@@ -421,12 +421,23 @@ export default function AdminAiMonitorPage() {
   // 即使 summary 失败，也显示页面，但显示错误提示
   const d = resp?.data;
   const totals = d?.totals || {};
-  const totalCalls = d?.totalCalls || totals.totalCalls || 0;
-  const avgCost = d?.avgCostUsd || d?.avgCost || totals.avgCost || totals.avgCostUsd || 0;
-  const cacheHitRate = d?.cacheHitRate || totals.cacheHitRate || 0;
-  const ragHitRate = d?.ragHitRate || totals.ragHitRate || 0;
-  const blocked = d?.blocked || 0;
-  const needsHuman = d?.needsHuman || 0;
+  
+  // 确保所有数值都是数字类型
+  const normalizeNumber = (value: any): number => {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  };
+  
+  const totalCalls = normalizeNumber(d?.totalCalls || totals.totalCalls || 0);
+  const avgCost = normalizeNumber(d?.avgCostUsd || d?.avgCost || totals.avgCost || totals.avgCostUsd || 0);
+  const cacheHitRate = normalizeNumber(d?.cacheHitRate || totals.cacheHitRate || 0);
+  const ragHitRate = normalizeNumber(d?.ragHitRate || totals.ragHitRate || 0);
+  const blocked = normalizeNumber(d?.blocked || 0);
+  const needsHuman = normalizeNumber(d?.needsHuman || 0);
   const locales = d?.locales || {};
   const topQuestions = d?.topQuestions || [];
 
@@ -805,15 +816,19 @@ export default function AdminAiMonitorPage() {
               <tbody className="divide-y divide-gray-200">
                 {providerStats.data.map((stat, i) => (
                   <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-2">{stat.provider}</td>
+                    <td className="px-4 py-2">{String(stat.provider || "-")}</td>
                     <td className="px-4 py-2 text-neutral-600">
-                      {stat.model ? (stat.model.length > 20 ? stat.model.substring(0, 20) + "..." : stat.model) : "-"}
+                      {stat.model 
+                        ? (typeof stat.model === "string" 
+                            ? (stat.model.length > 20 ? stat.model.substring(0, 20) + "..." : stat.model)
+                            : String(stat.model))
+                        : "-"}
                     </td>
-                    <td className="px-4 py-2 text-neutral-600">{stat.scene || "-"}</td>
-                    <td className="px-4 py-2 text-right">{stat.total_calls}</td>
-                    <td className="px-4 py-2 text-right text-green-600">{stat.total_success}</td>
-                    <td className="px-4 py-2 text-right text-red-600">{stat.total_error}</td>
-                    <td className="px-4 py-2 text-right">{stat.success_rate}</td>
+                    <td className="px-4 py-2 text-neutral-600">{String(stat.scene || "-")}</td>
+                    <td className="px-4 py-2 text-right">{normalizeNumber(stat.total_calls)}</td>
+                    <td className="px-4 py-2 text-right text-green-600">{normalizeNumber(stat.total_success)}</td>
+                    <td className="px-4 py-2 text-right text-red-600">{normalizeNumber(stat.total_error)}</td>
+                    <td className="px-4 py-2 text-right">{String(stat.success_rate || "0%")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -830,10 +845,17 @@ export default function AdminAiMonitorPage() {
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
+  // 确保 value 始终是字符串或数字，不会是对象
+  const displayValue = typeof value === "string" || typeof value === "number" 
+    ? value 
+    : typeof value === "object" 
+      ? JSON.stringify(value) 
+      : String(value || "");
+  
   return (
     <div className="border rounded-lg p-4">
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
+      <div className="text-xs text-neutral-500">{String(label)}</div>
+      <div className="text-lg font-semibold mt-1">{displayValue}</div>
     </div>
   );
 }
