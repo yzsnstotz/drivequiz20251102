@@ -607,7 +607,7 @@ export default function QuestionAIDialog({
                                   <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
-                            ) : message.metadata.aiProvider === "render" ? (
+                            ) : (message.metadata.aiProvider as any) === "render" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                                 <span>Render AI Service</span>
