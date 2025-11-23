@@ -2206,10 +2206,11 @@ export default function QuestionsPage() {
                           const result = await apiPost<{ results: Array<{ locale: string; success: boolean; error?: string }> }>("/api/admin/question-processing/translate", payload);
                           
                           // 显示结果
+                          let allSuccess = false;
                           if (progressContent) {
                             const successCount = result.results?.filter(r => r.success).length || 0;
                             const failCount = result.results?.filter(r => !r.success).length || 0;
-                            const allSuccess = failCount === 0;
+                            allSuccess = failCount === 0;
                             
                             progressContent.innerHTML = `
                               <div class="space-y-3">
