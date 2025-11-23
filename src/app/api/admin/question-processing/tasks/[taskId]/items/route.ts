@@ -219,9 +219,8 @@ async function getTaskItems(
 
 // 使用 withAdminAuth 包装，并处理动态路由参数
 export const GET = withAdminAuth(
-  async (req: Request, context?: { params?: Promise<{ taskId?: string }> }) => {
-    const params = (await context?.params) || {};
-    const taskId = params.taskId || new URL(req.url).pathname.split("/").pop() || "";
+  async (req: Request, { params }: { params: Promise<{ taskId: string }> }) => {
+    const { taskId } = await params;
     if (!taskId) {
       return badRequest("taskId is required");
     }
