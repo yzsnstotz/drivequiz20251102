@@ -67,15 +67,28 @@ export async function callAiServiceCore(params: {
     targetLanguage: targetLanguage || undefined,
   });
   
+  if (!result.ok) {
+    return {
+      ok: false,
+      errorCode: result.errorCode || "AI_SERVICE_ERROR",
+      message: result.message || "AI service returned error",
+    };
+  }
+  
+  // result.data 包含 answer, aiProvider, model 等字段
+  const answer = (result.data as any)?.answer || "";
+  const aiProvider = (result.data as any)?.aiProvider;
+  const model = (result.data as any)?.model;
+  
   return {
-    ok: !!result.answer,
+    ok: !!answer,
     data: {
-      answer: result.answer || "",
-      aiProvider: result.aiProvider,
-      model: result.model,
+      answer,
+      aiProvider,
+      model,
     },
-    errorCode: result.answer ? undefined : "AI_SERVICE_ERROR",
-    message: result.answer ? undefined : "AI service returned empty answer",
+    errorCode: answer ? undefined : "AI_SERVICE_ERROR",
+    message: answer ? undefined : "AI service returned empty answer",
   };
 
   // 直接调用用户接口的 AI 服务核心函数
