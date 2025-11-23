@@ -193,8 +193,6 @@ export function buildCacheKey(question: string, lang: string, model: string, sce
 }
 
 export default async function askRoute(app: FastifyInstance): Promise<void> {
-  const config = app.config as ServiceConfig;
-
   // 为 /ask 路由注册 Provider 频率限制中间件
   app.addHook("onRequest", async (request, reply) => {
     await providerRateLimitMiddleware(request, reply);

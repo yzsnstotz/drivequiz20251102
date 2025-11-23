@@ -1,6 +1,5 @@
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import cors from "@fastify/cors";
-import rateLimit from "@fastify/rate-limit";
 import { loadConfig, type LocalAIConfig } from "./lib/config.js";
 import { logger } from "./lib/logger.js";
 
@@ -27,20 +26,20 @@ function buildServer(config: LocalAIConfig): FastifyInstance {
 
   // CORS 配置：通过环境变量控制允许的来源（与 ai-service 保持一致）
   const corsOrigin = config.allowedOrigins.length > 0
-    ? (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+    ? (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
         if (!origin) {
           // 没有 origin 头（如 Postman、curl），允许通过
-          cb(null, true);
+          callback(null, true);
           return;
         }
         // 检查是否在允许列表中
         const isAllowed = config.allowedOrigins.includes(origin);
-        cb(null, isAllowed);
+        callback(null, isAllowed);
       }
     : true; // 如果未配置，默认允许所有来源（向后兼容）
 
   app.register(cors, {
-    origin: corsOrigin,
+    origin: corsOrigin as any,
     credentials: false,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type"],

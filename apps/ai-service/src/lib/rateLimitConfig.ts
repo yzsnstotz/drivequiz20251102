@@ -25,20 +25,6 @@ type RateLimitConfigCache = Map<string, { config: RateLimitConfig; lastUpdated: 
 const configCache: RateLimitConfigCache = new Map();
 
 /**
- * 支持的 Provider 列表
- */
-const SUPPORTED_PROVIDERS = [
-  "openai",
-  "openai_direct",
-  "openrouter",
-  "openrouter_direct",
-  "gemini_direct",
-  "local",
-] as const;
-
-type SupportedProvider = typeof SUPPORTED_PROVIDERS[number];
-
-/**
  * 获取 Provider 的默认频率限制配置
  */
 function getDefaultRateLimitConfig(provider: string): RateLimitConfig {

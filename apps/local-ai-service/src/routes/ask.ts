@@ -443,8 +443,6 @@ function parseAndValidateBody(body: unknown): {
 }
 
 export default async function askRoute(app: FastifyInstance, options: { prefix?: string }): Promise<void> {
-  const config = app.config as LocalAIConfig;
-
   // 为 /ask 路由注册 Provider 频率限制中间件（与 ai-service 保持一致）
   app.addHook("onRequest", async (request, reply) => {
     await providerRateLimitMiddleware(request, reply);
