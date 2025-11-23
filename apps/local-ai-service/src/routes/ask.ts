@@ -451,6 +451,7 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
   app.post(
     "/ask",
     async (request: FastifyRequest<{ Body: AskBody }>, reply: FastifyReply): Promise<void> => {
+      const config = app.config as LocalAIConfig;
       const startTime = Date.now(); // 记录开始时间
       try {
         // 1) 服务间鉴权
