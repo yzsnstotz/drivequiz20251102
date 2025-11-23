@@ -16,6 +16,7 @@ export type ServiceConfig = {
   aiModel: string;
   openaiApiKey: string;
   openrouterApiKey?: string; // OpenRouter API key（可选）
+  geminiApiKey?: string; // Gemini API key（可选）
   supabaseUrl: string;
   supabaseServiceKey: string;
   cacheRedisUrl?: string;
@@ -49,6 +50,7 @@ export function loadConfig(): ServiceConfig {
     AI_MODEL,
     OPENAI_API_KEY,
     OPENROUTER_API_KEY,
+    GEMINI_API_KEY,
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY,
     AI_CACHE_REDIS_URL,
@@ -119,6 +121,100 @@ export function loadConfig(): ServiceConfig {
     }
   };
 
+  return {
+    port: Number(PORT) || 3001,
+    host: HOST || "0.0.0.0",
+    serviceTokens: new Set(SERVICE_TOKENS?.split(",").map((s) => s.trim()) || []),
+    aiModel: AI_MODEL || "gpt-4o-mini",
+    openaiApiKey: OPENAI_API_KEY,
+    openrouterApiKey: OPENROUTER_API_KEY,
+    geminiApiKey: GEMINI_API_KEY,
+    supabaseUrl: SUPABASE_URL,
+    supabaseServiceKey: SUPABASE_SERVICE_KEY,
+    cacheRedisUrl: AI_CACHE_REDIS_URL,
+    nodeEnv: NODE_ENV || "production",
+    version: npm_package_version || "1.0.0",
+    providers: {
+      fetchAskLogs,
+    },
+  };
+}
+
+function loadConfigWithProviders(): ServiceConfig {
+  const {
+    PORT,
+    HOST,
+    SERVICE_TOKENS,
+    AI_MODEL,
+    OPENAI_API_KEY,
+    OPENROUTER_API_KEY,
+    GEMINI_API_KEY,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_KEY,
+    AI_CACHE_REDIS_URL,
+    NODE_ENV,
+    npm_package_version,
+  } = process.env;
+
+  const errors: string[] = [];
+  if (!SERVICE_TOKENS) errors.push("SERVICE_TOKENS");
+  if (!OPENAI_API_KEY) errors.push("OPENAI_API_KEY");
+  if (!SUPABASE_URL) errors.push("SUPABASE_URL");
+  if (!SUPABASE_SERVICE_KEY) errors.push("SUPABASE_SERVICE_KEY");
+  if (errors.length) {
+    throw new Error(`Missing required environment variables: ${errors.join(", ")}`);
+  }
+
+  // 实现 fetchAskLogs provider：从 Supabase 读取 ai_logs 表数据
+  const fetchAskLogs = async (fromIso: string, toIso: string) => {
+    try {
+      // Supabase PostgREST 查询语法：使用 gte (>=) 和 lt (<) 进行时间范围查询
+      // 注意：PostgREST 需要在参数值周围加引号，但 URL 编码会自动处理
+      const url = `${SUPABASE_URL}/rest/v1/ai_logs?created_at=gte.${fromIso}&created_at=lt.${toIso}&select=*&order=created_at.asc`;
+      const response = await fetch(url, {
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[fetchAskLogs] Supabase API error: ${response.status} ${response.statusText}`);
+        return [];
+      }
+
+      const rows = (await response.json()) as Array<{
+        id: number;
+        user_id: string | null;
+        question: string;
+        answer: string | null;
+        locale: string | null;
+        model: string | null;
+        rag_hits: number | null;
+        safety_flag: string;
+        cost_est: number | null;
+        sources?: any;
+        created_at: string;
+      }>;
+
+      // 转换为 AskLogRecord 格式
+      return rows.map((r) => ({
+        id: String(r.id),
+        userId: r.user_id,
+        question: r.question,
+        answer: r.answer || undefined,
+        locale: r.locale || undefined,
+        createdAt: r.created_at,
+        sources: Array.isArray(r.sources) ? r.sources : undefined,
+        safetyFlag: r.safety_flag as "ok" | "needs_human" | "blocked",
+        model: r.model || undefined,
+        meta: {},
+      }));
+    } catch (error) {
+      return [];
+    }
+  };
+
   const defaultProviders: ServiceConfig["providers"] = {
     fetchAskLogs,
   };
@@ -135,6 +231,7 @@ export function loadConfig(): ServiceConfig {
     aiModel: AI_MODEL || "gpt-4o-mini",
     openaiApiKey: OPENAI_API_KEY as string,
     openrouterApiKey: OPENROUTER_API_KEY,
+    geminiApiKey: GEMINI_API_KEY,
     supabaseUrl: SUPABASE_URL as string,
     supabaseServiceKey: SUPABASE_SERVICE_KEY as string,
     cacheRedisUrl: AI_CACHE_REDIS_URL,

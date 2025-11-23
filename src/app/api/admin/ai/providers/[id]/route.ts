@@ -26,9 +26,10 @@ const internalError = (message: string) =>
  *   isLocalFallback?: boolean
  * }
  */
-export const PATCH = withAdminAuth(async (req: NextRequest, { params }: { params: { id: string } }) => {
+export const PATCH = withAdminAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
-    const id = Number(params.id);
+    const { id: idParam } = await params;
+    const id = Number(idParam);
     if (isNaN(id)) {
       return badRequest("Invalid id");
     }
@@ -131,9 +132,10 @@ export const PATCH = withAdminAuth(async (req: NextRequest, { params }: { params
  * DELETE /api/admin/ai/providers/[id]
  * 删除 Provider 配置
  */
-export const DELETE = withAdminAuth(async (_req: NextRequest, { params }: { params: { id: string } }) => {
+export const DELETE = withAdminAuth(async (_req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
-    const id = Number(params.id);
+    const { id: idParam } = await params;
+    const id = Number(idParam);
     if (isNaN(id)) {
       return badRequest("Invalid id");
     }

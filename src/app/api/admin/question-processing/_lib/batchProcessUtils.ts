@@ -10,7 +10,7 @@ import { mapDbProviderToClientProvider } from "@/lib/aiProviderMapping";
 import { loadQpAiConfig, type QpAiConfig } from "@/lib/qpAiConfig";
 import { getAiCache, setAiCache } from "@/lib/qpAiCache";
 import { normalizeAIResult } from "@/lib/quizTags";
-import { buildQuestionTranslationInput, buildQuestionPolishInput, buildQuestionFillMissingInput, buildQuestionFullPipelineInput } from "@/lib/questionPromptBuilder";
+import { buildQuestionTranslationInput, buildQuestionPolishInput, buildQuestionFillMissingInput } from "@/lib/questionPromptBuilder";
 import { buildNormalizedQuestion } from "@/lib/questionNormalize";
 
 // 在模块级提前加载一次配置（与 question-processor 保持一致）
@@ -33,7 +33,7 @@ export interface TranslateResult {
   language?: string | null; // 可选：AI 端未来可以返回检测到的语言
 }
 
-import { QuestionType } from "@/types/question";
+type QuestionType = "single" | "multiple" | "truefalse";
 
 interface TranslationConstraints {
   sourceLanguage: string;      // "zh" | "ja" | "en"
@@ -1299,7 +1299,7 @@ export async function translateWithPolish(params: {
     explanation: source.explanation,
     sourceLanguage: normalizedSourceLang || sourceLang,
     targetLanguage: normalizedTargetLang || targetLang,
-    type: params.type, // ✅ 修复：统一使用 type 字段
+    questionType: params.type, // 使用 questionType 字段
   });
 
   const sceneKey = "question_translation";
@@ -1498,7 +1498,7 @@ export async function translateWithPolish(params: {
         explanation: source.explanation, // 只翻译 explanation
         sourceLanguage: normalizedSourceLang || sourceLang,
         targetLanguage: normalizedTargetLang || targetLang,
-        type: params.type, // ✅ 修复：统一使用 type 字段
+        questionType: params.type, // 使用 questionType 字段
       });
 
       // 调用 AI 服务，只翻译 explanation
@@ -1629,7 +1629,7 @@ export async function polishContent(params: {
     options: text.options,
     explanation: text.explanation,
     language: locale,
-    type: type || undefined, // ✅ 修复：统一使用 type 字段
+    questionType: type || undefined, // 使用 questionType 字段
   });
 
   const sceneKey = "question_polish";
@@ -1925,7 +1925,7 @@ export async function fillMissingContent(params: {
     stem: content,
     options: options,
     explanation: explanation,
-    type: type, // ✅ 修复：统一使用 type 字段
+    questionType: type, // 使用 questionType 字段
   });
 
   const sceneKey = "question_fill_missing";
@@ -2458,13 +2458,14 @@ export async function processFullPipelineBatch(
         ? question.correct_answer.join(",")
         : String(question.correct_answer || "");
 
-      const input = buildQuestionFullPipelineInput({
+      // 使用 buildQuestionTranslationInput 作为替代，因为 full pipeline 主要是翻译场景
+      const input = buildQuestionTranslationInput({
         stem,
-        options,
-        answer,
+        options: options || undefined,
+        explanation: undefined, // full pipeline 场景不包含 explanation
         sourceLanguage,
-        targetLanguages,
-        type: type, // ✅ 修复：统一使用 type 字段
+        targetLanguage: targetLanguages[0] || sourceLanguage,
+        questionType: type, // 使用 questionType 字段
       });
 
       // ========== STAGE 3: CALL_AI_FULL_PIPELINE ==========
@@ -2774,9 +2775,9 @@ export async function processFullPipelineBatch(
       const normalized = normalizeQuestionBeforeSave({
         id: question.id,
         type: normalizedQuestion.type,
-        options: normalizedQuestion.options,
+        options: normalizedQuestion.options || [],
       });
-      normalizedQuestion.options = normalized.options;
+      normalizedQuestion.options = normalized.options || [];
       
       console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 6: NORMALIZE_AND_VALIDATE_QUESTION 完成 | correctAnswer=${normalizedQuestion.correctAnswer ?? "null"}`);
 

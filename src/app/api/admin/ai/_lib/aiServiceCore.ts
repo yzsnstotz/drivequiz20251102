@@ -44,11 +44,28 @@ export async function callAiServiceCore(params: {
 }): Promise<AiServiceResponse> {
   const { question, locale = "zh-CN", scene, sourceLanguage, targetLanguage, requestId, timeout = 250000 } = params;
 
-  // 使用动态导入避免 webpack 模块解析冲突
-  // 动态导入可以确保模块在运行时才解析，避免编译时的循环依赖问题
-  const { callAiServiceCore: callAiServiceCoreFromUserLib } = await import(
-    "@/app/api/ai/_lib/aiServiceCore"
-  );
+  // 直接使用 callAiServer，因为用户接口的 AI 服务核心函数不存在
+  // 后台接口直接调用 AI 服务，跳过用户配额检查
+  const { callAiServer } = await import("@/lib/aiClient.server");
+  
+  const result = await callAiServer({
+    question,
+    locale: locale || "zh-CN",
+    scene: scene || undefined,
+    sourceLanguage: sourceLanguage || undefined,
+    targetLanguage: targetLanguage || undefined,
+  });
+  
+  return {
+    ok: !!result.answer,
+    data: {
+      answer: result.answer || "",
+      aiProvider: result.aiProvider,
+      model: result.model,
+    },
+    errorCode: result.answer ? undefined : "AI_SERVICE_ERROR",
+    message: result.answer ? undefined : "AI service returned empty answer",
+  };
 
   // 直接调用用户接口的 AI 服务核心函数
   // 但设置 userId=null 和 isAnonymous=false，跳过用户配额检查
