@@ -2142,7 +2142,7 @@ export default function QuestionProcessingPage() {
                           {/* 子任务详细信息 */}
                           {detail.subtasks && detail.subtasks.length > 0 && (
                             <div className="ml-4 space-y-3 mt-2">
-                              {detail.subtasks.map((subtask, subtaskIdx) => (
+                              {detail.subtasks.map((subtask: any, subtaskIdx: number) => (
                                 <div key={subtaskIdx} className="bg-white rounded-lg p-3 border border-gray-200">
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
