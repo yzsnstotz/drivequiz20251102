@@ -1087,7 +1087,7 @@ export default function QuestionProcessingPage() {
             {autoRefresh ? "🔄 自动刷新中" : "⏸️ 暂停刷新"}
           </button>
           <button
-            onClick={loadTasks}
+            onClick={() => loadTasks(false)}
             disabled={loading}
             className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50"
           >
@@ -1568,7 +1568,7 @@ export default function QuestionProcessingPage() {
                           />
                         </div>
                         <div className="text-xs text-gray-500">
-                          成功: {task.progress.succeededCount ?? 0} | 失败: {task.progress.failedItems ?? 0} | 题目数: {task.questionCount ?? 0}
+                           成功: {(task.progress.completedItems ?? 0) - (task.progress.failedItems ?? 0)} | 失败: {task.progress.failedItems ?? 0} | 题目数: {task.questionCount ?? 0}
                         </div>
                       </div>
                     ) : (
@@ -1640,8 +1640,8 @@ export default function QuestionProcessingPage() {
                     const level = log.level.toUpperCase();
                     const logType = log.logType === 'task-list' ? '任务列表' : log.logType === 'task-processing' ? '任务处理' : '';
                     const taskId = log.taskId ? `Task: ${log.taskId.substring(0, 8)}...` : '';
-                    const questionId = log.questionId ? `Q${log.questionId}` : '';
-                    const aiProvider = log.aiProvider || '';
+                    const questionId = (log as any).questionId ? `Q${(log as any).questionId}` : '';
+                    const aiProvider = (log as any).aiProvider || '';
                     
                     const parts = [
                       `[${time}]`,
@@ -1668,8 +1668,8 @@ export default function QuestionProcessingPage() {
                     const level = log.level.toUpperCase();
                     const logType = log.logType === 'task-list' ? '任务列表' : log.logType === 'task-processing' ? '任务处理' : '';
                     const taskId = log.taskId ? `Task: ${log.taskId.substring(0, 8)}...` : '';
-                    const questionId = log.questionId ? `Q${log.questionId}` : '';
-                    const aiProvider = log.aiProvider || '';
+                    const questionId = (log as any).questionId ? `Q${(log as any).questionId}` : '';
+                    const aiProvider = (log as any).aiProvider || '';
                     
                     const parts = [
                       `[${time}]`,
@@ -1748,14 +1748,14 @@ export default function QuestionProcessingPage() {
                         [Task: {log.taskId.substring(0, 8)}...]
                       </span>
                     )}
-                    {log.questionId && (
+                    {(log as any).questionId && (
                       <span className="ml-2 text-cyan-400">
-                        [Q{log.questionId}]
+                        [Q{(log as any).questionId}]
                       </span>
                     )}
-                    {log.aiProvider && (
+                    {(log as any).aiProvider && (
                       <span className="ml-2 text-purple-400">
-                        [{log.aiProvider}]
+                        [{(log as any).aiProvider}]
                       </span>
                     )}
                     <span className="ml-2">{log.message}</span>
