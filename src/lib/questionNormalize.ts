@@ -71,7 +71,7 @@ export function buildNormalizedQuestion(
   // 如果还没有，从 inputPayload 获取
   else if (inputPayload?.options && Array.isArray(inputPayload.options)) {
     options = inputPayload.options.filter(
-      (opt): opt is string => typeof opt === "string"
+      (opt: any): opt is string => typeof opt === "string"
     );
   }
 
