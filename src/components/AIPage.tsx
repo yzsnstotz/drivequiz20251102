@@ -318,7 +318,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         content,
         createdAt: Date.now(),
         metadata: {
-          aiProvider: actualProvider, // 使用实际 provider
+          aiProvider: actualProvider as any, // 使用实际 provider
           sources: sources || [],
           model: model, // 保存模型名称
         },
