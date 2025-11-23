@@ -439,19 +439,41 @@ export default function AdminAiMonitorPage() {
   const blocked = normalizeNumber(d?.blocked || 0);
   const needsHuman = normalizeNumber(d?.needsHuman || 0);
   const locales = d?.locales || {};
-  const topQuestions = d?.topQuestions || [];
+  const topQuestionsRaw = d?.topQuestions || [];
+
+  // 过滤和规范化 topQuestions，确保所有元素都是有效对象
+  const topQuestions = Array.isArray(topQuestionsRaw) 
+    ? topQuestionsRaw.filter((x): x is { q?: string; question?: string; count: number } => {
+        if (!x || typeof x !== "object") return false;
+        const hasQuestion = ("q" in x && x.q) || ("question" in x && x.question);
+        const hasCount = "count" in x && (typeof x.count === "number" || typeof x.count === "string");
+        return !!(hasQuestion && hasCount);
+      }).map((x) => ({
+        q: "q" in x ? (typeof x.q === "string" ? x.q : String(x.q || "")) : undefined,
+        question: "question" in x ? (typeof x.question === "string" ? x.question : String(x.question || "")) : undefined,
+        count: typeof x.count === "number" ? x.count : typeof x.count === "string" ? Number(x.count) || 0 : 0,
+      }))
+    : [];
 
   // 计算 locales 饼图数据
-  // 确保 locales 的值都是数字
+  // 确保 locales 的值都是数字，键都是字符串
   const normalizedLocales = Object.entries(locales).reduce((acc, [key, value]) => {
+    // 确保 key 是字符串
+    const stringKey = typeof key === "string" ? key : String(key || "");
+    if (!stringKey) return acc;
+    
     const numValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : 0;
-    if (numValue > 0) {
-      acc[key] = numValue;
+    if (numValue > 0 && !isNaN(numValue)) {
+      acc[stringKey] = numValue;
     }
     return acc;
   }, {} as Record<string, number>);
-  const localeEntries = Object.entries(normalizedLocales).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const localeTotal = Object.values(normalizedLocales).reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0);
+  
+  const localeEntries = Object.entries(normalizedLocales)
+    .filter(([key, value]) => typeof key === "string" && typeof value === "number" && !isNaN(value))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  const localeTotal = Object.values(normalizedLocales).reduce((sum, v) => sum + (typeof v === "number" && !isNaN(v) ? v : 0), 0);
 
   // 检查是否有实际数据（避免渲染空对象）
   // 不仅要检查对象是否有键，还要检查是否有实际的数据值
@@ -660,59 +682,74 @@ export default function AdminAiMonitorPage() {
               最近检查时间：{new Date(heartbeat.data.checkedAt).toLocaleString()}
             </p>
             <div className="space-y-2">
-              {heartbeat.data.providers.map((p) => {
-                // 确保 lastError 始终是字符串
-                const errorMessage = p.lastError 
-                  ? (typeof p.lastError === "string" 
-                      ? p.lastError 
-                      : typeof p.lastError === "object" 
-                        ? JSON.stringify(p.lastError) 
-                        : String(p.lastError))
-                  : null;
-                
-                return (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between rounded border px-3 py-2 text-sm"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium">
-                        {p.label}{" "}
-                        <span className="ml-2 text-xs text-gray-500">
-                          ({p.mode === "local" ? "本地" : "远程"})
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {p.endpoint}
-                      </div>
-                      {errorMessage && p.status === "down" && (
-                        <div className="text-xs text-red-500 mt-1">
-                          错误：{errorMessage}
+              {heartbeat.data.providers
+                .filter((p) => p && typeof p === "object" && p.id) // 过滤无效的 provider
+                .map((p) => {
+                  // 确保所有字段都是正确的类型
+                  const id = String(p.id || "");
+                  const label = String(p.label || "");
+                  const endpoint = String(p.endpoint || "");
+                  const mode = p.mode === "local" ? "本地" : "远程";
+                  const status = p.status === "up" ? "在线" : "离线";
+                  
+                  // 确保 lastError 始终是字符串
+                  const errorMessage = p.lastError 
+                    ? (typeof p.lastError === "string" 
+                        ? p.lastError 
+                        : typeof p.lastError === "object" 
+                          ? JSON.stringify(p.lastError) 
+                          : String(p.lastError))
+                    : null;
+                  
+                  // 确保 latencyMs 是数字
+                  const latencyMs = typeof p.latencyMs === "number" && !isNaN(p.latencyMs) ? p.latencyMs : null;
+                  
+                  if (!id) return null; // 如果 id 为空，跳过
+                  
+                  return (
+                    <div
+                      key={id}
+                      className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium">
+                          {label}{" "}
+                          <span className="ml-2 text-xs text-gray-500">
+                            ({mode})
+                          </span>
                         </div>
-                      )}
-                    </div>
-                    <div className="text-right ml-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <span
-                          className={
-                            p.status === "up"
-                              ? "h-2 w-2 rounded-full bg-green-500"
-                              : "h-2 w-2 rounded-full bg-red-500"
-                          }
-                        />
-                        <span className="text-sm font-medium">
-                          {p.status === "up" ? "在线" : "离线"}
-                        </span>
-                      </div>
-                      {typeof p.latencyMs === "number" && (
-                        <div className="mt-1 text-xs text-gray-500">
-                          延迟：{p.latencyMs} ms
+                        <div className="text-xs text-gray-500 mt-1">
+                          {endpoint}
                         </div>
-                      )}
+                        {errorMessage && p.status === "down" && (
+                          <div className="text-xs text-red-500 mt-1">
+                            错误：{errorMessage}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right ml-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <span
+                            className={
+                              p.status === "up"
+                                ? "h-2 w-2 rounded-full bg-green-500"
+                                : "h-2 w-2 rounded-full bg-red-500"
+                            }
+                          />
+                          <span className="text-sm font-medium">
+                            {status}
+                          </span>
+                        </div>
+                        {latencyMs !== null && (
+                          <div className="mt-1 text-xs text-gray-500">
+                            延迟：{latencyMs} ms
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+                .filter(Boolean)} // 过滤掉 null 值
             </div>
           </>
         )}
@@ -745,12 +782,17 @@ export default function AdminAiMonitorPage() {
           <div className="border rounded-lg p-4">
             <div className="space-y-2">
               {localeEntries.map(([locale, count]) => {
-                // 确保 count 是数字
-                const countNum = typeof count === "number" ? count : typeof count === "string" ? Number(count) : 0;
-                const percentage = localeTotal > 0 ? ((countNum / localeTotal) * 100).toFixed(1) : "0";
+                // 确保 locale 是字符串，count 是数字（数据已经在前面规范化了）
+                const localeStr = typeof locale === "string" ? locale : String(locale || "");
+                const countNum = typeof count === "number" && !isNaN(count) ? count : 0;
+                const percentage = localeTotal > 0 && countNum > 0 ? ((countNum / localeTotal) * 100).toFixed(1) : "0";
+                
+                // 如果 locale 为空，跳过这个条目
+                if (!localeStr) return null;
+                
                 return (
-                  <div key={locale} className="flex items-center gap-2">
-                    <div className="text-sm font-medium w-20">{String(locale)}</div>
+                  <div key={localeStr} className="flex items-center gap-2">
+                    <div className="text-sm font-medium w-20">{localeStr}</div>
                     <div className="flex-1 bg-gray-200 rounded-full h-4 relative">
                       <div
                         className="bg-blue-500 h-4 rounded-full"
@@ -762,7 +804,7 @@ export default function AdminAiMonitorPage() {
                     </div>
                   </div>
                 );
-              })}
+              }).filter(Boolean)}
             </div>
           </div>
         </div>
@@ -773,22 +815,12 @@ export default function AdminAiMonitorPage() {
               <ul className="list-disc pl-6">
                 {topQuestions.length > 0 ? (
                   topQuestions.map((x, i) => {
-                    // 确保 question 是字符串
-                    const questionRaw = "q" in x ? x.q : x.question;
-                    const question = typeof questionRaw === "string" 
-                      ? questionRaw 
-                      : typeof questionRaw === "object" 
-                        ? JSON.stringify(questionRaw) 
-                        : String(questionRaw || "");
-                    // 确保 count 是数字
-                    const count = typeof x.count === "number" 
-                      ? x.count 
-                      : typeof x.count === "string" 
-                        ? Number(x.count) 
-                        : 0;
+                    // 数据已经在前面规范化了，直接使用
+                    const question = x.q || x.question || "";
+                    const count = x.count || 0;
                     return (
                       <li key={i} className="text-sm">
-                        {question} <span className="text-neutral-400">({count})</span>
+                        {String(question)} <span className="text-neutral-400">({Number(count)})</span>
                       </li>
                     );
                   })
@@ -824,23 +856,34 @@ export default function AdminAiMonitorPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {providerStats.data.map((stat, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-2">{String(stat.provider || "-")}</td>
-                    <td className="px-4 py-2 text-neutral-600">
-                      {stat.model 
-                        ? (typeof stat.model === "string" 
-                            ? (stat.model.length > 20 ? stat.model.substring(0, 20) + "..." : stat.model)
-                            : String(stat.model))
-                        : "-"}
-                    </td>
-                    <td className="px-4 py-2 text-neutral-600">{String(stat.scene || "-")}</td>
-                    <td className="px-4 py-2 text-right">{normalizeNumber(stat.total_calls)}</td>
-                    <td className="px-4 py-2 text-right text-green-600">{normalizeNumber(stat.total_success)}</td>
-                    <td className="px-4 py-2 text-right text-red-600">{normalizeNumber(stat.total_error)}</td>
-                    <td className="px-4 py-2 text-right">{String(stat.success_rate || "0%")}</td>
-                  </tr>
-                ))}
+                {providerStats.data
+                  .filter((stat) => stat && typeof stat === "object") // 过滤无效的 stat
+                  .map((stat, i) => {
+                    // 确保所有字段都是正确的类型
+                    const provider = String(stat.provider || "-");
+                    const model = stat.model 
+                      ? (typeof stat.model === "string" 
+                          ? (stat.model.length > 20 ? stat.model.substring(0, 20) + "..." : stat.model)
+                          : String(stat.model))
+                      : "-";
+                    const scene = String(stat.scene || "-");
+                    const totalCalls = normalizeNumber(stat.total_calls);
+                    const totalSuccess = normalizeNumber(stat.total_success);
+                    const totalError = normalizeNumber(stat.total_error);
+                    const successRate = String(stat.success_rate || "0%");
+                    
+                    return (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-4 py-2">{provider}</td>
+                        <td className="px-4 py-2 text-neutral-600">{model}</td>
+                        <td className="px-4 py-2 text-neutral-600">{scene}</td>
+                        <td className="px-4 py-2 text-right">{totalCalls}</td>
+                        <td className="px-4 py-2 text-right text-green-600">{totalSuccess}</td>
+                        <td className="px-4 py-2 text-right text-red-600">{totalError}</td>
+                        <td className="px-4 py-2 text-right">{successRate}</td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
