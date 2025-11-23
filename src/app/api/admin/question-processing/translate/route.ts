@@ -168,7 +168,7 @@ export const POST = withAdminAuth(async (req: Request) => {
           },
           from: sourceLang, // 使用处理后的值（确保有值）
           to: targetLang,
-          questionType: question.type, // 传递题目类型（single/multiple/truefalse）
+          type: question.type, // 传递题目类型（single/multiple/truefalse）
           adminToken,
           mode: "single", // ✅ 单题操作模式
         });
