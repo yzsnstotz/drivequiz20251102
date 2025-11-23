@@ -683,7 +683,7 @@ export default function AdminAiMonitorPage() {
             </p>
             <div className="space-y-2">
               {heartbeat.data.providers
-                .filter((p) => p && typeof p === "object" && p.id) // 过滤无效的 provider
+                .filter((p) => p && typeof p === "object" && p.id)
                 .map((p) => {
                   // 确保所有字段都是正确的类型
                   const id = String(p.id || "");
@@ -749,7 +749,7 @@ export default function AdminAiMonitorPage() {
                     </div>
                   );
                 })
-                .filter(Boolean)} // 过滤掉 null 值
+                .filter(Boolean)}
             </div>
           </>
         )}
@@ -857,7 +857,7 @@ export default function AdminAiMonitorPage() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {providerStats.data
-                  .filter((stat) => stat && typeof stat === "object") // 过滤无效的 stat
+                  .filter((stat) => stat && typeof stat === "object")
                   .map((stat, i) => {
                     // 确保所有字段都是正确的类型
                     const provider = String(stat.provider || "-");
