@@ -196,7 +196,7 @@ async function getTaskItems(
     }
 
     if (status) {
-      countQuery = countQuery.where("status", "=", status);
+      countQuery = countQuery.where("status", "=", status as any);
     }
 
     if (targetLang) {
