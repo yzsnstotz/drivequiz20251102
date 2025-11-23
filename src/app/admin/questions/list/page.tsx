@@ -2231,7 +2231,7 @@ export default function QuestionsPage() {
                                               </div>
                                             </div>
                                           ` : ''}
-                                          ${r.explanation ? `
+                                           ${(r as any).explanation ? `
                                             <div class="mt-1">
                                               <p class="text-xs font-medium text-gray-700">解析：</p>
                                               <div class="bg-white p-2 rounded border border-gray-200">
