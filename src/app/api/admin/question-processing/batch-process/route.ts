@@ -1528,7 +1528,7 @@ async function processBatchAsync(
                   : "";
 
                 // 这里的 sourceLanguage 取自当前任务的 translateOptions.from 或 question 的原始语言
-                const sourceLangForQuestion = translateOptions?.from ?? (question as any).source_language ?? "zh";
+                const sourceLangForQuestion = input.translateOptions?.from ?? (question as any).source_language ?? "zh";
 
                 const updatedExplanation = buildUpdatedExplanationWithGuard({
                   currentExplanation: currentQuestionBeforeTranslate.explanation,
