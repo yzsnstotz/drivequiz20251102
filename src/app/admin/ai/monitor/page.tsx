@@ -628,48 +628,59 @@ export default function AdminAiMonitorPage() {
               最近检查时间：{new Date(heartbeat.data.checkedAt).toLocaleString()}
             </p>
             <div className="space-y-2">
-              {heartbeat.data.providers.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between rounded border px-3 py-2 text-sm"
-                >
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {p.label}{" "}
-                      <span className="ml-2 text-xs text-gray-500">
-                        ({p.mode === "local" ? "本地" : "远程"})
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {p.endpoint}
-                    </div>
-                    {p.lastError && p.status === "down" && (
-                      <div className="text-xs text-red-500 mt-1">
-                        错误：{p.lastError}
+              {heartbeat.data.providers.map((p) => {
+                // 确保 lastError 始终是字符串
+                const errorMessage = p.lastError 
+                  ? (typeof p.lastError === "string" 
+                      ? p.lastError 
+                      : typeof p.lastError === "object" 
+                        ? JSON.stringify(p.lastError) 
+                        : String(p.lastError))
+                  : null;
+                
+                return (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+                  >
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        {p.label}{" "}
+                        <span className="ml-2 text-xs text-gray-500">
+                          ({p.mode === "local" ? "本地" : "远程"})
+                        </span>
                       </div>
-                    )}
-                  </div>
-                  <div className="text-right ml-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <span
-                        className={
-                          p.status === "up"
-                            ? "h-2 w-2 rounded-full bg-green-500"
-                            : "h-2 w-2 rounded-full bg-red-500"
-                        }
-                      />
-                      <span className="text-sm font-medium">
-                        {p.status === "up" ? "在线" : "离线"}
-                      </span>
-                    </div>
-                    {typeof p.latencyMs === "number" && (
-                      <div className="mt-1 text-xs text-gray-500">
-                        延迟：{p.latencyMs} ms
+                      <div className="text-xs text-gray-500 mt-1">
+                        {p.endpoint}
                       </div>
-                    )}
+                      {errorMessage && p.status === "down" && (
+                        <div className="text-xs text-red-500 mt-1">
+                          错误：{errorMessage}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right ml-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <span
+                          className={
+                            p.status === "up"
+                              ? "h-2 w-2 rounded-full bg-green-500"
+                              : "h-2 w-2 rounded-full bg-red-500"
+                          }
+                        />
+                        <span className="text-sm font-medium">
+                          {p.status === "up" ? "在线" : "离线"}
+                        </span>
+                      </div>
+                      {typeof p.latencyMs === "number" && (
+                        <div className="mt-1 text-xs text-gray-500">
+                          延迟：{p.latencyMs} ms
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
