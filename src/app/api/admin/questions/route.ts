@@ -216,6 +216,9 @@ async function collectAllQuestions(): Promise<(Question & { content_hash?: strin
         explanation: q.explanation || undefined,
         category,
         content_hash: q.content_hash, // 保留 content_hash 字段
+        license_tags: q.license_type_tag || q.license_types || undefined, // 驾照类型标签（优先使用 license_type_tag，兼容 license_types）
+        stage_tag: q.stage_tag || undefined, // 阶段标签
+        topic_tags: q.topic_tags || undefined, // 主题标签数组
       };
     });
 
