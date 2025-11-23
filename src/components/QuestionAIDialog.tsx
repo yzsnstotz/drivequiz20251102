@@ -441,7 +441,7 @@ export default function QuestionAIDialog({
           role: "assistant",
           content: answer,
           metadata: {
-            aiProvider: actualProvider,
+            aiProvider: actualProvider as any,
             model: payload.data.model,
             sourceType: payload.data.cached ? "cached" : "ai-generated",
             cacheSource: payload.data.cached ? "database" : undefined, // ai-service 返回的缓存标记为 database
