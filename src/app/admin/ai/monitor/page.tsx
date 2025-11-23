@@ -454,7 +454,17 @@ export default function AdminAiMonitorPage() {
   const localeTotal = Object.values(normalizedLocales).reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0);
 
   // 检查是否有实际数据（避免渲染空对象）
-  const hasData = d && typeof d === "object" && Object.keys(d).length > 0;
+  // 不仅要检查对象是否有键，还要检查是否有实际的数据值
+  const hasData = d && typeof d === "object" && d !== null && !Array.isArray(d) && 
+    (Object.keys(d).length > 0 && (
+      d.totalCalls !== undefined || 
+      d.avgCost !== undefined || 
+      d.avgCostUsd !== undefined ||
+      d.cacheHitRate !== undefined ||
+      d.ragHitRate !== undefined ||
+      (d.locales && Object.keys(d.locales).length > 0) ||
+      (d.topQuestions && Array.isArray(d.topQuestions) && d.topQuestions.length > 0)
+    ));
 
   return (
     <div className="space-y-4 p-4">
@@ -790,7 +800,7 @@ export default function AdminAiMonitorPage() {
           </>
       )}
 
-      {!d && (
+      {!hasData && (
         <div className="p-4 text-gray-500 text-center">
           暂无摘要数据
         </div>
