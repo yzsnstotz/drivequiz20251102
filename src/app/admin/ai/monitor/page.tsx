@@ -434,6 +434,9 @@ export default function AdminAiMonitorPage() {
   const localeEntries = Object.entries(locales).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const localeTotal = Object.values(locales).reduce((sum, v) => sum + v, 0);
 
+  // 检查是否有实际数据（避免渲染空对象）
+  const hasData = d && typeof d === "object" && Object.keys(d).length > 0;
+
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
@@ -622,7 +625,7 @@ export default function AdminAiMonitorPage() {
             心跳检查失败：{heartbeatError}
           </p>
         )}
-        {heartbeat && heartbeat.data && (
+        {heartbeat?.data && heartbeat.data.providers && Array.isArray(heartbeat.data.providers) && (
           <>
             <p className="mb-3 text-xs text-gray-500">
               最近检查时间：{new Date(heartbeat.data.checkedAt).toLocaleString()}
@@ -692,7 +695,7 @@ export default function AdminAiMonitorPage() {
         )}
       </div>
 
-      {d && (
+      {hasData && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Stat label="总调用" value={totalCalls} />
