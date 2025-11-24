@@ -2689,10 +2689,20 @@ export async function processFullPipelineBatch(
           `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 使用数据库源内容进行翻译校验（不使用 AI 返回的 source）`,
         );
         
+        // ✅ 修复问题3：只处理指定的目标语言，过滤掉不在targetLanguages中的翻译
+        // 先过滤sanitized.translations，只保留targetLanguages中的语言
+        const filteredTranslations: Record<string, any> = {};
         for (const lang of targetLanguages) {
-          const t = sanitized.translations[lang];
+          if (sanitized.translations[lang]) {
+            filteredTranslations[lang] = sanitized.translations[lang];
+          }
+        }
+        
+        // 只遍历过滤后的翻译
+        for (const lang of targetLanguages) {
+          const t = filteredTranslations[lang];
           if (!t || !t.content) {
-            console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 跳过语言 ${lang}（无翻译内容）`);
+            console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 跳过语言 ${lang}（无翻译内容或不在目标语言列表中）`);
             continue;
           }
 
@@ -2970,12 +2980,54 @@ export async function processFullPipelineBatch(
             // 如果 shouldSaveExplanation 为 false，保持 updatedExplanation 不变（已包含源语言 explanation）
           }
           
+          // ✅ 修复问题1：确保JSONB数据格式正确，验证并清理数据
+          // 验证content和explanation是否可以正确序列化为JSON
+          let validContent: any = null;
+          let validExplanation: any = null;
+          
+          try {
+            // 验证content
+            if (updatedContent && Object.keys(updatedContent).length > 0) {
+              // 确保所有值都是字符串或null
+              const cleanedContent: Record<string, string> = {};
+              for (const [key, value] of Object.entries(updatedContent)) {
+                if (value === null || value === undefined) {
+                  cleanedContent[key] = "";
+                } else {
+                  cleanedContent[key] = String(value);
+                }
+              }
+              // 验证JSON格式
+              JSON.stringify(cleanedContent);
+              validContent = cleanedContent;
+            }
+            
+            // 验证explanation
+            if (updatedExplanation && Object.keys(updatedExplanation).length > 0) {
+              // 确保所有值都是字符串或null
+              const cleanedExplanation: Record<string, string> = {};
+              for (const [key, value] of Object.entries(updatedExplanation)) {
+                if (value === null || value === undefined) {
+                  cleanedExplanation[key] = "";
+                } else {
+                  cleanedExplanation[key] = String(value);
+                }
+              }
+              // 验证JSON格式
+              JSON.stringify(cleanedExplanation);
+              validExplanation = cleanedExplanation;
+            }
+          } catch (jsonError) {
+            console.error(`[processFullPipelineBatch] [Q${question.id}] JSON验证失败:`, jsonError);
+            throw new Error(`JSON格式错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`);
+          }
+          
           // 在事务中更新题目
           await trx
             .updateTable("questions")
             .set({
-              content: updatedContent as any,
-              explanation: updatedExplanation as any,
+              content: validContent as any,
+              explanation: validExplanation as any,
               updated_at: new Date(),
             })
             .where("id", "=", question.id)

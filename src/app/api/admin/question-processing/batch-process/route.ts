@@ -2461,8 +2461,13 @@ async function processBatchAsync(
     console.log(`[BatchProcess] [${requestId}] Summary generated`);
     
     // 更新任务状态为已完成
-    // 根据处理结果决定最终状态：如果有失败的题目，标记为部分成功；如果全部成功，标记为完成
-    const finalStatus = results.failed > 0 ? "completed" : "completed"; // 即使有失败，也标记为完成（因为 continueOnError 允许继续）
+    // ✅ 修复问题2：如果全部失败，应该标记为失败而不是完成
+    // 如果所有题目都已处理但全部失败，标记为失败；如果有成功的题目，标记为完成
+    const finalStatus = (results.processed === results.total && results.succeeded === 0 && results.failed > 0) 
+      ? "failed" 
+      : (results.processed === results.total) 
+        ? "completed" 
+        : "failed";
     
     console.log(`[BatchProcess] [${requestId}] Updating task status to '${finalStatus}'...`);
     const finalDetailsArray = [...results.details, { summary }];
