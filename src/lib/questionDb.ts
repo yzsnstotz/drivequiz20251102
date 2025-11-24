@@ -141,25 +141,102 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
     const contentHash = question.hash || calculateQuestionHash(question);
     
     // 规范化content字段：如果是字符串，转换为多语言对象
-    let contentMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+    // ✅ 修复：确保所有值都是字符串，清理undefined/null值
+    let contentMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null = null;
     if (typeof question.content === "string") {
       // 兼容旧格式：单语言字符串转换为多语言对象
       contentMultilang = { zh: question.content };
-    } else {
-      // 新格式：多语言对象
-      contentMultilang = question.content;
+    } else if (question.content && typeof question.content === "object") {
+      // 新格式：多语言对象，清理无效值
+      const cleaned: Record<string, string> = {};
+      for (const [key, value] of Object.entries(question.content)) {
+        if (value !== null && value !== undefined) {
+          cleaned[key] = String(value);
+        }
+      }
+      if (Object.keys(cleaned).length > 0) {
+        contentMultilang = cleaned as any;
+      }
     }
 
     // 规范化explanation字段：如果是字符串，转换为多语言对象
+    // ✅ 修复：确保所有值都是字符串，清理undefined/null值
     let explanationMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null = null;
     if (question.explanation) {
       if (typeof question.explanation === "string") {
         // 兼容旧格式：单语言字符串转换为多语言对象
         explanationMultilang = { zh: question.explanation };
-      } else {
-        // 新格式：多语言对象
-        explanationMultilang = question.explanation;
+      } else if (typeof question.explanation === "object" && question.explanation !== null) {
+        // 新格式：多语言对象，清理无效值
+        const cleaned: Record<string, string> = {};
+        for (const [key, value] of Object.entries(question.explanation)) {
+          if (value !== null && value !== undefined) {
+            cleaned[key] = String(value);
+          }
+        }
+        if (Object.keys(cleaned).length > 0) {
+          explanationMultilang = cleaned as any;
+        }
       }
+    }
+    
+    // ✅ 修复：清理和验证options字段
+    let cleanedOptions: any = null;
+    if (question.options) {
+      if (Array.isArray(question.options)) {
+        // 确保数组中的每个元素都是有效的
+        cleanedOptions = question.options.map(opt => {
+          if (opt === null || opt === undefined) {
+            return "";
+          }
+          return String(opt);
+        });
+      } else if (typeof question.options === "object") {
+        // 如果是对象，尝试序列化
+        try {
+          JSON.stringify(question.options);
+          cleanedOptions = question.options;
+        } catch {
+          cleanedOptions = null;
+        }
+      } else {
+        cleanedOptions = String(question.options);
+      }
+    }
+
+    // ✅ 修复：清理和验证correct_answer字段
+    let cleanedCorrectAnswer: any = null;
+    if (question.correctAnswer !== null && question.correctAnswer !== undefined) {
+      if (Array.isArray(question.correctAnswer)) {
+        // 确保数组中的每个元素都是有效的
+        cleanedCorrectAnswer = question.correctAnswer.map(ans => {
+          if (ans === null || ans === undefined) {
+            return "";
+          }
+          return String(ans);
+        });
+      } else {
+        cleanedCorrectAnswer = String(question.correctAnswer);
+      }
+    }
+
+    // ✅ 修复：验证JSON格式，确保可以正确序列化
+    try {
+      if (contentMultilang) {
+        JSON.stringify(contentMultilang);
+      }
+      if (explanationMultilang) {
+        JSON.stringify(explanationMultilang);
+      }
+      if (cleanedOptions) {
+        JSON.stringify(cleanedOptions);
+      }
+      if (cleanedCorrectAnswer) {
+        JSON.stringify(cleanedCorrectAnswer);
+      }
+    } catch (jsonError) {
+      console.error("[saveQuestionToDb] JSON验证失败:", jsonError);
+      throw new Error(`JSON格式错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`);
     }
 
     // ⚠️ 兼容旧逻辑：从 license_tags 获取 license_types
@@ -185,8 +262,8 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
         .set({
           type: question.type,
           content: contentMultilang as any,
-          options: question.options ? (question.options as any) : null,
-          correct_answer: question.correctAnswer as any,
+          options: cleanedOptions,
+          correct_answer: cleanedCorrectAnswer,
           image: question.image || null,
           explanation: explanationMultilang as any,
         license_type_tag: (question as any).license_type_tag || licenseTypes || null, // 优先使用 license_type_tag，如果没有则使用 licenseTypes
@@ -207,8 +284,8 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
           content_hash: contentHash,
           type: question.type,
           content: contentMultilang as any,
-          options: question.options ? (question.options as any) : null,
-          correct_answer: question.correctAnswer as any,
+          options: cleanedOptions,
+          correct_answer: cleanedCorrectAnswer,
           image: question.image || null,
           explanation: explanationMultilang as any,
         license_type_tag: (question as any).license_type_tag || licenseTypes || null, // 优先使用 license_type_tag，如果没有则使用 licenseTypes
