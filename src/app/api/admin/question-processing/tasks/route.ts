@@ -46,7 +46,15 @@ export const GET = withAdminAuth(async (req: Request) => {
           .where("task_id", "=", task.task_id)
           .executeTakeFirst();
 
-        const totalItems = Number(itemsStats?.totalItems || 0);
+        // ✅ 修复：totalItems 应该使用任务创建时确定的值
+        // 如果任务有 total_questions，则 totalItems = total_questions × operations.length
+        // 否则使用实际创建的任务项数量（向后兼容）
+        const questionCount = task.total_questions || 0;
+        const operationsCount = Array.isArray(task.operations) ? task.operations.length : 1;
+        const totalItems = questionCount > 0 
+          ? questionCount * operationsCount  // 任务创建时确定的值
+          : Number(itemsStats?.totalItems || 0);  // 向后兼容：使用实际创建的任务项数量
+        
         const completedItems = Number(itemsStats?.completedItems || 0);
         const failedItems = Number(itemsStats?.failedItems || 0);
         // ✅ 修复：使用数据库统计字段 succeeded_count，如果没有则使用 completedItems
@@ -90,16 +98,9 @@ export const GET = withAdminAuth(async (req: Request) => {
           };
         });
 
-        // 计算题目数量（去重）- 使用 sql 模板实现 COUNT(DISTINCT ...)
-        const questionCountResult = await db
-          .selectFrom("question_processing_task_items")
-          .select(({ fn }) => [
-            sql<number>`COUNT(DISTINCT question_id)`.as("count")
-          ])
-          .where("task_id", "=", task.task_id)
-          .executeTakeFirst();
-
-        const questionCount = Number(questionCountResult?.count || 0);
+        // ✅ 修复：使用任务创建时确定的 total_questions，而不是动态计算
+        // total_questions 在任务创建时就已经确定，不应随着任务项的变化而改变
+        const questionCount = task.total_questions || 0;
 
         return {
           taskId: task.task_id,
