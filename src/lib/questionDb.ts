@@ -81,16 +81,16 @@ export function normalizeCorrectAnswer(
  */
 export async function getQuestionsFromDb(packageName: string): Promise<Question[]> {
   try {
-    // 从数据库读取题目（通过license_types或category匹配）
+    // 从数据库读取题目（通过license_type_tag或category匹配）
     // 注意：这里简化处理，实际可能需要更复杂的匹配逻辑
     const questions = await db
       .selectFrom("questions")
       .selectAll()
       .where((eb) =>
         eb.or([
-          // 检查license_types数组是否包含packageName
-          // 使用 sql 模板确保正确的 PostgreSQL 数组格式
-          sql<boolean>`${eb.ref("license_types")} @> ARRAY[${sql.literal(packageName)}]::text[]`,
+          // 检查license_type_tag数组是否包含packageName
+          // 使用 sql 模板确保正确的 PostgreSQL JSONB 数组格式
+          sql<boolean>`${eb.ref("license_type_tag")} @> ${sql.literal(JSON.stringify([packageName]))}::jsonb`,
           // 或者通过category匹配
           eb("category", "=", packageName),
           // 或者通过version匹配（如果version字段存储了包名）
@@ -122,7 +122,7 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
         explanation: q.explanation || undefined,
         category: q.category || packageName,
         hash: q.content_hash, // 使用 content_hash 作为 hash
-        license_tags: q.license_types || undefined,
+        license_tags: q.license_type_tag || undefined,
         stage_tag: q.stage_tag || undefined,
         topic_tags: q.topic_tags || undefined,
       };
@@ -189,8 +189,7 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
           explanation: explanationMultilang as any,
-          license_types: licenseTypes, // 兼容旧字段
-          license_type_tag: (question as any).license_type_tag || null, // 新字段
+        license_type_tag: (question as any).license_type_tag || licenseTypes || null, // 优先使用 license_type_tag，如果没有则使用 licenseTypes
           category: question.category || null,
           stage_tag: question.stage_tag || null,
           topic_tags: question.topic_tags || null,
@@ -212,8 +211,7 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
           correct_answer: question.correctAnswer as any,
           image: question.image || null,
           explanation: explanationMultilang as any,
-          license_types: licenseTypes, // 兼容旧字段
-          license_type_tag: (question as any).license_type_tag || null, // 新字段
+        license_type_tag: (question as any).license_type_tag || licenseTypes || null, // 优先使用 license_type_tag，如果没有则使用 licenseTypes
           category: question.category || null,
           stage_tag: question.stage_tag || null,
           topic_tags: question.topic_tags || null,
@@ -1141,10 +1139,10 @@ export async function updateAllJsonPackages(): Promise<{
 
     // 转换为前端格式（使用content_hash作为hash，不重新计算）
     const questionsWithHash = allDbQuestions.map((q) => {
-      // 优先使用category字段，如果没有则从license_types数组中获取（取第一个，如果没有则使用"其他"）
+      // 优先使用category字段，如果没有则从license_type_tag数组中获取（取第一个，如果没有则使用"其他"）
       const category = q.category || 
-        (Array.isArray(q.license_types) && q.license_types.length > 0
-          ? q.license_types[0]
+        (Array.isArray(q.license_type_tag) && q.license_type_tag.length > 0
+          ? q.license_type_tag[0]
           : "其他");
 
       // 处理content字段：保持多语言对象格式
@@ -1167,7 +1165,7 @@ export async function updateAllJsonPackages(): Promise<{
         explanation: q.explanation || undefined,
         category,
         hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
-        license_tags: q.license_types || undefined,
+        license_tags: q.license_type_tag || undefined,
         stage_tag: q.stage_tag || undefined,
         topic_tags: q.topic_tags || undefined,
       };
