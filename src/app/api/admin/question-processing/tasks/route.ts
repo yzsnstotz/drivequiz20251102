@@ -100,7 +100,7 @@ export const GET = withAdminAuth(async (req: Request) => {
 
         // ✅ 修复：使用任务创建时确定的 total_questions，而不是动态计算
         // total_questions 在任务创建时就已经确定，不应随着任务项的变化而改变
-        const questionCount = task.total_questions || 0;
+        // questionCount 已在上面声明（第52行），这里直接使用
 
         return {
           taskId: task.task_id,
