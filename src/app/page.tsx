@@ -25,6 +25,7 @@ import SplashScreenAd from "@/components/SplashScreenAd";
 import PopupAd from "@/components/PopupAd";
 import { useLanguage, type Language } from "@/lib/i18n";
 import Link from "next/link";
+import { getFormattedVersion } from "@/lib/version";
 
 const welcomeData = [
   {
@@ -257,6 +258,9 @@ export default function HomePage() {
           <div className="flex items-center space-x-2">
             <Truck className="h-6 w-6 text-blue-600" />
             <span className="text-xl font-bold text-gray-900">ZALEM</span>
+            <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">
+              {getFormattedVersion()}
+            </span>
           </div>
           <div className="flex items-center space-x-2">
             {/* 语言切换按钮 */}

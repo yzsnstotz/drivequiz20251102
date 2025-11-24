@@ -12,6 +12,7 @@ import { getAiCache, setAiCache } from "@/lib/qpAiCache";
 import { normalizeAIResult } from "@/lib/quizTags";
 import { buildQuestionTranslationInput, buildQuestionPolishInput, buildQuestionFillMissingInput } from "@/lib/questionPromptBuilder";
 import { buildNormalizedQuestion } from "@/lib/questionNormalize";
+import { cleanJsonString, sanitizeJsonForDb } from './jsonUtils';
 
 // 在模块级提前加载一次配置（与 question-processor 保持一致）
 const qpAiConfig = loadQpAiConfig();
@@ -1362,7 +1363,7 @@ export async function translateWithPolish(params: {
   }
   
   try {
-    parsed = JSON.parse(rawAnswer);
+    parsed = JSON.parse(cleanJsonString(rawAnswer));
   } catch (parseError) {
     // ✅ 修复 Task 5：JSON 解析失败时必须抛出 error，不允许 silent fallback
     console.error(`[translateWithPolish] JSON 解析失败:`, {
@@ -1525,7 +1526,7 @@ export async function translateWithPolish(params: {
       }
       
       try {
-        explanationParsed = JSON.parse(explanationRawAnswer);
+        explanationParsed = JSON.parse(cleanJsonString(explanationRawAnswer));
       } catch (parseError) {
         // 如果 JSON 解析失败，尝试提取 explanation 字段
         const explanationMatch = explanationRawAnswer.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"/);
@@ -1849,7 +1850,7 @@ export async function generateCategoryAndTags(params: {
           fixedJson += "\n" + "}".repeat(missingBraces);
         }
       }
-      parsed = JSON.parse(fixedJson);
+      parsed = JSON.parse(cleanJsonString(fixedJson));
       console.warn(`[generateCategoryAndTags] Successfully fixed truncated JSON`);
     } catch (fixError) {
       // 如果修复后仍然失败，抛出详细错误
@@ -2270,11 +2271,116 @@ function applyTagsFromFullPipeline(
  * @param jsonStr 原始JSON字符串
  * @returns 清理后的JSON字符串
  */
-function cleanJsonString(jsonStr: string): string {
-  let cleaned = jsonStr.trim();
-  // 移除对象和数组中的尾随逗号（匹配 ,} 和 ,] 的情况）
-  cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
-  return cleaned;
+
+/**
+ * ✅ Task 2: full_pipeline 的落库结构类型定义
+ * 用于约束 processed_data 的结构，确保字段名与数据库一致
+ */
+interface FullPipelineDbPayload {
+  // 多语言题干
+  content?: Record<string, string>; // 格式：{ "zh": "中文内容", "ja": "日文内容" }
+  // 多语言解析
+  explanation?: Record<string, string>; // 格式：{ "zh": "中文解析", "ja": "日文解析" }
+
+  // === Tag 映射后的 DB 字段 ===
+  stage_tag?: string | null;          // 对应 questions.stage_tag
+  topic_tags?: string[] | null;       // 对应 questions.topic_tags
+  license_type_tag?: string[] | null; // 对应 questions.license_type_tag(JSONB，内部数组)
+}
+
+/**
+ * ✅ Task 2: 构建 full_pipeline 的数据库落库结构
+ * 将 AI 返回的 tags.stage_tags / tags.license_type_tags 映射到数据库字段名
+ */
+function buildFullPipelineDbPayload(
+  sanitized: any,
+  opts: {
+    sourceLang: string;        // 'zh'
+    targetLangs: string[];     // ['ja', ...]
+  }
+): FullPipelineDbPayload {
+  const payload: FullPipelineDbPayload = {};
+
+  // 1) content / explanation 多语言合并
+  const content: Record<string, string> = {};
+  const explanation: Record<string, string> = {};
+
+  if (sanitized.source?.content) {
+    content[opts.sourceLang] = sanitized.source.content;
+  }
+  if (sanitized.source?.explanation) {
+    explanation[opts.sourceLang] = sanitized.source.explanation;
+  }
+
+  const translations = sanitized.translations ?? {};
+  for (const [lang, value] of Object.entries<any>(translations)) {
+    if (value?.content) {
+      content[lang] = value.content;
+    }
+    if (value?.explanation) {
+      explanation[lang] = value.explanation;
+    }
+  }
+
+  if (Object.keys(content).length) {
+    payload.content = content;
+  }
+  if (Object.keys(explanation).length) {
+    payload.explanation = explanation;
+  }
+
+  // 2) Tags 映射到 DB 字段名
+  const rawTags = sanitized.tags ?? {};
+
+  // topic_tags：直接透传 string[]，注意保证数组类型
+  if (Array.isArray(rawTags.topic_tags) && rawTags.topic_tags.length > 0) {
+    payload.topic_tags = rawTags.topic_tags;
+  }
+
+  // license_type_tag：AI 输出为 license_type_tags，映射成 DB 字段名（保持数组）
+  if (Array.isArray(rawTags.license_type_tags) && rawTags.license_type_tags.length > 0) {
+    payload.license_type_tag = rawTags.license_type_tags;
+  }
+
+  // stage_tag：当前 AI 输出为 stage_tags:string[]，DB 为单值
+  // 先采用保守策略：如果只有一个元素，则用该元素；多于一个则暂时保留原 DB 值（在 Save 层合并）
+  if (Array.isArray(rawTags.stage_tags) && rawTags.stage_tags.length === 1) {
+    // 处理 FULL_LICENSE -> regular 的映射
+    const stageTag = rawTags.stage_tags[0].toUpperCase();
+    if (stageTag.includes("BOTH")) {
+      payload.stage_tag = "both";
+    } else if (stageTag.includes("FULL") || stageTag.includes("REGULAR") || stageTag.includes("FULL_LICENSE")) {
+      payload.stage_tag = "regular";
+    } else if (stageTag.includes("PROVISIONAL")) {
+      payload.stage_tag = "provisional";
+    } else {
+      payload.stage_tag = rawTags.stage_tags[0].toLowerCase();
+    }
+  } else if (Array.isArray(rawTags.stage_tags) && rawTags.stage_tags.length > 1) {
+    // 多值情况：采用与 applyTagsFromFullPipeline 相同的逻辑
+    const normalized = rawTags.stage_tags
+      .filter((t) => typeof t === "string" && t.trim().length > 0)
+      .map((t) => t.trim().toUpperCase());
+    
+    const hasBoth = normalized.some((t) => t.includes("BOTH"));
+    const hasFull = normalized.some((t) => t.includes("FULL") || t.includes("REGULAR") || t.includes("FULL_LICENSE"));
+    const hasProvisional = normalized.some((t) => t.includes("PROVISIONAL"));
+
+    if (hasBoth) {
+      payload.stage_tag = "both";
+    } else if (hasFull) {
+      payload.stage_tag = "regular";
+    } else if (hasProvisional) {
+      payload.stage_tag = "provisional";
+    } else {
+      payload.stage_tag = normalized[0].toLowerCase();
+    }
+  } else {
+    // 无值的情况留给 Save 层结合原值决定，避免乱写
+    payload.stage_tag = null;
+  }
+
+  return payload;
 }
 
 /**
@@ -2282,10 +2388,22 @@ function cleanJsonString(jsonStr: string): string {
  * 防止 AI 输出多余字段污染数据库
  * 
  * @param aiResult AI 返回的完整结果对象
- * @param targetLanguages 目标语言列表，只保留这些语言的翻译
+ * @param params 过滤参数
+ * @param params.sourceLanguage 源语言代码（如 'zh'）
+ * @param params.targetLanguages 目标语言列表（如 ['ja', 'en']），不传表示保留全部 translations
+ * @param params.scene 场景标识（如 'question_full_pipeline' / 'question_translation'），可选
  * @returns 过滤后的安全对象，只包含允许的字段
  */
-function sanitizeAiPayload(aiResult: any, targetLanguages?: string[]): {
+type SanitizeAiPayloadParams = {
+  sourceLanguage: string;          // e.g. 'zh'
+  targetLanguages?: string[];      // e.g. ['ja', 'en']，不传表示保留全部 translations
+  scene?: string;                  // 可选：question_translation / question_full_pipeline 等
+};
+
+function sanitizeAiPayload(
+  aiResult: any,
+  params: SanitizeAiPayloadParams
+): {
   source?: {
     content?: string;
     options?: string[];
@@ -2304,6 +2422,7 @@ function sanitizeAiPayload(aiResult: any, targetLanguages?: string[]): {
   };
   correct_answer?: any; // 允许 correct_answer，但会在后续阶段通过 buildNormalizedQuestion 校验
 } {
+  const { sourceLanguage, targetLanguages, scene } = params;
   const sanitized: any = {};
 
   // 白名单：source 字段
@@ -2321,38 +2440,69 @@ function sanitizeAiPayload(aiResult: any, targetLanguages?: string[]): {
   }
 
   // 白名单：translations 字段
-  // ✅ 修复：只保留targetLanguages中指定的语言
-  if (aiResult.translations && typeof aiResult.translations === "object") {
-    sanitized.translations = {};
-    for (const [lang, translation] of Object.entries(aiResult.translations)) {
-      // ✅ 修复：如果指定了targetLanguages，只处理这些语言
-      if (targetLanguages && !targetLanguages.includes(lang)) {
-        continue;
+  // ✅ 增强：在 sanitize 阶段就按照 targetLanguages 做过滤
+  const translations = aiResult?.translations ?? {};
+  const allowedLangs =
+    Array.isArray(targetLanguages) && targetLanguages.length > 0
+      ? targetLanguages
+      : Object.keys(translations);
+  
+  const filteredTranslations: Record<string, any> = {};
+  for (const lang of allowedLangs) {
+    if (translations[lang] && typeof translations[lang] === "object") {
+      const sanitizedTranslation: any = {};
+      if (typeof translations[lang].content === "string") {
+        sanitizedTranslation.content = translations[lang].content;
       }
-      if (translation && typeof translation === "object") {
-        const sanitizedTranslation: any = {};
-        if (typeof (translation as any).content === "string") {
-          sanitizedTranslation.content = (translation as any).content;
-        }
-        if (Array.isArray((translation as any).options)) {
-          sanitizedTranslation.options = (translation as any).options.filter((opt: any) => typeof opt === "string");
-        }
-        if (typeof (translation as any).explanation === "string") {
-          sanitizedTranslation.explanation = (translation as any).explanation;
-        }
-        if (Object.keys(sanitizedTranslation).length > 0) {
-          sanitized.translations[lang] = sanitizedTranslation;
-        }
+      if (Array.isArray(translations[lang].options)) {
+        sanitizedTranslation.options = translations[lang].options.filter((opt: any) => typeof opt === "string");
+      }
+      if (typeof translations[lang].explanation === "string") {
+        sanitizedTranslation.explanation = translations[lang].explanation;
+      }
+      if (Object.keys(sanitizedTranslation).length > 0) {
+        filteredTranslations[lang] = sanitizedTranslation;
       }
     }
   }
 
+  // ✅ 增强：如果 scene 是 full_pipeline，并且 AI 在 translations 里也返回了源语言，
+  // 可以视需要保留 sourceLanguage 项（如果不在已过滤列表中）
+  if (
+    scene === 'question_full_pipeline' &&
+    translations[sourceLanguage] &&
+    !filteredTranslations[sourceLanguage]
+  ) {
+    const sourceTranslation = translations[sourceLanguage];
+    if (sourceTranslation && typeof sourceTranslation === "object") {
+      const sanitizedSourceTranslation: any = {};
+      if (typeof sourceTranslation.content === "string") {
+        sanitizedSourceTranslation.content = sourceTranslation.content;
+      }
+      if (Array.isArray(sourceTranslation.options)) {
+        sanitizedSourceTranslation.options = sourceTranslation.options.filter((opt: any) => typeof opt === "string");
+      }
+      if (typeof sourceTranslation.explanation === "string") {
+        sanitizedSourceTranslation.explanation = sourceTranslation.explanation;
+      }
+      if (Object.keys(sanitizedSourceTranslation).length > 0) {
+        filteredTranslations[sourceLanguage] = sanitizedSourceTranslation;
+      }
+    }
+  }
+
+  sanitized.translations = filteredTranslations;
+
   // 白名单：tags 字段
+  // ✅ 修复：将 AI 返回的复数字段名转换为数据库单数字段名
+  // stage_tags -> stage_tag, license_type_tags -> license_type_tag
   if (aiResult.tags && typeof aiResult.tags === "object") {
     sanitized.tags = {};
+    // ✅ 修复：从 license_type_tags（复数）读取，但保留原字段名以兼容 applyTagsFromFullPipeline
     if (Array.isArray(aiResult.tags.license_type_tags)) {
       sanitized.tags.license_type_tags = aiResult.tags.license_type_tags.filter((t: any) => typeof t === "string");
     }
+    // ✅ 修复：从 stage_tags（复数）读取，但保留原字段名以兼容 applyTagsFromFullPipeline
     if (Array.isArray(aiResult.tags.stage_tags)) {
       sanitized.tags.stage_tags = aiResult.tags.stage_tags.filter((t: any) => typeof t === "string");
     }
@@ -2367,6 +2517,20 @@ function sanitizeAiPayload(aiResult: any, targetLanguages?: string[]): {
   // 白名单：correct_answer 字段（允许，但会在后续阶段校验）
   if ("correct_answer" in aiResult) {
     sanitized.correct_answer = aiResult.correct_answer;
+  }
+
+  // ✅ 强制类型检查：translations 必须是 Record<string, any>
+  if (sanitized.translations !== undefined) {
+    if (typeof sanitized.translations !== 'object' || Array.isArray(sanitized.translations)) {
+      throw new Error("[sanitizeAiPayload] translations must be an object");
+    }
+    
+    // 保证所有 language key 都为字符串
+    for (const key of Object.keys(sanitized.translations)) {
+      if (typeof key !== "string") {
+        throw new Error(`[sanitizeAiPayload] Invalid language key: ${key}`);
+      }
+    }
   }
 
   return sanitized;
@@ -2404,14 +2568,26 @@ export async function processFullPipelineBatch(
       aiResponse?: any;
       processedData?: any;
     }) => Promise<void>;
+    // ✅ Task 4: 新增：用于写入 AI 诊断日志的回调函数
+    onLog?: (questionId: number, log: {
+      step: string;
+      payload?: any;
+      result?: any;
+      removedLanguages?: string[];
+      cleanedJsonPreview?: string;
+      trace_id?: string; // ✅ Task 4: 添加 trace_id
+    }) => Promise<void>;
   }
 ): Promise<Array<{
   questionId: number;
   success: boolean;
   error?: string;
 }>> {
-  const { sourceLanguage, targetLanguages, type, adminToken, mode = "batch", onProgress } = params; // ✅ 修复：统一使用 type
+  const { sourceLanguage, targetLanguages, type, adminToken, mode = "batch", onProgress, onLog } = params; // ✅ 修复：统一使用 type
   const results: Array<{ questionId: number; success: boolean; error?: string }> = [];
+  
+  // ✅ Task 4: 为整个批量处理生成统一的 trace_id
+  const batchTraceId = crypto.randomUUID();
 
   console.log(`[processFullPipelineBatch] 开始处理 | 题目数量: ${questions.length} | 源语言: ${sourceLanguage} | 目标语言: ${targetLanguages.join(", ")} | 题型: ${type} | 模式: ${mode}`);
 
@@ -2428,6 +2604,10 @@ export async function processFullPipelineBatch(
       sourceLanguage,
       targetLanguage: targetLanguages.join(","),
     };
+    
+    // ✅ Task 4: 声明变量，用于错误诊断（在 try 块开始处声明，避免作用域问题）
+    let dbUpdatePayload: any = undefined;
+    let dbRowBefore: any = undefined;
     
     try {
       // ========== STAGE 1: LOAD_QUESTION ==========
@@ -2494,6 +2674,21 @@ export async function processFullPipelineBatch(
       // 📊 获取 scene 配置（包含 prompt），用于调试数据
       const sceneConfig = await getSceneConfig("question_full_pipeline", sourceLanguage);
       
+      // ✅ Task 4: 记录 AI 调用前的日志
+      if (onLog) {
+        await onLog(question.id, {
+          step: 'AI_CALL_BEFORE',
+          payload: {
+            scene: "question_full_pipeline",
+            sourceLanguage,
+            targetLanguages,
+            type,
+            question: input.substring(0, 200), // 限制长度
+          },
+          trace_id: batchTraceId, // ✅ Task 4: 添加 trace_id
+        });
+      }
+      
       const aiResp = await callAiAskInternal(
         {
           question: input,
@@ -2510,6 +2705,21 @@ export async function processFullPipelineBatch(
       aiProvider = aiResp.aiProvider || "unknown";
       const aiCallDuration = Date.now() - aiCallStartTime;
       console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 3: CALL_AI_FULL_PIPELINE 完成 | provider=${aiProvider} | 耗时=${aiCallDuration}ms | 响应长度=${aiResp.answer?.length ?? 0}`);
+      
+      // ✅ Task 4: 记录 AI 调用后的日志
+      if (onLog) {
+        await onLog(question.id, {
+          step: 'AI_CALL_AFTER',
+          result: {
+            provider: aiProvider,
+            model: aiResp.model,
+            duration: aiCallDuration,
+            answerLength: aiResp.answer?.length ?? 0,
+            answerPreview: aiResp.answer?.substring(0, 500), // 限制长度
+          },
+          trace_id: batchTraceId, // ✅ Task 4: 添加 trace_id
+        });
+      }
       
       // 📊 调试日志：构造完整的 AI 请求和响应数据（包含 prompt）
       const aiRequestDebug = {
@@ -2600,9 +2810,31 @@ export async function processFullPipelineBatch(
       }
 
       // ✅ 安全过滤：只允许白名单字段写入 question 模型
-      // ✅ 修复：传入targetLanguages，在sanitize阶段就过滤掉不需要的语言
-      const sanitized = sanitizeAiPayload(parsed, targetLanguages);
+      // ✅ 修复：传入完整的上下文参数，在sanitize阶段就过滤掉不需要的语言
+      const sanitized = sanitizeAiPayload(parsed, {
+        sourceLanguage,
+        targetLanguages,
+        scene: 'question_full_pipeline',
+      });
       console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] AI payload 安全过滤完成 | 原始字段数=${Object.keys(parsed).length} | 过滤后字段数=${Object.keys(sanitized).length}`);
+      
+      // ✅ Task 4: 记录 sanitize 之后的日志（展示被过滤掉的语言）
+      const originalLanguages = parsed?.translations ? Object.keys(parsed.translations) : [];
+      const filteredLanguages = sanitized?.translations ? Object.keys(sanitized.translations) : [];
+      const removedLanguages = originalLanguages.filter(lang => !filteredLanguages.includes(lang));
+      if (onLog) {
+        await onLog(question.id, {
+          step: 'SANITIZE_AFTER',
+          result: {
+            originalFieldCount: Object.keys(parsed).length,
+            filteredFieldCount: Object.keys(sanitized).length,
+            originalLanguages,
+            filteredLanguages,
+          },
+          removedLanguages,
+          trace_id: batchTraceId, // ✅ Task 4: 添加 trace_id
+        });
+      }
       
       // ✅ A-2: 填充清洗后的数据
       diagnostic.sanitized = sanitized;
@@ -2709,20 +2941,19 @@ export async function processFullPipelineBatch(
           `[processFullPipelineBatch] [Q${question.id}] [DEBUG] 使用数据库源内容进行翻译校验（不使用 AI 返回的 source）`,
         );
         
-        // ✅ 修复问题3：只处理指定的目标语言，过滤掉不在targetLanguages中的翻译
-        // 先过滤sanitized.translations，只保留targetLanguages中的语言
-        const filteredTranslations: Record<string, any> = {};
-        for (const lang of targetLanguages) {
-          if (sanitized.translations[lang]) {
-            filteredTranslations[lang] = sanitized.translations[lang];
-          }
-        }
+        // ✅ 精简：sanitize 已经保证只剩需要的语言，这里直接使用 sanitized.translations
+        // 兜底检查：如果调用方忘记传 targetLanguages，这里做一次轻量 filter
+        const translations = sanitized.translations || {};
+        const entries = Object.entries(translations);
+        const translationsToProcess =
+          Array.isArray(targetLanguages) && targetLanguages.length > 0
+            ? entries.filter(([lang]) => targetLanguages.includes(lang))
+            : entries;
         
-        // 只遍历过滤后的翻译
-        for (const lang of targetLanguages) {
-          const t = filteredTranslations[lang];
+        // 遍历过滤后的翻译
+        for (const [lang, t] of translationsToProcess) {
           if (!t || !t.content) {
-            console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 跳过语言 ${lang}（无翻译内容或不在目标语言列表中）`);
+            console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 跳过语言 ${lang}（无翻译内容）`);
             continue;
           }
 
@@ -2815,10 +3046,44 @@ export async function processFullPipelineBatch(
       currentStage = "SAVE_ALL_CHANGES_IN_TX";
       console.log(`[processFullPipelineBatch] [Q${question.id}] STAGE 7: SAVE_ALL_CHANGES_IN_TX`);
       
+      // ✅ Task 2: 构建 full_pipeline 的数据库落库结构
+      const dbPayload = buildFullPipelineDbPayload(sanitized, {
+        sourceLang: sourceLanguage,
+        targetLangs: targetLanguages,
+      });
+      console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 构建的 DB payload:`, JSON.stringify(dbPayload, null, 2));
+      
       const { db } = await import("@/lib/db");
       const { saveQuestionToDb } = await import("@/lib/questionDb");
       
       // ✅ 使用事务确保保存到 questions 与 translations 的一致性
+      // ✅ Task 4: 在事务前读取原题目数据，用于错误诊断
+      dbRowBefore = await db
+        .selectFrom("questions")
+        .select(["id", "stage_tag", "topic_tags", "license_type_tag", "content", "explanation"])
+        .where("id", "=", question.id)
+        .executeTakeFirst();
+      
+      // ✅ Task 4: 构建传给 saveQuestionToDb 的 payload，用于错误诊断
+      // 先读取数据库中的 explanation（保留原有内容），用于构建 payload
+      const dbQuestionForPayload = await db
+        .selectFrom("questions")
+        .select(["explanation"])
+        .where("id", "=", question.id)
+        .executeTakeFirst();
+      
+      dbUpdatePayload = {
+        id: question.id,
+        type: normalizedQuestion.type,
+        content: question.content,
+        options: normalizedQuestion.options,
+        correctAnswer: normalizedQuestion.correctAnswer,
+        explanation: dbQuestionForPayload?.explanation || null,
+        license_tags: (question as any).license_tags,
+        stage_tag: (question as any).stage_tag,
+        topic_tags: (question as any).topic_tags,
+      };
+      
       await db.transaction().execute(async (trx) => {
         // 先读取数据库中的 explanation（保留原有内容）
         const dbQuestion = await trx
@@ -3005,54 +3270,38 @@ export async function processFullPipelineBatch(
             // 如果 shouldSaveExplanation 为 false，保持 updatedExplanation 不变（已包含源语言 explanation）
           }
           
-          // ✅ 修复问题1：确保JSONB数据格式正确，验证并清理数据
-          // 验证content和explanation是否可以正确序列化为JSON
-          let validContent: any = null;
-          let validExplanation: any = null;
+          // ✅ 使用 sanitizeJsonForDb 统一清理 JSONB 数据，确保不包含 undefined
+          // 在写入事务前做一次轻量验证
+          const safeContent = sanitizeJsonForDb(updatedContent);
+          const safeExplanation = sanitizeJsonForDb(updatedExplanation);
           
+          // ✅ Task 4: 记录保存入库前的日志（展示清洗后的 JSON）
+          if (onLog) {
+            await onLog(question.id, {
+              step: 'DB_WRITE_BEFORE',
+              cleanedJsonPreview: {
+                content: JSON.stringify(safeContent ?? {}).substring(0, 500),
+                explanation: JSON.stringify(safeExplanation ?? {}).substring(0, 500),
+              },
+              trace_id: batchTraceId, // ✅ Task 4: 添加 trace_id
+            });
+          }
+          
+          // 轻量验证：能否被 JSON.stringify（用于提前发现 BigInt 等不支持类型）
           try {
-            // 验证content
-            if (updatedContent && Object.keys(updatedContent).length > 0) {
-              // 确保所有值都是字符串或null
-              const cleanedContent: Record<string, string> = {};
-              for (const [key, value] of Object.entries(updatedContent)) {
-                if (value === null || value === undefined) {
-                  cleanedContent[key] = "";
-                } else {
-                  cleanedContent[key] = String(value);
-                }
-              }
-              // 验证JSON格式
-              JSON.stringify(cleanedContent);
-              validContent = cleanedContent;
-            }
-            
-            // 验证explanation
-            if (updatedExplanation && Object.keys(updatedExplanation).length > 0) {
-              // 确保所有值都是字符串或null
-              const cleanedExplanation: Record<string, string> = {};
-              for (const [key, value] of Object.entries(updatedExplanation)) {
-                if (value === null || value === undefined) {
-                  cleanedExplanation[key] = "";
-                } else {
-                  cleanedExplanation[key] = String(value);
-                }
-              }
-              // 验证JSON格式
-              JSON.stringify(cleanedExplanation);
-              validExplanation = cleanedExplanation;
-            }
+            JSON.stringify(safeContent ?? {});
+            JSON.stringify(safeExplanation ?? {});
           } catch (jsonError) {
             console.error(`[processFullPipelineBatch] [Q${question.id}] JSON验证失败:`, jsonError);
             throw new Error(`JSON格式错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`);
           }
           
-          // 在事务中更新题目
+          // 在事务中更新题目（使用清理后的安全数据）
           await trx
             .updateTable("questions")
             .set({
-              content: validContent as any,
-              explanation: validExplanation as any,
+              content: safeContent as any,
+              explanation: safeExplanation as any,
               updated_at: new Date(),
             })
             .where("id", "=", question.id)
@@ -3070,10 +3319,12 @@ export async function processFullPipelineBatch(
               : typeof currentQuestion.explanation === "string");
           
           if (hasSourceExplanationInUpdated && !hasSourceExplanationInDb) {
+            // ✅ 使用 sanitizeJsonForDb 清理 explanation
+            const safeExplanationForSource = sanitizeJsonForDb(updatedExplanation);
             await trx
               .updateTable("questions")
               .set({
-                explanation: updatedExplanation as any,
+                explanation: safeExplanationForSource as any,
                 updated_at: new Date(),
               })
               .where("id", "=", question.id)
@@ -3103,11 +3354,12 @@ export async function processFullPipelineBatch(
       console.log(`[processFullPipelineBatch] [Q${question.id}] 📊 最终入库数据:`, JSON.stringify(processedDataDebug, null, 2));
       
       // 📊 调用回调函数保存调试数据到数据库
+      // ✅ Task 2: 使用构建的 dbPayload 作为 processed_data
       if (onProgress) {
         await onProgress(question.id, {
           aiRequest: aiRequestDebug,
           aiResponse: aiResponseDebug,
-          processedData: processedDataDebug,
+          processedData: dbPayload, // ✅ Task 2: 使用构建的 DB payload，字段名已映射为数据库字段
         });
       }
 
@@ -3173,6 +3425,42 @@ export async function processFullPipelineBatch(
         errorCode = "LOAD_QUESTION_FAILED";
       } else if (errorMessage.includes("TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE")) {
         errorCode = "TRANSLATION_FAILED_WRONG_TARGET_LANGUAGE";
+      }
+      
+      // ✅ Task 4: 针对 invalid input syntax for type json 错误，记录详细诊断信息
+      if (errorMessage.includes("invalid input syntax for type json") || failedStage === "SAVE_ALL_CHANGES_IN_TX") {
+        errorCode = "PROCESSING_FAILED";
+        // 记录 dbUpdatePayload 和 dbRowBefore 到 diagnostic（仅在已定义且不为 null 时）
+        if (!diagnostic.dbUpdatePayload && dbUpdatePayload !== undefined && dbUpdatePayload !== null) {
+          // ✅ 修复：安全地展开对象，避免 null 或 undefined 导致的错误
+          const safePayload = typeof dbUpdatePayload === "object" && dbUpdatePayload !== null ? dbUpdatePayload : {};
+          diagnostic.dbUpdatePayload = {
+            ...safePayload,
+            // 简化 content 和 explanation 的预览（避免过大）
+            // ✅ 修复：检查 null 和数组，避免 Object.keys(null) 错误
+            contentPreview: (typeof dbUpdatePayload.content === "object" && dbUpdatePayload.content !== null && !Array.isArray(dbUpdatePayload.content))
+              ? Object.keys(dbUpdatePayload.content).join(",")
+              : (dbUpdatePayload.content ? String(dbUpdatePayload.content).substring(0, 100) : "null"),
+            explanationPreview: (typeof dbUpdatePayload.explanation === "object" && dbUpdatePayload.explanation !== null && !Array.isArray(dbUpdatePayload.explanation))
+              ? Object.keys(dbUpdatePayload.explanation).join(",")
+              : (dbUpdatePayload.explanation ? String(dbUpdatePayload.explanation).substring(0, 100) : "null"),
+          };
+        }
+        if (!diagnostic.dbRowBefore && dbRowBefore !== undefined && dbRowBefore !== null) {
+          diagnostic.dbRowBefore = {
+            id: dbRowBefore.id,
+            stage_tag: dbRowBefore.stage_tag,
+            topic_tags: dbRowBefore.topic_tags,
+            license_type_tag: dbRowBefore.license_type_tag,
+            // ✅ 修复：检查 null 和数组，避免 Object.keys(null) 错误
+            contentPreview: (typeof dbRowBefore.content === "object" && dbRowBefore.content !== null && !Array.isArray(dbRowBefore.content))
+              ? Object.keys(dbRowBefore.content).join(",")
+              : (dbRowBefore.content ? String(dbRowBefore.content).substring(0, 100) : "null"),
+            explanationPreview: (typeof dbRowBefore.explanation === "object" && dbRowBefore.explanation !== null && !Array.isArray(dbRowBefore.explanation))
+              ? Object.keys(dbRowBefore.explanation).join(",")
+              : (dbRowBefore.explanation ? String(dbRowBefore.explanation).substring(0, 100) : "null"),
+          };
+        }
       }
       
       // ✅ A-2: 填充 diagnostic 的 errorMessage 和 errorStack（如果还没有填充）

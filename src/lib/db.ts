@@ -5,7 +5,7 @@
 // 更新内容: 为 activation_codes 表增加后台管理字段
 // ============================================================
 
-import { Kysely, PostgresDialect, Generated } from "kysely";
+import { Kysely, PostgresDialect, Generated, JsonValue } from "kysely";
 import { Pool } from "pg";
 
 // ------------------------------------------------------------
@@ -422,23 +422,13 @@ interface QuestionTable {
   id: Generated<number>;
   content_hash: string;
   type: "single" | "multiple" | "truefalse";
-  content: {
-    zh: string;
-    en?: string;
-    ja?: string;
-    [key: string]: string | undefined; // 支持其他语言
-  }; // JSONB - 多语言内容对象
-  options: any | null; // JSONB
-  correct_answer: any | null; // JSONB
+  content: JsonValue; // ✅ 修复：JSONB - 多语言内容对象
+  options: JsonValue | null; // ✅ 修复：JSONB
+  correct_answer: JsonValue | null; // ✅ 修复：JSONB
   image: string | null;
-  explanation: {
-    zh: string;
-    en?: string;
-    ja?: string;
-    [key: string]: string | undefined; // 支持其他语言
-  } | null; // JSONB - 多语言解析对象
+  explanation: JsonValue | null; // ✅ 修复：JSONB - 多语言解析对象
   license_types: string[] | null; // 兼容旧字段（数组）
-  license_type_tag: string[] | null; // 驾照类型标签（JSONB 数组，可包含多个值）
+  license_type_tag: JsonValue | null; // ✅ 修复：驾照类型标签（JSONB 数组，内部约定为 string[]，例如 ["ALL","ORDINARY"]）
   category: string | null; // 题目分类（如 "12"）
   stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（兼容旧值，新值应为 "provisional" | "full" | "both"）
   topic_tags: string[] | null; // 主题标签数组（如 ['traffic_sign']）
@@ -718,13 +708,13 @@ function createDbInstance(): Kysely<Database> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
-    // 连接池配置
+    // 连接池配置（针对批量处理场景优化）
     max: 20, // 最大连接数（适合大多数应用）
     min: 2, // 最小连接数（保持一些连接活跃）
     idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
-    connectionTimeoutMillis: 10000, // 连接超时10秒
-    statement_timeout: 30000, // 语句超时30秒
-    query_timeout: 30000, // 查询超时30秒
+    connectionTimeoutMillis: 30000, // ✅ 修复：连接超时30秒（批量处理需要更长时间，从10秒增加到30秒）
+    statement_timeout: 60000, // ✅ 修复：语句超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
+    query_timeout: 60000, // ✅ 修复：查询超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
   };
 
   // Supabase 必须使用 SSL，但证书链可能有自签名证书

@@ -210,8 +210,21 @@ function createAiDbInstance(): Kysely<AiDatabase> {
   const poolConfig: {
     connectionString: string;
     ssl?: boolean | { rejectUnauthorized: boolean };
+    max?: number; // 最大连接数
+    min?: number; // 最小连接数
+    idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
+    connectionTimeoutMillis?: number; // 连接超时时间（毫秒）
+    statement_timeout?: number; // 语句超时时间（毫秒）
+    query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
+    // 连接池配置（与主数据库保持一致，但针对批量处理场景优化）
+    max: 20, // 最大连接数（适合大多数应用）
+    min: 2, // 最小连接数（保持一些连接活跃）
+    idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
+    connectionTimeoutMillis: 30000, // ✅ 修复：连接超时30秒（批量处理需要更长时间）
+    statement_timeout: 60000, // ✅ 修复：语句超时60秒（批量处理可能需要更长时间）
+    query_timeout: 60000, // ✅ 修复：查询超时60秒（批量处理可能需要更长时间）
   };
 
   // Supabase 必须使用 SSL，但证书链可能有自签名证书

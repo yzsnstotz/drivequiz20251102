@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import AIButton from "./AIButton";
+import { getFormattedVersion } from "@/lib/version";
 
 interface HeaderProps {
   title?: string;
@@ -24,10 +25,13 @@ export default function Header({ title, showAIButton = true, aiContext = "genera
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo / Title */}
-          <div className="flex items-center">
+          <div className="flex items-center gap-2">
             <Link href="/" className="text-xl font-bold text-blue-600">
               {title || "ZALEM"}
             </Link>
+            <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">
+              {getFormattedVersion()}
+            </span>
           </div>
 
           {/* Desktop Navigation */}

@@ -9,6 +9,7 @@ import { calculateQuestionHash, generateVersion, generateUnifiedVersion, calcula
 import { sql } from "kysely";
 import fs from "fs/promises";
 import path from "path";
+import { sanitizeJsonForDb } from '../app/api/admin/question-processing/_lib/jsonUtils';
 
 // 题目数据目录
 const QUESTIONS_DIR = path.join(process.cwd(), "src/data/questions/zh");
@@ -140,87 +141,54 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
   try {
     const contentHash = question.hash || calculateQuestionHash(question);
     
-    // 规范化content字段：如果是字符串，转换为多语言对象
-    // ✅ 修复：确保所有值都是字符串，清理undefined/null值
-    let contentMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null = null;
-    if (typeof question.content === "string") {
-      // 兼容旧格式：单语言字符串转换为多语言对象
-      contentMultilang = { zh: question.content };
-    } else if (question.content && typeof question.content === "object") {
-      // 新格式：多语言对象，清理无效值
-      const cleaned: Record<string, string> = {};
-      for (const [key, value] of Object.entries(question.content)) {
-        if (value !== null && value !== undefined) {
-          cleaned[key] = String(value);
-        }
-      }
-      if (Object.keys(cleaned).length > 0) {
-        contentMultilang = cleaned as any;
-      }
+    // ✅ 修复：清理 question 对象，移除可能存在的 tags 字段（防止写入数据库时出错）
+    // AI 返回的 tags 字段包含 stage_tags 和 license_type_tags（复数），
+    // 但数据库字段是 stage_tag 和 license_type_tag（单数）
+    // 这些字段已经通过 applyTagsFromFullPipeline 转换到 question 对象的正确字段上
+    const cleanedQuestion = { ...question };
+    if ((cleanedQuestion as any).tags) {
+      delete (cleanedQuestion as any).tags;
     }
-
-    // 规范化explanation字段：如果是字符串，转换为多语言对象
-    // ✅ 修复：确保所有值都是字符串，清理undefined/null值
-    let explanationMultilang: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | null = null;
-    if (question.explanation) {
-      if (typeof question.explanation === "string") {
-        // 兼容旧格式：单语言字符串转换为多语言对象
-        explanationMultilang = { zh: question.explanation };
-      } else if (typeof question.explanation === "object" && question.explanation !== null) {
-        // 新格式：多语言对象，清理无效值
-        const cleaned: Record<string, string> = {};
-        for (const [key, value] of Object.entries(question.explanation)) {
-          if (value !== null && value !== undefined) {
-            cleaned[key] = String(value);
-          }
-        }
-        if (Object.keys(cleaned).length > 0) {
-          explanationMultilang = cleaned as any;
-        }
-      }
+    // 确保不会意外写入复数字段名
+    if ((cleanedQuestion as any).stage_tags) {
+      delete (cleanedQuestion as any).stage_tags;
+    }
+    if ((cleanedQuestion as any).license_type_tags) {
+      delete (cleanedQuestion as any).license_type_tags;
     }
     
-    // ✅ 修复：清理和验证options字段
-    let cleanedOptions: any = null;
-    if (question.options) {
-      if (Array.isArray(question.options)) {
-        // 确保数组中的每个元素都是有效的
-        cleanedOptions = question.options.map(opt => {
-          if (opt === null || opt === undefined) {
-            return "";
-          }
-          return String(opt);
-        });
-      } else if (typeof question.options === "object") {
-        // 如果是对象，尝试序列化
-        try {
-          JSON.stringify(question.options);
-          cleanedOptions = question.options;
-        } catch {
-          cleanedOptions = null;
-        }
-      } else {
-        cleanedOptions = String(question.options);
+    // ✅ 使用 sanitizeJsonForDb 统一处理 JSONB 字段
+    // 规范化content字段：如果是字符串，转换为多语言对象
+    let contentMultilang: any = null;
+    if (typeof cleanedQuestion.content === "string") {
+      // 兼容旧格式：单语言字符串转换为多语言对象
+      contentMultilang = { zh: cleanedQuestion.content };
+    } else if (cleanedQuestion.content && typeof cleanedQuestion.content === "object") {
+      contentMultilang = cleanedQuestion.content;
+    }
+    // 使用 sanitizeJsonForDb 清理 undefined 和无效值
+    contentMultilang = sanitizeJsonForDb(contentMultilang);
+
+    // 规范化explanation字段：如果是字符串，转换为多语言对象
+    let explanationMultilang: any = null;
+    if (cleanedQuestion.explanation) {
+      if (typeof cleanedQuestion.explanation === "string") {
+        // 兼容旧格式：单语言字符串转换为多语言对象
+        explanationMultilang = { zh: cleanedQuestion.explanation };
+      } else if (typeof cleanedQuestion.explanation === "object" && cleanedQuestion.explanation !== null) {
+        explanationMultilang = cleanedQuestion.explanation;
       }
     }
+    // 使用 sanitizeJsonForDb 清理 undefined 和无效值
+    explanationMultilang = sanitizeJsonForDb(explanationMultilang);
+    
+    // ✅ 使用 sanitizeJsonForDb 清理 options 字段
+    const cleanedOptions = sanitizeJsonForDb(cleanedQuestion.options);
 
-    // ✅ 修复：清理和验证correct_answer字段
-    let cleanedCorrectAnswer: any = null;
-    if (question.correctAnswer !== null && question.correctAnswer !== undefined) {
-      if (Array.isArray(question.correctAnswer)) {
-        // 确保数组中的每个元素都是有效的
-        cleanedCorrectAnswer = question.correctAnswer.map(ans => {
-          if (ans === null || ans === undefined) {
-            return "";
-          }
-          return String(ans);
-        });
-      } else {
-        cleanedCorrectAnswer = String(question.correctAnswer);
-      }
-    }
+    // ✅ 使用 sanitizeJsonForDb 清理 correct_answer 字段
+    const cleanedCorrectAnswer = sanitizeJsonForDb(cleanedQuestion.correctAnswer);
 
-    // ✅ 修复：验证JSON格式，确保可以正确序列化
+    // ✅ 轻量验证：确保可以正确序列化（用于提前发现 BigInt 等不支持类型）
     try {
       if (contentMultilang) {
         JSON.stringify(contentMultilang);
@@ -243,8 +211,8 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
     // 注意：category 是卷类，不是标签，不应该用于 license_types
     // 新代码应该使用 license_type_tag 字段（单个值）
     let licenseTypes: string[] | null = null;
-    if (question.license_tags && question.license_tags.length > 0) {
-      licenseTypes = question.license_tags;
+    if (cleanedQuestion.license_tags && cleanedQuestion.license_tags.length > 0) {
+      licenseTypes = cleanedQuestion.license_tags;
     }
     // 不再从 category 获取 license_types（category 是卷类，不是标签）
 
@@ -260,16 +228,16 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
       await db
         .updateTable("questions")
         .set({
-          type: question.type,
+          type: cleanedQuestion.type,
           content: contentMultilang as any,
           options: cleanedOptions,
           correct_answer: cleanedCorrectAnswer,
-          image: question.image || null,
+          image: cleanedQuestion.image || null,
           explanation: explanationMultilang as any,
-        license_type_tag: (question as any).license_type_tag || licenseTypes || null, // 优先使用 license_type_tag，如果没有则使用 licenseTypes
-          category: question.category || null,
-          stage_tag: question.stage_tag || null,
-          topic_tags: question.topic_tags || null,
+        license_type_tag: (cleanedQuestion as any).license_type_tag || licenseTypes || null, // ✅ Task 3: 直接赋值 JS array，Kysely 会自动序列化为 JSONB（类型已改为 JsonValue）
+          category: cleanedQuestion.category || null,
+          stage_tag: cleanedQuestion.stage_tag || null,
+          topic_tags: cleanedQuestion.topic_tags || null,
           updated_at: new Date(),
         })
         .where("id", "=", existing.id)
@@ -282,16 +250,16 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
         .insertInto("questions")
         .values({
           content_hash: contentHash,
-          type: question.type,
+          type: cleanedQuestion.type,
           content: contentMultilang as any,
           options: cleanedOptions,
           correct_answer: cleanedCorrectAnswer,
-          image: question.image || null,
+          image: cleanedQuestion.image || null,
           explanation: explanationMultilang as any,
-        license_type_tag: (question as any).license_type_tag || licenseTypes || null, // 优先使用 license_type_tag，如果没有则使用 licenseTypes
-          category: question.category || null,
-          stage_tag: question.stage_tag || null,
-          topic_tags: question.topic_tags || null,
+        license_type_tag: (cleanedQuestion as any).license_type_tag || licenseTypes || null, // ✅ Task 3: 直接赋值 JS array，Kysely 会自动序列化为 JSONB（类型已改为 JsonValue）
+          category: cleanedQuestion.category || null,
+          stage_tag: cleanedQuestion.stage_tag || null,
+          topic_tags: cleanedQuestion.topic_tags || null,
         })
         .returning("id")
         .executeTakeFirst();

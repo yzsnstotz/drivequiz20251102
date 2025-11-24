@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import { Language } from "@/lib/i18n";
+import { getFormattedVersion } from "@/lib/version";
 
 /**
  * 读取本地 ADMIN_TOKEN（仅浏览器有效）
@@ -254,12 +255,11 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             </svg>
           </button>
           <span className="text-base font-semibold tracking-tight">{t('header.title')}</span>
-          <span className="text-[10px] text-gray-400 hidden sm:inline">UTC · vNext</span>
+          <span className="text-[9px] text-gray-400 hidden sm:inline font-mono">
+            {getFormattedVersion()}
+          </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-500 hidden lg:inline">
-            {new Date().toISOString()}
-          </span>
           {/* 语言切换器 */}
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             <button

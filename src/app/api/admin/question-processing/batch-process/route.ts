@@ -29,6 +29,7 @@ async function appendServerLog(
     timestamp: string;
     level: 'info' | 'warn' | 'error';
     message: string;
+    trace_id?: string; // ✅ Task 4: 添加 trace_id 支持
   }
 ) {
   try {
@@ -64,7 +65,12 @@ async function appendServerLog(
     }
     
     // 追加新日志（最多保留500条）
-    serverLogs.push(log);
+    // ✅ Task 4: 确保 trace_id 被正确存储
+    const logWithTraceId = {
+      ...log,
+      trace_id: log.trace_id || undefined, // 如果存在 trace_id，则存储
+    };
+    serverLogs.push(logWithTraceId);
     if (serverLogs.length > 500) {
       serverLogs.shift(); // 移除最旧的日志
     }
@@ -2056,6 +2062,15 @@ async function processBatchAsync(
                   // 📊 传递回调函数来保存调试数据
                   onProgress: async (questionId, debugData) => {
                     await updateTaskItem(fullPipelineTaskItemId, "processing", null, debugData);
+                  },
+                  // ✅ Task 4: 传递日志回调函数（包含 trace_id）
+                  onLog: async (questionId, log) => {
+                    await appendServerLog(taskId, {
+                      timestamp: new Date().toISOString(),
+                      level: 'info',
+                      message: `[BATCH][questionId=${questionId}] step=${log.step} | removedLanguages=${JSON.stringify(log.removedLanguages || [])} | cleanedJsonPreview=${log.cleanedJsonPreview ? JSON.stringify(log.cleanedJsonPreview).substring(0, 200) : 'N/A'}`,
+                      trace_id: log.trace_id, // ✅ Task 4: 传递 trace_id
+                    });
                   },
                 }
               );
