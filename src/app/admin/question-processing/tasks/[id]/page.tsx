@@ -72,12 +72,8 @@ export default function TaskDetailPage() {
   // 获取任务详情
   const fetchTaskDetail = async () => {
     try {
-      const response = await apiFetch(`/api/admin/question-processing/batch-process?taskId=${taskId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch task detail');
-      }
-      const data = await response.json();
-      setTask(data.data);
+      const response = await apiFetch<TaskDetail>(`/api/admin/question-processing/batch-process?taskId=${taskId}`);
+      setTask(response.data);
     } catch (err: any) {
       setError(err.message || 'Failed to load task detail');
       console.error('Error fetching task detail:', err);
@@ -89,12 +85,8 @@ export default function TaskDetailPage() {
   // 获取任务子项
   const fetchTaskItems = async () => {
     try {
-      const response = await apiFetch(`/api/admin/question-processing/tasks/${taskId}/items`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch task items');
-      }
-      const data = await response.json();
-      setTaskItems(data.data?.items || []);
+      const response = await apiFetch<{ items: TaskItem[] }>(`/api/admin/question-processing/tasks/${taskId}/items`);
+      setTaskItems(response.data?.items || []);
     } catch (err: any) {
       console.error('Error fetching task items:', err);
     }
