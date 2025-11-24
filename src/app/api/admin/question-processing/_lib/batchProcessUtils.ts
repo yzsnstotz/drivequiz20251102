@@ -1432,7 +1432,7 @@ export async function translateWithPolish(params: {
             fixedJson += "\n" + "}".repeat(missingBraces);
           }
         }
-        parsed = JSON.parse(fixedJson);
+        parsed = JSON.parse(cleanJsonString(fixedJson));
       }
     } catch (finalError) {
       // ✅ 修复 Task 5：JSON 解析失败时必须抛出 error，不允许 silent fallback
@@ -1666,11 +1666,11 @@ export async function polishContent(params: {
   }
   
   try {
-    parsed = JSON.parse(rawAnswer);
+    parsed = JSON.parse(cleanJsonString(rawAnswer));
   } catch (parseError) {
     // 如果 JSON 解析失败，尝试修复截断的 JSON
     try {
-      let fixedJson = rawAnswer.trim();
+      let fixedJson = cleanJsonString(rawAnswer);
       
       // 如果 JSON 被截断，尝试提取已有字段
       // 改进正则表达式，支持多行字符串和转义字符
@@ -1728,7 +1728,7 @@ export async function polishContent(params: {
             fixedJson += "\n" + "}".repeat(missingBraces);
           }
         }
-        parsed = JSON.parse(fixedJson);
+        parsed = JSON.parse(cleanJsonString(fixedJson));
       }
     } catch {
       // 如果修复后仍然失败，记录完整响应用于调试
@@ -1961,11 +1961,11 @@ export async function fillMissingContent(params: {
   }
   
   try {
-    parsed = JSON.parse(rawAnswer);
+    parsed = JSON.parse(cleanJsonString(rawAnswer));
   } catch (parseError) {
     // 如果 JSON 解析失败，尝试修复截断的 JSON
     try {
-      let fixedJson = rawAnswer.trim();
+      let fixedJson = cleanJsonString(rawAnswer);
       
       // 如果 JSON 被截断，尝试提取已有字段
       // 查找最后一个完整的字段
@@ -2023,7 +2023,7 @@ export async function fillMissingContent(params: {
             fixedJson += "\n" + "}".repeat(missingBraces);
           }
         }
-        parsed = JSON.parse(fixedJson);
+        parsed = JSON.parse(cleanJsonString(fixedJson));
       }
     } catch {
       // 如果修复后仍然失败，记录完整响应用于调试
@@ -2266,13 +2266,26 @@ function applyTagsFromFullPipeline(
 }
 
 /**
+ * 清理JSON字符串，移除尾随逗号等无效字符
+ * @param jsonStr 原始JSON字符串
+ * @returns 清理后的JSON字符串
+ */
+function cleanJsonString(jsonStr: string): string {
+  let cleaned = jsonStr.trim();
+  // 移除对象和数组中的尾随逗号（匹配 ,} 和 ,] 的情况）
+  cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+  return cleaned;
+}
+
+/**
  * 安全过滤 AI 返回的 payload，只允许白名单字段写入 question 模型
  * 防止 AI 输出多余字段污染数据库
  * 
  * @param aiResult AI 返回的完整结果对象
+ * @param targetLanguages 目标语言列表，只保留这些语言的翻译
  * @returns 过滤后的安全对象，只包含允许的字段
  */
-function sanitizeAiPayload(aiResult: any): {
+function sanitizeAiPayload(aiResult: any, targetLanguages?: string[]): {
   source?: {
     content?: string;
     options?: string[];
@@ -2308,9 +2321,14 @@ function sanitizeAiPayload(aiResult: any): {
   }
 
   // 白名单：translations 字段
+  // ✅ 修复：只保留targetLanguages中指定的语言
   if (aiResult.translations && typeof aiResult.translations === "object") {
     sanitized.translations = {};
     for (const [lang, translation] of Object.entries(aiResult.translations)) {
+      // ✅ 修复：如果指定了targetLanguages，只处理这些语言
+      if (targetLanguages && !targetLanguages.includes(lang)) {
+        continue;
+      }
       if (translation && typeof translation === "object") {
         const sanitizedTranslation: any = {};
         if (typeof (translation as any).content === "string") {
@@ -2531,7 +2549,8 @@ export async function processFullPipelineBatch(
       }
       
       try {
-        parsed = JSON.parse(rawAnswer);
+        // ✅ 修复：清理尾随逗号，然后再解析
+        parsed = JSON.parse(cleanJsonString(rawAnswer));
         console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] JSON 解析成功 | 包含字段: ${Object.keys(parsed || {}).join(", ")}`);
         
         // ✅ A-2: JSON 解析成功，填充诊断信息
@@ -2581,7 +2600,8 @@ export async function processFullPipelineBatch(
       }
 
       // ✅ 安全过滤：只允许白名单字段写入 question 模型
-      const sanitized = sanitizeAiPayload(parsed);
+      // ✅ 修复：传入targetLanguages，在sanitize阶段就过滤掉不需要的语言
+      const sanitized = sanitizeAiPayload(parsed, targetLanguages);
       console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] AI payload 安全过滤完成 | 原始字段数=${Object.keys(parsed).length} | 过滤后字段数=${Object.keys(sanitized).length}`);
       
       // ✅ A-2: 填充清洗后的数据
@@ -2925,7 +2945,12 @@ export async function processFullPipelineBatch(
           }
 
           // 更新 content JSONB 对象，添加目标语言（累积更新）
-          updatedContent[lang] = translation.content;
+          // ✅ 修复：确保content是有效的字符串
+          if (translation.content && typeof translation.content === "string") {
+            updatedContent[lang] = translation.content;
+          } else if (translation.content !== null && translation.content !== undefined) {
+            updatedContent[lang] = String(translation.content);
+          }
           
           // ✅ Phase 1.3 修复：更新 explanation JSONB 对象，添加目标语言
           // 使用已初始化的 updatedExplanation 作为基础，只添加目标语言的 explanation
