@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Bot } from "lucide-react";
 import { loadUnifiedQuestionsPackage, Question } from "@/lib/questionsLoader";
@@ -12,7 +12,24 @@ import QuestionImage from "@/components/common/QuestionImage";
 import FavoriteButton from "../components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
 
-export default function StudyModePage() {
+function StudyModePageFallback() {
+  const { t } = useLanguage();
+  return (
+    <div className="container mx-auto px-4 py-6">
+      <div className="flex items-center space-x-4 mb-6">
+        <h1 className="text-xl font-bold text-gray-900">{t("study.mode.study")}</h1>
+      </div>
+      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">{t("common.loading")}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StudyModePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { language, t } = useLanguage();
@@ -630,3 +647,10 @@ export default function StudyModePage() {
   );
 }
 
+export default function StudyModePage() {
+  return (
+    <Suspense fallback={<StudyModePageFallback />}>
+      <StudyModePageContent />
+    </Suspense>
+  );
+}
