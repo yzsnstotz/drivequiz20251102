@@ -1247,7 +1247,7 @@ export default function QuestionProcessingPage() {
                 </p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                上传"指令模版/待运行题目.md"文件，文件应包含每行一个 content_hash（64位十六进制字符串）
+                上传&quot;指令模版/待运行题目.md&quot;文件，文件应包含每行一个 content_hash（64位十六进制字符串）
               </p>
             </div>
 
