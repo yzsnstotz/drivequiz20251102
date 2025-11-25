@@ -183,6 +183,7 @@ export default function QuestionProcessingPage() {
   // 从 localStorage 加载上一次的任务配置
   const loadCachedFormData = (): {
     questionIds: string;
+    contentHashes: string[]; // ✅ 新增：content_hash 列表
     operations: string[];
     translateOptions: { from: string; to: string | string[] };
     polishOptions: { locale: string };
@@ -196,6 +197,7 @@ export default function QuestionProcessingPage() {
         const parsed = JSON.parse(cached);
         return {
           questionIds: "", // 每次清空题目ID，让用户重新输入
+          contentHashes: [], // ✅ 新增：每次清空 content_hash 列表
           operations: parsed.operations || [],
           translateOptions: parsed.translateOptions || { from: "zh", to: ["ja"] },
           polishOptions: parsed.polishOptions || { locale: "zh-CN" },
@@ -210,6 +212,7 @@ export default function QuestionProcessingPage() {
     // 默认值
     return {
       questionIds: "",
+      contentHashes: [], // ✅ 新增：默认空数组
       operations: [],
       translateOptions: { from: "zh", to: ["ja"] },
       polishOptions: { locale: "zh-CN" },
@@ -239,13 +242,14 @@ export default function QuestionProcessingPage() {
   // 创建任务表单状态
   const [formData, setFormData] = useState<{
     questionIds: string;
+    contentHashes: string[]; // ✅ 新增：content_hash 列表
     operations: string[];
     translateOptions: { from: string; to: string | string[] };
     polishOptions: { locale: string };
     fullPipelineOptions: { sourceLanguage: "zh" | "ja" | "en"; targetLanguages: string[]; type: "single" | "multiple" | "truefalse" }; // ✅ 修复：统一使用 type 字段
     batchSize: number;
     continueOnError: boolean;
-  }>(loadCachedFormData());
+  }>({ ...loadCachedFormData(), contentHashes: [] });
 
   const loadTasks = useCallback(async (silent: boolean = false): Promise<BatchProcessTask[]> => {
     if (!silent) {
@@ -817,8 +821,12 @@ export default function QuestionProcessingPage() {
         continueOnError: formData.continueOnError,
       };
 
-      // 处理题目ID
-      if (formData.questionIds) {
+      // 处理题目ID 或 content_hash（优先使用 content_hash）
+      if (formData.contentHashes && formData.contentHashes.length > 0) {
+        // ✅ 新增：优先使用 content_hash 列表
+        payload.contentHashes = formData.contentHashes;
+      } else if (formData.questionIds) {
+        // 如果没有 content_hash，则使用 questionIds
         const ids = formData.questionIds
           .split(",")
           .map((id) => parseInt(id.trim()))
@@ -881,6 +889,7 @@ export default function QuestionProcessingPage() {
       // 重置表单，但保留配置（下次打开时会从缓存加载）
       setFormData({
         questionIds: "",
+        contentHashes: [], // ✅ 新增：清空 content_hash 列表
         operations: formData.operations, // 保留操作类型
         translateOptions: formData.translateOptions, // 保留翻译选项
         polishOptions: formData.polishOptions, // 保留润色选项
@@ -1191,6 +1200,54 @@ export default function QuestionProcessingPage() {
               />
               <p className="text-xs text-gray-500 mt-1">
                 多个ID用逗号分隔，留空则处理数据库中的所有题目
+              </p>
+            </div>
+
+            {/* ✅ 新增：文件上传功能 */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                或上传待运行题目文件（content_hash列表）
+              </label>
+              <input
+                type="file"
+                accept=".md,.txt"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+
+                  try {
+                    const text = await file.text();
+                    // 解析文件内容，提取 content_hash（每行一个）
+                    const hashes = text
+                      .split('\n')
+                      .map(line => line.trim())
+                      .filter(line => line.length > 0 && /^[a-f0-9]{64}$/i.test(line)); // 验证是64位十六进制字符串
+
+                    if (hashes.length === 0) {
+                      setError('文件中没有找到有效的 content_hash（应为64位十六进制字符串，每行一个）');
+                      return;
+                    }
+
+                    setFormData({ ...formData, contentHashes: hashes, questionIds: "" }); // 清空 questionIds
+                    setProcessingLogs(prev => [...prev.slice(-199), {
+                      timestamp: new Date().toISOString(),
+                      level: 'info',
+                      message: `✅ 已加载 ${hashes.length} 个 content_hash`,
+                      logType: 'task-list',
+                    }]);
+                  } catch (error) {
+                    setError(`读取文件失败: ${error instanceof Error ? error.message : String(error)}`);
+                  }
+                }}
+                className="w-full border rounded px-3 py-2"
+              />
+              {formData.contentHashes.length > 0 && (
+                <p className="text-xs text-green-600 mt-1">
+                  ✅ 已加载 {formData.contentHashes.length} 个 content_hash
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                上传"指令模版/待运行题目.md"文件，文件应包含每行一个 content_hash（64位十六进制字符串）
               </p>
             </div>
 

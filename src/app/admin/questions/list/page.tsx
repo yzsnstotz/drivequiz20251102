@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, apiFetch, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
+import { getQuestionContent, getQuestionOptions } from "@/lib/questionUtils";
 
 type QuestionType = "single" | "multiple" | "truefalse";
 
@@ -324,7 +325,7 @@ export default function QuestionsPage() {
       if (filters.category) params.category = filters.category;
       if (filters.search) params.search = filters.search;
       if (filters.source) params.source = filters.source;
-      if (filters.locale) params.locale = filters.locale;
+      // 不再传递 locale 参数，API 返回所有语言的数据
 
       // 构建查询字符串
       const queryString = new URLSearchParams(
@@ -393,7 +394,7 @@ export default function QuestionsPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder, filters.locale]);
+  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder]);
 
   // 初始加载或筛选条件改变时重置
   useEffect(() => {
@@ -401,7 +402,7 @@ export default function QuestionsPage() {
     setHasMore(true);
     loadData(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder, filters.locale]);
+  }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder]);
 
   // 无限滚动：加载更多
   const loadMore = useCallback(() => {
@@ -1397,26 +1398,6 @@ export default function QuestionsPage() {
             })()}
           </select>
         </div>
-        <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs font-medium text-gray-700 mb-1">语言</label>
-          <select
-            value={filters.locale}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                locale: e.target.value,
-                page: 1,
-              }))
-            }
-            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-          >
-            {languageOptions.map((loc) => (
-              <option key={loc} value={loc}>
-                {loc}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-gray-700 mb-1">题目源</label>
           <div className="space-y-1">
@@ -1555,7 +1536,7 @@ export default function QuestionsPage() {
       ) : (
         <>
           <div className="hidden md:block overflow-x-auto relative">
-            <table className="w-full border-collapse min-w-[1200px]">
+            <table className="w-full border-collapse min-w-[1800px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th 
@@ -1576,14 +1557,13 @@ export default function QuestionsPage() {
                   >
                     类型 {filters.sortBy === "type" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
-                  <th 
-                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
-                    onClick={() => handleSort("content")}
-                  >
-                    题目内容 {filters.sortBy === "content" && (filters.sortOrder === "asc" ? "↑" : "↓")}
-                  </th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 bg-blue-50">题目内容 (中文)</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 bg-green-50">题目内容 (日文)</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 bg-yellow-50">题目内容 (英文)</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">解析</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 bg-blue-50">解析 (中文)</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 bg-green-50">解析 (日文)</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 bg-yellow-50">解析 (英文)</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">驾照标签</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">阶段标签</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">主题标签</th>
@@ -1607,30 +1587,48 @@ export default function QuestionsPage() {
                         {item.type === "single" ? "单选" : item.type === "multiple" ? "多选" : "判断"}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-xs max-w-md truncate" title={typeof item.content === 'string' ? item.content : (item.content?.zh || item.content?.en || item.content?.ja || '')}>
-                      {typeof item.content === 'string' 
-                        ? item.content 
-                        : (item.content?.zh || item.content?.en || item.content?.ja || '')}
+                    {/* 题目内容 - 中文 */}
+                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-blue-50" title={getQuestionContent(item.content, 'zh') || ''}>
+                      {getQuestionContent(item.content, 'zh') || '—'}
+                    </td>
+                    {/* 题目内容 - 日文 */}
+                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-green-50" title={getQuestionContent(item.content, 'ja') || ''}>
+                      {getQuestionContent(item.content, 'ja') || '—'}
+                    </td>
+                    {/* 题目内容 - 英文 */}
+                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-yellow-50" title={getQuestionContent(item.content, 'en') || ''}>
+                      {getQuestionContent(item.content, 'en') || '—'}
                     </td>
                     <td className="py-2 px-3 text-xs">
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
                         : item.correctAnswer}
                     </td>
-                    <td className="py-2 px-3 text-xs max-w-md">
+                    {/* 解析 - 中文 */}
+                    <td className="py-2 px-3 text-xs max-w-xs bg-blue-50">
                       {item.explanation ? (
-                        <div className="truncate" title={
-                          typeof item.explanation === 'string' 
-                            ? item.explanation 
-                            : (typeof item.explanation === 'object' && item.explanation !== null
-                                ? (item.explanation.zh || item.explanation.en || item.explanation.ja || '')
-                                : '')
-                        }>
-                          {typeof item.explanation === 'string' 
-                            ? item.explanation 
-                            : (typeof item.explanation === 'object' && item.explanation !== null
-                                ? (item.explanation.zh || item.explanation.en || item.explanation.ja || '')
-                                : '')}
+                        <div className="truncate" title={getQuestionContent(item.explanation, 'zh') || ''}>
+                          {getQuestionContent(item.explanation, 'zh') || '—'}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
+                    {/* 解析 - 日文 */}
+                    <td className="py-2 px-3 text-xs max-w-xs bg-green-50">
+                      {item.explanation ? (
+                        <div className="truncate" title={getQuestionContent(item.explanation, 'ja') || ''}>
+                          {getQuestionContent(item.explanation, 'ja') || '—'}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
+                    {/* 解析 - 英文 */}
+                    <td className="py-2 px-3 text-xs max-w-xs bg-yellow-50">
+                      {item.explanation ? (
+                        <div className="truncate" title={getQuestionContent(item.explanation, 'en') || ''}>
+                          {getQuestionContent(item.explanation, 'en') || '—'}
                         </div>
                       ) : (
                         <span className="text-gray-400 text-[10px]">—</span>
@@ -2013,10 +2011,19 @@ export default function QuestionsPage() {
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 mb-1">题目内容</div>
-                  <div className="text-sm">
-                    {typeof item.content === 'string' 
-                      ? item.content 
-                      : (item.content?.zh || item.content?.en || item.content?.ja || '')}
+                  <div className="space-y-2">
+                    <div className="text-sm bg-blue-50 p-2 rounded">
+                      <div className="text-xs text-gray-500 mb-0.5">中文</div>
+                      <div>{getQuestionContent(item.content, 'zh') || '—'}</div>
+                    </div>
+                    <div className="text-sm bg-green-50 p-2 rounded">
+                      <div className="text-xs text-gray-500 mb-0.5">日文</div>
+                      <div>{getQuestionContent(item.content, 'ja') || '—'}</div>
+                    </div>
+                    <div className="text-sm bg-yellow-50 p-2 rounded">
+                      <div className="text-xs text-gray-500 mb-0.5">英文</div>
+                      <div>{getQuestionContent(item.content, 'en') || '—'}</div>
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -2030,10 +2037,19 @@ export default function QuestionsPage() {
                 {item.explanation && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">解析</div>
-                    <div className="text-xs text-gray-700">
-                      {typeof item.explanation === 'string' 
-                        ? item.explanation 
-                        : (item.explanation?.zh || item.explanation?.en || item.explanation?.ja || '')}
+                    <div className="space-y-2">
+                      <div className="text-xs text-gray-700 bg-blue-50 p-2 rounded">
+                        <div className="text-xs text-gray-500 mb-0.5">中文</div>
+                        <div>{getQuestionContent(item.explanation, 'zh') || '—'}</div>
+                      </div>
+                      <div className="text-xs text-gray-700 bg-green-50 p-2 rounded">
+                        <div className="text-xs text-gray-500 mb-0.5">日文</div>
+                        <div>{getQuestionContent(item.explanation, 'ja') || '—'}</div>
+                      </div>
+                      <div className="text-xs text-gray-700 bg-yellow-50 p-2 rounded">
+                        <div className="text-xs text-gray-500 mb-0.5">英文</div>
+                        <div>{getQuestionContent(item.explanation, 'en') || '—'}</div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2057,10 +2073,25 @@ export default function QuestionsPage() {
                 {item.options && item.options.length > 0 && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">选项</div>
-                    <div className="text-xs space-y-1">
-                      {item.options.map((opt, idx) => (
-                        <div key={idx}>{String.fromCharCode(65 + idx)}. {opt}</div>
-                      ))}
+                    <div className="space-y-2">
+                      <div className="text-xs bg-blue-50 p-2 rounded">
+                        <div className="text-xs text-gray-500 mb-0.5">中文</div>
+                        {getQuestionOptions(item.options, 'zh').map((opt, idx) => (
+                          <div key={idx}>{String.fromCharCode(65 + idx)}. {opt}</div>
+                        ))}
+                      </div>
+                      <div className="text-xs bg-green-50 p-2 rounded">
+                        <div className="text-xs text-gray-500 mb-0.5">日文</div>
+                        {getQuestionOptions(item.options, 'ja').map((opt, idx) => (
+                          <div key={idx}>{String.fromCharCode(65 + idx)}. {opt}</div>
+                        ))}
+                      </div>
+                      <div className="text-xs bg-yellow-50 p-2 rounded">
+                        <div className="text-xs text-gray-500 mb-0.5">英文</div>
+                        {getQuestionOptions(item.options, 'en').map((opt, idx) => (
+                          <div key={idx}>{String.fromCharCode(65 + idx)}. {opt}</div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}

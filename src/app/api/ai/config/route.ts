@@ -46,16 +46,19 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       ok: true,
       data: {
         provider,
+        dbProvider: aiProvider, // ✅ 新增：返回数据库中的原始值，用于发送 X-AI-Provider 头
         model: model || undefined,
       },
     });
   } catch (error) {
     console.error("[GET /api/ai/config] Error:", error);
     // 返回默认值，确保前台可以正常工作
+    // ⚠️ 注意：即使出错也要返回 dbProvider 字段，避免前端无法发送 X-AI-Provider 头
     return NextResponse.json({
       ok: true,
       data: {
         provider: "render",
+        dbProvider: null, // 数据库查询失败时返回 null
         model: "gpt-4o-mini",
       },
     });

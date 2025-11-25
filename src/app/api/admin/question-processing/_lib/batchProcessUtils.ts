@@ -3072,17 +3072,46 @@ export async function processFullPipelineBatch(
         .where("id", "=", question.id)
         .executeTakeFirst();
       
-      dbUpdatePayload = {
+      // ✅ 修复：构建传给 saveQuestionToDb 的 payload，优先使用 dbPayload 中的值
+      const savePayload: any = {
         id: question.id,
+        hash: question.content_hash,
         type: normalizedQuestion.type,
         content: question.content,
         options: normalizedQuestion.options,
         correctAnswer: normalizedQuestion.correctAnswer,
         explanation: dbQuestionForPayload?.explanation || null,
-        license_tags: (question as any).license_tags,
-        stage_tag: (question as any).stage_tag,
-        topic_tags: (question as any).topic_tags,
+        mode: "updateOnly",
       };
+
+      // ✅ 修复：优先使用 dbPayload 中的 license_type_tag（数据库字段名）
+      if (dbPayload.license_type_tag !== null && dbPayload.license_type_tag !== undefined) {
+        savePayload.license_type_tag = dbPayload.license_type_tag;
+      }
+
+      // ✅ 修复：优先使用 dbPayload 中的 stage_tag
+      if (dbPayload.stage_tag !== null && dbPayload.stage_tag !== undefined) {
+        savePayload.stage_tag = dbPayload.stage_tag;
+      }
+
+      // ✅ 修复：优先使用 dbPayload 中的 topic_tags
+      if (dbPayload.topic_tags !== null && dbPayload.topic_tags !== undefined) {
+        savePayload.topic_tags = dbPayload.topic_tags;
+      } else if ((question as any).topic_tags !== null && (question as any).topic_tags !== undefined) {
+        savePayload.topic_tags = (question as any).topic_tags;
+      }
+
+      // ✅ 添加调试日志
+      console.log(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 准备保存 tags:`, {
+        dbPayload_license_type_tag: dbPayload.license_type_tag,
+        dbPayload_stage_tag: dbPayload.stage_tag,
+        dbPayload_topic_tags: dbPayload.topic_tags,
+        savePayload_license_type_tag: savePayload.license_type_tag,
+        savePayload_stage_tag: savePayload.stage_tag,
+        savePayload_topic_tags: savePayload.topic_tags,
+      });
+
+      dbUpdatePayload = savePayload;
       
       await db.transaction().execute(async (trx) => {
         // 先读取数据库中的 explanation（保留原有内容）
@@ -3094,18 +3123,11 @@ export async function processFullPipelineBatch(
         
         // 1. 保存题目主表
         // ⚠️ 重要：传入数据库中的原有 explanation，让事务的第二步来添加新翻译
-        // ✅ Phase 2.3 修复：确保批量处理调用时传入正确 tags，统一使用 license_tags 字段名
+        // ✅ 修复：传入原始的 content_hash 作为 hash 字段，确保通过 content_hash 查找题目
+        // ✅ 修复：使用 dbPayload 中的 license_type_tag 和 stage_tag（数据库字段名）
         await saveQuestionToDb({
-          id: question.id,
-          type: normalizedQuestion.type,
-          content: question.content, // 使用更新后的多语言内容
-          options: normalizedQuestion.options,
-          correctAnswer: normalizedQuestion.correctAnswer, // ⚠️ 注意：这里已经保证非空了
+          ...savePayload,
           explanation: dbQuestion?.explanation || null, // ✅ 使用数据库中的原有 explanation
-          license_tags: (question as any).license_tags, // ✅ Phase 2.3 修复：统一使用 license_tags 字段名
-          stage_tag: (question as any).stage_tag,
-          topic_tags: (question as any).topic_tags,
-          mode: "updateOnly", // ✅ 修复问题 3：防止插入幽灵题
         } as any);
         
         // 2. 保存多语言翻译（在事务中直接更新，不使用 saveQuestionTranslation 函数）

@@ -136,9 +136,14 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
 
 /**
  * 保存题目到数据库
+ * @param question 题目对象
+ * @param mode 保存模式："upsert"（默认，通过content_hash查找，找不到则插入）或 "updateOnly"（通过content_hash查找，找不到则抛出错误）
  */
-export async function saveQuestionToDb(question: Question): Promise<number> {
+export async function saveQuestionToDb(question: Question & { mode?: "upsert" | "updateOnly" }): Promise<number> {
   try {
+    const mode = (question as any).mode || "upsert"; // 默认 upsert
+    // ✅ 修复：如果传入了 hash，使用传入的 hash（原始 content_hash），否则才计算
+    // 在 updateOnly 模式下，必须传入原始的 content_hash，不能基于当前内容重新计算
     const contentHash = question.hash || calculateQuestionHash(question);
     
     // ✅ 修复：清理 question 对象，移除可能存在的 tags 字段（防止写入数据库时出错）
@@ -207,60 +212,96 @@ export async function saveQuestionToDb(question: Question): Promise<number> {
       throw new Error(`JSON格式错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`);
     }
 
-    // ⚠️ 兼容旧逻辑：从 license_tags 获取 license_types
-    // 注意：category 是卷类，不是标签，不应该用于 license_types
-    // 新代码应该使用 license_type_tag 字段（单个值）
-    let licenseTypes: string[] | null = null;
-    if (cleanedQuestion.license_tags && cleanedQuestion.license_tags.length > 0) {
-      licenseTypes = cleanedQuestion.license_tags;
-    }
-    // 不再从 category 获取 license_types（category 是卷类，不是标签）
+    // ✅ 修复：直接使用 license_type_tag 字段（数据库字段名）
+    // license_tags 字段已废弃，不再处理
 
-    // 检查是否已存在
+    // ✅ 修复：统一通过 content_hash 查找题目（content_hash 是题目标识的唯一手段）
+    // updateOnly 模式：通过 content_hash 查找，找不到则抛出错误
+    // upsert 模式：通过 content_hash 查找，找不到则插入新题目
     const existing = await db
       .selectFrom("questions")
       .select(["id"])
       .where("content_hash", "=", contentHash)
       .executeTakeFirst();
+    
+    if (!existing && mode === "updateOnly") {
+      console.error(
+        `[saveQuestionToDb] [updateOnly] Question content_hash=${contentHash} not found, aborting without insert.`,
+      );
+      throw new Error("QUESTION_NOT_FOUND_FOR_UPDATE");
+    }
 
     if (existing) {
       // 更新现有题目
+      // ✅ 修复：构建更新对象，只有字段值存在时才更新（null/undefined 时不更新，保留原值）
+      const updateData: any = {
+        type: cleanedQuestion.type,
+        content: contentMultilang as any,
+        options: cleanedOptions,
+        correct_answer: cleanedCorrectAnswer,
+        image: cleanedQuestion.image || null,
+        explanation: explanationMultilang as any,
+        category: cleanedQuestion.category || null,
+        updated_at: new Date(),
+      };
+
+      // ✅ 修复：只有 license_type_tag 存在时才更新（null/undefined 时不更新，保留原值）
+      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
+        updateData.license_type_tag = (cleanedQuestion as any).license_type_tag;
+      }
+
+      // ✅ 修复：只有 stage_tag 存在时才更新（null/undefined 时不更新，保留原值）
+      if (cleanedQuestion.stage_tag !== null && cleanedQuestion.stage_tag !== undefined) {
+        updateData.stage_tag = cleanedQuestion.stage_tag;
+      }
+
+      // ✅ 修复：只有 topic_tags 存在时才更新（null/undefined 时不更新，保留原值）
+      if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
+        updateData.topic_tags = cleanedQuestion.topic_tags;
+      }
+
       await db
         .updateTable("questions")
-        .set({
-          type: cleanedQuestion.type,
-          content: contentMultilang as any,
-          options: cleanedOptions,
-          correct_answer: cleanedCorrectAnswer,
-          image: cleanedQuestion.image || null,
-          explanation: explanationMultilang as any,
-        license_type_tag: (cleanedQuestion as any).license_type_tag || licenseTypes || null, // ✅ Task 3: 直接赋值 JS array，Kysely 会自动序列化为 JSONB（类型已改为 JsonValue）
-          category: cleanedQuestion.category || null,
-          stage_tag: cleanedQuestion.stage_tag || null,
-          topic_tags: cleanedQuestion.topic_tags || null,
-          updated_at: new Date(),
-        })
+        .set(updateData)
         .where("id", "=", existing.id)
         .execute();
 
       return existing.id;
     } else {
-      // 插入新题目
+      // 插入新题目（仅在 upsert 模式下）
+      const insertData: any = {
+        content_hash: contentHash,
+        type: cleanedQuestion.type,
+        content: contentMultilang as any,
+        options: cleanedOptions,
+        correct_answer: cleanedCorrectAnswer,
+        image: cleanedQuestion.image || null,
+        explanation: explanationMultilang as any,
+        category: cleanedQuestion.category || null,
+      };
+
+      // ✅ 修复：插入时，如果字段值存在则设置，否则使用 null（新插入允许 null）
+      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
+        insertData.license_type_tag = (cleanedQuestion as any).license_type_tag;
+      } else {
+        insertData.license_type_tag = null;
+      }
+
+      if (cleanedQuestion.stage_tag !== null && cleanedQuestion.stage_tag !== undefined) {
+        insertData.stage_tag = cleanedQuestion.stage_tag;
+      } else {
+        insertData.stage_tag = null;
+      }
+
+      if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
+        insertData.topic_tags = cleanedQuestion.topic_tags;
+      } else {
+        insertData.topic_tags = null;
+      }
+
       const result = await db
         .insertInto("questions")
-        .values({
-          content_hash: contentHash,
-          type: cleanedQuestion.type,
-          content: contentMultilang as any,
-          options: cleanedOptions,
-          correct_answer: cleanedCorrectAnswer,
-          image: cleanedQuestion.image || null,
-          explanation: explanationMultilang as any,
-        license_type_tag: (cleanedQuestion as any).license_type_tag || licenseTypes || null, // ✅ Task 3: 直接赋值 JS array，Kysely 会自动序列化为 JSONB（类型已改为 JsonValue）
-          category: cleanedQuestion.category || null,
-          stage_tag: cleanedQuestion.stage_tag || null,
-          topic_tags: cleanedQuestion.topic_tags || null,
-        })
+        .values(insertData)
         .returning("id")
         .executeTakeFirst();
 

@@ -4,13 +4,38 @@
  * 前端 AI 客户端 - 直接调用 ai-service
  * 支持 120 秒超时，不受 Next.js 20 秒限制
  * 支持多 Provider：local / render
- * 指令版本：0003
+ * 指令版本：0004 - 添加 X-AI-Provider 请求头支持
  */
 
 import { resolveAiEndpoint, type AiProviderKey } from "./aiEndpoint";
 import { joinUrl } from "./urlJoin";
 
 export type { AiProviderKey };
+
+/**
+ * 获取当前的 aiProvider 配置（通过 API）
+ */
+async function getCurrentAiProvider(): Promise<string | null> {
+  try {
+    const response = await fetch("/api/ai/config");
+    if (!response.ok) {
+      console.warn("[getCurrentAiProvider] API 响应失败:", response.status, response.statusText);
+      return null;
+    }
+    const data = await response.json();
+    const dbProvider = data?.data?.dbProvider;
+    console.log("[getCurrentAiProvider] 获取配置:", {
+      dbProvider,
+      provider: data?.data?.provider,
+      hasDbProvider: dbProvider !== undefined && dbProvider !== null,
+    });
+    // 返回数据库中的原始值
+    return dbProvider || null;
+  } catch (error) {
+    console.warn("[getCurrentAiProvider] 获取配置失败:", error);
+    return null;
+  }
+}
 
 export interface AiClientRequest {
   provider: AiProviderKey; // 必须指定 provider: "local" | "render"
@@ -76,6 +101,26 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
   // 使用 joinUrl 安全拼接 URL
   const requestUrl = joinUrl(url, "/v1/ask");
 
+  // 获取数据库中的原始 aiProvider 配置（仅当 provider 为 render 时）
+  let xAiProviderHeader: string | undefined = undefined;
+  if (provider === "render") {
+    try {
+      const dbProvider = await getCurrentAiProvider();
+      console.log("[callAiDirect] 读取数据库 provider 配置:", {
+        dbProvider,
+        willSendHeader: dbProvider === "openai" || dbProvider === "openrouter" || dbProvider === "gemini",
+      });
+      // 只发送需要发送的 provider（openai, openrouter, gemini）
+      if (dbProvider === "openai" || dbProvider === "openrouter" || dbProvider === "gemini") {
+        xAiProviderHeader = dbProvider;
+      } else if (dbProvider) {
+        console.warn("[callAiDirect] 数据库 provider 值不支持发送 X-AI-Provider 头:", dbProvider);
+      }
+    } catch (error) {
+      console.warn("[callAiDirect] 获取数据库 provider 配置失败:", error);
+    }
+  }
+
   console.log("[callAiDirect] 调用 AI 服务:", {
     provider,
     baseUrl: url,
@@ -84,17 +129,26 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     tokenLength: token?.length || 0,
     scene: rest.scene,
     model: rest.model,
+    xAiProviderHeader,
     questionLength: rest.question?.length || 0,
   });
 
   let response: Response;
   try {
+    // 构建请求头
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
+    // 添加 X-AI-Provider 头（如果适用）
+    if (xAiProviderHeader) {
+      headers["X-AI-Provider"] = xAiProviderHeader;
+    }
+
     response = await fetch(requestUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       body: JSON.stringify({
         question: rest.question,
         lang: rest.locale || "zh",

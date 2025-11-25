@@ -63,8 +63,10 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
 
     // 转换为配置对象
     const config: Record<string, string> = {};
+    const descriptions: Record<string, string | null> = {};
     for (const row of rows) {
       config[row.key] = row.value;
+      descriptions[row.key] = row.description;
     }
 
     // 确保所有字段都有默认值
@@ -75,6 +77,7 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       cacheTtl: config.cacheTtl || "86400",
       costAlertUsdThreshold: config.costAlertUsdThreshold || "10.00",
       aiProvider: config.aiProvider || "openai",
+      aiProviderDescription: descriptions.aiProvider || null,
       timeoutOpenai: config.timeout_openai || "30000",
       timeoutOpenaiDirect: config.timeout_openai_direct || "30000",
       timeoutOpenrouter: config.timeout_openrouter || "30000",

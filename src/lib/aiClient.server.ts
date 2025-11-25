@@ -3,12 +3,33 @@ import "server-only";
 /**
  * 服务端 AI 客户端 - 直接调用 ai-service
  * 使用服务端环境变量（AI_LOCAL_SERVICE_URL / AI_RENDER_SERVICE_URL）
- * 指令版本：0003
+ * 指令版本：0004 - 添加 X-AI-Provider 请求头支持
  */
 
 import { joinUrl } from "./urlJoin";
 
 export type ServerAiProviderKey = "local" | "render";
+
+/**
+ * 获取数据库中的原始 aiProvider 配置值
+ * 用于发送 X-AI-Provider 请求头
+ */
+async function getDbAiProvider(): Promise<string | null> {
+  try {
+    // 动态导入数据库客户端（避免循环依赖）
+    const { aiDb } = await import("@/lib/aiDb");
+    const configRow = await (aiDb as any)
+      .selectFrom("ai_config")
+      .select(["value"])
+      .where("key", "=", "aiProvider")
+      .executeTakeFirst();
+    
+    return configRow?.value || null;
+  } catch (error) {
+    console.warn("[getDbAiProvider] 读取数据库配置失败:", error);
+    return null;
+  }
+}
 
 /**
  * 根据 provider 解析对应的服务端点（URL + TOKEN）
@@ -106,6 +127,16 @@ export async function callAiServer<T = any>(
     // 使用 joinUrl 安全拼接 URL
     const requestUrl = joinUrl(url, "/v1/ask");
 
+    // 获取数据库中的原始 aiProvider 配置（仅当 provider 为 render 时）
+    let xAiProviderHeader: string | undefined = undefined;
+    if (provider === "render") {
+      const dbProvider = await getDbAiProvider();
+      // 只发送需要发送的 provider（openai, openrouter, gemini）
+      if (dbProvider === "openai" || dbProvider === "openrouter" || dbProvider === "gemini") {
+        xAiProviderHeader = dbProvider;
+      }
+    }
+
     // 记录完整的 rest 对象，便于调试
     console.log("[callAiServer] 调用 AI 服务:", {
       provider,
@@ -115,8 +146,20 @@ export async function callAiServer<T = any>(
       targetLanguage: rest.targetLanguage,
       model: rest.model,
       timeoutMs: timeout,
+      xAiProviderHeader,
       allRestKeys: Object.keys(rest),
     });
+
+    // 构建请求头
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
+    // 添加 X-AI-Provider 头（如果适用）
+    if (xAiProviderHeader) {
+      headers["X-AI-Provider"] = xAiProviderHeader;
+    }
 
     // 构建请求体，确保所有参数都被传递
     const requestBody: any = {
@@ -148,10 +191,7 @@ export async function callAiServer<T = any>(
 
     const res = await fetch(requestUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       body: JSON.stringify(requestBody),
       signal: controller.signal,
       cache: "no-store",

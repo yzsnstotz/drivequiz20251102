@@ -592,10 +592,12 @@ interface QuestionProcessingTaskItemsTable {
   question_id: number;
   operation: string;
   target_lang: string | null;
-  status: "pending" | "processing" | "succeeded" | "failed" | "skipped";
+  status: "pending" | "processing" | "succeeded" | "partially_succeeded" | "failed" | "skipped";
   error_message: string | null;
   started_at: Date | null;
   finished_at: Date | null;
+  content_hash: string | null;      // 题目的 content_hash
+  ai_provider: string | null;        // AI 服务提供商
   ai_request: any | null;          // AI 请求体（JSONB）
   ai_response: any | null;          // AI 响应（JSONB）
   processed_data: any | null;       // 处理后要入库的数据（JSONB）
