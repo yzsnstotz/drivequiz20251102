@@ -71,6 +71,7 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   // 系统管理分组
   { key: "nav.operationLogs", href: "/admin/operation-logs", match: (p: string) => p.startsWith("/admin/operation-logs"), permission: "operation_logs", group: "system" },
   { key: "nav.stats", href: "/admin/stats", match: (p: string) => p.startsWith("/admin/stats"), permission: "stats", group: "system" },
+  { key: "nav.database", href: "/admin/database", match: (p: string) => p.startsWith("/admin/database"), permission: "stats", group: "system" },
   { key: "nav.admins", href: "/admin/admins", match: (p: string) => p.startsWith("/admin/admins"), requireDefaultAdmin: true, permission: "admins", group: "system" },
 ] as const;
 
