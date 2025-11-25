@@ -215,7 +215,16 @@ export async function callGeminiChat(
     });
 
     const response = result.response;
-    const text = response.text() || "";
+    let text = response.text() || "";
+
+    // ✅ 修复：即使 Gemini 使用了 responseMimeType，也清理可能的格式问题（统一处理）
+    if (responseFormat?.type === "json_object") {
+      const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (codeBlockMatch) {
+        text = codeBlockMatch[1].trim();
+        console.debug("[GEMINI] 检测到 Markdown 代码块，已提取 JSON（虽然不应该发生）");
+      }
+    }
 
     // 提取 tokens 信息（如果可用）
     const usageMetadata = response.usageMetadata;

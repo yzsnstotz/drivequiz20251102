@@ -403,9 +403,20 @@ export async function callModelWithProvider(
     const outputTokens = completion.usage?.completion_tokens;
     const totalTokens = completion.usage?.total_tokens;
     
+    let rawText = completion.choices?.[0]?.message?.content?.trim() || "";
+    
+    // ✅ 修复：清理 OpenAI 返回的 JSON 响应（可能包含 Markdown 代码块）
+    if (responseFormat?.type === "json_object") {
+      const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (codeBlockMatch) {
+        rawText = codeBlockMatch[1].trim();
+        console.debug("[SCENE-RUNNER] OpenAI 返回了 Markdown 包裹的 JSON，已提取");
+      }
+    }
+    
     console.log("[SCENE-RUNNER] OpenAI API 调用成功:", {
       model,
-      hasAnswer: !!completion.choices?.[0]?.message?.content,
+      hasAnswer: !!rawText,
       inputTokens,
       outputTokens,
       totalTokens,
@@ -413,7 +424,7 @@ export async function callModelWithProvider(
     });
     
     return {
-      text: completion.choices?.[0]?.message?.content?.trim() || "",
+      text: rawText,
       tokens: {
         prompt: inputTokens,
         completion: outputTokens,
@@ -443,7 +454,7 @@ export async function callModelWithProvider(
         model: model,
         messages,
         temperature,
-        // 注意：Ollama 可能不支持 response_format 参数，依赖 prompt 约束
+        ...(responseFormat && { response_format: responseFormat }),
       }),
     });
 
@@ -456,18 +467,40 @@ export async function callModelWithProvider(
       choices?: Array<{ message?: { content?: string } }>;
     };
     
-    const answer = data.choices?.[0]?.message?.content?.trim() || "";
+    let rawAnswer = data.choices?.[0]?.message?.content?.trim() || "";
+    
+    // ✅ 修复：清理 Ollama 返回的 JSON 响应（可能包含 Markdown 代码块）
+    if (responseFormat?.type === "json_object") {
+      const codeBlockMatch = rawAnswer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (codeBlockMatch) {
+        rawAnswer = codeBlockMatch[1].trim();
+        console.debug("[SCENE-RUNNER] Ollama 返回了 Markdown 包裹的 JSON，已提取");
+      }
+    }
+    
     console.log("[SCENE-RUNNER] Ollama API 调用成功:", {
       model,
-      answerLength: answer.length,
-      answerPreview: answer.substring(0, 200) + "...",
+      answerLength: rawAnswer.length,
+      answerPreview: rawAnswer.substring(0, 200) + "...",
     });
     
     return {
-      text: answer,
+      text: rawAnswer,
       tokens: undefined, // Ollama 不返回 tokens 信息
     };
   }
+}
+
+/**
+ * 清理 JSON 字符串（移除 BOM、代码块、尾随逗号等）
+ */
+function cleanJsonStringLocal(input: string): string {
+  if (!input) return input;
+  let s = input.trim();
+  s = s.replace(/^[\uFEFF\u200B]+/, ''); // 去掉 BOM/零宽空格
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim(); // 去掉代码块
+  s = s.replace(/,\s*([}\]])/g, '$1'); // 去掉尾随逗号
+  return s;
 }
 
 /**
@@ -491,6 +524,9 @@ export function tryParseSceneResult(
   if (codeBlockMatch) {
     jsonText = codeBlockMatch[1].trim();
   }
+  
+  // 2. 清理 JSON 字符串（移除尾随逗号等）
+  jsonText = cleanJsonStringLocal(jsonText);
   
   try {
     const json = JSON.parse(jsonText);
