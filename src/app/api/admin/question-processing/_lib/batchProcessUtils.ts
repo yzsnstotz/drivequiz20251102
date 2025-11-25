@@ -2359,8 +2359,8 @@ function buildFullPipelineDbPayload(
   } else if (Array.isArray(rawTags.stage_tags) && rawTags.stage_tags.length > 1) {
     // 多值情况：采用与 applyTagsFromFullPipeline 相同的逻辑
     const normalized = rawTags.stage_tags
-      .filter((t) => typeof t === "string" && t.trim().length > 0)
-      .map((t) => t.trim().toUpperCase());
+      .filter((t: unknown) => typeof t === "string" && t.trim().length > 0)
+      .map((t: string) => t.trim().toUpperCase());
     
     const hasBoth = normalized.some((t) => t.includes("BOTH"));
     const hasFull = normalized.some((t) => t.includes("FULL") || t.includes("REGULAR") || t.includes("FULL_LICENSE"));
