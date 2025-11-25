@@ -248,10 +248,15 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       // 记录操作日志
       for (const question of questions) {
         try {
+          // 处理content字段：如果是字符串直接使用，如果是多语言对象则使用zh字段
+          const contentPreview = typeof question.content === "string" 
+            ? question.content.substring(0, 50)
+            : question.content.zh?.substring(0, 50) || "多语言内容";
+          
           await logCreate(req, "question", question.id, {
             category,
             type: question.type,
-            content: question.content.substring(0, 50),
+            content: contentPreview,
             imported: true,
           });
         } catch (logErr) {

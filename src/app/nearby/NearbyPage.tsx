@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, Mail } from 'lucide-react';
+import { useLanguage } from '@/lib/i18n';
 
 type Merchant = {
   id: number;
@@ -21,6 +22,7 @@ type MerchantCategory = {
 };
 
 function NearbyPage() {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [categories, setCategories] = useState<MerchantCategory[]>([]);
@@ -88,8 +90,8 @@ function NearbyPage() {
     <div className="container mx-auto px-4 py-6 pb-20">
       {/* 页面标题 */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">附近的店铺</h1>
-        <p className="text-gray-600">发现周边美食与便利</p>
+        <h1 className="text-2xl font-bold text-gray-900">{t('nearby.title')}</h1>
+        <p className="text-gray-600">{t('nearby.subtitle')}</p>
       </div>
 
       {/* 分类筛选 */}
@@ -108,12 +110,12 @@ function NearbyPage() {
       </div>
 
       {loading ? (
-        <div className="text-center py-8 text-gray-500">加载中...</div>
+        <div className="text-center py-8 text-gray-500">{t('nearby.loading')}</div>
       ) : (
         /* 商户列表 */
         <div className="space-y-4">
           {filteredMerchants.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">暂无商户</div>
+            <div className="text-center py-8 text-gray-500">{t('nearby.noMerchants')}</div>
           ) : (
             filteredMerchants.map(merchant => (
               <div key={merchant.id} className="bg-white rounded-2xl p-4 shadow-sm">

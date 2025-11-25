@@ -60,10 +60,11 @@ export const PATH_TO_PERMISSION: Record<string, PermissionCategory> = {
   '/admin/ai/logs': PERMISSION_CATEGORIES.AI_LOGS,
   '/admin/ai/filters': PERMISSION_CATEGORIES.AI_FILTERS,
   '/admin/ai/config': PERMISSION_CATEGORIES.AI_CONFIG,
+  '/admin/ai/scenes': PERMISSION_CATEGORIES.AI_CONFIG,
   '/admin/ai/rag': PERMISSION_CATEGORIES.AI_RAG,
   '/admin/ai/rag/list': PERMISSION_CATEGORIES.AI_RAG_LIST,
-  // AI总览页面需要至少有一个AI权限才能访问
-  '/admin/ai': PERMISSION_CATEGORIES.AI_MONITOR, // 默认使用monitor权限，实际会检查是否有任意AI权限
+  // AI总览页面（如果存在）默认使用monitor权限
+  '/admin/ai': PERMISSION_CATEGORIES.AI_MONITOR,
 };
 
 /**

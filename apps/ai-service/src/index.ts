@@ -16,6 +16,7 @@ export type ServiceConfig = {
   aiModel: string;
   openaiApiKey: string;
   openrouterApiKey?: string; // OpenRouter API key（可选）
+  geminiApiKey?: string; // Gemini API key（可选）
   supabaseUrl: string;
   supabaseServiceKey: string;
   cacheRedisUrl?: string;
@@ -49,6 +50,7 @@ export function loadConfig(): ServiceConfig {
     AI_MODEL,
     OPENAI_API_KEY,
     OPENROUTER_API_KEY,
+    GEMINI_API_KEY,
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY,
     AI_CACHE_REDIS_URL,
@@ -119,6 +121,100 @@ export function loadConfig(): ServiceConfig {
     }
   };
 
+  return {
+    port: Number(PORT) || 3001,
+    host: HOST || "0.0.0.0",
+    serviceTokens: new Set(SERVICE_TOKENS?.split(",").map((s) => s.trim()) || []),
+    aiModel: AI_MODEL || "gpt-4o-mini",
+    openaiApiKey: OPENAI_API_KEY,
+    openrouterApiKey: OPENROUTER_API_KEY,
+    geminiApiKey: GEMINI_API_KEY,
+    supabaseUrl: SUPABASE_URL,
+    supabaseServiceKey: SUPABASE_SERVICE_KEY,
+    cacheRedisUrl: AI_CACHE_REDIS_URL,
+    nodeEnv: NODE_ENV || "production",
+    version: npm_package_version || "1.0.0",
+    providers: {
+      fetchAskLogs,
+    },
+  };
+}
+
+function loadConfigWithProviders(): ServiceConfig {
+  const {
+    PORT,
+    HOST,
+    SERVICE_TOKENS,
+    AI_MODEL,
+    OPENAI_API_KEY,
+    OPENROUTER_API_KEY,
+    GEMINI_API_KEY,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_KEY,
+    AI_CACHE_REDIS_URL,
+    NODE_ENV,
+    npm_package_version,
+  } = process.env;
+
+  const errors: string[] = [];
+  if (!SERVICE_TOKENS) errors.push("SERVICE_TOKENS");
+  if (!OPENAI_API_KEY) errors.push("OPENAI_API_KEY");
+  if (!SUPABASE_URL) errors.push("SUPABASE_URL");
+  if (!SUPABASE_SERVICE_KEY) errors.push("SUPABASE_SERVICE_KEY");
+  if (errors.length) {
+    throw new Error(`Missing required environment variables: ${errors.join(", ")}`);
+  }
+
+  // 实现 fetchAskLogs provider：从 Supabase 读取 ai_logs 表数据
+  const fetchAskLogs = async (fromIso: string, toIso: string) => {
+    try {
+      // Supabase PostgREST 查询语法：使用 gte (>=) 和 lt (<) 进行时间范围查询
+      // 注意：PostgREST 需要在参数值周围加引号，但 URL 编码会自动处理
+      const url = `${SUPABASE_URL}/rest/v1/ai_logs?created_at=gte.${fromIso}&created_at=lt.${toIso}&select=*&order=created_at.asc`;
+      const response = await fetch(url, {
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[fetchAskLogs] Supabase API error: ${response.status} ${response.statusText}`);
+        return [];
+      }
+
+      const rows = (await response.json()) as Array<{
+        id: number;
+        user_id: string | null;
+        question: string;
+        answer: string | null;
+        locale: string | null;
+        model: string | null;
+        rag_hits: number | null;
+        safety_flag: string;
+        cost_est: number | null;
+        sources?: any;
+        created_at: string;
+      }>;
+
+      // 转换为 AskLogRecord 格式
+      return rows.map((r) => ({
+        id: String(r.id),
+        userId: r.user_id,
+        question: r.question,
+        answer: r.answer || undefined,
+        locale: r.locale || undefined,
+        createdAt: r.created_at,
+        sources: Array.isArray(r.sources) ? r.sources : undefined,
+        safetyFlag: r.safety_flag as "ok" | "needs_human" | "blocked",
+        model: r.model || undefined,
+        meta: {},
+      }));
+    } catch (error) {
+      return [];
+    }
+  };
+
   const defaultProviders: ServiceConfig["providers"] = {
     fetchAskLogs,
   };
@@ -135,6 +231,7 @@ export function loadConfig(): ServiceConfig {
     aiModel: AI_MODEL || "gpt-4o-mini",
     openaiApiKey: OPENAI_API_KEY as string,
     openrouterApiKey: OPENROUTER_API_KEY,
+    geminiApiKey: GEMINI_API_KEY,
     supabaseUrl: SUPABASE_URL as string,
     supabaseServiceKey: SUPABASE_SERVICE_KEY as string,
     cacheRedisUrl: AI_CACHE_REDIS_URL,
@@ -160,8 +257,40 @@ export function buildServer(config: ServiceConfig): FastifyInstance {
     bodyLimit: 1 * 1024 * 1024, // 1MB
   });
 
-  // 关闭对外 CORS（默认拒绝），如需内部联调可临时放开
-  app.register(cors, { origin: false });
+  // 允许浏览器直接调用 ai-service（支持跨域）
+  app.register(cors, {
+    origin: true, // 允许所有来源
+    credentials: false,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Authorization", "Content-Type", "X-AI-Provider"],
+    exposedHeaders: ["Content-Type"],
+    maxAge: 86400, // 24小时，减少预检请求
+  });
+
+  // 为所有路由添加 CORS 头（确保所有响应都包含 CORS 头）
+  app.addHook("onSend", async (request, reply) => {
+    const origin = request.headers.origin;
+    if (origin) {
+      reply.header("Access-Control-Allow-Origin", origin);
+    } else {
+      reply.header("Access-Control-Allow-Origin", "*");
+    }
+    reply.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-AI-Provider");
+    reply.header("Access-Control-Max-Age", "86400");
+  });
+
+  // 为 /v1/ask 注册 OPTIONS 预检请求处理（确保 CORS 正常工作）
+  app.options("/v1/ask", async (req, reply) => {
+    const origin = req.headers.origin;
+    reply
+      .header("Access-Control-Allow-Origin", origin || "*")
+      .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+      .header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-AI-Provider")
+      .header("Access-Control-Max-Age", "86400")
+      .code(204)
+      .send();
+  });
 
   // 注入配置
   app.decorate("config", config);

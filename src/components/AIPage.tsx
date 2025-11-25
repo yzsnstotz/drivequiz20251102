@@ -3,6 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Send } from "lucide-react";
 import { detectLanguage, type Language } from "@/lib/i18n";
+import { callAiDirect, type AiProviderKey } from "@/lib/aiClient.front";
+import { getAiExpectedTime } from "@/lib/aiStatsClient";
+import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 
 /** ---- 协议与类型 ---- */
 type Role = "user" | "ai";
@@ -14,7 +17,7 @@ interface ChatMessage {
   createdAt: number; // epoch ms
   // AI reply metadata (only for AI messages)
   metadata?: {
-    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached"; // AI service provider
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct" | "cached"; // AI service provider
     model?: string; // Model name
     sources?: Array<{
       title: string;
@@ -54,7 +57,7 @@ interface AiAskResponse {
     model?: string;
     safetyFlag?: "ok" | "needs_human" | "blocked";
     costEstimate?: { inputTokens: number; outputTokens: number; approxUsd: number };
-    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached"; // AI service provider
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct" | "cached"; // AI service provider
   };
   errorCode?: string;
   message?: string;
@@ -65,9 +68,6 @@ interface AIPageProps {
 }
 
 /** ---- 常量与工具 ---- */
-const API_BASE =
-  (process.env.NEXT_PUBLIC_AI_API_BASE as string | undefined) ?? "";
-const CHAT_PATH = "/api/ai/ask"; // 使用 /api/ai/ask 路由，转发到 AI-Service (Render)
 const REQUEST_TIMEOUT_MS = 120_000; // 120秒超时（AI处理可能需要较长时间，特别是本地Ollama）
 const LOCAL_STORAGE_KEY = "AI_CHAT_HISTORY";
 const MAX_HISTORY_MESSAGES = 100;
@@ -84,6 +84,13 @@ function formatErrorMessage(err: unknown): string {
   } catch {
     return "Unknown error";
   }
+}
+
+// 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
+function cleanModelName(model: string | undefined): string | undefined {
+  if (!model) return undefined;
+  // 移除日期格式：-YYYY-MM-DD
+  return model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
 }
 
 /** ---- 组件 ---- */
@@ -131,11 +138,12 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [errorTip, setErrorTip] = useState<string>("");
+  const [expectedTime, setExpectedTime] = useState<number | null>(null);
+  const [currentProvider, setCurrentProvider] = useState<AiProviderKey>("render");
+  const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const endpoint = useMemo(() => `${API_BASE}${CHAT_PATH}`, []);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -151,6 +159,23 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       inputRef.current?.focus();
     }, 100);
     return () => clearTimeout(timer);
+  }, []);
+
+  // 获取当前配置的 provider（组件挂载时获取，确保使用最新配置）
+  useEffect(() => {
+    getCurrentAiProvider()
+      .then((config) => {
+        console.log("[AIPage] 获取到 provider 配置:", {
+          provider: config.provider,
+          model: config.model,
+        });
+        setCurrentProvider(config.provider);
+        setCurrentModel(config.model);
+      })
+      .catch((err) => {
+        console.warn("[AIPage] 获取 provider 配置失败，使用默认值:", err);
+        setCurrentProvider("render");
+      });
   }, []);
 
   // 持久化消息历史到 localStorage（限制最大条数）
@@ -219,48 +244,36 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         }
       }
 
-      // 统一协议：{ question, locale?, messages? } → { ok, data: { answer, sources?, ... }, errorCode, message }
       // 准备对话历史（包含当前用户消息，因为状态更新是异步的）
-      // 构建包含当前用户消息的完整历史
-      const allMessages = [...messages, userMsg]; // 包含刚发送的用户消息
+      const allMessages = [...messages, userMsg];
       
       const historyMessages = allMessages
-        .slice(-12) // 保留最近 12 条（包含当前消息，实际会传递 10 条历史）
-        .filter((msg) => msg.role === "user" || msg.role === "ai") // 只保留用户和AI消息
-        .slice(0, -1) // 排除当前用户消息（因为会单独传递 question）
+        .slice(-12)
+        .filter((msg) => msg.role === "user" || msg.role === "ai")
+        .slice(0, -1)
         .map((msg) => ({
           role: msg.role === "ai" ? "assistant" : "user" as "user" | "assistant",
           content: msg.content,
         }));
       
-      const requestBody: Record<string, unknown> = {
+      // 获取预计耗时（使用当前配置的 provider）
+      try {
+        const expected = await getAiExpectedTime(currentProvider, currentModel);
+        setExpectedTime(expected);
+      } catch {
+        // 忽略错误，继续执行
+      }
+
+      // 直接调用 ai-service（使用当前配置的 provider）
+      const payload = await callAiDirect({
+        provider: currentProvider,
         question: q,
         locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
-      };
-      
-      // 传递对话历史（如果有）
-      // 注意：即使只有欢迎消息（AI消息），也应该传递，因为这是对话历史的一部分
-      if (historyMessages.length > 0) {
-        requestBody.messages = historyMessages;
-        requestBody.maxHistory = 10; // 限制最大历史消息数
-      }
-      
-      const res = await fetch(endpoint, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(requestBody),
+        scene: "chat",
+        messages: historyMessages.length > 0 ? historyMessages : undefined,
+        maxHistory: 10,
+        model: currentModel,
       });
-
-      let payload: AiAskResponse;
-      try {
-        payload = (await res.json()) as AiAskResponse;
-      } catch {
-        throw new Error(`Bad JSON response (status ${res.status})`);
-      }
 
       if (!payload.ok) {
         const message = payload.message || "服务开小差了，请稍后再试";
@@ -287,11 +300,14 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         return;
       }
 
-      // 处理响应数据：/api/ai/ask 返回 { ok, data: { answer, sources?, aiProvider?, model?, ... } }
+      // 处理响应数据：callAiDirect 返回 { ok, data: { answer, sources?, aiProvider?, model?, ... } }
       const answer = payload.data?.answer ?? "";
       const sources = payload.data?.sources;
       const aiProvider = payload.data?.aiProvider;
       const model = payload.data?.model;
+      
+      // 根据实际调用的 provider 设置 aiProvider（优先使用响应中的值，否则使用调用时的 provider）
+      const actualProvider = aiProvider || currentProvider;
       
       // 构建回复内容（不再在内容中附加来源，而是在metadata中保存）
       const content = answer || "（空响应）";
@@ -302,16 +318,13 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         content,
         createdAt: Date.now(),
         metadata: {
-          aiProvider: aiProvider || "openai", // 默认为 openai
+          aiProvider: actualProvider as any, // 使用实际 provider
           sources: sources || [],
           model: model, // 保存模型名称
         },
       });
     } catch (err) {
-      const msg =
-        controller.signal.aborted
-          ? "请求超时，请重试。"
-          : `网络异常：${formatErrorMessage(err)}`;
+      const msg = err instanceof Error ? err.message : `网络异常：${formatErrorMessage(err)}`;
       setErrorTip(msg);
       pushMessage({
         id: uid(),
@@ -320,12 +333,12 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         createdAt: Date.now(),
       });
     } finally {
-      clearTimeout(timer);
       setLoading(false);
+      setExpectedTime(null);
       // 重新聚焦输入框
       inputRef.current?.focus();
     }
-  }, [endpoint, input, loading, pushMessage]);
+  }, [input, loading, pushMessage, messages]);
 
 
   return (
@@ -396,96 +409,122 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
               </div>
               {/* AI reply metadata */}
               {!isUser && m.metadata && (
-                <div className="max-w-[78%] px-2 py-1 text-xs text-gray-500 space-y-1">
-                  {/* AI Service Provider */}
-                  {m.metadata.aiProvider && (
-                    <div className="flex items-center gap-1">
+                <div className="max-w-[78%] px-2 py-0.5 text-xs text-gray-500">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* AI Service Provider and Model */}
+                    {m.metadata.aiProvider && (
                       <span className="inline-flex items-center gap-1">
                         {m.metadata.aiProvider === "local" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-green-500"></span>
                             <span>Local AI (Ollama)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
+                            )}
+                          </>
+                        ) : (m.metadata.aiProvider as any) === "render" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span>Render AI Service</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openai" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                             <span>OpenAI (via Render)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openai_direct" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
                             <span>OpenAI (Direct)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openrouter" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                             <span>OpenRouter (via Render)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "openrouter_direct" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
                             <span>OpenRouter (Direct)</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
+                            )}
+                          </>
+                        ) : m.metadata.aiProvider === "gemini_direct" ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                            <span>Google Gemini (Direct)</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : m.metadata.aiProvider === "cached" ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                             <span>Cached Answer</span>
-                            {m.metadata.model && (
-                              <span className="text-gray-400 ml-1">· {m.metadata.model}</span>
+                            {cleanModelName(m.metadata.model) && (
+                              <span className="text-gray-400">· {cleanModelName(m.metadata.model)}</span>
                             )}
                           </>
                         ) : null}
+                        {/* 耗时信息（显示在 provider 和 model 之后） */}
+                        {m.metadata.sources && m.metadata.sources.length > 0 && (
+                          <>
+                            {m.metadata.sources
+                              .filter((source: any) => source.title === "处理耗时")
+                              .map((source: any, idx: number) => (
+                                <span key={idx} className="text-gray-400">
+                                  · {source.snippet}
+                                </span>
+                              ))}
+                          </>
+                        )}
                       </span>
-                    </div>
-                  )}
-                  {/* RAG Sources */}
-                  {m.metadata.sources && m.metadata.sources.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className="text-gray-400">📚 Sources:</span>
-                      {m.metadata.sources.map((source, idx) => {
-                        const displayText = source.title || source.url || `Source ${idx + 1}`;
-                        const hasUrl = source.url && source.url.trim() !== "";
-                        
-                        if (hasUrl) {
-                          return (
-                            <a
-                              key={idx}
-                              href={source.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-500 hover:text-blue-600 underline truncate max-w-[200px]"
-                              title={displayText}
-                            >
-                              {displayText}
-                            </a>
-                          );
-                        } else {
-                          return (
-                            <span
-                              key={idx}
-                              className="text-gray-500 truncate max-w-[200px]"
-                              title={displayText}
-                            >
-                              {displayText}
-                            </span>
-                          );
-                        }
-                      })}
+                    )}
+                  </div>
+                  {/* RAG Sources（排除耗时信息） */}
+                  {m.metadata.sources && m.metadata.sources.filter((source) => source.title !== "处理耗时").length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <span className="text-gray-400 text-xs">📚</span>
+                      {m.metadata.sources
+                        .filter((source) => source.title !== "处理耗时")
+                        .map((source, idx) => {
+                          const displayText = source.title || source.url || `Source ${idx + 1}`;
+                          const hasUrl = source.url && source.url.trim() !== "";
+                          
+                          if (hasUrl) {
+                            return (
+                              <a
+                                key={idx}
+                                href={source.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:text-blue-600 underline break-words"
+                                title={displayText}
+                              >
+                                {displayText}
+                              </a>
+                            );
+                          } else {
+                            return (
+                              <span key={idx} className="text-gray-500 text-xs break-words">
+                                {displayText}
+                              </span>
+                            );
+                          }
+                        })}
                     </div>
                   )}
                 </div>
@@ -543,6 +582,13 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
             {loading ? "发送中…" : "发送"}
           </button>
         </div>
+
+        {/* 预计耗时显示 */}
+        {loading && expectedTime && (
+          <p className="mt-2 text-xs text-gray-500" role="status">
+            预计耗时：{expectedTime} 秒
+          </p>
+        )}
 
         {/* 底部错误提示 */}
         {errorTip && (

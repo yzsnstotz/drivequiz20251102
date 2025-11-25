@@ -1,0 +1,162 @@
+// ============================================================
+// 脚本：替换 questions_auto_tag.json 中的占位符为真实翻译
+// 功能：从数据库 question_translations 表读取翻译，替换文件中的占位符
+// ============================================================
+
+import * as fs from "fs/promises";
+import * as path from "path";
+import { db } from "../src/lib/db";
+import { calculateQuestionHash } from "../src/lib/questionHash";
+
+const INPUT_FILE = path.resolve(__dirname, "../src/data/questions/zh/questions_auto_tag.json");
+
+interface Question {
+  id: string;
+  type: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+  correctAnswer: string | string[];
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+  category?: string;
+  hash?: string;
+  license_tags?: string[];
+  stage_tag?: string;
+  topic_tags?: string[];
+  image?: string;
+  options?: string[];
+}
+
+async function main() {
+  console.log("开始读取文件...");
+  const content = await fs.readFile(INPUT_FILE, "utf-8");
+  const questions: Question[] = JSON.parse(content);
+  console.log(`读取到 ${questions.length} 个题目`);
+
+  // 从数据库读取所有翻译
+  console.log("从数据库读取翻译...");
+  const translations = await db
+    .selectFrom("question_translations")
+    .select(["content_hash", "locale", "content", "explanation"])
+    .execute();
+
+  // 构建翻译映射：content_hash -> { en: {...}, ja: {...} }
+  const translationMap = new Map<string, { en?: { content: string; explanation?: string | null }; ja?: { content: string; explanation?: string | null } }>();
+  
+  for (const t of translations) {
+    if (!translationMap.has(t.content_hash)) {
+      translationMap.set(t.content_hash, {});
+    }
+    const map = translationMap.get(t.content_hash)!;
+    if (t.locale === "en") {
+      map.en = { content: t.content, explanation: t.explanation ?? null };
+    } else if (t.locale === "ja") {
+      map.ja = { content: t.content, explanation: t.explanation ?? null };
+    }
+  }
+
+  console.log(`从数据库读取到 ${translations.length} 条翻译记录`);
+
+  let replacedCount = 0;
+  let skippedCount = 0;
+
+  // 处理每个题目
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    
+    if ((i + 1) % 100 === 0) {
+      console.log(`处理进度: ${i + 1}/${questions.length}`);
+    }
+
+    // 计算题目hash
+    const contentHash = calculateQuestionHash(q);
+
+    // 获取该题目的翻译
+    const translations = translationMap.get(contentHash);
+
+    // 处理content字段
+    if (typeof q.content === "object" && q.content !== null) {
+      const contentObj = q.content as { [key: string]: string | undefined };
+      let updated = false;
+
+      // 检查并替换 en 占位符
+      if (contentObj.en && contentObj.en.trim().startsWith("[EN]")) {
+        if (translations?.en?.content) {
+          contentObj.en = translations.en.content;
+          updated = true;
+        } else {
+          // 如果没有翻译，删除占位符字段
+          delete contentObj.en;
+          updated = true;
+        }
+      }
+
+      // 检查并替换 ja 占位符
+      if (contentObj.ja && contentObj.ja.trim().startsWith("[JA]")) {
+        if (translations?.ja?.content) {
+          contentObj.ja = translations.ja.content;
+          updated = true;
+        } else {
+          // 如果没有翻译，删除占位符字段
+          delete contentObj.ja;
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        replacedCount++;
+      }
+    }
+
+    // 处理explanation字段
+    if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
+      const expObj = q.explanation as { [key: string]: string | undefined };
+      let updated = false;
+
+      // 检查并替换 en 占位符
+      if (expObj.en && expObj.en.trim().startsWith("[EN]")) {
+        if (translations?.en?.explanation) {
+          expObj.en = translations.en.explanation;
+          updated = true;
+        } else {
+          // 如果没有翻译，删除占位符字段
+          delete expObj.en;
+          updated = true;
+        }
+      }
+
+      // 检查并替换 ja 占位符
+      if (expObj.ja && expObj.ja.trim().startsWith("[JA]")) {
+        if (translations?.ja?.explanation) {
+          expObj.ja = translations.ja.explanation;
+          updated = true;
+        } else {
+          // 如果没有翻译，删除占位符字段
+          delete expObj.ja;
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        replacedCount++;
+      }
+    }
+
+    if (!translations) {
+      skippedCount++;
+    }
+  }
+
+  // 保存结果
+  console.log("保存结果...");
+  await fs.writeFile(INPUT_FILE, JSON.stringify(questions, null, 2), "utf-8");
+
+  console.log(`\n完成！`);
+  console.log(`- 替换/删除占位符的题目数: ${replacedCount}`);
+  console.log(`- 没有翻译的题目数: ${skippedCount}`);
+  console.log(`- 文件已保存到: ${INPUT_FILE}`);
+}
+
+main().catch((error) => {
+  console.error("处理过程中发生错误:", error);
+  process.exit(1);
+});
+

@@ -9,14 +9,19 @@ type QuestionType = "single" | "multiple" | "truefalse";
 type Question = {
   id: number;
   type: QuestionType;
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   options?: string[];
   correctAnswer: string | string[];
   image?: string;
-  explanation?: string;
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   category?: string;
   hash?: string;
   aiAnswer?: string;
+  license_tags?: string[]; // 驾照类型标签
+  stage_tag?: "both" | "provisional" | "regular"; // 阶段标签
+  topic_tags?: string[]; // 主题标签数组
+  created_at?: string; // 创建时间
+  updated_at?: string; // 更新时间
 };
 
 type ListResponse = {
@@ -38,8 +43,9 @@ type Filters = {
   category: string;
   search: string;
   source: string; // 题目源：database（数据库）或版本号（历史JSON包）
-  sortBy: "id" | "content" | "category";
+  sortBy: "id" | "content" | "category" | "type" | "created_at" | "updated_at";
   sortOrder: "asc" | "desc";
+  locale?: string;
 };
 
 const DEFAULT_FILTERS: Filters = {
@@ -50,6 +56,7 @@ const DEFAULT_FILTERS: Filters = {
   source: "database", // 默认显示数据库题目
   sortBy: "id",
   sortOrder: "asc",
+  locale: "zh",
 };
 
 export default function QuestionsPage() {
@@ -70,6 +77,7 @@ export default function QuestionsPage() {
       source: q("source", DEFAULT_FILTERS.source),
       sortBy: (q("sortBy", DEFAULT_FILTERS.sortBy) as Filters["sortBy"]) || "id",
       sortOrder: (q("sortOrder", DEFAULT_FILTERS.sortOrder) as Filters["sortOrder"]) || "asc",
+      locale: q("locale", DEFAULT_FILTERS.locale || "zh"),
     };
   });
 
@@ -98,6 +106,17 @@ export default function QuestionsPage() {
   const [importingFromJson, setImportingFromJson] = useState(false);
   const [showImportFromJsonModal, setShowImportFromJsonModal] = useState(false);
   const [superAdminPassword, setSuperAdminPassword] = useState("");
+  const [importSource, setImportSource] = useState<"filesystem" | "database">("filesystem");
+  const [importVersion, setImportVersion] = useState<string>("");
+  const [importProgress, setImportProgress] = useState<{
+    processed: number;
+    total: number;
+    imported: number;
+    updated: number;
+    errors: number;
+    currentBatch?: number;
+    totalBatches?: number;
+  } | null>(null);
   const [importFromJsonResult, setImportFromJsonResult] = useState<{
     totalProcessed: number;
     totalImported: number;
@@ -129,8 +148,17 @@ export default function QuestionsPage() {
     message: string;
     data?: any;
   } | null>(null);
+  const [languageOptions] = useState<string[]>(["zh", "en", "ja"]);
+  const [filesystemFiles, setFilesystemFiles] = useState<Array<{
+    filename: string;
+    category: string;
+    questionCount: number;
+    modifiedAt: string;
+    size: number;
+  }>>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
 
-  // 加载卷类列表
+  // 加载卷类列表（按类别分组）
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -150,6 +178,33 @@ export default function QuestionsPage() {
       mounted = false;
     };
   }, []);
+
+  // 加载文件系统文件列表
+  const loadFilesystemFiles = useCallback(async () => {
+    setLoadingFiles(true);
+    try {
+      const response = await apiFetch<Array<{
+        filename: string;
+        category: string;
+        questionCount: number;
+        modifiedAt: string;
+        size: number;
+      }>>("/api/admin/questions/filesystem", {
+        method: "GET",
+      });
+      setFilesystemFiles(response.data || []);
+    } catch (e) {
+      console.error("Failed to load filesystem files:", e);
+      setFilesystemFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  }, []);
+
+  // 初始加载文件系统文件列表
+  useEffect(() => {
+    loadFilesystemFiles();
+  }, [loadFilesystemFiles]);
 
   // 加载统一版本号列表（历史版本）
   const loadVersions = useCallback(async (setDefaultSource: boolean = false) => {
@@ -171,7 +226,6 @@ export default function QuestionsPage() {
         const currentSource = search?.get("source") || DEFAULT_FILTERS.source;
         if (currentSource === "database") {
           const latestVersion = versionsList[0].version; // 版本号列表已按created_at降序排列，第一个是最新的
-          console.log(`[QuestionsPage] 设置默认题目源为最新JSON包版本: ${latestVersion}`);
           setFilters((prev) => ({
             ...prev,
             source: latestVersion,
@@ -241,6 +295,16 @@ export default function QuestionsPage() {
     window.history.replaceState(null, "", href);
   }, [filters]);
 
+  // 处理排序
+  const handleSort = useCallback((field: Filters["sortBy"]) => {
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: field,
+      sortOrder: prev.sortBy === field && prev.sortOrder === "asc" ? "desc" : "asc",
+      page: 1, // 排序时重置到第一页
+    }));
+  }, []);
+
   // 加载数据函数
   const loadData = useCallback(async (page: number, append: boolean = false) => {
     try {
@@ -260,6 +324,7 @@ export default function QuestionsPage() {
       if (filters.category) params.category = filters.category;
       if (filters.search) params.search = filters.search;
       if (filters.source) params.source = filters.source;
+      if (filters.locale) params.locale = filters.locale;
 
       // 构建查询字符串
       const queryString = new URLSearchParams(
@@ -303,12 +368,10 @@ export default function QuestionsPage() {
         const pag = newPagination as ListResponse["pagination"];
         if (pag && pag.hasNext !== undefined) {
           setHasMore(pag.hasNext);
-          console.log(`[loadData] page=${pag.page}, totalPages=${pag.totalPages || pag.pages || 0}, hasNext=${pag.hasNext}`);
         } else if (pag) {
           const totalPages = pag.totalPages || pag.pages || 0;
           const currentPage = pag.page || page;
           const hasMoreData = currentPage < totalPages;
-          console.log(`[loadData] currentPage=${currentPage}, totalPages=${totalPages}, hasMore=${hasMoreData}`);
           setHasMore(hasMoreData);
         } else {
           setHasMore(false);
@@ -330,7 +393,7 @@ export default function QuestionsPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder]);
+  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder, filters.locale]);
 
   // 初始加载或筛选条件改变时重置
   useEffect(() => {
@@ -338,12 +401,11 @@ export default function QuestionsPage() {
     setHasMore(true);
     loadData(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder]);
+  }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder, filters.locale]);
 
   // 无限滚动：加载更多
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore || !pagination) {
-      console.log(`[loadMore] Skipped: loadingMore=${loadingMore}, hasMore=${hasMore}, pagination=${!!pagination}`);
       return;
     }
     
@@ -353,7 +415,6 @@ export default function QuestionsPage() {
     const nextPage = pag.page + 1;
     // 使用 API 返回的 totalPages 字段（兼容 pages 字段）
     const totalPages = pag.totalPages || pag.pages || 0;
-    console.log(`[loadMore] Loading page ${nextPage} of ${totalPages} (current page: ${pag.page})`);
     
     // 如果使用 hasNext，则根据 hasNext 判断
     if (pag.hasNext !== undefined) {
@@ -377,9 +438,7 @@ export default function QuestionsPage() {
     const observer = new IntersectionObserver(
       (entries) => {
         const target = entries[0];
-        console.log(`[IntersectionObserver] isIntersecting=${target.isIntersecting}, hasMore=${hasMore}, loadingMore=${loadingMore}, loading=${loading}`);
         if (target.isIntersecting && hasMore && !loadingMore && !loading) {
-          console.log('[IntersectionObserver] Triggering loadMore()');
           loadMore();
         }
       },
@@ -392,7 +451,6 @@ export default function QuestionsPage() {
 
     const currentRef = loadMoreRef.current;
     if (currentRef) {
-      console.log('[IntersectionObserver] Observing ref');
       observer.observe(currentRef);
     }
 
@@ -840,40 +898,102 @@ export default function QuestionsPage() {
 
     setImportingFromJson(true);
     setImportFromJsonResult(null);
+    setImportProgress(null);
     setFormError(null);
 
     try {
-      // JSON入库可能需要较长时间，设置5分钟超时
-      const data = await apiPost<{
-        totalProcessed: number;
-        totalImported: number;
-        totalUpdated: number;
-        totalErrors: number;
-        errors: string[];
-        results: Array<{
-          packageName: string;
-          processed: number;
-          imported: number;
-          updated: number;
-          errors: number;
-        }>;
-      }>("/api/admin/questions/import-from-json", {
-        password: superAdminPassword,
-      }, {
-        timeoutMs: 300_000, // 5分钟超时
+      // 使用流式响应获取实时进度
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("ADMIN_TOKEN") : null;
+      const response = await fetch("/api/admin/questions/import-from-json", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          password: superAdminPassword,
+          source: importSource,
+          version: importSource === "database" ? importVersion : undefined,
+          packageName: importSource === "filesystem" ? undefined : undefined,
+          useStreaming: true,
+        }),
       });
 
-      setImportFromJsonResult(data);
-      setShowImportFromJsonModal(false);
-      setSuperAdminPassword("");
-      
-      // 重新加载数据
-      setItems([]);
-      setHasMore(true);
-      loadData(1, false);
-      loadVersions();
-      
-      alert(`JSON包入库完成：处理了 ${data.totalProcessed} 个题目，新增 ${data.totalImported} 个，更新 ${data.totalUpdated} 个，${data.totalErrors} 个错误`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "请求失败" }));
+        throw new ApiError({
+          status: response.status,
+          errorCode: errorData.errorCode || "UNKNOWN_ERROR",
+          message: errorData.message || "JSON包入库失败",
+        });
+      }
+
+      // 处理流式响应
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("无法读取响应流");
+      }
+
+      let buffer = "";
+      let finalResult: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === "progress") {
+                setImportProgress({
+                  processed: data.processed || 0,
+                  total: data.total || 0,
+                  imported: data.imported || 0,
+                  updated: data.updated || 0,
+                  errors: data.errors || 0,
+                  currentBatch: data.currentBatch,
+                  totalBatches: data.totalBatches,
+                });
+              } else if (data.type === "complete") {
+                finalResult = data;
+              } else if (data.type === "error") {
+                throw new Error(data.message || "导入过程中发生错误");
+              }
+            } catch (e) {
+              console.error("解析进度数据失败:", e, line);
+            }
+          }
+        }
+      }
+
+      if (finalResult) {
+        setImportFromJsonResult({
+          totalProcessed: finalResult.totalProcessed || 0,
+          totalImported: finalResult.totalImported || 0,
+          totalUpdated: finalResult.totalUpdated || 0,
+          totalErrors: finalResult.totalErrors || 0,
+          errors: finalResult.errors || [],
+          results: [],
+        });
+        setShowImportFromJsonModal(false);
+        setSuperAdminPassword("");
+        setImportProgress(null);
+        
+        // 重新加载数据
+        setItems([]);
+        setHasMore(true);
+        loadData(1, false);
+        loadVersions();
+        
+        alert(`JSON包入库完成：处理了 ${finalResult.totalProcessed} 个题目，新增 ${finalResult.totalImported} 个，更新 ${finalResult.totalUpdated} 个，${finalResult.totalErrors} 个错误`);
+      }
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 403) {
@@ -1046,6 +1166,43 @@ export default function QuestionsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  数据源
+                </label>
+                <select
+                  value={importSource}
+                  onChange={(e) => {
+                    setImportSource(e.target.value as "filesystem" | "database");
+                    setImportVersion("");
+                  }}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={importingFromJson}
+                >
+                  <option value="filesystem">文件系统</option>
+                  <option value="database">数据库版本</option>
+                </select>
+              </div>
+              {importSource === "database" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    选择版本
+                  </label>
+                  <select
+                    value={importVersion}
+                    onChange={(e) => setImportVersion(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={importingFromJson}
+                  >
+                    <option value="">请选择版本</option>
+                    {versions.map((v) => (
+                      <option key={v.version} value={v.version}>
+                        {v.version} ({v.totalQuestions}题, {new Date(v.createdAt).toLocaleString("zh-CN")})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   超级管理员密码
                 </label>
                 <input
@@ -1065,6 +1222,42 @@ export default function QuestionsPage() {
               </div>
               {formError && (
                 <div className="text-sm text-red-600">{formError}</div>
+              )}
+              {importProgress && (
+                <div className="space-y-2 p-4 bg-blue-50 rounded-lg">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-gray-700">导入进度</span>
+                    <span className="text-blue-600">
+                      {importProgress.processed} / {importProgress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-blue-500 h-3 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${importProgress.total > 0 ? (importProgress.processed / importProgress.total) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                  {importProgress.totalBatches && importProgress.currentBatch && (
+                    <div className="text-xs text-gray-600">
+                      批次: {importProgress.currentBatch} / {importProgress.totalBatches}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="text-green-600">
+                      新增: {importProgress.imported}
+                    </div>
+                    <div className="text-orange-600">
+                      更新: {importProgress.updated}
+                    </div>
+                    {importProgress.errors > 0 && (
+                      <div className="text-red-600 col-span-2">
+                        错误: {importProgress.errors}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
               {importFromJsonResult && (
                 <div className="text-sm space-y-1">
@@ -1100,7 +1293,7 @@ export default function QuestionsPage() {
             <div className="flex items-center gap-3 mt-6">
               <button
                 onClick={handleImportFromJson}
-                disabled={importingFromJson || !superAdminPassword.trim()}
+                disabled={importingFromJson || !superAdminPassword.trim() || (importSource === "database" && !importVersion)}
                 className="flex-1 inline-flex items-center justify-center rounded-md bg-red-500 text-white text-sm px-4 py-2 hover:bg-red-600 active:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {importingFromJson ? "导入中..." : "确认导入"}
@@ -1109,6 +1302,8 @@ export default function QuestionsPage() {
                 onClick={() => {
                   setShowImportFromJsonModal(false);
                   setSuperAdminPassword("");
+                  setImportSource("filesystem");
+                  setImportVersion("");
                   setFormError(null);
                   setImportFromJsonResult(null);
                 }}
@@ -1174,9 +1369,50 @@ export default function QuestionsPage() {
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           >
             <option value="">全部卷类</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
+            {(() => {
+              // 按类别分组卷类
+              const grouped: Record<string, string[]> = {};
+              categories.forEach((cat) => {
+                // 提取类别前缀（如"免许-1" -> "免许"）
+                const match = cat.match(/^([^-]+)/);
+                const prefix = match ? match[1] : "其他";
+                if (!grouped[prefix]) {
+                  grouped[prefix] = [];
+                }
+                grouped[prefix].push(cat);
+              });
+              
+              // 按类别排序
+              const sortedGroups = Object.keys(grouped).sort();
+              
+              return sortedGroups.map((prefix) => (
+                <optgroup key={prefix} label={prefix}>
+                  {grouped[prefix].sort().map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </optgroup>
+              ));
+            })()}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-xs font-medium text-gray-700 mb-1">语言</label>
+          <select
+            value={filters.locale}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                locale: e.target.value,
+                page: 1,
+              }))
+            }
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+          >
+            {languageOptions.map((loc) => (
+              <option key={loc} value={loc}>
+                {loc}
               </option>
             ))}
           </select>
@@ -1196,11 +1432,20 @@ export default function QuestionsPage() {
               className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
             >
               <option value="database">数据库</option>
-              {versions.map((v) => (
-                <option key={v.version} value={v.version}>
-                  {v.version} ({v.totalQuestions}题, {new Date(v.createdAt).toLocaleString("zh-CN")})
-                </option>
-              ))}
+              <optgroup label="历史版本">
+                {versions.map((v) => (
+                  <option key={v.version} value={v.version}>
+                    {v.version} ({v.totalQuestions}题, {new Date(v.createdAt).toLocaleString("zh-CN")})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="文件系统">
+                {filesystemFiles.map((file) => (
+                  <option key={file.filename} value={`filesystem:${file.filename}`}>
+                    {file.category} ({file.questionCount}题, {new Date(file.modifiedAt).toLocaleDateString("zh-CN")})
+                  </option>
+                ))}
+              </optgroup>
             </select>
             {/* 删除按钮列表 */}
             {versions.length > 0 && (
@@ -1309,17 +1554,61 @@ export default function QuestionsPage() {
         <div className="text-center py-8 text-gray-500 text-sm">暂无数据</div>
       ) : (
         <>
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full border-collapse">
+          <div className="hidden md:block overflow-x-auto relative">
+            <table className="w-full border-collapse" style={{ tableLayout: "fixed", width: "100%" }}>
+              <colgroup>
+                <col style={{ width: "60px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "300px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "300px" }} />
+                <col style={{ width: "120px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "150px" }} />
+                <col style={{ width: "200px" }} />
+                <col style={{ width: "120px" }} />
+                <col style={{ width: "120px" }} />
+              </colgroup>
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">ID</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">卷类</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">类型</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">题目内容</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">正确答案</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">Hash / AI回答</th>
-                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700">操作</th>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                    onClick={() => handleSort("id")}
+                  >
+                    ID {filters.sortBy === "id" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                    onClick={() => handleSort("category")}
+                  >
+                    卷类 {filters.sortBy === "category" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                    onClick={() => handleSort("type")}
+                  >
+                    类型 {filters.sortBy === "type" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                    onClick={() => handleSort("content")}
+                  >
+                    题目内容 {filters.sortBy === "content" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">正确答案</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">解析</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">驾照标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">阶段标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">主题标签</th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">Hash / AI回答</th>
+                  <th 
+                    className="text-left py-2 px-3 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                    onClick={() => handleSort("created_at")}
+                  >
+                    创建时间 {filters.sortBy === "created_at" && (filters.sortOrder === "asc" ? "↑" : "↓")}
+                  </th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 sticky right-0 bg-gray-50 z-10 whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -1332,11 +1621,77 @@ export default function QuestionsPage() {
                         {item.type === "single" ? "单选" : item.type === "multiple" ? "多选" : "判断"}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-xs max-w-md truncate">{item.content}</td>
-                    <td className="py-2 px-3 text-xs">
+                    <td className="py-2 px-3 text-xs overflow-hidden" style={{ wordBreak: "break-word", whiteSpace: "normal" }} title={typeof item.content === 'string' ? item.content : (item.content?.zh || item.content?.en || item.content?.ja || '')}>
+                      {typeof item.content === 'string' 
+                        ? item.content 
+                        : (item.content?.zh || item.content?.en || item.content?.ja || '')}
+                    </td>
+                    <td className="py-2 px-3 text-xs whitespace-nowrap">
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
                         : item.correctAnswer}
+                    </td>
+                    <td className="py-2 px-3 text-xs overflow-hidden" style={{ wordBreak: "break-word", whiteSpace: "normal" }}>
+                      {item.explanation ? (
+                        <div title={
+                          typeof item.explanation === 'string' 
+                            ? item.explanation 
+                            : (typeof item.explanation === 'object' && item.explanation !== null
+                                ? (item.explanation.zh || item.explanation.en || item.explanation.ja || '')
+                                : '')
+                        }>
+                          {typeof item.explanation === 'string' 
+                            ? item.explanation 
+                            : (typeof item.explanation === 'object' && item.explanation !== null
+                                ? (item.explanation.zh || item.explanation.en || item.explanation.ja || '')
+                                : '')}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-xs">
+                      {item.license_tags && item.license_tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {item.license_tags.map((tag, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-xs">
+                      {item.stage_tag ? (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                          item.stage_tag === "both" ? "bg-green-100 text-green-700" :
+                          item.stage_tag === "provisional" ? "bg-yellow-100 text-yellow-700" :
+                          "bg-blue-100 text-blue-700"
+                        }`}>
+                          {item.stage_tag === "both" ? "两阶段" :
+                           item.stage_tag === "provisional" ? "仮免" : "本免"}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-xs">
+                      {item.topic_tags && item.topic_tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {item.topic_tags.slice(0, 3).map((tag, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title={tag}>
+                              {tag}
+                            </span>
+                          ))}
+                          {item.topic_tags.length > 3 && (
+                            <span className="text-gray-400 text-[10px]">+{item.topic_tags.length - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-xs max-w-xs">
                       <div className="flex flex-col gap-0.5">
@@ -1355,7 +1710,10 @@ export default function QuestionsPage() {
                         )}
                       </div>
                     </td>
-                    <td className="py-2 px-3 text-xs">
+                    <td className="py-2 px-3 text-xs text-gray-500">
+                      {item.created_at ? new Date(item.created_at).toLocaleDateString('zh-CN') : "—"}
+                    </td>
+                    <td className="py-2 px-3 text-xs sticky right-0 bg-white z-10">
                       <button
                         onClick={() => handleEdit(item)}
                         className="text-blue-600 hover:underline mr-2"
@@ -1367,6 +1725,283 @@ export default function QuestionsPage() {
                         className="text-red-600 hover:underline"
                       >
                         删除
+                      </button>
+                      <span className="mx-1 text-gray-300">|</span>
+                      <button
+                        onClick={async () => {
+                          // 创建多选语言对话框
+                          const languages = [
+                            { value: "zh", label: "中文 (zh)" },
+                            { value: "ja", label: "日文 (ja)" },
+                            { value: "en", label: "英文 (en)" },
+                          ];
+                          
+                          // 使用简单的多选对话框
+                          const selectedLangs: string[] = [];
+                          const dialog = document.createElement("div");
+                          dialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                          dialog.innerHTML = `
+                            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                              <h3 class="text-lg font-semibold mb-4">选择目标语言（可多选）</h3>
+                              <div class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                                ${languages.map(lang => `
+                                  <label class="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-50 rounded">
+                                    <input type="checkbox" value="${lang.value}" class="rounded" />
+                                    <span>${lang.label}</span>
+                                  </label>
+                                `).join("")}
+                              </div>
+                              <div class="flex gap-2 justify-end">
+                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" id="cancel-btn">取消</button>
+                                <button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" id="confirm-btn">确定</button>
+                              </div>
+                            </div>
+                          `;
+                          document.body.appendChild(dialog);
+                          
+                          const checkboxes = dialog.querySelectorAll("input[type='checkbox']");
+                          const cancelBtn = dialog.querySelector("#cancel-btn");
+                          const confirmBtn = dialog.querySelector("#confirm-btn");
+                          
+                          const cleanup = () => document.body.removeChild(dialog);
+                          
+                          cancelBtn?.addEventListener("click", cleanup);
+                          confirmBtn?.addEventListener("click", () => {
+                            checkboxes.forEach((cb: any) => {
+                              if (cb.checked) selectedLangs.push(cb.value);
+                            });
+                            cleanup();
+                            
+                            if (selectedLangs.length === 0) {
+                              alert("请至少选择一个目标语言");
+                              return;
+                            }
+                            
+                            // 执行翻译，显示进度
+                            (async () => {
+                              const progressDialog = document.createElement("div");
+                              progressDialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                              progressDialog.innerHTML = `
+                                <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                                  <h3 class="text-lg font-semibold mb-4">翻译进行中...</h3>
+                                  <div id="progress-content" class="space-y-2">
+                                    <p class="text-sm text-gray-600">正在准备翻译...</p>
+                                  </div>
+                                  <div class="mt-4">
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                      <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              `;
+                              document.body.appendChild(progressDialog);
+                              
+                              const progressContent = progressDialog.querySelector("#progress-content");
+                              const progressBar = progressDialog.querySelector("#progress-bar") as HTMLElement;
+                              
+                              try {
+                                // 确保 from 有值，不能为空字符串或 null
+                                const from = (filters.locale || "zh").trim() || "zh";
+                                const payload: any = {
+                                  from: from,
+                                  to: selectedLangs.length === 1 ? selectedLangs[0] : selectedLangs,
+                                };
+                                
+                                // 验证 from 是否有效
+                                if (!from) {
+                                  alert("源语言不能为空");
+                                  return;
+                                }
+                                if (item.hash) payload.contentHash = item.hash;
+                                else payload.questionId = item.id;
+                                
+                                // 更新进度
+                                if (progressContent) {
+                                  progressContent.innerHTML = `<p class="text-sm text-gray-600">正在翻译到: ${selectedLangs.join(", ")}</p>`;
+                                }
+                                if (progressBar) {
+                                  progressBar.style.width = "30%";
+                                }
+                                
+                                const result = await apiPost<{ results: Array<{ locale: string; success: boolean; error?: string }> }>("/api/admin/question-processing/translate", payload);
+                                
+                                // 显示结果
+                                if (progressContent) {
+                                  const successCount = result.results?.filter(r => r.success).length || 0;
+                                  const failCount = result.results?.filter(r => !r.success).length || 0;
+                                  progressContent.innerHTML = `
+                                    <p class="text-sm font-semibold text-green-600">翻译完成！</p>
+                                    <p class="text-sm text-gray-600 mt-2">成功: ${successCount} | 失败: ${failCount}</p>
+                                    ${result.results?.map(r => `
+                                      <p class="text-xs ${r.success ? 'text-green-600' : 'text-red-600'} mt-1">
+                                        ${r.locale}: ${r.success ? '✓ 成功' : '✗ ' + (r.error || '失败')}
+                                      </p>
+                                    `).join("") || ""}
+                                  `;
+                                }
+                                if (progressBar) {
+                                  progressBar.style.width = "100%";
+                                  progressBar.classList.remove("bg-blue-500");
+                                  progressBar.classList.add("bg-green-500");
+                                }
+                                
+                                setTimeout(() => {
+                                  document.body.removeChild(progressDialog);
+                                  window.location.reload();
+                                }, 2000);
+                              } catch (e) {
+                                if (progressContent) {
+                                  progressContent.innerHTML = `<p class="text-sm text-red-600">翻译失败: ${e instanceof Error ? e.message : "未知错误"}</p>`;
+                                }
+                                if (progressBar) {
+                                  progressBar.style.width = "100%";
+                                  progressBar.classList.remove("bg-blue-500");
+                                  progressBar.classList.add("bg-red-500");
+                                }
+                                setTimeout(() => {
+                                  document.body.removeChild(progressDialog);
+                                }, 3000);
+                              }
+                            })();
+                          });
+                        }}
+                        className="text-indigo-600 hover:underline mr-2"
+                        title="翻译并润色到指定语言（可多选）"
+                      >
+                        翻译到...
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const locale = filters.locale || "zh";
+                          // 创建进度对话框
+                          const progressDialog = document.createElement("div");
+                          progressDialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                          progressDialog.innerHTML = `
+                            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                              <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-semibold">润色处理中...</h3>
+                                <button id="close-dialog" class="text-gray-400 hover:text-gray-600 transition-colors" style="display: none;">
+                                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                  </svg>
+                                </button>
+                              </div>
+                              <div id="progress-content" class="mb-4">
+                                <p class="text-sm text-gray-600">正在润色 ${locale.toUpperCase()} 语言的内容...</p>
+                              </div>
+                              <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                                <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 30%"></div>
+                              </div>
+                            </div>
+                          `;
+                          document.body.appendChild(progressDialog);
+                          const progressContent = progressDialog.querySelector("#progress-content");
+                          const progressBar = progressDialog.querySelector("#progress-bar") as HTMLElement;
+                          const closeBtn = progressDialog.querySelector("#close-dialog") as HTMLElement;
+                          const dialogTitle = progressDialog.querySelector("h3") as HTMLElement;
+                          
+                          // 关闭对话框的函数
+                          const closeDialog = () => {
+                            document.body.removeChild(progressDialog);
+                            window.location.reload();
+                          };
+                          
+                          closeBtn?.addEventListener("click", closeDialog);
+                          
+                          try {
+                            const payload: any = {
+                              locale: locale,
+                            };
+                            if (item.hash) payload.contentHash = item.hash;
+                            else payload.questionId = item.id;
+                            
+                            if (progressBar) {
+                              progressBar.style.width = "60%";
+                            }
+                            
+                            const result = await apiPost<{ content?: string; options?: string[]; explanation?: string }>("/api/admin/question-processing/polish", payload);
+                            
+                            // 显示结果
+                            if (progressContent) {
+                              progressContent.innerHTML = `
+                                <div class="space-y-3">
+                                  <div class="p-3 rounded-lg bg-green-50 border border-green-200">
+                                    <p class="text-sm font-semibold text-green-700 mb-2">
+                                      ✓ 润色完成！
+                                    </p>
+                                    <p class="text-sm text-gray-700 mb-2">
+                                      <span class="font-medium">润色建议已生成，待审核</span>
+                                    </p>
+                                  </div>
+                                  <div class="space-y-2">
+                                    <p class="text-sm font-medium text-gray-700">润色后的内容：</p>
+                                    ${result.content ? `
+                                      <div class="p-3 rounded bg-emerald-50 border border-emerald-200">
+                                        <p class="text-xs font-medium text-gray-700 mb-1">内容：</p>
+                                        <div class="bg-white p-2 rounded border border-gray-200">
+                                          <p class="text-xs text-gray-800 whitespace-pre-wrap">${result.content}</p>
+                                        </div>
+                                        ${result.options && result.options.length > 0 ? `
+                                          <div class="mt-2">
+                                            <p class="text-xs font-medium text-gray-700 mb-1">选项：</p>
+                                            <div class="bg-white p-2 rounded border border-gray-200">
+                                              <ul class="text-xs text-gray-800 space-y-0.5">
+                                                ${result.options.map((opt: string, idx: number) => `<li>${idx + 1}. ${opt}</li>`).join('')}
+                                              </ul>
+                                            </div>
+                                          </div>
+                                        ` : ''}
+                                        ${result.explanation ? `
+                                          <div class="mt-2">
+                                            <p class="text-xs font-medium text-gray-700 mb-1">解析：</p>
+                                            <div class="bg-white p-2 rounded border border-gray-200">
+                                              <p class="text-xs text-gray-800 whitespace-pre-wrap">${result.explanation}</p>
+                                            </div>
+                                          </div>
+                                        ` : ''}
+                                      </div>
+                                    ` : '<p class="text-sm text-gray-600">润色完成，但未返回内容</p>'}
+                                  </div>
+                                </div>
+                              `;
+                            }
+                            if (progressBar) {
+                              progressBar.style.width = "100%";
+                              progressBar.classList.remove("bg-blue-500");
+                              progressBar.classList.add("bg-green-500");
+                            }
+                            if (dialogTitle) {
+                              dialogTitle.textContent = "润色完成";
+                            }
+                            if (closeBtn) {
+                              closeBtn.style.display = "block";
+                            }
+                          } catch (e) {
+                            if (progressContent) {
+                              progressContent.innerHTML = `
+                                <div class="p-3 rounded-lg bg-red-50 border border-red-200">
+                                  <p class="text-sm font-semibold text-red-700 mb-2">✗ 润色失败</p>
+                                  <p class="text-sm text-red-600">${e instanceof Error ? e.message : "未知错误"}</p>
+                                </div>
+                              `;
+                            }
+                            if (progressBar) {
+                              progressBar.style.width = "100%";
+                              progressBar.classList.remove("bg-blue-500");
+                              progressBar.classList.add("bg-red-500");
+                            }
+                            if (dialogTitle) {
+                              dialogTitle.textContent = "润色失败";
+                            }
+                            if (closeBtn) {
+                              closeBtn.style.display = "block";
+                            }
+                          }
+                        }}
+                        className="text-emerald-600 hover:underline"
+                        title="对当前语言题面进行润色（生成待审核）"
+                      >
+                        润色
                       </button>
                     </td>
                   </tr>
@@ -1391,7 +2026,11 @@ export default function QuestionsPage() {
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 mb-1">题目内容</div>
-                  <div className="text-sm">{item.content}</div>
+                  <div className="text-sm">
+                    {typeof item.content === 'string' 
+                      ? item.content 
+                      : (item.content?.zh || item.content?.en || item.content?.ja || '')}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 mb-1">正确答案</div>
@@ -1401,6 +2040,16 @@ export default function QuestionsPage() {
                       : item.correctAnswer}
                   </div>
                 </div>
+                {item.explanation && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">解析</div>
+                    <div className="text-xs text-gray-700">
+                      {typeof item.explanation === 'string' 
+                        ? item.explanation 
+                        : (item.explanation?.zh || item.explanation?.en || item.explanation?.ja || '')}
+                    </div>
+                  </div>
+                )}
                 {(item.hash || item.aiAnswer) && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">Hash / AI回答</div>
@@ -1440,6 +2089,236 @@ export default function QuestionsPage() {
                     className="flex-1 text-center rounded-xl bg-red-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-red-600 active:bg-red-700 touch-manipulation transition-colors shadow-sm"
                   >
                     删除
+                  </button>
+                  <button
+                    onClick={async () => {
+                      // 创建语言选择对话框
+                      const dialog = document.createElement("div");
+                      dialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                      dialog.innerHTML = `
+                        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                          <h3 class="text-lg font-semibold mb-4">选择翻译语言</h3>
+                          <div class="space-y-4">
+                            <div>
+                              <label class="block text-sm font-medium mb-2">源语言</label>
+                              <select id="translate-from" class="w-full border rounded px-3 py-2">
+                                <option value="zh" ${(filters.locale || "zh") === "zh" ? "selected" : ""}>中文 (zh)</option>
+                                <option value="ja" ${(filters.locale || "zh") === "ja" ? "selected" : ""}>日文 (ja)</option>
+                                <option value="en" ${(filters.locale || "zh") === "en" ? "selected" : ""}>英文 (en)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label class="block text-sm font-medium mb-2">目标语言</label>
+                              <select id="translate-to" class="w-full border rounded px-3 py-2">
+                                <option value="zh">中文 (zh)</option>
+                                <option value="ja" selected>日文 (ja)</option>
+                                <option value="en">英文 (en)</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div class="flex gap-3 mt-6">
+                            <button id="translate-confirm" class="flex-1 px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600">
+                              确认翻译
+                            </button>
+                            <button id="translate-cancel" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      `;
+                      document.body.appendChild(dialog);
+                      
+                      const confirmBtn = dialog.querySelector("#translate-confirm");
+                      const cancelBtn = dialog.querySelector("#translate-cancel");
+                      const fromSelect = dialog.querySelector("#translate-from") as HTMLSelectElement;
+                      const toSelect = dialog.querySelector("#translate-to") as HTMLSelectElement;
+                      
+                      const cleanup = () => {
+                        document.body.removeChild(dialog);
+                      };
+                      
+                      cancelBtn?.addEventListener("click", cleanup);
+                      confirmBtn?.addEventListener("click", async () => {
+                        // 确保 from 和 to 都有值，不能为空字符串
+                        const from = (fromSelect?.value || filters.locale || "zh").trim() || "zh";
+                        const to = (toSelect?.value || "ja").trim() || "ja";
+                        
+                        // 验证 from 和 to 是否有效
+                        if (!from || !to) {
+                          alert("源语言和目标语言不能为空");
+                          return;
+                        }
+                        
+                        if (from === to) {
+                          alert("源语言和目标语言不能相同");
+                          return;
+                        }
+                        
+                        cleanup();
+                        
+                        // 创建进度对话框
+                        const progressDialog = document.createElement("div");
+                        progressDialog.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+                        progressDialog.innerHTML = `
+                          <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                            <div class="flex justify-between items-center mb-4">
+                              <h3 class="text-lg font-semibold">翻译处理中...</h3>
+                              <button id="close-dialog" class="text-gray-400 hover:text-gray-600 transition-colors" style="display: none;">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                              </button>
+                            </div>
+                            <div id="progress-content" class="mb-4">
+                              <p class="text-sm text-gray-600">正在翻译到: ${to}</p>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                              <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 30%"></div>
+                            </div>
+                          </div>
+                        `;
+                        document.body.appendChild(progressDialog);
+                        const progressContent = progressDialog.querySelector("#progress-content");
+                        const progressBar = progressDialog.querySelector("#progress-bar") as HTMLElement;
+                        const closeBtn = progressDialog.querySelector("#close-dialog") as HTMLElement;
+                        const dialogTitle = progressDialog.querySelector("h3") as HTMLElement;
+                        
+                        // 关闭对话框的函数
+                        const closeDialog = () => {
+                          document.body.removeChild(progressDialog);
+                          window.location.reload();
+                        };
+                        
+                        closeBtn?.addEventListener("click", closeDialog);
+                        
+                        try {
+                          const payload: any = {
+                            from: from,
+                            to: to,
+                          };
+                          if (item.hash) payload.contentHash = item.hash;
+                          else payload.questionId = item.id;
+                          
+                          if (progressBar) {
+                            progressBar.style.width = "60%";
+                          }
+                          
+                          const result = await apiPost<{ results: Array<{ locale: string; success: boolean; error?: string }> }>("/api/admin/question-processing/translate", payload);
+                          
+                          // 显示结果
+                          let allSuccess = false;
+                          if (progressContent) {
+                            const successCount = result.results?.filter(r => r.success).length || 0;
+                            const failCount = result.results?.filter(r => !r.success).length || 0;
+                            allSuccess = failCount === 0;
+                            
+                            progressContent.innerHTML = `
+                              <div class="space-y-3">
+                                <div class="p-3 rounded-lg ${allSuccess ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}">
+                                  <p class="text-sm font-semibold ${allSuccess ? 'text-green-700' : 'text-yellow-700'} mb-2">
+                                    ${allSuccess ? '✓ 翻译完成！' : '⚠ 翻译部分完成'}
+                                  </p>
+                                  <p class="text-sm text-gray-700 mb-2">
+                                    <span class="font-medium">处理结果：</span>成功 ${successCount} 个，失败 ${failCount} 个
+                                  </p>
+                                </div>
+                                <div class="space-y-2">
+                                  <p class="text-sm font-medium text-gray-700">详细结果：</p>
+                                  ${result.results?.map(r => `
+                                    <div class="p-3 rounded ${r.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
+                                      <p class="text-xs font-medium ${r.success ? 'text-green-700' : 'text-red-700'} mb-2">
+                                        ${r.locale.toUpperCase()}: ${r.success ? '✓ 翻译成功' : '✗ 翻译失败'}
+                                      </p>
+                                      ${r.success && (r as any).content ? `
+                                        <div class="mt-2 space-y-1">
+                                          <p class="text-xs font-medium text-gray-700">翻译后的内容：</p>
+                                          <div class="bg-white p-2 rounded border border-gray-200">
+                                            <p class="text-xs text-gray-800 whitespace-pre-wrap">${(r as any).content}</p>
+                                          </div>
+                                          ${(r as any).options && (r as any).options.length > 0 ? `
+                                            <div class="mt-1">
+                                              <p class="text-xs font-medium text-gray-700">选项：</p>
+                                              <div class="bg-white p-2 rounded border border-gray-200">
+                                                <ul class="text-xs text-gray-800 space-y-0.5">
+                                                  ${(r as any).options.map((opt: string, idx: number) => `<li>${idx + 1}. ${opt}</li>`).join('')}
+                                                </ul>
+                                              </div>
+                                            </div>
+                                          ` : ''}
+                                          ${(r as any).explanation ? `
+                                            <div class="mt-1">
+                                              <p class="text-xs font-medium text-gray-700">解析：</p>
+                                              <div class="bg-white p-2 rounded border border-gray-200">
+                                                <p class="text-xs text-gray-800 whitespace-pre-wrap">${(r as any).explanation}</p>
+                                              </div>
+                                            </div>
+                                          ` : ''}
+                                        </div>
+                                      ` : ''}
+                                      ${!r.success && r.error ? `
+                                        <p class="text-xs text-red-600 mt-1">错误: ${r.error}</p>
+                                      ` : ''}
+                                    </div>
+                                  `).join("") || ""}
+                                </div>
+                              </div>
+                            `;
+                          }
+                          if (progressBar) {
+                            progressBar.style.width = "100%";
+                            progressBar.classList.remove("bg-blue-500");
+                            progressBar.classList.add(allSuccess ? "bg-green-500" : "bg-yellow-500");
+                          }
+                          if (dialogTitle) {
+                            dialogTitle.textContent = allSuccess ? "翻译完成" : "翻译部分完成";
+                          }
+                          if (closeBtn) {
+                            closeBtn.style.display = "block";
+                          }
+                        } catch (e) {
+                          if (progressContent) {
+                            progressContent.innerHTML = `
+                              <div class="p-3 rounded-lg bg-red-50 border border-red-200">
+                                <p class="text-sm font-semibold text-red-700 mb-2">✗ 翻译失败</p>
+                                <p class="text-sm text-red-600">${e instanceof Error ? e.message : "未知错误"}</p>
+                              </div>
+                            `;
+                          }
+                          if (progressBar) {
+                            progressBar.style.width = "100%";
+                            progressBar.classList.remove("bg-blue-500");
+                            progressBar.classList.add("bg-red-500");
+                          }
+                          if (dialogTitle) {
+                            dialogTitle.textContent = "翻译失败";
+                          }
+                          if (closeBtn) {
+                            closeBtn.style.display = "block";
+                          }
+                        }
+                      });
+                    }}
+                    className="flex-1 text-center rounded-xl bg-indigo-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-indigo-600 active:bg-indigo-700 transition-colors shadow-sm"
+                  >
+                    翻译到...
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const payload: any = {
+                          locale: filters.locale || "zh",
+                        };
+                        if (item.hash) payload.contentHash = item.hash;
+                        else payload.questionId = item.id;
+                        await apiPost("/api/admin/question-processing/polish", payload);
+                        alert("润色建议已生成，待审核");
+                      } catch (e) {
+                        alert(e instanceof Error ? e.message : "润色提交失败");
+                      }
+                    }}
+                    className="flex-1 text-center rounded-xl bg-emerald-500 text-white px-4 py-2.5 text-sm font-medium hover:bg-emerald-600 active:bg-emerald-700 transition-colors shadow-sm"
+                  >
+                    润色
                   </button>
                 </div>
               </div>
@@ -1548,7 +2427,9 @@ function QuestionForm({
           name="content"
           required
           rows={3}
-          defaultValue={question?.content || ""}
+          defaultValue={typeof question?.content === 'string' 
+            ? question.content 
+            : (question?.content?.zh || "")}
           className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           placeholder="请输入题目内容..."
         />
@@ -1691,7 +2572,15 @@ function QuestionForm({
         <textarea
           name="explanation"
           rows={2}
-          defaultValue={question?.explanation || ""}
+          defaultValue={
+            question?.explanation
+              ? typeof question.explanation === 'string'
+                ? question.explanation
+                : (typeof question.explanation === 'object' && question.explanation !== null
+                    ? (question.explanation.zh || question.explanation.en || question.explanation.ja || '')
+                    : '')
+              : ""
+          }
           className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           placeholder="请输入题目解析..."
         />

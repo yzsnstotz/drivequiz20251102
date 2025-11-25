@@ -1,22 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
-import { loadAllQuestions } from '@/lib/questionsLoader';
-
-interface Question {
-  id: number;
-  type: 'single' | 'multiple' | 'truefalse';
-  content: string;
-  image?: string;
-  options?: string[];
-  correctAnswer: string | string[];
-  explanation?: string;
-}
+import QuestionImage from '@/components/common/QuestionImage';
+import { loadAllQuestions, Question } from '@/lib/questionsLoader';
+import { useLanguage } from '@/lib/i18n';
+import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 
 function RoyalBattlePage() {
+  const { t, language } = useLanguage();
   // 处理返回逻辑
   const handleBack = () => {
     window.history.back();
@@ -45,27 +38,11 @@ function RoyalBattlePage() {
     const loadQuestions = async () => {
       try {
         // 通过版本检查与缓存的统一加载器获取题库
-        let allQuestions: Question[] = await loadAllQuestions();
-        // 兼容旧逻辑：加载器失败时尝试老的静态导入
+        const allQuestions = await loadAllQuestions();
         if (!allQuestions || allQuestions.length === 0) {
-          try {
-            const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
-            const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-            allQuestions = questions as unknown as Question[];
-          } catch {
-            const categories = ['學科講習', '仮免', '免许'];
-            for (const category of categories) {
-              for (let i = 1; i <= 6; i++) {
-                try {
-                  const response = await import(`../../data/questions/zh/${category}-${i}.json`);
-                  const questions = response.questions || response.default?.questions || [];
-                  allQuestions = [...allQuestions, ...questions];
-                } catch {
-                  // ignore
-                }
-              }
-            }
-          }
+          console.error('加载题目失败：未找到题目数据');
+          setIsLoading(false);
+          return;
         }
 
         // Fisher-Yates 洗牌算法
@@ -221,10 +198,10 @@ function RoyalBattlePage() {
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">大乱斗</h1>
+          <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.title')}</h1>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">加载题目中...</p>
+          <p className="text-gray-600">{t('royalbattle.loading')}</p>
         </div>
       </div>
     );
@@ -240,18 +217,18 @@ function RoyalBattlePage() {
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">游戏结束</h1>
+          <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.gameOver')}</h1>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <div className="text-center">
             <Trophy className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">最终得分: {score}</h2>
-            <p className="text-gray-600 mb-6">答对题目数: {Math.floor(score / 10)}</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('royalbattle.finalScore')}: {score}</h2>
+            <p className="text-gray-600 mb-6">{t('royalbattle.correctCount')}: {Math.floor(score / 10)}</p>
             <button
               onClick={handleBack}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
             >
-              返回首页
+              {t('royalbattle.backHome')}
             </button>
           </div>
         </div>
@@ -268,7 +245,7 @@ function RoyalBattlePage() {
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">大乱斗</h1>
+        <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.title')}</h1>
       </div>
 
       <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
@@ -309,26 +286,23 @@ function RoyalBattlePage() {
         </div>
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-gray-900 text-lg">{currentQuestion.content}</p>
+            <p className="text-gray-900 text-lg">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             <button
               onClick={() => setShowAIDialog(true)}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              aria-label="打开AI助手"
+              aria-label={t('royalbattle.openAI')}
             >
               <Bot className="h-4 w-4" />
-              <span>AI助手</span>
+              <span>{t('royalbattle.aiAssistant')}</span>
             </button>
           </div>
           {currentQuestion.image && (
-            <div className="mb-4">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt="题目图片"
-                width={800}
-                height={600}
-                className="max-w-full rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt={t('royalbattle.image')}
+              width={800}
+              height={600}
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (
@@ -344,13 +318,13 @@ function RoyalBattlePage() {
                       : 'bg-gray-50 border-2 border-transparent'
                   }`}
                 >
-                  {option === 'true' ? '正确' : '错误'}
+                  {option === 'true' ? t('royalbattle.true') : t('royalbattle.false')}
                 </button>
               ))}
             </div>
           ) : (
             <div className="space-y-3">
-              {currentQuestion.options?.map((option, index) => {
+              {getQuestionOptions(currentQuestion.options as any, language as 'zh' | 'en' | 'ja').map((option, index) => {
                 const optionLabel = String.fromCharCode(65 + index);
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
@@ -367,6 +341,7 @@ function RoyalBattlePage() {
                         : 'bg-gray-50 border-2 border-transparent'
                     }`}
                   >
+                    <span className="font-medium">{optionLabel}: </span>
                     {option}
                   </button>
                 );
@@ -378,10 +353,10 @@ function RoyalBattlePage() {
         {showAnswer && (
           <div className="mt-6 p-4 rounded-lg border bg-blue-50 border-blue-200 animate-fadeIn">
             <h3 className="text-gray-800 font-medium mb-2">
-              {isCorrect(selectedAnswer) ? '答对了！' : '答错了...'}
+              {isCorrect(selectedAnswer) ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{currentQuestion.explanation}</p>
+              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             )}
           </div>
         )}

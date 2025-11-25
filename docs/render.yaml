@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: zalem-ai-service
+    env: node
+    rootDir: apps/ai-service
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8787
+    autoDeploy: true
+
+  - type: cron
+    name: ai-daily-summarize
+    rootDir: apps/ai-service
+    schedule: "0 0 * * *"
+    buildCommand: npm install && npm run build
+    startCommand: node dist/cron.js
+

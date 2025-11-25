@@ -1,6 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import ProviderConfigManager from "@/components/ProviderConfigManager";
+import ProviderTimeoutManager from "@/components/ProviderTimeoutManager";
+import ProviderRateLimitManager from "@/components/ProviderRateLimitManager";
+
+type ProviderOption = {
+  value: string;
+  label: string;
+};
 
 type Config = {
   dailyAskLimit: number;
@@ -8,7 +16,15 @@ type Config = {
   model: string;
   cacheTtl: number;
   costAlertUsdThreshold: number;
-  aiProvider: "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
+  aiProvider: "render" | "local" | "openai" | "openrouter" | "openrouter_direct" | "openai_direct" | "gemini" | "gemini_direct" | "strategy"; // 支持所有 provider 类型
+  aiModelProvider?: "openai" | "openrouter" | "gemini"; // 当 aiProvider 为 render 时，选择具体的大模型提供商
+  aiProviderDescription?: string | null; // AI Provider 选项描述（从数据库读取）
+  timeoutOpenai?: number;
+  timeoutOpenaiDirect?: number;
+  timeoutOpenrouter?: number;
+  timeoutOpenrouterDirect?: number;
+  timeoutGeminiDirect?: number;
+  timeoutLocal?: number;
 };
 
 type ConfigResp = {
@@ -68,6 +84,60 @@ function formatCacheTtl(seconds: number): string {
   return `${Math.floor(seconds / 86400)} 天`;
 }
 
+/**
+ * 解析 aiProvider 的 description 字段，提取所有 provider 选项
+ * 格式：'AI服务提供商：openai=OpenAI（通过Render），openai_direct=直连OpenAI（不通过Render），...'
+ * 
+ * 注意：此函数完全依赖数据库中的 description 字段，不再使用硬编码的默认值
+ */
+function parseProviderOptions(description: string | null | undefined): ProviderOption[] {
+  if (!description) {
+    // 如果 description 为空，返回空数组（让用户知道需要配置数据库）
+    console.warn("[parseProviderOptions] aiProvider description 为空，请检查数据库配置");
+    return [];
+  }
+
+  // 提取冒号后的内容
+  const colonIndex = description.indexOf("：");
+  if (colonIndex === -1) {
+    console.warn("[parseProviderOptions] description 格式不正确，未找到冒号分隔符");
+    return [];
+  }
+
+  const optionsStr = description.substring(colonIndex + 1);
+  const options: ProviderOption[] = [];
+
+  // 按中文逗号分割
+  const parts = optionsStr.split("，");
+  
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    // 格式：key=label
+    const equalIndex = trimmed.indexOf("=");
+    if (equalIndex === -1) {
+      console.warn(`[parseProviderOptions] 选项格式不正确，未找到等号: "${trimmed}"`);
+      continue;
+    }
+
+    const value = trimmed.substring(0, equalIndex).trim();
+    const label = trimmed.substring(equalIndex + 1).trim();
+
+    if (value && label) {
+      options.push({ value, label });
+    } else {
+      console.warn(`[parseProviderOptions] 选项值或标签为空: value="${value}", label="${label}"`);
+    }
+  }
+
+  if (options.length === 0) {
+    console.error("[parseProviderOptions] 解析后未找到任何选项，请检查数据库 description 格式");
+  }
+
+  return options;
+}
+
 export default function AdminAiConfigPage() {
   const [config, setConfig] = useState<Config>({
     dailyAskLimit: 10,
@@ -75,11 +145,20 @@ export default function AdminAiConfigPage() {
     model: "gpt-4o-mini",
     cacheTtl: 86400,
     costAlertUsdThreshold: 10.0,
-    aiProvider: "openai",
+    aiProvider: "openai", // 默认使用 openai
+    aiModelProvider: "openai", // 默认使用 OpenAI
+    timeoutOpenai: 30000,
+    timeoutOpenaiDirect: 30000,
+    timeoutOpenrouter: 30000,
+    timeoutOpenrouterDirect: 30000,
+    timeoutGeminiDirect: 30000,
+    timeoutLocal: 120000,
   });
+  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<"basic" | "providers" | "timeout" | "rateLimit">("basic");
 
   useEffect(() => {
     loadConfig();
@@ -92,20 +171,30 @@ export default function AdminAiConfigPage() {
       if (resp.ok && resp.data) {
         // API 返回的值是字符串，需要转换为数字
         const data = resp.data;
+        
+        // 解析 provider 选项（完全依赖数据库，不再使用硬编码）
+        const options = parseProviderOptions(data.aiProviderDescription);
+        setProviderOptions(options);
+        
+        // 如果解析失败，显示警告
+        if (options.length === 0) {
+          console.error("[loadConfig] 无法从数据库解析 provider 选项，请检查 ai_config 表的 aiProvider description 字段");
+        }
+        
         setConfig({
           dailyAskLimit: typeof data.dailyAskLimit === "string" ? Number(data.dailyAskLimit) : (data.dailyAskLimit ?? 10),
           answerCharLimit: typeof data.answerCharLimit === "string" ? Number(data.answerCharLimit) : (data.answerCharLimit ?? 300),
           model: data.model ?? "gpt-4o-mini",
           cacheTtl: typeof data.cacheTtl === "string" ? Number(data.cacheTtl) : (data.cacheTtl ?? 86400),
           costAlertUsdThreshold: typeof data.costAlertUsdThreshold === "string" ? Number(data.costAlertUsdThreshold) : (data.costAlertUsdThreshold ?? 10.0),
-          aiProvider:
-            data.aiProvider === "local" ||
-            data.aiProvider === "openai" ||
-            data.aiProvider === "openrouter" ||
-            data.aiProvider === "openrouter_direct" ||
-            data.aiProvider === "openai_direct"
-              ? data.aiProvider
-              : "openai",
+          aiProvider: (data.aiProvider as Config["aiProvider"]) || "openai",
+          aiProviderDescription: data.aiProviderDescription || null,
+          timeoutOpenai: typeof data.timeoutOpenai === "string" ? Number(data.timeoutOpenai) : (data.timeoutOpenai ?? 30000),
+          timeoutOpenaiDirect: typeof data.timeoutOpenaiDirect === "string" ? Number(data.timeoutOpenaiDirect) : (data.timeoutOpenaiDirect ?? 30000),
+          timeoutOpenrouter: typeof data.timeoutOpenrouter === "string" ? Number(data.timeoutOpenrouter) : (data.timeoutOpenrouter ?? 30000),
+          timeoutOpenrouterDirect: typeof data.timeoutOpenrouterDirect === "string" ? Number(data.timeoutOpenrouterDirect) : (data.timeoutOpenrouterDirect ?? 30000),
+          timeoutGeminiDirect: typeof data.timeoutGeminiDirect === "string" ? Number(data.timeoutGeminiDirect) : (data.timeoutGeminiDirect ?? 30000),
+          timeoutLocal: typeof data.timeoutLocal === "string" ? Number(data.timeoutLocal) : (data.timeoutLocal ?? 120000),
         });
       }
     } catch (err) {
@@ -119,7 +208,9 @@ export default function AdminAiConfigPage() {
     setSaving(true);
     setSaveSuccess(false);
     try {
-      const resp = await saveConfig(config);
+      // 从 basic tab 保存时，排除超时字段（超时设置由独立的 ProviderTimeoutManager 管理）
+      const { timeoutOpenai, timeoutOpenaiDirect, timeoutOpenrouter, timeoutOpenrouterDirect, timeoutGeminiDirect, timeoutLocal, ...basicConfig } = config;
+      const resp = await saveConfig(basicConfig);
       if (resp.ok) {
         setSaveSuccess(true);
         // 3秒后隐藏成功提示
@@ -153,7 +244,60 @@ export default function AdminAiConfigPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Tab 导航 */}
+      <div className="border-b">
+        <div className="flex space-x-4">
+          <button
+            onClick={() => setActiveTab("basic")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "basic"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            基础配置
+          </button>
+          <button
+            onClick={() => setActiveTab("providers")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "providers"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Provider 调用策略
+          </button>
+          <button
+            onClick={() => setActiveTab("timeout")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "timeout"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Provider 超时设置
+          </button>
+          <button
+            onClick={() => setActiveTab("rateLimit")}
+            className={`px-4 py-2 border-b-2 ${
+              activeTab === "rateLimit"
+                ? "border-black font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Provider 频率限制
+          </button>
+        </div>
+      </div>
+
+      {activeTab === "providers" ? (
+        <ProviderConfigManager />
+      ) : activeTab === "timeout" ? (
+        <ProviderTimeoutManager />
+      ) : activeTab === "rateLimit" ? (
+        <ProviderRateLimitManager />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 左侧：配置表单 */}
         <div className="space-y-4">
           <div className="border rounded-lg p-4 space-y-4">
@@ -201,7 +345,7 @@ export default function AdminAiConfigPage() {
                 value={config.model}
                 onChange={(e) => setConfig({ ...config, model: e.target.value })}
                 className="w-full border rounded px-3 py-2"
-                disabled={config.aiProvider === "local"}
+                disabled={config.aiProvider === "local" || config.aiProvider === "strategy"}
               >
                 {config.aiProvider === "openai" || config.aiProvider === "openai_direct" ? (
                   <>
@@ -209,6 +353,16 @@ export default function AdminAiConfigPage() {
                     <option value="gpt-4o">gpt-4o</option>
                     <option value="gpt-4-turbo">gpt-4-turbo</option>
                     <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                  </>
+                ) : config.aiProvider === "gemini" || config.aiProvider === "gemini_direct" ? (
+                  <>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (推荐)</option>
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                    <option value="gemini-2.0-flash-001">Gemini 2.0 Flash 001</option>
+                    {/* 旧模型名称（已停用，会自动映射到新模型） */}
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (已停用，将映射到 2.5 Flash)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (已停用，将映射到 2.5 Pro)</option>
                   </>
                 ) : (config.aiProvider === "openrouter" || config.aiProvider === "openrouter_direct") ? (
                   <>
@@ -244,15 +398,26 @@ export default function AdminAiConfigPage() {
                   ? "当前使用的 OpenAI 模型（通过 Render）"
                   : config.aiProvider === "openai_direct"
                   ? "当前使用的 OpenAI 模型（直连，不通过 Render）"
+                  : config.aiProvider === "gemini"
+                  ? "当前使用的 Google Gemini 模型（通过 Render）"
+                  : config.aiProvider === "gemini_direct"
+                  ? "当前使用的 Google Gemini 模型（直连，不通过 Render）"
                   : config.aiProvider === "openrouter"
                   ? "当前使用的 OpenRouter 模型（通过 Render，支持多种 AI 服务商）"
                   : config.aiProvider === "openrouter_direct"
                   ? "当前使用的 OpenRouter 模型（直连，不通过 Render，支持多种 AI 服务商）"
+                  : config.aiProvider === "strategy"
+                  ? "使用调用策略时，模型由策略配置决定，此处显示为参考"
                   : "本地 AI 模型由 Ollama 服务配置，此处仅显示（不可修改）"}
               </p>
               {config.aiProvider === "local" && (
                 <p className="text-xs text-amber-600 mt-1">
                   ⚠️ 本地AI模型需要在Ollama服务中配置，此处显示为参考
+                </p>
+              )}
+              {config.aiProvider === "strategy" && (
+                <p className="text-xs text-blue-600 mt-1">
+                  💡 使用调用策略时，系统会根据 Provider 调用策略配置自动选择 Provider 和模型
                 </p>
               )}
             </div>
@@ -301,29 +466,51 @@ export default function AdminAiConfigPage() {
               <select
                 value={config.aiProvider}
                 onChange={(e) => {
-                  const newProvider = e.target.value as "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct";
+                  const newProvider = e.target.value as Config["aiProvider"];
                   // 切换服务提供商时，自动设置对应的默认模型
                   const defaultModel = 
-                    newProvider === "openai" || newProvider === "openai_direct"
+                    newProvider === "strategy"
+                      ? config.model // 使用策略时保持当前模型
+                      : newProvider === "openai" || newProvider === "openai_direct"
                       ? "gpt-4o-mini"
+                      : newProvider === "gemini" || newProvider === "gemini_direct"
+                      ? "gemini-2.5-flash"
                       : (newProvider === "openrouter" || newProvider === "openrouter_direct")
                       ? "openai/gpt-4o-mini"
                     : "llama3.2:3b";
                   setConfig({ ...config, aiProvider: newProvider, model: defaultModel });
                 }}
                 className="w-full border rounded px-3 py-2"
+                disabled={providerOptions.length === 0 || loading}
               >
-                <option value="openai">OpenAI（通过 Render）</option>
-                <option value="openai_direct">直连 OpenAI</option>
-                <option value="openrouter">OpenRouter（通过 Render）</option>
-                <option value="openrouter_direct">直连 OpenRouter</option>
-                <option value="local">本地 AI（Ollama）</option>
+                {loading ? (
+                  <option value="">加载中...</option>
+                ) : providerOptions.length > 0 ? (
+                  providerOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">无法加载选项，请检查数据库配置</option>
+                )}
               </select>
+              {!loading && providerOptions.length === 0 && (
+                <p className="text-xs text-red-600 mt-1">
+                  ⚠️ 无法从数据库读取 provider 选项，请检查 ai_config 表的 aiProvider description 字段
+                </p>
+              )}
               <p className="text-xs text-gray-500 mt-1">
-                {config.aiProvider === "openai"
+                {config.aiProvider === "strategy"
+                  ? "根据 Provider 调用策略配置自动选择 Provider，可在「Provider 调用策略」标签页中配置策略"
+                  : config.aiProvider === "openai"
                   ? "使用 OpenAI 服务（通过 Render），需要配置 AI_SERVICE_URL 和 AI_SERVICE_TOKEN"
                   : config.aiProvider === "openai_direct"
                   ? "使用 OpenAI 服务（直连，不通过 Render），需要配置 OPENAI_API_KEY 和 OPENAI_BASE_URL"
+                  : config.aiProvider === "gemini"
+                  ? "使用 Google Gemini 服务（通过 Render），需要配置 AI_SERVICE_URL 和 AI_SERVICE_TOKEN"
+                  : config.aiProvider === "gemini_direct"
+                  ? "使用 Google Gemini 服务（直连，不通过 Render），需要配置 GEMINI_API_KEY 和 GEMINI_BASE_URL（可选，默认为 https://generativelanguage.googleapis.com/v1beta）"
                   : config.aiProvider === "openrouter"
                   ? "使用 OpenRouter 服务（通过 Render），需要配置 OPENROUTER_API_KEY 和 OPENROUTER_BASE_URL"
                   : config.aiProvider === "openrouter_direct"
@@ -401,6 +588,7 @@ export default function AdminAiConfigPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

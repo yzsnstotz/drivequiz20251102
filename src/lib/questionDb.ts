@@ -9,6 +9,7 @@ import { calculateQuestionHash, generateVersion, generateUnifiedVersion, calcula
 import { sql } from "kysely";
 import fs from "fs/promises";
 import path from "path";
+import { sanitizeJsonForDb } from '../app/api/admin/question-processing/_lib/jsonUtils';
 
 // 题目数据目录
 const QUESTIONS_DIR = path.join(process.cwd(), "src/data/questions/zh");
@@ -81,16 +82,18 @@ export function normalizeCorrectAnswer(
  */
 export async function getQuestionsFromDb(packageName: string): Promise<Question[]> {
   try {
-    // 从数据库读取题目（通过license_types匹配）
+    // 从数据库读取题目（通过license_type_tag或category匹配）
     // 注意：这里简化处理，实际可能需要更复杂的匹配逻辑
     const questions = await db
       .selectFrom("questions")
       .selectAll()
       .where((eb) =>
         eb.or([
-          // 检查license_types数组是否包含packageName
-          // 使用 sql 模板确保正确的 PostgreSQL 数组格式
-          sql<boolean>`${eb.ref("license_types")} @> ARRAY[${sql.literal(packageName)}]::text[]`,
+          // 检查license_type_tag数组是否包含packageName
+          // 使用 sql 模板确保正确的 PostgreSQL JSONB 数组格式
+          sql<boolean>`${eb.ref("license_type_tag")} @> ${sql.literal(JSON.stringify([packageName]))}::jsonb`,
+          // 或者通过category匹配
+          eb("category", "=", packageName),
           // 或者通过version匹配（如果version字段存储了包名）
           eb("version", "=", packageName),
         ])
@@ -99,17 +102,32 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       .execute();
 
     // 转换为前端格式（保留 content_hash）
-    return questions.map((q) => ({
-      id: q.id,
-      type: q.type,
-      content: q.content,
-      options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-      correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
-      image: q.image || undefined,
-      explanation: q.explanation || undefined,
-      category: packageName,
-      content_hash: q.content_hash, // 保留 content_hash 字段
-    }));
+    return questions.map((q) => {
+      // 处理content字段：如果是多语言对象，提取zh作为默认内容；如果是字符串，直接使用
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+      if (typeof q.content === "string") {
+        // 兼容旧格式：单语言字符串
+        content = q.content;
+      } else {
+        // 新格式：多语言对象
+        content = q.content;
+      }
+
+      return {
+        id: q.id,
+        type: q.type,
+        content,
+        options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
+        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+        image: q.image || undefined,
+        explanation: q.explanation || undefined,
+        category: q.category || packageName,
+        hash: q.content_hash, // 使用 content_hash 作为 hash
+        license_tags: q.license_type_tag || undefined,
+        stage_tag: q.stage_tag || undefined,
+        topic_tags: q.topic_tags || undefined,
+      };
+    });
   } catch (error) {
     console.error(`[getQuestionsFromDb] Error loading ${packageName}:`, error);
     return [];
@@ -118,50 +136,445 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
 
 /**
  * 保存题目到数据库
+ * @param question 题目对象
+ * @param mode 保存模式："upsert"（默认，通过content_hash查找，找不到则插入）或 "updateOnly"（通过content_hash查找，找不到则抛出错误）
  */
-export async function saveQuestionToDb(question: Question): Promise<number> {
+export async function saveQuestionToDb(question: Question & { mode?: "upsert" | "updateOnly" }): Promise<number> {
   try {
-    const contentHash = calculateQuestionHash(question);
+    const mode = (question as any).mode || "upsert"; // 默认 upsert
+    // ✅ 修复：如果传入了 hash，使用传入的 hash（原始 content_hash），否则才计算
+    // 在 updateOnly 模式下，必须传入原始的 content_hash，不能基于当前内容重新计算
+    const contentHash = question.hash || calculateQuestionHash(question);
     
-    // 检查是否已存在
+    // ✅ 修复：清理 question 对象，移除可能存在的 tags 字段（防止写入数据库时出错）
+    // AI 返回的 tags 字段包含 stage_tags 和 license_type_tags（复数），
+    // 但数据库字段是 stage_tag 和 license_type_tag（单数）
+    // 这些字段已经通过 applyTagsFromFullPipeline 转换到 question 对象的正确字段上
+    const cleanedQuestion = { ...question };
+    if ((cleanedQuestion as any).tags) {
+      delete (cleanedQuestion as any).tags;
+    }
+    // 确保不会意外写入复数字段名
+    if ((cleanedQuestion as any).stage_tags) {
+      delete (cleanedQuestion as any).stage_tags;
+    }
+    if ((cleanedQuestion as any).license_type_tags) {
+      delete (cleanedQuestion as any).license_type_tags;
+    }
+    
+    // ✅ 使用 sanitizeJsonForDb 统一处理 JSONB 字段
+    // 规范化content字段：如果是字符串，转换为多语言对象
+    let contentMultilang: any = null;
+    if (typeof cleanedQuestion.content === "string") {
+      // 兼容旧格式：单语言字符串转换为多语言对象
+      contentMultilang = { zh: cleanedQuestion.content };
+    } else if (cleanedQuestion.content && typeof cleanedQuestion.content === "object") {
+      contentMultilang = cleanedQuestion.content;
+    }
+    // 使用 sanitizeJsonForDb 清理 undefined 和无效值
+    contentMultilang = sanitizeJsonForDb(contentMultilang);
+    // ✅ 修复：如果 contentMultilang 是空对象，转换为 null
+    if (contentMultilang && typeof contentMultilang === "object" && !Array.isArray(contentMultilang) && Object.keys(contentMultilang).length === 0) {
+      contentMultilang = null;
+    }
+
+    // 规范化explanation字段：如果是字符串，转换为多语言对象
+    let explanationMultilang: any = null;
+    if (cleanedQuestion.explanation) {
+      if (typeof cleanedQuestion.explanation === "string") {
+        // 兼容旧格式：单语言字符串转换为多语言对象
+        explanationMultilang = { zh: cleanedQuestion.explanation };
+      } else if (typeof cleanedQuestion.explanation === "object" && cleanedQuestion.explanation !== null) {
+        explanationMultilang = cleanedQuestion.explanation;
+      }
+    }
+    // 使用 sanitizeJsonForDb 清理 undefined 和无效值
+    explanationMultilang = sanitizeJsonForDb(explanationMultilang);
+    // ✅ 修复：如果 explanationMultilang 是空对象，转换为 null
+    if (explanationMultilang && typeof explanationMultilang === "object" && !Array.isArray(explanationMultilang) && Object.keys(explanationMultilang).length === 0) {
+      explanationMultilang = null;
+    }
+    
+    // ✅ 使用 sanitizeJsonForDb 清理 options 字段
+    let cleanedOptions = sanitizeJsonForDb(cleanedQuestion.options);
+    
+    // ✅ 修复：额外清理 options 数组，移除无效元素（如 "explanation"）
+    if (cleanedOptions && Array.isArray(cleanedOptions)) {
+      cleanedOptions = cleanedOptions
+        .filter((opt: any) => {
+          if (typeof opt !== "string") return false;
+          const trimmed = opt.trim();
+          // 过滤掉空字符串和无效的选项值
+          return trimmed !== "" && trimmed.toLowerCase() !== "explanation";
+        })
+        .map((opt: any) => {
+          // 处理包含多个选项的长字符串（用 \n 分隔）
+          if (typeof opt === "string" && opt.includes("\n")) {
+            return opt.split("\n")
+              .map((line: string) => line.trim())
+              .filter((line: string) => line !== "" && line.toLowerCase() !== "explanation");
+          }
+          return opt;
+        })
+        .flat(); // 展平数组（处理分割后的选项）
+      
+      // 如果清理后数组为空，设置为 null
+      if (cleanedOptions.length === 0) {
+        cleanedOptions = null;
+      }
+    }
+
+    // ✅ 使用 sanitizeJsonForDb 清理 correct_answer 字段
+    let cleanedCorrectAnswer = sanitizeJsonForDb(cleanedQuestion.correctAnswer);
+    // ✅ 修复：如果 correct_answer 是空数组或空对象，转换为 null
+    if (cleanedCorrectAnswer && Array.isArray(cleanedCorrectAnswer) && cleanedCorrectAnswer.length === 0) {
+      cleanedCorrectAnswer = null;
+    } else if (cleanedCorrectAnswer && typeof cleanedCorrectAnswer === "object" && !Array.isArray(cleanedCorrectAnswer) && Object.keys(cleanedCorrectAnswer).length === 0) {
+      cleanedCorrectAnswer = null;
+    }
+
+    // ✅ 轻量验证：确保可以正确序列化（用于提前发现 BigInt 等不支持类型）
+    try {
+      if (contentMultilang) {
+        JSON.stringify(contentMultilang);
+      }
+      if (explanationMultilang) {
+        JSON.stringify(explanationMultilang);
+      }
+      if (cleanedOptions) {
+        JSON.stringify(cleanedOptions);
+      }
+      if (cleanedCorrectAnswer) {
+        JSON.stringify(cleanedCorrectAnswer);
+      }
+      // ✅ 修复：验证 license_type_tag（JSONB 类型）可以正确序列化
+      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
+        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
+          JSON.stringify((cleanedQuestion as any).license_type_tag);
+        }
+      }
+    } catch (jsonError) {
+      console.error("[saveQuestionToDb] JSON验证失败:", jsonError);
+      throw new Error(`JSON格式错误: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`);
+    }
+
+    // ✅ 修复：直接使用 license_type_tag 字段（数据库字段名）
+    // license_tags 字段已废弃，不再处理
+
+    // ✅ 修复：统一通过 content_hash 查找题目（content_hash 是题目标识的唯一手段）
+    // updateOnly 模式：通过 content_hash 查找，找不到则抛出错误
+    // upsert 模式：通过 content_hash 查找，找不到则插入新题目
     const existing = await db
       .selectFrom("questions")
       .select(["id"])
       .where("content_hash", "=", contentHash)
       .executeTakeFirst();
+    
+    if (!existing && mode === "updateOnly") {
+      console.error(
+        `[saveQuestionToDb] [updateOnly] Question content_hash=${contentHash} not found, aborting without insert.`,
+      );
+      throw new Error("QUESTION_NOT_FOUND_FOR_UPDATE");
+    }
 
     if (existing) {
       // 更新现有题目
+      // ✅ 修复：构建更新对象，只有字段值存在时才更新（null/undefined 时不更新，保留原值）
+      const updateData: any = {
+        type: cleanedQuestion.type,
+        content: contentMultilang as any,
+        options: cleanedOptions,
+        correct_answer: cleanedCorrectAnswer,
+        image: cleanedQuestion.image || null,
+        explanation: explanationMultilang as any,
+        category: cleanedQuestion.category || null,
+        updated_at: new Date(),
+      };
+
+      // ✅ 修复：清理 license_type_tag 数组（JSONB 类型，内部约定为 string[]）
+      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
+        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedLicenseTypeTag = (cleanedQuestion as any).license_type_tag
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          updateData.license_type_tag = cleanedLicenseTypeTag.length > 0 ? cleanedLicenseTypeTag : null;
+        } else {
+          // 如果不是数组，设置为 null
+          updateData.license_type_tag = null;
+        }
+      }
+
+      // ✅ 修复：只有 stage_tag 存在时才更新（null/undefined 时不更新，保留原值）
+      if (cleanedQuestion.stage_tag !== null && cleanedQuestion.stage_tag !== undefined) {
+        updateData.stage_tag = cleanedQuestion.stage_tag;
+      }
+
+      // ✅ 修复：清理 topic_tags 数组（TEXT[] 类型）
+      if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
+        if (Array.isArray(cleanedQuestion.topic_tags)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedTopicTags = cleanedQuestion.topic_tags
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          updateData.topic_tags = cleanedTopicTags.length > 0 ? cleanedTopicTags : null;
+        } else {
+          // 如果不是数组，设置为 null
+          updateData.topic_tags = null;
+        }
+      }
+
+      // ✅ 修复：最终验证和清理所有 JSONB 字段，确保没有空对象或空数组
+      // 检查 content（JSONB）
+      if (updateData.content && typeof updateData.content === "object" && !Array.isArray(updateData.content) && Object.keys(updateData.content).length === 0) {
+        updateData.content = null;
+      }
+      // 检查 explanation（JSONB）
+      if (updateData.explanation && typeof updateData.explanation === "object" && !Array.isArray(updateData.explanation) && Object.keys(updateData.explanation).length === 0) {
+        updateData.explanation = null;
+      }
+      // 检查 options（JSONB）- 确保不是空数组
+      if (updateData.options && Array.isArray(updateData.options) && updateData.options.length === 0) {
+        updateData.options = null;
+      }
+      // 检查 correct_answer（JSONB）
+      if (updateData.correct_answer && Array.isArray(updateData.correct_answer) && updateData.correct_answer.length === 0) {
+        updateData.correct_answer = null;
+      } else if (updateData.correct_answer && typeof updateData.correct_answer === "object" && !Array.isArray(updateData.correct_answer) && Object.keys(updateData.correct_answer).length === 0) {
+        updateData.correct_answer = null;
+      }
+      // 检查 license_type_tag（JSONB）- 确保不是空数组
+      if (updateData.license_type_tag && Array.isArray(updateData.license_type_tag) && updateData.license_type_tag.length === 0) {
+        updateData.license_type_tag = null;
+      }
+
+      // ✅ 最终 JSON 序列化验证
+      try {
+        if (updateData.content) JSON.stringify(updateData.content);
+        if (updateData.explanation) JSON.stringify(updateData.explanation);
+        if (updateData.options) JSON.stringify(updateData.options);
+        if (updateData.correct_answer) JSON.stringify(updateData.correct_answer);
+        if (updateData.license_type_tag) JSON.stringify(updateData.license_type_tag);
+      } catch (finalJsonError) {
+        console.error("[saveQuestionToDb] 最终 JSON 验证失败:", finalJsonError, {
+          content: updateData.content,
+          explanation: updateData.explanation,
+          options: updateData.options,
+          correct_answer: updateData.correct_answer,
+          license_type_tag: updateData.license_type_tag,
+        });
+        throw new Error(`最终 JSON 格式错误: ${finalJsonError instanceof Error ? finalJsonError.message : String(finalJsonError)}`);
+      }
+
+      // ✅ 修复：使用 sql 模板显式转换所有 JSONB 字段，确保正确序列化
+      const finalUpdateData: any = {
+        type: updateData.type,
+        image: updateData.image,
+        category: updateData.category,
+        updated_at: updateData.updated_at,
+      };
+
+      // 转换 JSONB 字段
+      if (updateData.content !== null && updateData.content !== undefined) {
+        finalUpdateData.content = sql`${JSON.stringify(updateData.content)}::jsonb`;
+      } else {
+        finalUpdateData.content = sql`null::jsonb`;
+      }
+
+      if (updateData.explanation !== null && updateData.explanation !== undefined) {
+        finalUpdateData.explanation = sql`${JSON.stringify(updateData.explanation)}::jsonb`;
+      } else {
+        finalUpdateData.explanation = sql`null::jsonb`;
+      }
+
+      if (updateData.options !== null && updateData.options !== undefined) {
+        finalUpdateData.options = sql`${JSON.stringify(updateData.options)}::jsonb`;
+      } else {
+        finalUpdateData.options = sql`null::jsonb`;
+      }
+
+      if (updateData.correct_answer !== null && updateData.correct_answer !== undefined) {
+        finalUpdateData.correct_answer = sql`${JSON.stringify(updateData.correct_answer)}::jsonb`;
+      } else {
+        finalUpdateData.correct_answer = sql`null::jsonb`;
+      }
+
+      // 添加非 JSONB 字段
+      if (updateData.stage_tag !== null && updateData.stage_tag !== undefined) {
+        finalUpdateData.stage_tag = updateData.stage_tag;
+      }
+
+      if (updateData.topic_tags !== null && updateData.topic_tags !== undefined) {
+        finalUpdateData.topic_tags = updateData.topic_tags;
+      }
+
+      if (updateData.license_type_tag !== null && updateData.license_type_tag !== undefined) {
+        finalUpdateData.license_type_tag = sql`${JSON.stringify(updateData.license_type_tag)}::jsonb`;
+      } else {
+        finalUpdateData.license_type_tag = sql`null::jsonb`;
+      }
+
       await db
         .updateTable("questions")
-        .set({
-          type: question.type,
-          content: question.content,
-          options: question.options ? (question.options as any) : null,
-          correct_answer: question.correctAnswer as any,
-          image: question.image || null,
-          explanation: question.explanation || null,
-          license_types: question.category ? [question.category] : null,
-          updated_at: new Date(),
-        })
+        .set(finalUpdateData)
         .where("id", "=", existing.id)
         .execute();
 
       return existing.id;
     } else {
-      // 插入新题目
+      // 插入新题目（仅在 upsert 模式下）
+      const insertData: any = {
+        content_hash: contentHash,
+        type: cleanedQuestion.type,
+        content: contentMultilang as any,
+        options: cleanedOptions,
+        correct_answer: cleanedCorrectAnswer,
+        image: cleanedQuestion.image || null,
+        explanation: explanationMultilang as any,
+        category: cleanedQuestion.category || null,
+      };
+
+      // ✅ 修复：插入时，清理 license_type_tag 数组（JSONB 类型）
+      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
+        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedLicenseTypeTag = (cleanedQuestion as any).license_type_tag
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          insertData.license_type_tag = cleanedLicenseTypeTag.length > 0 ? cleanedLicenseTypeTag : null;
+        } else {
+          insertData.license_type_tag = null;
+        }
+      } else {
+        insertData.license_type_tag = null;
+      }
+
+      if (cleanedQuestion.stage_tag !== null && cleanedQuestion.stage_tag !== undefined) {
+        insertData.stage_tag = cleanedQuestion.stage_tag;
+      } else {
+        insertData.stage_tag = null;
+      }
+
+      // ✅ 修复：插入时，清理 topic_tags 数组（TEXT[] 类型）
+      if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
+        if (Array.isArray(cleanedQuestion.topic_tags)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedTopicTags = cleanedQuestion.topic_tags
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          insertData.topic_tags = cleanedTopicTags.length > 0 ? cleanedTopicTags : null;
+        } else {
+          insertData.topic_tags = null;
+        }
+      } else {
+        insertData.topic_tags = null;
+      }
+
+      // ✅ 修复：最终验证和清理所有 JSONB 字段，确保没有空对象或空数组
+      // 检查 content（JSONB）
+      if (insertData.content && typeof insertData.content === "object" && !Array.isArray(insertData.content) && Object.keys(insertData.content).length === 0) {
+        insertData.content = null;
+      }
+      // 检查 explanation（JSONB）
+      if (insertData.explanation && typeof insertData.explanation === "object" && !Array.isArray(insertData.explanation) && Object.keys(insertData.explanation).length === 0) {
+        insertData.explanation = null;
+      }
+      // 检查 options（JSONB）- 确保不是空数组
+      if (insertData.options && Array.isArray(insertData.options) && insertData.options.length === 0) {
+        insertData.options = null;
+      }
+      // 检查 correct_answer（JSONB）
+      if (insertData.correct_answer && Array.isArray(insertData.correct_answer) && insertData.correct_answer.length === 0) {
+        insertData.correct_answer = null;
+      } else if (insertData.correct_answer && typeof insertData.correct_answer === "object" && !Array.isArray(insertData.correct_answer) && Object.keys(insertData.correct_answer).length === 0) {
+        insertData.correct_answer = null;
+      }
+      // 检查 license_type_tag（JSONB）- 确保不是空数组
+      if (insertData.license_type_tag && Array.isArray(insertData.license_type_tag) && insertData.license_type_tag.length === 0) {
+        insertData.license_type_tag = null;
+      }
+
+      // ✅ 最终 JSON 序列化验证
+      try {
+        if (insertData.content) JSON.stringify(insertData.content);
+        if (insertData.explanation) JSON.stringify(insertData.explanation);
+        if (insertData.options) JSON.stringify(insertData.options);
+        if (insertData.correct_answer) JSON.stringify(insertData.correct_answer);
+        if (insertData.license_type_tag) JSON.stringify(insertData.license_type_tag);
+      } catch (finalJsonError) {
+        console.error("[saveQuestionToDb] 最终 JSON 验证失败（插入）:", finalJsonError, {
+          content: insertData.content,
+          explanation: insertData.explanation,
+          options: insertData.options,
+          correct_answer: insertData.correct_answer,
+          license_type_tag: insertData.license_type_tag,
+        });
+        throw new Error(`最终 JSON 格式错误（插入）: ${finalJsonError instanceof Error ? finalJsonError.message : String(finalJsonError)}`);
+      }
+
+      // ✅ 修复：使用 sql 模板显式转换所有 JSONB 字段，确保正确序列化
+      const finalInsertData: any = {
+        content_hash: insertData.content_hash,
+        type: insertData.type,
+        image: insertData.image,
+        category: insertData.category,
+      };
+
+      // 转换 JSONB 字段
+      if (insertData.content !== null && insertData.content !== undefined) {
+        finalInsertData.content = sql`${JSON.stringify(insertData.content)}::jsonb`;
+      } else {
+        finalInsertData.content = sql`null::jsonb`;
+      }
+
+      if (insertData.explanation !== null && insertData.explanation !== undefined) {
+        finalInsertData.explanation = sql`${JSON.stringify(insertData.explanation)}::jsonb`;
+      } else {
+        finalInsertData.explanation = sql`null::jsonb`;
+      }
+
+      if (insertData.options !== null && insertData.options !== undefined) {
+        finalInsertData.options = sql`${JSON.stringify(insertData.options)}::jsonb`;
+      } else {
+        finalInsertData.options = sql`null::jsonb`;
+      }
+
+      if (insertData.correct_answer !== null && insertData.correct_answer !== undefined) {
+        finalInsertData.correct_answer = sql`${JSON.stringify(insertData.correct_answer)}::jsonb`;
+      } else {
+        finalInsertData.correct_answer = sql`null::jsonb`;
+      }
+
+      // 添加非 JSONB 字段
+      if (insertData.stage_tag !== null && insertData.stage_tag !== undefined) {
+        finalInsertData.stage_tag = insertData.stage_tag;
+      } else {
+        finalInsertData.stage_tag = null;
+      }
+
+      if (insertData.topic_tags !== null && insertData.topic_tags !== undefined) {
+        finalInsertData.topic_tags = insertData.topic_tags;
+      } else {
+        finalInsertData.topic_tags = null;
+      }
+
+      if (insertData.license_type_tag !== null && insertData.license_type_tag !== undefined) {
+        finalInsertData.license_type_tag = sql`${JSON.stringify(insertData.license_type_tag)}::jsonb`;
+      } else {
+        finalInsertData.license_type_tag = sql`null::jsonb`;
+      }
+
       const result = await db
         .insertInto("questions")
-        .values({
-          content_hash: contentHash,
-          type: question.type,
-          content: question.content,
-          options: question.options ? (question.options as any) : null,
-          correct_answer: question.correctAnswer as any,
-          image: question.image || null,
-          explanation: question.explanation || null,
-          license_types: question.category ? [question.category] : null,
-        })
+        .values(finalInsertData)
         .returning("id")
         .executeTakeFirst();
 
@@ -249,6 +662,38 @@ export async function saveAIAnswerToDb(
       console.log(`[saveAIAnswerToDb] 数据库已有AI回答，跳过更新（ID: ${existing.id}）`);
       return existing.id;
     } else {
+      // 从questions表获取标签信息（用于同步标签字段）
+      const questionInfo = await db
+        .selectFrom("questions")
+        .select(["category", "stage_tag", "topic_tags"])
+        .where("content_hash", "=", questionHash)
+        .executeTakeFirst();
+
+      // 统一处理：验证和清理sources JSON（所有Provider共享此逻辑）
+      // 确保sources可以正确序列化为JSONB，不写死任何Provider特定逻辑
+      let normalizedSources = null;
+      if (sources && Array.isArray(sources) && sources.length > 0) {
+        try {
+          const cleanedSources = sources.map(src => ({
+            title: src.title ? String(src.title) : "",
+            url: src.url ? String(src.url) : "",
+            snippet: src.snippet
+              ? String(src.snippet)
+                  .replace(/\\/g, "\\\\")
+                  .replace(/"/g, '\\"')
+              : "",
+            score: typeof src.score === "number" ? src.score : undefined,
+            version: src.version ? String(src.version) : undefined,
+          }));
+
+          JSON.stringify(cleanedSources);
+          normalizedSources = cleanedSources;
+        } catch (err) {
+          console.warn("[saveAIAnswerToDb] invalid JSON, fallback to null", err);
+          normalizedSources = null;
+        }
+      }
+
       // 插入新回答（只有在数据库中没有时才插入）
       const result = await db
         .insertInto("question_ai_answers")
@@ -256,10 +701,15 @@ export async function saveAIAnswerToDb(
           question_hash: questionHash,
           locale,
           answer,
-          sources: sources ? (sources as any) : null,
+          sources: normalizedSources
+            ? sql`${JSON.stringify(normalizedSources)}::jsonb`
+            : null,
           model: model || null,
           created_by: normalizedCreatedBy,
           view_count: 0,
+          category: questionInfo?.category || null,
+          stage_tag: questionInfo?.stage_tag || null,
+          topic_tags: questionInfo?.topic_tags || null,
         })
         .returning("id")
         .executeTakeFirst();
@@ -267,7 +717,7 @@ export async function saveAIAnswerToDb(
       return result?.id || 0;
     }
   } catch (error) {
-    console.error("[saveAIAnswerToDb] Error:", error);
+    console.warn("[saveAIAnswerToDb] Error:", error);
     throw error;
   }
 }
@@ -319,6 +769,13 @@ export async function updateAIAnswerToDb(
       console.log(`[updateAIAnswerToDb] 成功更新AI回答（ID: ${existing.id}）`);
       return existing.id;
     } else {
+      // 从questions表获取标签信息（用于同步标签字段）
+      const questionInfo = await db
+        .selectFrom("questions")
+        .select(["category", "stage_tag", "topic_tags"])
+        .where("content_hash", "=", questionHash)
+        .executeTakeFirst();
+
       // 插入新回答
       const result = await db
         .insertInto("question_ai_answers")
@@ -330,6 +787,9 @@ export async function updateAIAnswerToDb(
           model: model || null,
           created_by: normalizedCreatedBy,
           view_count: 0,
+          category: questionInfo?.category || null,
+          stage_tag: questionInfo?.stage_tag || null,
+          topic_tags: questionInfo?.topic_tags || null,
         })
         .returning("id")
         .executeTakeFirst();
@@ -409,72 +869,15 @@ export async function removePendingUpdate(
 // ============================================================
 
 /**
- * 从JSON包读取题目
- * 优先从统一的questions.json读取，如果不存在则从指定包名读取
+ * @deprecated 此函数已废弃，题库现在全部来自数据库
+ * 保留此函数仅为向后兼容，实际返回 null
  */
 export async function loadQuestionFile(
   packageName?: string
 ): Promise<{ questions: Question[]; version?: string; aiAnswers?: Record<string, string> } | null> {
-  try {
-    // 优先尝试从统一的questions.json读取（这是最新的包）
-    const unifiedFilePath = path.join(QUESTIONS_DIR, "questions.json");
-    try {
-      // 检查文件是否存在并获取文件修改时间（用于验证是否是最新的）
-      const fileStat = await fs.stat(unifiedFilePath).catch(() => null);
-      if (!fileStat) {
-        throw new Error("统一的questions.json文件不存在");
-      }
-      
-      const unifiedContent = await fs.readFile(unifiedFilePath, "utf-8");
-      const unifiedData = JSON.parse(unifiedContent);
-      
-      // 兼容多种格式
-      let allQuestions: Question[] = [];
-      if (Array.isArray(unifiedData)) {
-        allQuestions = unifiedData;
-      } else {
-        allQuestions = unifiedData.questions || [];
-      }
-      
-      // 如果指定了packageName，按category筛选
-      if (packageName) {
-        allQuestions = allQuestions.filter((q) => q.category === packageName);
-      }
-      
-      // 记录文件修改时间（用于验证是否是最新的）
-      const fileMtime = fileStat.mtime;
-      
-      return {
-        questions: allQuestions,
-        version: unifiedData.version,
-        aiAnswers: unifiedData.aiAnswers || {},
-        // 内部字段：文件修改时间（用于验证）
-        _fileMtime: fileMtime,
-      } as any;
-    } catch (unifiedError) {
-      // 如果统一的questions.json不存在，尝试从指定包名读取（兼容旧逻辑）
-      if (packageName) {
-        const filePath = path.join(QUESTIONS_DIR, `${packageName}.json`);
-        const content = await fs.readFile(filePath, "utf-8");
-        const data = JSON.parse(content);
-        
-        // 兼容多种格式
-        if (Array.isArray(data)) {
-          return { questions: data };
-        }
-        
-        return {
-          questions: data.questions || [],
-          version: data.version,
-          aiAnswers: data.aiAnswers || {},
-        };
-      }
-      throw unifiedError;
-    }
-  } catch (error) {
-    console.error(`[loadQuestionFile] Error loading ${packageName || "questions"}:`, error);
+  // 题库现在全部来自数据库，不再从文件系统读取
+  console.log(`[loadQuestionFile] 已废弃：题库现在全部来自数据库，不再从文件系统读取`);
     return null;
-  }
 }
 
 /**
@@ -486,6 +889,9 @@ export async function saveQuestionFile(
     questions: Question[];
     version?: string;
     aiAnswers?: Record<string, string>;
+    // 兼容扩展：多语言
+    questionsByLocale?: Record<string, Question[]>;
+    aiAnswersByLocale?: Record<string, Record<string, string>>;
   }
 ): Promise<void> {
   try {
@@ -500,11 +906,26 @@ export async function saveQuestionFile(
         correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
       }));
       
-      const unifiedData = {
+      const unifiedData: any = {
         questions: normalizedQuestions,
         version: data.version,
         aiAnswers: data.aiAnswers || {},
       };
+      // 扩展字段：多语言
+      if (data.questionsByLocale) {
+        // 为所有 locale 规范化答案
+        const normalizedByLocale: Record<string, Question[]> = {};
+        for (const [loc, list] of Object.entries(data.questionsByLocale)) {
+          normalizedByLocale[loc] = list.map((q) => ({
+            ...q,
+            correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
+          }));
+        }
+        unifiedData.questionsByLocale = normalizedByLocale;
+      }
+      if (data.aiAnswersByLocale) {
+        unifiedData.aiAnswersByLocale = data.aiAnswersByLocale;
+      }
       
       await fs.writeFile(unifiedFilePath, JSON.stringify(unifiedData, null, 2), "utf-8");
       
@@ -636,107 +1057,19 @@ export async function updateJsonPackageAiAnswer(
  * @param packageName 包名（可选），如果不提供，从统一的questions.json读取
  * @param questionHash 题目hash
  */
+/**
+ * @deprecated 此函数已废弃，题库现在全部来自数据库
+ * 保留此函数仅为向后兼容，实际返回 null
+ * 请使用 getAIAnswerFromDb 从数据库读取
+ */
 export async function getAIAnswerFromJson(
   packageName: string | null,
   questionHash: string
 ): Promise<string | null> {
-  try {
-    // 如果不指定packageName，从统一的questions.json读取（这是最新的包）
-    if (!packageName) {
-      // 1. 先获取数据库中的最新版本号和创建时间（确保获取的是最新包）
-      const latestVersionInfo = await getLatestUnifiedVersionInfo();
-      
-      // 2. 从统一的questions.json读取
-      const file = await loadQuestionFile(undefined);
-      if (!file) {
-        console.log(`[getAIAnswerFromJson] questions.json文件不存在`);
+  // 题库现在全部来自数据库，不再从文件系统读取
+  // 直接返回 null，让调用方从数据库读取
+  console.log(`[getAIAnswerFromJson] 已废弃：题库现在全部来自数据库，请使用 getAIAnswerFromDb`);
         return null;
-      }
-      if (!file.aiAnswers) {
-        console.log(`[getAIAnswerFromJson] questions.json文件存在但没有aiAnswers字段`);
-        return null;
-      }
-      // 记录aiAnswers的基本信息（用于调试）
-      const aiAnswersKeys = Object.keys(file.aiAnswers);
-      console.log(`[getAIAnswerFromJson] 已加载questions.json`, {
-        version: file.version,
-        hasAiAnswers: !!file.aiAnswers,
-        aiAnswersCount: aiAnswersKeys.length,
-        filePath: path.join(QUESTIONS_DIR, "questions.json"),
-      });
-      
-      // 3. 验证文件中的版本号是否是最新的（确保获取的是最新包）
-      if (latestVersionInfo) {
-        const { version: latestVersion, createdAt: latestCreatedAt } = latestVersionInfo;
-        
-        if (!file.version) {
-          console.warn(`[getAIAnswerFromJson] 警告：questions.json没有版本号，但数据库中有最新版本(${latestVersion})`);
-          // 文件没有版本号，但数据库有最新版本，说明文件可能不是最新的
-          // 仍然使用文件中的数据，因为可能仍然包含有效的AI回答
-        } else if (file.version !== latestVersion) {
-          console.warn(`[getAIAnswerFromJson] 警告：questions.json的版本号(${file.version})不是最新的(${latestVersion})，建议更新JSON包`);
-          // 文件版本号不是最新的，但继续使用文件中的数据
-          // 因为文件可能仍然包含有效的AI回答，而且重新生成JSON包可能很耗时
-        } else {
-          // 版本号匹配，验证文件修改时间（确保文件是最新的）
-          const fileMtime = (file as any)._fileMtime;
-          if (fileMtime && latestCreatedAt) {
-            const fileTime = new Date(fileMtime).getTime();
-            const dbTime = new Date(latestCreatedAt).getTime();
-            // 允许1分钟的误差（考虑到文件系统和数据库的时间差异）
-            const timeDiff = Math.abs(fileTime - dbTime);
-            if (timeDiff > 60 * 1000) {
-              console.warn(`[getAIAnswerFromJson] 警告：questions.json的修改时间与数据库记录时间相差较大(${Math.round(timeDiff / 1000)}秒)，建议更新JSON包`);
-            } else {
-              console.log(`[getAIAnswerFromJson] 确认：questions.json的版本号(${file.version})是最新的，且文件修改时间匹配`);
-            }
-          } else {
-            console.log(`[getAIAnswerFromJson] 确认：questions.json的版本号(${file.version})是最新的`);
-          }
-        }
-      } else {
-        // 数据库中没有版本号记录，说明可能还没有更新过JSON包
-        // 仍然使用文件中的数据
-        if (file.version) {
-          console.log(`[getAIAnswerFromJson] 信息：questions.json有版本号(${file.version})，但数据库中没有版本记录`);
-        }
-      }
-      
-      // 查找AI回答
-      const answer = file.aiAnswers[questionHash];
-      if (answer) {
-        console.log(`[getAIAnswerFromJson] 从questions.json找到AI回答`, {
-          questionHash: questionHash.substring(0, 16) + "...",
-          answerLength: answer.length,
-          totalAnswers: Object.keys(file.aiAnswers).length,
-        });
-        return answer;
-      } else {
-        // 记录更详细的调试信息
-        const aiAnswersKeys = Object.keys(file.aiAnswers);
-        const sampleHashes = aiAnswersKeys.slice(0, 3).map(h => h.substring(0, 16) + "...");
-        console.log(`[getAIAnswerFromJson] questions.json中没有找到对应的AI回答`, {
-          questionHash: questionHash.substring(0, 16) + "...",
-          totalAnswers: aiAnswersKeys.length,
-          sampleHashes: sampleHashes.length > 0 ? sampleHashes : "无",
-          fileVersion: file.version,
-        });
-        return null;
-      }
-    }
-    
-    // 如果指定了packageName，从指定包读取（兼容旧逻辑，但不推荐使用）
-    // 注意：单个JSON包可能不是最新的，建议使用统一的questions.json
-    console.warn(`[getAIAnswerFromJson] 警告：从单个JSON包(${packageName})读取，建议使用统一的questions.json`);
-    const file = await loadQuestionFile(packageName);
-    if (!file || !file.aiAnswers) {
-      return null;
-    }
-    return file.aiAnswers[questionHash] || null;
-  } catch (error) {
-    console.error("[getAIAnswerFromJson] Error:", error);
-    return null;
-  }
 }
 
 // ============================================================
@@ -961,6 +1294,37 @@ export async function getUnifiedVersionContent(
 }
 
 /**
+ * 从数据库获取最新版本的完整JSON包内容（从package_content字段读取）
+ * @returns 如果找到，返回JSON包内容；否则返回null
+ */
+export async function getLatestUnifiedVersionContent(): Promise<{ questions: Question[]; version: string; aiAnswers: Record<string, string> } | null> {
+  try {
+    const result = await db
+      .selectFrom("question_package_versions")
+      .select(["package_content", "version"])
+      .where("package_name", "=", "__unified__")
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    if (!result || !result.package_content) {
+      console.log(`[getLatestUnifiedVersionContent] 数据库中没有找到最新版本的JSON包内容`);
+      return null;
+    }
+
+    const content = result.package_content as any;
+    return {
+      questions: content.questions || [],
+      version: result.version,
+      aiAnswers: content.aiAnswers || {},
+    };
+  } catch (error) {
+    console.error(`[getLatestUnifiedVersionContent] Error:`, error);
+    return null;
+  }
+}
+
+/**
  * 删除统一版本号（从数据库删除指定版本号的记录）
  */
 export async function deleteUnifiedVersion(version: string): Promise<void> {
@@ -1134,55 +1498,68 @@ export async function updateAllJsonPackages(): Promise<{
 
     // 转换为前端格式（使用content_hash作为hash，不重新计算）
     const questionsWithHash = allDbQuestions.map((q) => {
-      // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
-      const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
-        ? q.license_types[0]
-        : "其他";
+      // 优先使用category字段，如果没有则从license_type_tag数组中获取（取第一个，如果没有则使用"其他"）
+      const category = q.category || 
+        (Array.isArray(q.license_type_tag) && q.license_type_tag.length > 0
+          ? q.license_type_tag[0]
+          : "其他");
+
+      // 处理content字段：保持多语言对象格式
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+      if (typeof q.content === "string") {
+        // 兼容旧格式：单语言字符串
+        content = q.content;
+      } else {
+        // 新格式：多语言对象
+        content = q.content;
+      }
 
       return {
         id: q.id,
         type: q.type,
-        content: q.content,
+        content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
         correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category,
         hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
+        license_tags: q.license_type_tag || undefined,
+        stage_tag: q.stage_tag || undefined,
+        topic_tags: q.topic_tags || undefined,
       };
     });
     
     // 3. 获取所有题目的AI回答（从数据库，使用hash作为question_hash）
     // 批量查询所有AI回答，提高性能并支持多种locale格式
     const aiAnswers: Record<string, string> = {};
+    const aiAnswersByLocale: Record<string, Record<string, string>> = {};
     const questionHashes = questionsWithHash
       .map((q) => (q as any).hash)
       .filter((hash): hash is string => !!hash);
     
     if (questionHashes.length > 0) {
       try {
-        // 批量查询，同时支持 zh、zh-CN、zh_CN 格式（兼容历史数据）
-        const aiAnswersFromDb = await db
+        // 批量查询所有 locale
+        const allAnswers = await db
           .selectFrom("question_ai_answers")
           .select(["question_hash", "answer", "created_at", "locale"])
           .where("question_hash", "in", questionHashes)
-          .where((eb) =>
-            eb.or([
-              eb("locale", "=", "zh"),
-              eb("locale", "=", "zh-CN"),
-              eb("locale", "=", "zh_CN"),
-            ])
-          )
           .orderBy("question_hash", "asc")
           .orderBy("created_at", "desc")
           .execute();
 
-        // 构建映射（每个 question_hash 只保留最新的回答）
-        for (const aiAnswer of aiAnswersFromDb) {
-          if (!aiAnswers[aiAnswer.question_hash] && aiAnswer.answer) {
-            aiAnswers[aiAnswer.question_hash] = aiAnswer.answer;
+        // 每个 locale 构建映射（每个 question_hash 只保留最新的回答）
+        for (const row of allAnswers) {
+          const loc = row.locale || "zh";
+          if (!aiAnswersByLocale[loc]) aiAnswersByLocale[loc] = {};
+          if (!aiAnswersByLocale[loc][row.question_hash] && row.answer) {
+            aiAnswersByLocale[loc][row.question_hash] = row.answer;
           }
         }
+        // 兼容旧字段：默认中文
+        const zhMap = aiAnswersByLocale["zh"] || aiAnswersByLocale["zh-CN"] || aiAnswersByLocale["zh_CN"] || {};
+        Object.assign(aiAnswers, zhMap);
         
         console.log(`[updateAllJsonPackages] 从数据库批量查询到 ${Object.keys(aiAnswers).length} 个AI回答`);
       } catch (error) {
@@ -1336,11 +1713,89 @@ export async function updateAllJsonPackages(): Promise<{
       };
     }
 
-    // 7. 保存新版本号到数据库（包含完整JSON包内容）
-    const newPackageContent = {
-      questions: questionsWithHash,
+    // 6.1 读取启用的语言列表（用于生成 questionsByLocale）
+    let enabledLocales: string[] = [];
+    try {
+      const langs = await db
+        .selectFrom("languages")
+        .select(["locale"])
+        .where("enabled", "=", true)
+        .execute();
+      enabledLocales = langs.map((l) => l.locale);
+    } catch {
+      // 若无 languages 表记录，回退到至少包含 zh
+      enabledLocales = ["zh"];
+    }
+
+    // 6.2 生成各语言的题目列表（从 translations / base）
+    const questionsByLocale: Record<string, any[]> = {};
+    for (const loc of enabledLocales) {
+      if (loc.toLowerCase().startsWith("zh")) {
+        questionsByLocale[loc] = questionsWithHash;
+        continue;
+      }
+      // 直接从 questions 表的 JSON 字段中提取对应语言（不再使用 question_translations 表）
+      // 基于 base 问题构造该语言的问题（从多语言对象中提取）
+      const localized = questionsWithHash.map((q) => {
+          // 如果数据库中没有翻译，从多语言对象中提取对应语言
+          const localizedQ: any = { ...q };
+          
+          // 检查是否是占位符的辅助函数
+          const isPlaceholder = (value: string | undefined): boolean => {
+            return value !== undefined && typeof value === 'string' && 
+              (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+          };
+          
+          // 处理content字段：从多语言对象中提取对应语言
+          if (typeof q.content === "object" && q.content !== null) {
+            const contentObj = q.content as { [key: string]: string | undefined };
+            const targetValue = contentObj[loc];
+            // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+            if (targetValue && !isPlaceholder(targetValue)) {
+              localizedQ.content = targetValue;
+            } else {
+              localizedQ.content = null; // 没有翻译，返回null
+            }
+          } else {
+            // 如果content是字符串，对于非中文语言返回null
+            if (loc.toLowerCase().startsWith("zh")) {
+              localizedQ.content = q.content;
+            } else {
+              localizedQ.content = null;
+            }
+          }
+          
+          // 处理explanation字段：从多语言对象中提取对应语言
+          if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
+            const expObj = q.explanation as { [key: string]: string | undefined };
+            const targetValue = expObj[loc];
+            // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+            if (targetValue && !isPlaceholder(targetValue)) {
+              localizedQ.explanation = targetValue;
+            } else {
+              localizedQ.explanation = null; // 没有翻译，返回null
+            }
+          } else if (q.explanation) {
+            // 如果explanation是字符串，对于非中文语言返回null
+            if (loc.toLowerCase().startsWith("zh")) {
+              localizedQ.explanation = q.explanation;
+            } else {
+              localizedQ.explanation = null;
+            }
+          }
+          
+          return localizedQ;
+      });
+      questionsByLocale[loc] = localized;
+    }
+
+    // 7. 保存新版本号到数据库（包含完整JSON包内容，多语言）
+    const newPackageContent: any = {
       version,
-      aiAnswers,
+      questions: questionsWithHash, // 兼容字段（中文）
+      aiAnswers,                    // 兼容字段（中文）
+      questionsByLocale,
+      aiAnswersByLocale,
     };
     await saveUnifiedVersion(
       version,
@@ -1349,7 +1804,7 @@ export async function updateAllJsonPackages(): Promise<{
       newPackageContent
     );
 
-    // 7. 保存到统一的questions.json（使用统一版本号）
+    // 7. 保存到统一的questions.json（使用统一版本号，包含多语言）
     try {
       // 按category分组保存（为了兼容旧逻辑，但实际保存到统一文件）
       const categoryGroups = new Map<string, Question[]>();
@@ -1367,7 +1822,9 @@ export async function updateAllJsonPackages(): Promise<{
         questions: questionsWithHash,
         version, // 使用统一版本号
         aiAnswers,
-      });
+        questionsByLocale,
+        aiAnswersByLocale,
+      } as any);
     } catch (error) {
       console.error(`[updateAllJsonPackages] Error saving unified package:`, error);
     }

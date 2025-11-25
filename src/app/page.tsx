@@ -17,11 +17,16 @@ import {
   UtensilsCrossed,
   Truck,
   Swords,
+  Globe,
+  Star,
 } from "lucide-react";
 import AIPage from "@/components/AIPage";
 import MerchantAdCarousel from "@/components/MerchantAdCarousel";
 import SplashScreenAd from "@/components/SplashScreenAd";
 import PopupAd from "@/components/PopupAd";
+import { useLanguage, type Language } from "@/lib/i18n";
+import Link from "next/link";
+import { getFormattedVersion } from "@/lib/version";
 
 const welcomeData = [
   {
@@ -65,6 +70,7 @@ type AdSlotConfig = {
 };
 
 export default function HomePage() {
+  const { language, setLanguage, t } = useLanguage();
   const [showAI, setShowAI] = useState(false);
   const [totalProgress, setTotalProgress] = useState(0);
   const [currentWelcomeIndex, setCurrentWelcomeIndex] = useState(0);
@@ -74,18 +80,17 @@ export default function HomePage() {
   const [showSplash, setShowSplash] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [splashDuration, setSplashDuration] = useState(3);
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
 
   useEffect(() => {
     // 加载广告栏配置
     const loadAdSlots = async () => {
       try {
-        console.log("[广告加载] 开始加载广告栏配置...");
         const res = await fetch("/api/ad-slots");
         if (res.ok) {
           const data = await res.json();
           if (data.ok) {
             const items = data.data.items || [];
-            console.log("[广告加载] 广告栏配置加载成功:", items);
             setAdSlots(items);
             
             // 检查启动页广告 - 只在首次访问时显示
@@ -93,30 +98,23 @@ export default function HomePage() {
               // 检查是否已经显示过启动页广告
               const hasShownSplash = localStorage.getItem("splash_ad_shown");
               if (hasShownSplash === "true") {
-                console.log("[广告加载] 启动页广告已显示过，跳过");
                 return false; // 已显示过，不需要检查弹窗
               }
 
               const splashConfig = items.find((item: AdSlotConfig & { splashDuration?: number }) => item.slotKey === "splash_screen");
-              console.log("[广告加载] 启动页广告配置:", splashConfig);
               if (splashConfig) {
                 if (splashConfig.splashDuration) {
                   setSplashDuration(splashConfig.splashDuration);
                 }
                 try {
-                  console.log("[广告加载] 检查启动页广告数据...");
                   const res = await fetch("/api/merchant-ads?adSlot=splash_screen");
                   if (res.ok) {
                     const data = await res.json();
-                    console.log("[广告加载] 启动页广告数据响应:", data);
                     if (data.ok && data.data.items && data.data.items.length > 0) {
-                      console.log("[广告加载] 找到启动页广告，数量:", data.data.items.length);
                       setShowSplash(true);
                       // 标记为已显示
                       localStorage.setItem("splash_ad_shown", "true");
                       return true; // 有启动页广告，不需要检查弹窗
-                    } else {
-                      console.log("[广告加载] 没有启动页广告数据");
                     }
                   } else {
                     console.error("[广告加载] 启动页广告请求失败:", res.status);
@@ -124,8 +122,6 @@ export default function HomePage() {
                 } catch (error) {
                   console.error("[广告加载] 检查启动页广告失败:", error);
                 }
-              } else {
-                console.log("[广告加载] 没有找到启动页广告配置");
               }
               return false; // 没有启动页广告，需要检查弹窗
             };
@@ -133,22 +129,16 @@ export default function HomePage() {
             // 检查弹窗广告
             const checkPopupAd = async () => {
               const popupConfig = items.find((item: AdSlotConfig) => item.slotKey === "popup_ad");
-              console.log("[广告加载] 弹窗广告配置:", popupConfig);
               if (popupConfig) {
                 try {
-                  console.log("[广告加载] 检查弹窗广告数据...");
                   const res = await fetch("/api/merchant-ads?adSlot=popup_ad");
                   if (res.ok) {
                     const data = await res.json();
-                    console.log("[广告加载] 弹窗广告数据响应:", data);
                     if (data.ok && data.data.items && data.data.items.length > 0) {
-                      console.log("[广告加载] 找到弹窗广告，数量:", data.data.items.length);
                       // 延迟显示弹窗
                       setTimeout(() => {
                         setShowPopup(true);
                       }, 500);
-                    } else {
-                      console.log("[广告加载] 没有弹窗广告数据");
                     }
                   } else {
                     console.error("[广告加载] 弹窗广告请求失败:", res.status);
@@ -156,8 +146,6 @@ export default function HomePage() {
                 } catch (error) {
                   console.error("[广告加载] 检查弹窗广告失败:", error);
                 }
-              } else {
-                console.log("[广告加载] 没有找到弹窗广告配置");
               }
             };
             
@@ -271,12 +259,71 @@ export default function HomePage() {
           <div className="flex items-center space-x-2">
             <Truck className="h-6 w-6 text-blue-600" />
             <span className="text-xl font-bold text-gray-900">ZALEM</span>
+            <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">
+              {getFormattedVersion()}
+            </span>
           </div>
           <div className="flex items-center space-x-2">
+            {/* 语言切换按钮 */}
+            <div className="relative">
+              <button
+                onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+                className="flex items-center space-x-1 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label={t('home.changeLanguage')}
+              >
+                <Globe className="h-5 w-5" />
+                <span className="text-sm font-medium">
+                  {language === 'zh' ? t('language.chinese') : language === 'en' ? t('language.english') : t('language.japanese')}
+                </span>
+              </button>
+              {showLanguageMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowLanguageMenu(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border z-20">
+                    <button
+                      onClick={() => {
+                        setLanguage('zh');
+                        setShowLanguageMenu(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 first:rounded-t-lg ${
+                        language === 'zh' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      }`}
+                    >
+                      {t('language.chinese')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setLanguage('en');
+                        setShowLanguageMenu(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        language === 'en' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      }`}
+                    >
+                      {t('language.english')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setLanguage('ja');
+                        setShowLanguageMenu(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 last:rounded-b-lg ${
+                        language === 'ja' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      }`}
+                    >
+                      {t('language.japanese')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <button
               onClick={() => setShowAI(true)}
               className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 transition-colors"
-              aria-label="打开 AI 助手"
+              aria-label={t('home.aiAssistant')}
             >
               <Bot className="h-6 w-6" />
             </button>
@@ -290,9 +337,9 @@ export default function HomePage() {
         <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
           <div className="mb-4">
             <h2 className="text-lg font-bold text-gray-900">
-              欢迎来到 Zalem.app
+              {t('home.welcome')}
             </h2>
-            <p className="text-gray-600 text-sm mt-1">开启你的学车之旅</p>
+            <p className="text-gray-600 text-sm mt-1">{t('home.subtitle')}</p>
           </div>
           <div className="relative">
             <div
@@ -352,7 +399,7 @@ export default function HomePage() {
             </div>
             <div className="h-5 flex items-center justify-center">
               <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
-                课程学习
+                {t('home.study')}
               </span>
             </div>
           </a>
@@ -366,7 +413,7 @@ export default function HomePage() {
             </div>
             <div className="h-5 flex items-center justify-center">
               <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
-                模拟考试
+                {t('home.exam')}
               </span>
             </div>
           </a>
@@ -380,7 +427,7 @@ export default function HomePage() {
             </div>
             <div className="h-5 flex items-center justify-center">
               <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
-                错题本
+                {t('home.mistakes')}
               </span>
             </div>
           </a>
@@ -394,9 +441,30 @@ export default function HomePage() {
             </div>
             <div className="h-5 flex items-center justify-center">
               <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
-                大乱斗
+                {t('home.royalbattle')}
               </span>
             </div>
+          </a>
+        </div>
+
+        {/* Favorites Section */}
+        <div className="mb-6">
+          <a
+            href="/favorites"
+            className="bg-white rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow flex items-center space-x-4"
+          >
+            <div className="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center">
+              <Star className="h-6 w-6 text-yellow-600 fill-current" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-gray-900">
+                {t('home.favorites')}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {t('profile.favoritesDesc')}
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-gray-400" />
           </a>
         </div>
 
@@ -411,8 +479,8 @@ export default function HomePage() {
                 <Bot className="h-6 w-6" />
               </div>
               <div className="text-left">
-                <h3 className="text-lg font-bold">AI 智能助手</h3>
-                <p className="text-sm text-white/90">随时解答你的驾考问题 <span className="text-white/70">by Zalem</span></p>
+                <h3 className="text-lg font-bold">{t('home.aiAssistant')}</h3>
+                <p className="text-sm text-white/90">{t('home.aiDescription')} <span className="text-white/70">by Zalem</span></p>
               </div>
             </div>
             <ChevronRight className="h-6 w-6" />

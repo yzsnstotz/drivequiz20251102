@@ -2,18 +2,35 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { checkSafety } from "../lib/safety.js";
 import { getRagContext } from "../lib/rag.js";
-import { getOpenAIClient } from "../lib/openaiClient.js";
 import { cacheGet, cacheSet } from "../lib/cache.js";
 import type { ServiceConfig } from "../index.js";
 import { ensureServiceAuth } from "../middlewares/auth.js";
-import { logAiInteraction } from "../lib/dbLogger.js";
 import { getModelFromConfig, getCacheTtlFromConfig } from "../lib/configLoader.js";
+import { runScene, type AiServiceConfig } from "@zalem/ai-core";
 
 /** 请求体类型 */
 type AskBody = {
-  question?: string;
+  question?: string | {
+    id?: number;
+    questionText?: string;
+    correctAnswer?: string;
+    type?: string;
+    options?: any;
+    explanation?: string;
+    licenseTypeTag?: string | null;
+    stageTag?: string | null;
+    topicTags?: any[];
+    sourceLanguage?: string;
+    [key: string]: any;
+  };
   userId?: string;
   lang?: string; // "zh" | "ja" | "en" | ...
+  // 场景标识（如 question_translation, question_polish, question_full_pipeline 等）
+  scene?: string;
+  // 源语言（用于翻译场景）
+  sourceLanguage?: string;
+  // 目标语言（用于翻译场景）
+  targetLanguage?: string;
 };
 
 /** 响应体类型 */
@@ -75,19 +92,50 @@ function estimateCostUsd(
 
 /** 读取并校验请求体 */
 function parseAndValidateBody(body: unknown): {
-  question: string;
+  question: string | {
+    id?: number;
+    questionText?: string;
+    correctAnswer?: string;
+    type?: string;
+    options?: any;
+    explanation?: string;
+    licenseTypeTag?: string | null;
+    stageTag?: string | null;
+    topicTags?: any[];
+    sourceLanguage?: string;
+    [key: string]: any;
+  };
+  normalizedQuestion: string; // 规范化后的字符串，用于 prompt 构建
   lang: string;
   userId?: string | null;
+  scene?: string | null;
+  sourceLanguage?: string | null;
+  targetLanguage?: string | null;
 } {
   const b = (body ?? {}) as AskBody & { userId?: string | null };
 
-  if (!b.question || typeof b.question !== "string") {
-    const err: Error & { statusCode?: number } = new Error("Missing or invalid 'question'");
+  // ✅ 修复：支持 question 为字符串或对象
+  if (!b.question) {
+    const err: Error & { statusCode?: number } = new Error("Missing 'question'");
     err.statusCode = 400;
     throw err;
   }
-  const question = b.question.trim();
-  if (question.length === 0 || question.length > MAX_QUESTION_LEN) {
+
+  // 规范化 question：如果是对象，提取 questionText；如果是字符串，直接使用
+  let normalizedQuestion: string;
+  if (typeof b.question === "string") {
+    normalizedQuestion = b.question.trim();
+  } else if (typeof b.question === "object" && b.question !== null) {
+    // 对象格式：优先使用 questionText，否则 JSON 化
+    normalizedQuestion = b.question.questionText || JSON.stringify(b.question, null, 2);
+  } else {
+    const err: Error & { statusCode?: number } = new Error("Invalid 'question' type");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 验证规范化后的 question 长度
+  if (normalizedQuestion.length === 0 || normalizedQuestion.length > MAX_QUESTION_LEN) {
     const err: Error & { statusCode?: number } = new Error("Question length out of range");
     err.statusCode = 400;
     throw err;
@@ -108,15 +156,150 @@ function parseAndValidateBody(body: unknown): {
     userId = null;
   }
 
-  return { question, lang: validLang, userId };
+  // ✅ 修复：确保 scene 从 body 正确解构
+  const scene = typeof b.scene === "string" ? b.scene.trim() || null : null;
+  const sourceLanguage = typeof b.sourceLanguage === "string" ? b.sourceLanguage.trim() || null : null;
+  const targetLanguage = typeof b.targetLanguage === "string" ? b.targetLanguage.trim() || null : null;
+
+  return { 
+    question: b.question, // 保留原始 question（可能是对象或字符串）
+    normalizedQuestion, // 规范化后的字符串
+    lang: validLang, 
+    userId, 
+    scene, 
+    sourceLanguage, 
+    targetLanguage 
+  };
 }
 
-/** 生成缓存 Key（包含语言与模型，避免跨配置命中） */
-export function buildCacheKey(question: string, lang: string, model: string): string {
-  return `ask:v1:q=${encodeURIComponent(question)}:l=${lang}:m=${model}`;
+/** 生成缓存 Key（包含语言、模型和场景，避免跨配置命中） */
+export function buildCacheKey(question: string, lang: string, model: string, scene?: string | null, sourceLanguage?: string | null, targetLanguage?: string | null): string {
+  const parts = [
+    `q=${encodeURIComponent(question)}`,
+    `l=${lang}`,
+    `m=${model}`,
+  ];
+  if (scene) {
+    parts.push(`s=${encodeURIComponent(scene)}`);
+  }
+  if (sourceLanguage) {
+    parts.push(`from=${encodeURIComponent(sourceLanguage)}`);
+  }
+  if (targetLanguage) {
+    parts.push(`to=${encodeURIComponent(targetLanguage)}`);
+  }
+  return `ask:v1:${parts.join(":")}`;
 }
 
-/** System Prompt（根据语言输出） */
+/**
+ * 从 Supabase 读取场景配置
+ * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.getSceneConfig
+ */
+async function getSceneConfig(
+  sceneKey: string,
+  locale: string,
+  config: ServiceConfig
+): Promise<{ prompt: string; outputFormat: string | null } | null> {
+  const SUPABASE_URL = config.supabaseUrl;
+  const SUPABASE_SERVICE_KEY = config.supabaseServiceKey;
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    return null;
+  }
+
+  try {
+    const url = `${SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
+    console.log("[AI-SERVICE] 读取场景配置:", { sceneKey, locale, url: url.substring(0, 100) + "..." });
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) {
+      console.warn("[AI-SERVICE] 场景配置请求失败:", { status: res.status, statusText: res.statusText });
+      return null;
+    }
+
+    const data = (await res.json()) as Array<{
+      system_prompt_zh: string;
+      system_prompt_ja: string | null;
+      system_prompt_en: string | null;
+      output_format: string | null;
+    }>;
+
+    if (!data || data.length === 0) {
+      console.warn("[AI-SERVICE] 场景配置不存在:", { sceneKey });
+      return null;
+    }
+
+    const sceneConfig = data[0];
+    const lang = locale.toLowerCase();
+
+    // 根据语言选择 prompt
+    let prompt = sceneConfig.system_prompt_zh;
+    if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
+      prompt = sceneConfig.system_prompt_ja;
+      console.log("[AI-SERVICE] 使用日文 prompt");
+    } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
+      prompt = sceneConfig.system_prompt_en;
+      console.log("[AI-SERVICE] 使用英文 prompt");
+    } else {
+      console.log("[AI-SERVICE] 使用中文 prompt (locale:", locale, "lang:", lang, ")");
+    }
+
+    const finalPrompt = prompt || sceneConfig.system_prompt_zh;
+    console.log("[AI-SERVICE] 场景配置读取成功:", { 
+      sceneKey, 
+      locale, 
+      promptLength: finalPrompt.length,
+      promptPreview: finalPrompt.substring(0, 100) + "..."
+    });
+
+    return {
+      prompt: finalPrompt,
+      outputFormat: sceneConfig.output_format,
+    };
+  } catch (error) {
+    console.error("[AI-SERVICE] 读取场景配置失败:", error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+/**
+ * 替换 prompt 中的占位符
+ * @deprecated 此函数已迁移到 sceneRunner.ts，请使用 sceneRunner.replacePlaceholders
+ */
+function replacePlaceholders(
+  prompt: string,
+  sourceLanguage?: string,
+  targetLanguage?: string
+): string {
+  let result = prompt;
+
+  // 替换 {sourceLanguage} 和 {源语言}
+  if (sourceLanguage) {
+    result = result.replace(/{sourceLanguage}/gi, sourceLanguage);
+    result = result.replace(/{源语言}/g, sourceLanguage);
+  }
+
+  // 替换 {targetLanguage} 和 {目标语言}
+  if (targetLanguage) {
+    result = result.replace(/{targetLanguage}/gi, targetLanguage);
+    result = result.replace(/{目标语言}/g, targetLanguage);
+  }
+
+  return result;
+}
+
+/** 
+ * System Prompt（根据语言输出）
+ * @deprecated 此函数已迁移到 sceneRunner.ts，场景执行应使用 sceneRunner.runScene
+ */
 function buildSystemPrompt(lang: string): string {
   const base =
     "你是 ZALEM 驾驶考试学习助手。请基于日本交通法规与题库知识回答用户问题，引用时要简洁，不编造，不输出与驾驶考试无关的内容。";
@@ -134,39 +317,69 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
     "/ask",
     async (request: FastifyRequest<{ Body: AskBody }>, reply: FastifyReply): Promise<void> => {
       const config = app.config as ServiceConfig;
+      const startTime = Date.now(); // 记录开始时间
 
       try {
         // 1) 服务间鉴权（统一中间件）
         ensureServiceAuth(request, config);
 
         // 2) 校验请求体
-        const { question, lang, userId } = parseAndValidateBody(request.body);
+        const { question, normalizedQuestion, lang, scene, sourceLanguage, targetLanguage } = parseAndValidateBody(request.body);
+        
+        // ✅ 修复：确保 scene 已正确解构，并记录关键日志
+        if (!scene) {
+          reply.code(400).send({
+            ok: false,
+            errorCode: "VALIDATION_FAILED",
+            message: "scene is required",
+          });
+          return;
+        }
+
+        // 记录接收到的参数（注意：不打印完整 question 内容，避免日志爆炸）
+        const questionType = typeof question === "string" ? "string" : "object";
+        const questionLength = typeof question === "string" 
+          ? question.length 
+          : (question?.questionText?.length || JSON.stringify(question).length);
+        
+        app.log.info(
+          { 
+            scene, 
+            hasQuestion: !!question, 
+            questionType, 
+            questionLength,
+            sourceLanguage, 
+            targetLanguage,
+            lang 
+          },
+          "[ai-service] /v1/ask received"
+        );
 
         // 3) 从数据库读取模型配置（优先）或使用环境变量
         const model = await getModelFromConfig();
-        const cacheKey = buildCacheKey(question, lang, model);
+        // ✅ 修复：使用 normalizedQuestion 构建缓存 key（确保一致性）
+        const cacheKey = buildCacheKey(normalizedQuestion, lang, model, scene, sourceLanguage, targetLanguage);
         const cached = await cacheGet<AskResult>(cacheKey);
         if (cached) {
-          // 异步记录日志（不阻断）
-          // 注意：使用当前配置的模型，而不是缓存中的模型（因为配置可能已更改）
-          void logAiInteraction({
-            userId,
-            question,
-            answer: cached.answer,
-            lang,
-            model: model, // 使用当前配置的模型，而不是缓存中的旧模型
-            ragHits: Array.isArray(cached.sources) ? cached.sources.length : (cached.reference ? 1 : 0),
-            safetyFlag: cached.safetyFlag || "ok",
-            costEstUsd: cached.costEstimate?.approxUsd ?? null,
-            createdAtIso: cached.time || new Date().toISOString(),
-          }).catch(() => {});
+          // 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
+          // 主路由会在 STEP 4.5.3 或 STEP 7 中写入日志
 
-          // 返回标准响应结构（标记为缓存答案）
+          // 计算耗时（缓存命中时耗时很短）
+          const durationMs = Date.now() - startTime;
+          const durationSec = (durationMs / 1000).toFixed(2);
+
+          // 构建 sources 数组（包含耗时信息）
+          const sources: Array<{ title: string; url: string; snippet?: string }> = [
+            { title: "处理耗时", url: "", snippet: `${durationSec} 秒` },
+            ...(cached.sources || []),
+          ];
+
+          // 返回标准响应结构（标记为缓存答案，始终包含耗时信息）
           reply.send({
             ok: true,
             data: {
               answer: cached.answer,
-              sources: cached.sources,
+              sources: sources, // 始终返回 sources（包含耗时信息）
               model: cached.model,
               safetyFlag: cached.safetyFlag || "ok",
               costEstimate: cached.costEstimate,
@@ -201,11 +414,12 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return provider;
         })();
         
+        // ✅ 修复：使用 normalizedQuestion 进行安全审查和 RAG 检索
         // 并行执行：安全审查、RAG检索（需要aiProvider）、配置读取
         const [safe, reference, aiProviderResult] = await Promise.all([
-          checkSafety(question),
+          checkSafety(normalizedQuestion),
           // RAG 检索需要先获取 aiProvider，但可以并行执行
-          aiProviderPromise.then(provider => getRagContext(question, lang, config, provider).catch(() => "")),
+          aiProviderPromise.then(provider => getRagContext(normalizedQuestion, lang, config, provider).catch(() => "")),
           aiProviderPromise,
         ]);
 
@@ -227,97 +441,97 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
 
         const aiProvider = aiProviderResult;
 
-        // 6) 调用 OpenAI
-        let openai;
-        try {
-          openai = getOpenAIClient(config, aiProvider);
-          console.log("[ASK ROUTE] AI client initialized successfully", {
-            aiProvider,
-            baseUrl: openai.baseURL,
-            isOpenRouter: aiProvider === "openrouter",
-            hasOpenRouterKey: !!config.openrouterApiKey,
-            hasOpenAIKey: !!config.openaiApiKey,
-          });
-        } catch (e) {
-          const error = e as Error;
-          console.error("[ASK ROUTE] Failed to initialize AI client:", {
-            error: error.message,
-            stack: error.stack,
-            aiProvider,
-            openaiBaseUrl: process.env.OPENAI_BASE_URL,
-            openrouterBaseUrl: process.env.OPENROUTER_BASE_URL,
-          });
-          reply.code(500).send({
-            ok: false,
-            errorCode: "CONFIG_ERROR",
-            message: error.message || "Failed to initialize AI client",
-          });
-          return;
-        }
-
-        const sys = buildSystemPrompt(lang);
+        // 5) 使用统一的场景执行模块
+        // ⚠️ 注意：所有场景执行逻辑都在 sceneRunner.ts 中，这里只负责调用
+        const promptLocale = targetLanguage || lang; // 优先使用 targetLanguage（翻译目标语言）
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
 
-        let completion;
+        let sceneResult;
+        let inputTokens: number | undefined;
+        let outputTokens: number | undefined;
+        let totalTokens: number | undefined;
+        
         try {
-          console.log("[ASK ROUTE] Calling AI API", {
+          // ✅ 修复：scene 已在上方验证，这里直接使用
+          app.log.debug({ scene }, "[ai-service] buildPromptForScene");
+          
+          console.log("[ASK ROUTE] 使用场景执行模块:", {
+            scene,
+            locale: promptLocale,
+            sourceLanguage,
+            targetLanguage,
             model,
-            questionLength: question.length,
-            hasReference: !!reference,
-            referenceLength: reference?.length || 0,
+            aiProvider,
           });
-          completion = await openai.chat.completions.create({
-            model: model, // 使用从数据库读取的模型配置
+          
+          // 构建 AiServiceConfig（最小接口）
+          const aiServiceConfig: AiServiceConfig = {
+            model: model || config.aiModel || "gpt-4o-mini",
+            openaiApiKey: config.openaiApiKey,
+            openrouterApiKey: config.openrouterApiKey,
+            userPrefix,
+            refPrefix,
+            version: config.version,
+          };
+
+          // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
+          sceneResult = await runScene({
+            sceneKey: scene, // ✅ 确保 scene 从解构中获取，不是自由变量
+            locale: promptLocale,
+            question: normalizedQuestion, // 使用规范化后的字符串
+            reference: reference || null,
+            userPrefix,
+            refPrefix,
+            supabaseConfig: {
+              supabaseUrl: config.supabaseUrl,
+              supabaseServiceKey: config.supabaseServiceKey,
+            },
+            providerKind: "openai",
+            config: aiServiceConfig,
+            aiProvider,
+            model,
+            sourceLanguage: sourceLanguage || null,
+            targetLanguage: targetLanguage || null,
             temperature: 0.4,
-            messages: [
-              { role: "system", content: sys },
-              {
-                role: "user",
-                content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
-              },
-            ],
           });
-          console.log("[ASK ROUTE] AI API call successful", {
-            model,
-            hasAnswer: !!completion.choices?.[0]?.message?.content,
-            inputTokens: completion.usage?.prompt_tokens,
-            outputTokens: completion.usage?.completion_tokens,
-          });
+            
+          // 从 sceneResult 中获取 tokens 信息（如果可用）
+          inputTokens = sceneResult.tokens?.prompt;
+          outputTokens = sceneResult.tokens?.completion;
+          totalTokens = sceneResult.tokens?.total;
         } catch (e) {
           const error = e as Error & { status?: number; code?: string };
-          const resolvedBaseUrl = openai.baseURL;
-          console.error("[ASK ROUTE] AI API call failed:", {
+          console.error("[ASK ROUTE] 场景执行失败:", {
             error: error.message,
             name: error.name,
             status: error.status,
             code: error.code,
-            stack: error.stack,
+            stack: error.stack?.substring(0, 500),
+            scene,
             model,
-            baseUrl: resolvedBaseUrl,
             aiProvider,
           });
+          
           // 提取更详细的错误信息
-          let errorMessage = error.message || "AI API call failed";
+          let errorMessage = error.message || "Scene execution failed";
           let errorCode = "PROVIDER_ERROR";
           let statusCode = 502;
 
-          // 处理常见的 OpenRouter/OpenAI 错误
-          if (error.status === 401 || error.code === "invalid_api_key") {
+          // 处理常见的错误
+          if (error.message?.includes("Scene not found")) {
+            errorCode = "SCENE_NOT_FOUND";
+            errorMessage = `Scene '${scene}' not found or disabled`;
+            statusCode = 404;
+          } else if (error.message?.includes("timeout")) {
+            errorCode = "TIMEOUT";
+            errorMessage = "Scene execution timeout";
+            statusCode = 504;
+          } else if (error.message?.includes("API key") || error.message?.includes("auth")) {
             errorCode = "AUTH_REQUIRED";
-            errorMessage = "Invalid API key. Please check your OPENROUTER_API_KEY or OPENAI_API_KEY.";
+            errorMessage = "Invalid API key or authentication failed";
             statusCode = 401;
-          } else if (error.status === 429 || error.code === "rate_limit_exceeded") {
-            errorCode = "RATE_LIMIT_EXCEEDED";
-            errorMessage = "Rate limit exceeded. Please try again later.";
-            statusCode = 429;
-          } else if (error.status === 400 || error.code === "invalid_request_error") {
-            errorCode = "VALIDATION_FAILED";
-            errorMessage = `Invalid request: ${errorMessage}`;
-            statusCode = 400;
-          } else if (error.message?.includes("model")) {
-            errorMessage = `Model '${model}' not found or unavailable. Please check the model name.`;
           }
 
           reply.code(statusCode).send({
@@ -325,15 +539,15 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             errorCode,
             message: errorMessage,
             details: {
+              scene,
               model,
-              baseUrl: resolvedBaseUrl,
               aiProvider,
             },
           });
           return;
         }
 
-        const answer = completion.choices?.[0]?.message?.content?.trim() ?? "";
+        const answer = sceneResult.rawText;
         if (!answer) {
           reply.code(502).send({
             ok: false,
@@ -343,24 +557,24 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
-        // 提取 tokens 信息
-        const inputTokens = completion.usage?.prompt_tokens;
-        const outputTokens = completion.usage?.completion_tokens;
-        const totalTokens = completion.usage?.total_tokens;
-
         // 计算成本估算
         const approxUsd = estimateCostUsd(model, inputTokens, outputTokens);
 
-        // 构建 sources 数组（从 reference 转换，后续可从 RAG 返回完整结构）
-        const sources: Array<{ title: string; url: string; snippet?: string }> = reference
-          ? [{ title: "RAG Reference", url: "", snippet: reference.slice(0, 200) }]
-          : [];
+        // 计算处理耗时
+        const durationMs = Date.now() - startTime;
+        const durationSec = (durationMs / 1000).toFixed(2);
 
-        const ragHits = sources.length;
+        // 构建 sources 数组（包含耗时信息和 RAG 参考）
+        const sources: Array<{ title: string; url: string; snippet?: string }> = [
+          { title: "处理耗时", url: "", snippet: `${durationSec} 秒` },
+          ...(reference ? [{ title: "RAG Reference", url: "", snippet: reference.slice(0, 200) }] : []),
+        ];
+
+        const ragHits = reference ? 1 : 0;
 
         const result: AskResult = {
           answer,
-          sources: ragHits > 0 ? sources : undefined,
+          sources: sources, // 始终返回 sources（包含耗时信息）
           model,
           safetyFlag,
           costEstimate: {
@@ -369,7 +583,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             approxUsd: approxUsd ?? undefined,
           },
           // 向后兼容字段
-          question,
+          question: normalizedQuestion, // 使用规范化后的字符串
           reference: reference || null,
           tokens: {
             prompt: inputTokens,
@@ -386,18 +600,8 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
         const cacheTtl = await getCacheTtlFromConfig();
         void cacheSet(cacheKey, result, cacheTtl).catch(() => {});
 
-        // 8) 异步写 ai_logs（失败仅告警，不阻断）
-        void logAiInteraction({
-          userId,
-          question,
-          answer,
-          lang,
-          model,
-          ragHits,
-          safetyFlag,
-          costEstUsd: approxUsd,
-          createdAtIso: result.time,
-        }).catch(() => {});
+        // 8) 注意：不再在这里写入 ai_logs，由主路由统一写入（包含题目标识等完整信息）
+        // 主路由会在 STEP 7 中写入日志
 
         // 9) 返回标准响应结构
         reply.send({

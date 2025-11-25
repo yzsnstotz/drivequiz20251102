@@ -11,7 +11,7 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-const LANGUAGE_STORAGE_KEY = 'admin-language';
+const LANGUAGE_STORAGE_KEY = 'user-language';
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   // 初始状态总是使用默认值，避免 SSR/CSR 不匹配
@@ -25,6 +25,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language | null;
       if (saved && ['zh', 'en', 'ja'].includes(saved)) {
         setLanguageState(saved);
+      } else {
+        // 如果没有保存的语言，尝试从浏览器语言检测
+        const browserLang = navigator.language || navigator.languages?.[0] || 'zh';
+        if (browserLang.startsWith('ja')) {
+          setLanguageState('ja');
+        } else if (browserLang.startsWith('en')) {
+          setLanguageState('en');
+        } else {
+          setLanguageState('zh');
+        }
       }
     }
   }, []);

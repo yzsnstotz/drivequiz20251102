@@ -1,20 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Clock, CheckSquare, XSquare, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
-import { loadAllQuestions } from '@/lib/questionsLoader';
-
-interface Question {
-  id: number;
-  type: 'single' | 'multiple' | 'truefalse';
-  content: string;
-  image?: string;
-  options?: string[];
-  correctAnswer: string | string[];
-  explanation?: string;
-}
+import QuestionImage from '@/components/common/QuestionImage';
+import { loadAllQuestions, Question } from '@/lib/questionsLoader';
+import { useLanguage } from '@/lib/i18n';
+import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 
 interface ExamSet {
   id: string;
@@ -57,6 +49,7 @@ const examSets: ExamSet[] = [
 ];
 
 function ExamPage() {
+  const { t, language } = useLanguage();
   const [selectedSet, setSelectedSet] = useState<ExamSet | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | string[]>('');
@@ -94,17 +87,12 @@ function ExamPage() {
     // Load questions from the same source as study page
     const loadQuestions = async () => {
       try {
-        // 优先通过统一加载器读取题目
-        let allQuestions: Question[] = await loadAllQuestions();
+        // 通过统一加载器读取题目
+        const allQuestions = await loadAllQuestions();
         if (!allQuestions || allQuestions.length === 0) {
-          try {
-            const unifiedResponse = await import(`../../data/questions/zh/questions.json`);
-            const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-            allQuestions = questions as unknown as Question[];
-          } catch {
-            const response = await import(`../../data/questions/zh/仮免-1.json`);
-            allQuestions = (response.questions || response.default?.questions || []) as unknown as Question[];
-          }
+          console.error('加载题目失败：未找到题目数据');
+          setIsLoading(false);
+          return;
         }
         
         // Randomly select questions for the exam
@@ -203,7 +191,7 @@ function ExamPage() {
     const practiceItem = {
       id: `exam-${selectedSet?.id}-${currentQuestionIndex}-${Date.now()}`,
       questionId: currentQuestion.id,
-      content: currentQuestion.content,
+      content: typeof currentQuestion.content === 'string' ? currentQuestion.content : (currentQuestion.content as any)?.zh || '',
       type: currentQuestion.type,
       correct: isCorrect,
       date: new Date().toLocaleString('zh-CN'),
@@ -287,8 +275,8 @@ function ExamPage() {
     return (
       <div className="container mx-auto px-4 py-6 pb-20">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">模拟考试</h1>
-          <p className="text-gray-600">选择一套模拟考试开始练习</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('exam.title')}</h1>
+          <p className="text-gray-600">{t('exam.subtitle')}</p>
         </div>
 
         <div className="grid gap-4">
@@ -302,13 +290,13 @@ function ExamPage() {
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 mb-2">{examSet.title}</h3>
                   <div className="flex items-center space-x-4 text-sm text-gray-600">
-                    <span>{examSet.totalQuestions} 题目</span>
-                    <span>{examSet.timeLimit} 分钟</span>
+                    <span>{examSet.totalQuestions} {t('exam.questions')}</span>
+                    <span>{examSet.timeLimit} {t('exam.minutes')}</span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-blue-600 font-medium">{examSet.timeLimit}分钟</div>
-                  <div className="text-sm text-gray-500">限时</div>
+                  <div className="text-blue-600 font-medium">{examSet.timeLimit}{t('exam.minutes')}</div>
+                  <div className="text-sm text-gray-500">{t('exam.timeLimit')}</div>
                 </div>
               </div>
             </button>
@@ -331,7 +319,7 @@ function ExamPage() {
           <h1 className="text-xl font-bold text-gray-900">{selectedSet.title}</h1>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">加载考试中...</p>
+          <p className="text-gray-600">{t('exam.loading')}</p>
         </div>
       </div>
     );
@@ -357,10 +345,10 @@ function ExamPage() {
             </span>
           </div>
           <span className="text-sm text-gray-600">
-            进度: {calculateProgress()}%
+            {t('exam.progress')}: {calculateProgress()}%
           </span>
           <span className="text-sm text-blue-600">
-            正确率: {calculateAccuracy()}%
+            {t('exam.accuracy')}: {calculateAccuracy()}%
           </span>
         </div>
       </div>
@@ -368,36 +356,34 @@ function ExamPage() {
       <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
         <div className="flex justify-between items-center mb-4">
           <span className="text-sm text-gray-600">
-            题目 {currentQuestionIndex + 1}/{questions.length}
+            {t('exam.questions')} {currentQuestionIndex + 1}/{questions.length}
           </span>
           <div className="flex items-center space-x-3">
             <span className="text-sm font-medium text-blue-600">
-              {currentQuestion.type === 'single' ? '单选题' : 
-               currentQuestion.type === 'multiple' ? '多选题' : '判断题'}
+              {currentQuestion.type === 'single' ? t('exam.type.single') : 
+               currentQuestion.type === 'multiple' ? t('exam.type.multiple') : t('exam.type.truefalse')}
             </span>
             <button
               onClick={() => setShowAIDialog(true)}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              aria-label="打开AI助手"
+              aria-label={t('exam.openAI')}
             >
               <Bot className="h-4 w-4" />
-              <span>AI助手</span>
+              <span>{t('exam.aiAssistant')}</span>
             </button>
           </div>
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
+          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
           {currentQuestion.image && (
-            <div className="mb-4 relative w-full aspect-video">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt="题目图片"
-                fill
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
-                className="object-contain rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt={t('exam.image')}
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
+              className="relative w-full aspect-video"
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (
@@ -412,13 +398,13 @@ function ExamPage() {
                       : 'bg-gray-50 border-2 border-transparent'
                   }`}
                 >
-                  {option === 'true' ? '正确' : '错误'}
+                  {option === 'true' ? t('exam.true') : t('exam.false')}
                 </button>
               ))}
             </div>
           ) : (
             <div className="space-y-3">
-              {currentQuestion.options?.map((option, index) => {
+              {getQuestionOptions(currentQuestion.options as any, language as 'zh' | 'en' | 'ja').map((option, index) => {
                 const optionLabel = String.fromCharCode(65 + index);
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
@@ -434,6 +420,7 @@ function ExamPage() {
                         : 'bg-gray-50 border-2 border-transparent'
                     }`}
                   >
+                    <span className="font-medium">{optionLabel}: </span>
                     {option}
                   </button>
                 );
@@ -453,7 +440,7 @@ function ExamPage() {
             }`}
           >
             <ChevronLeft className="h-5 w-5" />
-            <span>上一题</span>
+            <span>{t('question.previous')}</span>
           </button>
 
           <button
@@ -465,7 +452,7 @@ function ExamPage() {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <span>下一题</span>
+            <span>{t('question.next')}</span>
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
@@ -480,17 +467,17 @@ function ExamPage() {
               {isCorrect() ? (
                 <div className="flex items-center">
                   <CheckSquare className="h-5 w-5 mr-2" />
-                  答对了！
+                  {t('question.correctAnswer')}
                 </div>
               ) : (
                 <div className="flex items-center">
                   <XSquare className="h-5 w-5 mr-2" />
-                  答错了...
+                  {t('question.wrongAnswer')}
                 </div>
               )}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-sm">{currentQuestion.explanation}</p>
+              <p className="text-sm">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             )}
           </div>
         )}

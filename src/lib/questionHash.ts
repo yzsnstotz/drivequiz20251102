@@ -12,12 +12,26 @@ export type QuestionType = "single" | "multiple" | "truefalse";
 export interface Question {
   id?: number;
   type: QuestionType;
-  content: string;
+  content: string | {
+    zh: string;
+    en?: string;
+    ja?: string;
+    [key: string]: string | undefined; // 支持其他语言
+  }; // 支持单语言字符串或多语言对象
   options?: string[];
   correctAnswer: string | string[];
   image?: string;
-  explanation?: string;
+  explanation?: string | {
+    zh: string;
+    en?: string;
+    ja?: string;
+    [key: string]: string | undefined; // 支持其他语言
+  }; // 支持单语言字符串或多语言对象
   category?: string;
+  hash?: string; // 题目hash（从JSON导入时可能已存在）
+  license_tags?: string[]; // 驾照类型标签（兼容旧字段）
+  stage_tag?: "both" | "provisional" | "regular"; // 阶段标签
+  topic_tags?: string[]; // 主题标签数组
 }
 
 /**
@@ -28,10 +42,25 @@ export interface Question {
  * @returns SHA256 hash 字符串（64字符）
  */
 export function calculateQuestionHash(question: Question): string {
+  // 如果已有hash，直接返回（从JSON导入时可能已存在）
+  if (question.hash) {
+    return question.hash;
+  }
+
+  // 提取题干内容（支持多语言，使用zh作为主要语言）
+  let contentText: string;
+  if (typeof question.content === "string") {
+    // 兼容旧格式：单语言字符串
+    contentText = question.content.trim();
+  } else {
+    // 新格式：多语言对象，使用zh作为主要语言计算hash
+    contentText = question.content.zh?.trim() || "";
+  }
+
   // 构建用于 hash 的核心内容
   const coreContent = [
     // 题干内容（必需）
-    question.content.trim(),
+    contentText,
     // 选项（如果有）
     question.options?.join("|") || "",
     // 正确答案（必需）
