@@ -589,7 +589,7 @@ function ExamModePageContent() {
           <button
             onClick={() => {
               if (showAnswer) {
-                checkAnswer(selectedAnswer);
+                handleNext();
               } else {
                 setShowAnswer(true);
                 checkAnswer(selectedAnswer);
