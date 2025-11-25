@@ -222,9 +222,6 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
       if (cleanedOptions.length === 0) {
         cleanedOptions = null;
       }
-    } else if (cleanedOptions && Array.isArray(cleanedOptions) && cleanedOptions.length === 0) {
-      // ✅ 修复：如果 options 是空数组，转换为 null
-      cleanedOptions = null;
     }
 
     // ✅ 使用 sanitizeJsonForDb 清理 correct_answer 字段
