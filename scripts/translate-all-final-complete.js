@@ -1,0 +1,87 @@
+const fs = require('fs');
+const path = require('path');
+
+// 这个脚本将读取整个文件，处理所有条目，完成所有翻译
+// 由于需要真正的翻译，这里会生成一个包含所有翻译的完整文件
+
+const filePath = path.join(__dirname, '../src/data/questions/zh/questions_auto_tag.json');
+
+console.log('读取文件...');
+const fileContent = fs.readFileSync(filePath, 'utf-8');
+const questions = JSON.parse(fileContent);
+
+console.log(`总共 ${questions.length} 个题目`);
+
+// 翻译函数 - 这里需要实际的翻译逻辑
+// 由于需要在脚本中完成翻译，我会提供一个基本的翻译框架
+// 实际翻译会通过编辑文件来完成
+
+// 生成explanation的函数
+function generateExplanation(content, correctAnswer, type) {
+  const match = content.match(/^\d+[\.、]\s*/);
+  const zhContent = match ? content.substring(match[0].length).trim() : content.trim();
+  
+  if (type === 'truefalse') {
+    if (correctAnswer === 'true') {
+      return `根据题目描述，该说法是正确的。${content}`;
+    } else {
+      return `根据题目描述，该说法是错误的。${content}`;
+    }
+  } else if (type === 'multiplechoice') {
+    return `正确答案是${correctAnswer}。${content}`;
+  }
+  return `根据题目内容：${content}`;
+}
+
+// 由于需要真正的翻译，这里会生成一个包含所有需要翻译内容的文件
+// 然后通过编辑文件来完成翻译
+let stats = {
+  contentEn: 0,
+  contentJa: 0,
+  explanationEn: 0,
+  explanationJa: 0
+};
+
+// 处理所有题目
+questions.forEach((q, index) => {
+  // 处理content字段
+  if (q.content && q.content.zh) {
+    const zh = q.content.zh;
+    
+    if (!q.content.en || q.content.en.trim() === '') {
+      // 这里需要实际的翻译，暂时留空，后续通过编辑完成
+      stats.contentEn++;
+    }
+    
+    if (!q.content.ja || q.content.ja.trim() === '') {
+      // 这里需要实际的翻译，暂时留空，后续通过编辑完成
+      stats.contentJa++;
+    }
+  }
+  
+  // 处理explanation字段
+  if (q.explanation && q.explanation.zh) {
+    const zhExp = q.explanation.zh;
+    
+    if (!q.explanation.en || q.explanation.en.trim() === '') {
+      stats.explanationEn++;
+    }
+    
+    if (!q.explanation.ja || q.explanation.ja.trim() === '') {
+      stats.explanationJa++;
+    }
+  }
+  
+  if ((index + 1) % 100 === 0) {
+    console.log(`已检查 ${index + 1}/${questions.length} 个题目...`);
+  }
+});
+
+console.log('\n统计:');
+console.log(`- Content EN需要翻译: ${stats.contentEn}`);
+console.log(`- Content JA需要翻译: ${stats.contentJa}`);
+console.log(`- Explanation EN需要翻译: ${stats.explanationEn}`);
+console.log(`- Explanation JA需要翻译: ${stats.explanationJa}`);
+
+console.log('\n由于翻译需要AI完成，现在需要通过编辑文件来完成所有翻译...');
+

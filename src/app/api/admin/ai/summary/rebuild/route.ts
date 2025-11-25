@@ -1,5 +1,6 @@
 // apps/web/app/api/admin/ai/summary/rebuild/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { joinUrl } from "@/lib/urlJoin";
 
 // 运行时配置（保持与项目其他路由一致）
 export const runtime = "nodejs";
@@ -40,12 +41,13 @@ const internalError = (message = "Internal server error") =>
     { status: 500 },
   );
 
-// 依赖环境变量
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
-const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN;
+// 依赖环境变量（使用新的命名：render 服务）
+// 指令版本：0003
+const AI_RENDER_SERVICE_URL = process.env.AI_RENDER_SERVICE_URL;
+const AI_RENDER_SERVICE_TOKEN = process.env.AI_RENDER_SERVICE_TOKEN;
 const AI_SERVICE_SUMMARY_URL =
   process.env.AI_SERVICE_SUMMARY_URL ||
-  (AI_SERVICE_URL ? `${AI_SERVICE_URL.replace(/\/+$/, "")}/v1/admin/daily-summary` : "");
+  (AI_RENDER_SERVICE_URL ? joinUrl(AI_RENDER_SERVICE_URL, "/v1/admin/daily-summary") : "");
 
 // Admin 鉴权
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
@@ -60,10 +62,10 @@ import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
  */
 const handler = async (req: NextRequest): Promise<NextResponse> => {
   try {
-    if (!AI_SERVICE_SUMMARY_URL || !AI_SERVICE_TOKEN) {
+    if (!AI_SERVICE_SUMMARY_URL || !AI_RENDER_SERVICE_TOKEN) {
       return providerError("AI service summary endpoint not configured", {
         AI_SERVICE_SUMMARY_URL: !!AI_SERVICE_SUMMARY_URL,
-        AI_SERVICE_TOKEN: !!AI_SERVICE_TOKEN,
+        AI_RENDER_SERVICE_TOKEN: !!AI_RENDER_SERVICE_TOKEN,
       });
     }
 
@@ -76,13 +78,15 @@ const handler = async (req: NextRequest): Promise<NextResponse> => {
     }
 
     // 组装下游请求 URL（rebuild 端点）
-    const rebuildUrl = AI_SERVICE_SUMMARY_URL.replace(/\/v1\/admin\/daily-summary$/, "/v1/admin/daily-summary/rebuild");
+    // 使用 joinUrl 安全拼接 URL
+    const rebuildUrl = AI_SERVICE_SUMMARY_URL.replace(/\/v1\/admin\/daily-summary\/?$/, "");
+    const finalRebuildUrl = joinUrl(rebuildUrl, "/v1/admin/daily-summary/rebuild");
     const qs = new URLSearchParams();
     if (date) qs.set("date", date);
     const url =
       qs.toString().length > 0
-        ? `${rebuildUrl}?${qs.toString()}`
-        : rebuildUrl;
+        ? `${finalRebuildUrl}?${qs.toString()}`
+        : finalRebuildUrl;
 
     // 超时控制（30秒）
     const controller = new AbortController();
@@ -94,7 +98,7 @@ const handler = async (req: NextRequest): Promise<NextResponse> => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${AI_SERVICE_TOKEN}`,
+          Authorization: `Bearer ${AI_RENDER_SERVICE_TOKEN}`,
         },
         // 发送空的 JSON body（Fastify 要求如果设置了 Content-Type: application/json，必须有 body）
         body: JSON.stringify({}),

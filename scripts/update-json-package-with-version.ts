@@ -12,9 +12,16 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), ".env.local") });
 
 // 处理 SSL 证书问题（仅用于开发环境）
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+// 在生产环境中不应禁用证书验证
+const isDevelopment = process.env.NODE_ENV === 'development';
+const isVercel = !!process.env.VERCEL;
+const hasTlsReject = !!process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+
+if ((isDevelopment || !isVercel) && !hasTlsReject) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-  console.log("[updateJsonPackageWithVersion] 已设置 NODE_TLS_REJECT_UNAUTHORIZED=0 以处理 SSL 证书问题");
+  console.log("[updateJsonPackageWithVersion] 已设置 NODE_TLS_REJECT_UNAUTHORIZED=0 以处理 SSL 证书问题（仅开发环境）");
+} else if (!isDevelopment && (process.env.NODE_ENV === 'production' || isVercel)) {
+  console.log("[updateJsonPackageWithVersion] 生产环境模式：使用 SSL 配置中的 rejectUnauthorized: false，不设置全局环境变量");
 }
 
 // 注意：这里直接使用 db，它会自动处理 SSL 连接
@@ -47,10 +54,10 @@ async function updateJsonPackageWithVersion(version?: string) {
 
     // 2. 转换为前端格式，使用规范化函数确保答案格式正确
     const allQuestions: Question[] = allDbQuestions.map((q) => {
-      // 从license_types数组中获取category（取第一个，如果没有则使用"其他"）
-      const category = (Array.isArray(q.license_types) && q.license_types.length > 0)
-        ? q.license_types[0]
-        : "其他";
+      // 优先使用数据库的category字段，如果没有则从license_types数组中获取（取第一个），最后使用"其他"
+      const category = q.category 
+        || (Array.isArray(q.license_types) && q.license_types.length > 0 ? q.license_types[0] : null)
+        || "其他";
 
       return {
         id: q.id,
@@ -76,16 +83,41 @@ async function updateJsonPackageWithVersion(version?: string) {
     
     console.log(`[updateJsonPackageWithVersion] 已计算所有题目的hash`);
 
-    // 4. 获取所有题目的AI回答（从数据库）
+    // 4. 获取所有题目的AI回答（从数据库，含多语言）
     console.log(`[updateJsonPackageWithVersion] 开始获取AI回答...`);
     const aiAnswers: Record<string, string> = {};
+    const aiAnswersByLocale: Record<string, Record<string, string>> = {};
     let aiAnswerCount = 0;
-    for (const question of questionsWithHash) {
-      const questionHash = (question as any).hash || calculateQuestionHash(question);
-      const answer = await getAIAnswerFromDb(questionHash, "zh");
-      if (answer) {
-        aiAnswers[questionHash] = answer;
-        aiAnswerCount++;
+    const hashes = questionsWithHash.map((q) => (q as any).hash || calculateQuestionHash(q)).filter(Boolean) as string[];
+    if (hashes.length > 0) {
+      try {
+        const rows = await db
+          .selectFrom("question_ai_answers")
+          .select(["question_hash", "answer", "created_at", "locale"])
+          .where("question_hash", "in", hashes)
+          .orderBy("question_hash", "asc")
+          .orderBy("created_at", "desc")
+          .execute();
+        for (const r of rows) {
+          const loc = r.locale || "zh";
+          if (!aiAnswersByLocale[loc]) aiAnswersByLocale[loc] = {};
+          if (!aiAnswersByLocale[loc][r.question_hash] && r.answer) {
+            aiAnswersByLocale[loc][r.question_hash] = r.answer;
+          }
+        }
+        const zhMap = aiAnswersByLocale["zh"] || aiAnswersByLocale["zh-CN"] || aiAnswersByLocale["zh_CN"] || {};
+        Object.assign(aiAnswers, zhMap);
+        aiAnswerCount = Object.keys(aiAnswers).length;
+      } catch (e) {
+        // 回退到单语言查询
+        for (const question of questionsWithHash) {
+          const questionHash = (question as any).hash || calculateQuestionHash(question);
+          const answer = await getAIAnswerFromDb(questionHash, "zh");
+          if (answer) {
+            aiAnswers[questionHash] = answer;
+            aiAnswerCount++;
+          }
+        }
       }
     }
     
@@ -111,11 +143,97 @@ async function updateJsonPackageWithVersion(version?: string) {
     );
     console.log(`[updateJsonPackageWithVersion] 已保存版本号到数据库`);
 
+    // 6. 读取启用语言/生成多语言题目
+    const questionsByLocale: Record<string, Question[]> = {};
+    try {
+      const langs = await db.selectFrom("languages").select(["locale"]).where("enabled", "=", true).execute();
+      const locales = (langs.length ? langs.map(l => l.locale) : ["zh"]);
+      for (const loc of locales) {
+        if (loc.toLowerCase().startsWith("zh")) {
+          questionsByLocale[loc] = questionsWithHash;
+        } else {
+          const trs = await db
+            .selectFrom("question_translations")
+            .select(["content_hash", "content", "options", "explanation"])
+            .where("locale", "=", loc)
+            .execute();
+          const tmap = new Map<string, any>();
+          for (const t of trs) tmap.set(t.content_hash, t);
+          questionsByLocale[loc] = questionsWithHash.map((q) => {
+            const hash = (q as any).hash;
+            const t = hash ? tmap.get(hash) : undefined;
+            if (t) {
+              // 如果数据库中有翻译，使用翻译
+              return {
+                ...q,
+                content: t.content,
+                options: Array.isArray(t.options) ? t.options : (t.options ? [t.options] : undefined),
+                explanation: t.explanation || undefined,
+              };
+            } else {
+              // 如果数据库中没有翻译，从多语言对象中提取对应语言
+              const localizedQ: any = { ...q };
+              
+              // 检查是否是占位符的辅助函数
+              const isPlaceholder = (value: string | undefined): boolean => {
+                return value !== undefined && typeof value === 'string' && 
+                  (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+              };
+              
+              // 处理content字段：从多语言对象中提取对应语言
+              if (typeof q.content === "object" && q.content !== null) {
+                const contentObj = q.content as { [key: string]: string | undefined };
+                const targetValue = contentObj[loc];
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                if (targetValue && !isPlaceholder(targetValue)) {
+                  localizedQ.content = targetValue;
+                } else {
+                  localizedQ.content = null; // 没有翻译，返回null
+                }
+              } else {
+                // 如果content是字符串，对于非中文语言返回null
+                if (loc.toLowerCase().startsWith("zh")) {
+                  localizedQ.content = q.content;
+                } else {
+                  localizedQ.content = null;
+                }
+              }
+              
+              // 处理explanation字段：从多语言对象中提取对应语言
+              if (q.explanation && typeof q.explanation === "object" && q.explanation !== null) {
+                const expObj = q.explanation as { [key: string]: string | undefined };
+                const targetValue = expObj[loc];
+                // 如果目标语言的值存在且不是占位符，使用它；否则设为null（不使用任何备用措施）
+                if (targetValue && !isPlaceholder(targetValue)) {
+                  localizedQ.explanation = targetValue;
+                } else {
+                  localizedQ.explanation = null; // 没有翻译，返回null
+                }
+              } else if (q.explanation) {
+                // 如果explanation是字符串，对于非中文语言返回null
+                if (loc.toLowerCase().startsWith("zh")) {
+                  localizedQ.explanation = q.explanation;
+                } else {
+                  localizedQ.explanation = null;
+                }
+              }
+              
+              return localizedQ;
+            }
+          });
+        }
+      }
+    } catch {
+      // 忽略多语言生成错误
+    }
+
     // 7. 保存到统一的questions.json
-    const unifiedData = {
+    const unifiedData: any = {
       questions: questionsWithHash,
       version: finalVersion,
       aiAnswers: aiAnswers,
+      questionsByLocale,
+      aiAnswersByLocale,
     };
     
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(unifiedData, null, 2), "utf-8");

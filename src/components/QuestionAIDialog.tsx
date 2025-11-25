@@ -3,8 +3,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
-import { apiFetch } from "@/lib/apiClient.front";
-import { loadAiAnswers, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
+import { loadAiAnswersForLocale, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getQuestionOptions, getQuestionContent } from "@/lib/questionUtils";
+import { callAiDirect } from "@/lib/aiClient.front";
+import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 
 // 前端内存缓存（按题目hash存储）
 // 格式：Map<questionHash, answer>
@@ -37,11 +40,11 @@ const getStoredUserId = (): string | null => {
 interface Question {
   id: number;
   type: "single" | "multiple" | "truefalse";
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   image?: string;
-  options?: string[];
+  options?: string[] | Array<{ zh: string; en?: string; ja?: string; [key: string]: string | undefined }>; // 支持单语言字符串数组或多语言对象数组
   correctAnswer: string | string[];
-  explanation?: string;
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   hash?: string; // 题目的hash值（与数据库的content_hash是同一个值）
 }
 
@@ -55,10 +58,11 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   metadata?: {
-    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "cached" | "system";
+    aiProvider?: "openai" | "openai_direct" | "local" | "openrouter" | "openrouter_direct" | "gemini_direct" | "cached" | "system";
     model?: string;
     sourceType?: "ai-generated" | "cached" | "knowledge-base" | "system-tip";
     cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
+    sources?: Array<{ title: string; url: string; snippet?: string }>; // 来源信息（包括耗时信息）
   };
 }
 
@@ -74,6 +78,16 @@ export default function QuestionAIDialog({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
   const [localAiAnswers, setLocalAiAnswers] = useState<Record<string, string> | null>(null);
+  const { language } = useLanguage();
+  const [currentProvider, setCurrentProvider] = useState<"local" | "render">("render");
+  const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
+
+  // 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
+  const cleanModelName = (model: string | undefined): string | undefined => {
+    if (!model) return undefined;
+    // 移除日期格式：-YYYY-MM-DD
+    return model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  };
 
   // 滚动到底部
   const scrollToBottom = () => {
@@ -86,13 +100,13 @@ export default function QuestionAIDialog({
     }
   }, [isOpen, messages]);
 
-  // 加载本地/缓存JSON包中的aiAnswers（每次打开对话框时检查版本号并加载）
+  // 加载本地/缓存JSON包中的aiAnswers（每次打开或语言变化时检查版本号并加载）
   useEffect(() => {
     const loadLocalAiAnswers = async () => {
       try {
-        // 使用 loadUnifiedQuestionsPackage 会自动检查版本号并更新
-        const pkg = await loadUnifiedQuestionsPackage();
-        const ai = pkg?.aiAnswers || {};
+        // 先确保本地包版本最新
+        await loadUnifiedQuestionsPackage();
+        const ai = await loadAiAnswersForLocale(language);
         setLocalAiAnswers(ai);
         
         // 同步到内存缓存（理论上每次更新缓存都会和localStorage同步）
@@ -108,6 +122,25 @@ export default function QuestionAIDialog({
     if (isOpen) {
       loadLocalAiAnswers();
     }
+  }, [isOpen, language]);
+
+  // 获取当前配置的 provider（每次打开对话框时重新获取，确保使用最新配置）
+  useEffect(() => {
+    if (isOpen) {
+      getCurrentAiProvider()
+        .then((config) => {
+          console.log("[QuestionAIDialog] 获取到 provider 配置:", {
+            provider: config.provider,
+            model: config.model,
+          });
+          setCurrentProvider(config.provider);
+          setCurrentModel(config.model);
+        })
+        .catch((err) => {
+          console.warn("[QuestionAIDialog] 获取 provider 配置失败，使用默认值:", err);
+          setCurrentProvider("render");
+        });
+    }
   }, [isOpen]);
 
   // 加载缓存的对话历史（每次打开对话框时）
@@ -119,15 +152,53 @@ export default function QuestionAIDialog({
         if (cached) {
           const parsedMessages = JSON.parse(cached) as Message[];
           if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-            setMessages(parsedMessages);
-            hasInitialized.current = true; // 标记为已初始化，避免重复加载AI解释
-            return;
+            // 检查是否有有效的AI回答（assistant消息且不是错误消息）
+            const hasValidAiAnswer = parsedMessages.some((msg) => {
+              if (msg.role !== "assistant") return false;
+              // 检查是否是错误消息（常见的错误消息关键词）
+              const errorKeywords = [
+                "Sorry",
+                "error",
+                "unavailable",
+                "failed",
+                "超时",
+                "失败",
+                "错误",
+                "无法",
+                "暂时",
+              ];
+              const contentLower = msg.content.toLowerCase();
+              // 如果消息很短（可能是错误消息）或包含错误关键词，认为是无效的
+              if (msg.content.length < 50 || errorKeywords.some((keyword) => contentLower.includes(keyword.toLowerCase()))) {
+                return false;
+              }
+              // 如果有metadata且sourceType是cached或ai-generated，认为是有效的
+              if (msg.metadata?.sourceType === "cached" || msg.metadata?.sourceType === "ai-generated") {
+                return true;
+              }
+              // 如果消息足够长且不包含错误关键词，也认为是有效的
+              return msg.content.length >= 50;
+            });
+            
+            if (hasValidAiAnswer) {
+              // 有有效的AI回答，使用缓存
+              setMessages(parsedMessages);
+              hasInitialized.current = true; // 标记为已初始化，避免重复加载AI解释
+              return;
+            } else {
+              // 没有有效的AI回答（可能是之前的调用失败或超时），清除缓存并重新请求
+              console.log("[QuestionAIDialog] 检测到缓存的对话历史中没有有效的AI回答，清除缓存并重新请求");
+              localStorage.removeItem(cacheKey);
+              hasInitialized.current = false;
+              return;
+            }
           }
         }
         // 如果没有缓存，重置hasInitialized，允许加载AI解释
         hasInitialized.current = false;
       } catch (error) {
         // 如果解析失败，忽略缓存，继续正常流程
+        console.error("[QuestionAIDialog] 解析缓存的对话历史失败:", error);
         hasInitialized.current = false;
       }
     }
@@ -165,11 +236,17 @@ export default function QuestionAIDialog({
   }, [isOpen]);
 
   const formatQuestionForAI = () => {
-    let questionText = `题目：${question.content}\n\n`;
+    // 处理多语言content字段
+    const contentText = typeof question.content === 'string' 
+      ? question.content 
+      : (question.content?.zh || '');
+    let questionText = `题目：${contentText}\n\n`;
     
-    if (question.options && question.options.length > 0) {
+    // 处理多语言options字段
+    const options = getQuestionOptions(question.options, language);
+    if (options && options.length > 0) {
       questionText += "选项：\n";
-      question.options.forEach((option, index) => {
+      options.forEach((option, index) => {
         const label = String.fromCharCode(65 + index);
         questionText += `${label}. ${option}\n`;
       });
@@ -191,7 +268,10 @@ export default function QuestionAIDialog({
     questionText += `正确答案：${correctAnswerText}\n\n`;
 
     if (question.explanation) {
-      questionText += `解析：${question.explanation}\n\n`;
+      const explanationText = getQuestionContent(question.explanation as any, language) || "";
+      if (explanationText) {
+        questionText += `解析：${explanationText}\n\n`;
+      }
     }
 
     questionText += "请进一步解析这道题目。";
@@ -298,45 +378,77 @@ export default function QuestionAIDialog({
         // 用户追问：不检查缓存，直接调用AI服务
       }
       
-      // 3. 请求后端（首次提问：如果缓存中没有；追问：直接请求）
-      const result = await apiFetch<{
-        answer: string;
-        sources?: Array<{
-          title: string;
-          url: string;
-          snippet?: string;
-        }>;
-        aiProvider?: "openai" | "local" | "openrouter" | "openrouter_direct";
-        model?: string;
-        cached?: boolean;
-        cacheSource?: "localStorage" | "database"; // 明确标记缓存来源
-      }>("/api/ai/ask", {
-        method: "POST",
-        body: {
+      // 3. 直接调用 ai-service（首次提问：如果缓存中没有；追问：直接请求）
+      // 确保 provider 已初始化（如果还未获取到配置，重新获取一次）
+      let providerToUse = currentProvider;
+      if (!providerToUse || providerToUse === "render") {
+        // 如果 provider 未初始化或为默认值，尝试重新获取配置
+        try {
+          const config = await getCurrentAiProvider();
+          providerToUse = config.provider;
+          setCurrentProvider(config.provider);
+          setCurrentModel(config.model);
+          console.log("[QuestionAIDialog] 重新获取 provider 配置:", {
+            provider: providerToUse,
+            model: config.model,
+          });
+        } catch (err) {
+          console.warn("[QuestionAIDialog] 重新获取 provider 配置失败，使用默认值:", err);
+          providerToUse = "render";
+        }
+      }
+      
+      console.log("[QuestionAIDialog] 调用 AI 服务:", {
+        provider: providerToUse,
+        model: currentModel,
+        scene: "question_explanation",
+        questionLength: questionText.length,
+        isFollowUp: isFollowUpQuestion,
+        currentProviderState: currentProvider, // 调试：显示当前状态
+      });
+      
+      const payload = await callAiDirect({
+        provider: providerToUse,
           question: questionText,
-          locale: "zh-CN",
-          // 仅在首次提问时传递questionHash，追问时不传递（让后端知道这是追问，需要调用AI服务）
-          ...(questionHash ? { questionHash } : {}),
-        },
+          locale: language,
+          scene: "question_explanation",
+        model: currentModel,
+        // questionHash 不再传递给 ai-service，因为 ai-service 不处理缓存
+        // 缓存逻辑现在完全由前端处理
       });
 
-      if (result.ok && result.data?.answer) {
+      if (payload.ok && payload.data?.answer) {
         // TypeScript 类型守卫：确保 answer 存在
-        const answer = result.data.answer;
+        const answer = payload.data.answer;
         
-        // 如果是从缓存获取的，存入内存缓存（与localStorage同步）
-        if (result.data.cached && questionHash) {
+        // 如果 ai-service 返回了 cached 标记，存入内存缓存（与localStorage同步）
+        // 注意：ai-service 可能不返回 cached 字段，因为缓存逻辑现在由前端处理
+        if (payload.data.cached && questionHash) {
           memoryCache.set(questionHash, answer);
         }
         
+        // 确保 sources 包含耗时信息（如果 ai-service 没有返回，前端计算）
+        let sources = payload.data.sources || [];
+        const hasDurationInfo = sources.some((s: any) => s.title === "处理耗时");
+        if (!hasDurationInfo) {
+          // 如果 ai-service 没有返回耗时信息，前端不计算（因为前端无法准确计算服务端处理时间）
+          // 但保留 sources 数组，以便后续显示其他来源信息
+        }
+
+        // 根据实际调用的 provider 设置 aiProvider（优先使用响应中的值，否则使用调用时的 provider）
+        const actualProvider = payload.data.cached 
+          ? "cached" 
+          : (payload.data.aiProvider || providerToUse); // 使用响应中的 aiProvider，如果没有则使用调用时的 provider
+
         const newMessage: Message = {
           role: "assistant",
           content: answer,
           metadata: {
-            aiProvider: result.data.cached ? "cached" : (result.data.aiProvider || "openai"),
-            model: result.data.model,
-            sourceType: result.data.cached ? "cached" : "ai-generated",
-            cacheSource: result.data.cacheSource || (result.data.cached ? "database" : undefined), // 明确标记缓存来源
+            aiProvider: actualProvider as any,
+            model: payload.data.model,
+            sourceType: payload.data.cached ? "cached" : "ai-generated",
+            cacheSource: payload.data.cached ? "database" : undefined, // ai-service 返回的缓存标记为 database
+            sources: sources, // 包含耗时信息等来源
           },
         };
         setMessages((prev) => [...prev, newMessage]);
@@ -354,16 +466,25 @@ export default function QuestionAIDialog({
           setMessages((prev) => [...prev, tipMessage]);
         }
       } else {
+        // 处理错误情况
         const errorMessage: Message = {
           role: "assistant",
-          content: "Sorry, AI service is temporarily unavailable. Please try again later.",
+          content: payload.message || "获取AI解析失败，请稍后重试。",
+          metadata: {
+            aiProvider: "system",
+            sourceType: "system-tip",
+          },
         };
         setMessages((prev) => [...prev, errorMessage]);
       }
     } catch (error) {
       const errorMessage: Message = {
         role: "assistant",
-        content: "Sorry, an error occurred while getting AI explanation. Please try again later.",
+        content: error instanceof Error ? error.message : "获取AI解析失败，请稍后重试。",
+        metadata: {
+          aiProvider: "system",
+          sourceType: "system-tip",
+        },
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -417,7 +538,11 @@ export default function QuestionAIDialog({
         {/* 题目显示区域 */}
         <div className="p-4 border-b bg-gray-50 max-h-48 overflow-y-auto">
           <div className="text-sm font-medium text-gray-700 mb-2">当前题目：</div>
-          <div className="text-gray-900 mb-2">{question.content}</div>
+          <div className="text-gray-900 mb-2">
+            {typeof question.content === 'string' 
+              ? question.content 
+              : (question.content?.zh || '')}
+          </div>
           {question.image && (
             <div className="mt-2 relative w-full h-32">
               <Image
@@ -431,7 +556,7 @@ export default function QuestionAIDialog({
           )}
           {question.options && question.options.length > 0 && (
             <div className="mt-2 text-sm text-gray-600">
-              {question.options.map((option, index) => {
+              {getQuestionOptions(question.options, language).map((option, index) => {
                 const label = String.fromCharCode(65 + index);
                 return (
                   <div key={index} className="mb-1">
@@ -472,49 +597,65 @@ export default function QuestionAIDialog({
                   </div>
                   {/* AI reply metadata */}
                   {message.role === "assistant" && message.metadata && (
-                    <div className="max-w-[80%] px-2 py-1 text-xs text-gray-500 space-y-1 mt-1">
-                      {/* AI Service Provider and Model */}
-                      {(message.metadata.aiProvider || message.metadata.model) && (
-                        <div className="flex items-center gap-1">
+                    <div className="max-w-[80%] px-2 py-0.5 text-xs text-gray-500">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* AI Service Provider and Model */}
+                        {message.metadata.aiProvider && (
                           <span className="inline-flex items-center gap-1">
                             {message.metadata.aiProvider === "local" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                 <span>Local AI (Ollama)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
+                                )}
+                              </>
+                            ) : (message.metadata.aiProvider as any) === "render" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                <span>Render AI Service</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openai" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                                 <span>OpenAI (via Render)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openai_direct" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
                                 <span>OpenAI (Direct)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openrouter" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                                 <span>OpenRouter (via Render)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "openrouter_direct" ? (
                               <>
                                 <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
                                 <span>OpenRouter (Direct)</span>
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
+                                )}
+                              </>
+                            ) : message.metadata.aiProvider === "gemini_direct" ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                                <span>Google Gemini (Direct)</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : message.metadata.aiProvider === "cached" ? (
@@ -522,16 +663,61 @@ export default function QuestionAIDialog({
                                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                                 <span>Cached Answer</span>
                                 {message.metadata.cacheSource && (
-                                  <span className="text-gray-400 ml-1">
+                                  <span className="text-gray-400">
                                     ({message.metadata.cacheSource === "localStorage" ? "LocalStorage" : "Database"})
                                   </span>
                                 )}
-                                {message.metadata.model && (
-                                  <span className="text-gray-400 ml-1">· {message.metadata.model}</span>
+                                {cleanModelName(message.metadata.model) && (
+                                  <span className="text-gray-400">· {cleanModelName(message.metadata.model)}</span>
                                 )}
                               </>
                             ) : null}
+                            {/* 耗时信息（显示在 provider 和 model 之后） */}
+                            {message.metadata.sources && message.metadata.sources.length > 0 && (
+                              <>
+                                {message.metadata.sources
+                                  .filter((source) => source.title === "处理耗时")
+                                  .map((source, idx) => (
+                                    <span key={idx} className="text-gray-400">
+                                      · {source.snippet}
+                                    </span>
+                                  ))}
+                              </>
+                            )}
                           </span>
+                        )}
+                      </div>
+                      {/* RAG Sources（排除耗时信息） */}
+                      {message.metadata.sources && message.metadata.sources.filter((source) => source.title !== "处理耗时").length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          <span className="text-gray-400 text-xs">📚</span>
+                          {message.metadata.sources
+                            .filter((source) => source.title !== "处理耗时")
+                            .map((source, idx) => {
+                              const displayText = source.title || source.url || `Source ${idx + 1}`;
+                              const hasUrl = source.url && source.url.trim() !== "";
+                              
+                              if (hasUrl) {
+                                return (
+                                  <a
+                                    key={idx}
+                                    href={source.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:text-blue-600 underline break-words"
+                                    title={displayText}
+                                  >
+                                    {displayText}
+                                  </a>
+                                );
+                              } else {
+                                return (
+                                  <span key={idx} className="text-gray-500 text-xs break-words">
+                                    {displayText}
+                                  </span>
+                                );
+                              }
+                            })}
                         </div>
                       )}
                     </div>

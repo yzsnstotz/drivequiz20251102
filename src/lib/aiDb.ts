@@ -104,6 +104,50 @@ interface AiConfigTable {
   updated_at: Date | null;
 }
 
+// ai_scene_config 表
+interface AiSceneConfigTable {
+  id: Generated<number>;
+  scene_key: string;
+  scene_name: string;
+  system_prompt_zh: string;
+  system_prompt_ja: string | null;
+  system_prompt_en: string | null;
+  output_format: string | null;
+  max_length: number;
+  temperature: number;
+  enabled: boolean;
+  description: string | null;
+  updated_by: number | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ai_provider_daily_stats 表
+interface AiProviderDailyStatsTable {
+  stat_date: Date; // date
+  provider: string;
+  model: string | null;
+  scene: string | null;
+  total_calls: number;
+  total_success: number;
+  total_error: number;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ai_provider_config 表
+interface AiProviderConfigTable {
+  id: Generated<number>;
+  provider: string;
+  model: string | null;
+  is_enabled: boolean;
+  daily_limit: number | null;
+  priority: number;
+  is_local_fallback: boolean;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 // ------------------------------------------------------------
 // AI 数据库总接口定义
 // ------------------------------------------------------------
@@ -115,6 +159,9 @@ interface AiDatabase {
   ai_daily_summary: AiDailySummaryTable;
   ai_vectors: AiVectorsTable;
   ai_config: AiConfigTable;
+  ai_scene_config: AiSceneConfigTable;
+  ai_provider_daily_stats: AiProviderDailyStatsTable;
+  ai_provider_config: AiProviderConfigTable;
 }
 
 // ------------------------------------------------------------
@@ -123,6 +170,7 @@ interface AiDatabase {
 // ------------------------------------------------------------
 
 let aiDbInstance: Kysely<AiDatabase> | null = null;
+let aiDbPool: Pool | null = null;
 
 // 检查是否在构建阶段
 function isBuildTime(): boolean {
@@ -162,27 +210,46 @@ function createAiDbInstance(): Kysely<AiDatabase> {
   // 创建 Pool 配置对象
   const poolConfig: {
     connectionString: string;
-    ssl?: { rejectUnauthorized: boolean };
+    ssl?: boolean | { rejectUnauthorized: boolean };
+    max?: number; // 最大连接数
+    min?: number; // 最小连接数
+    idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
+    connectionTimeoutMillis?: number; // 连接超时时间（毫秒）
+    statement_timeout?: number; // 语句超时时间（毫秒）
+    query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
+    // 连接池配置（与主数据库保持一致，但针对批量处理场景优化）
+    max: 20, // 最大连接数（适合大多数应用）
+    min: 2, // 最小连接数（保持一些连接活跃）
+    idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
+    connectionTimeoutMillis: 30000, // ✅ 修复：连接超时30秒（批量处理需要更长时间）
+    statement_timeout: 60000, // ✅ 修复：语句超时60秒（批量处理可能需要更长时间）
+    query_timeout: 60000, // ✅ 修复：查询超时60秒（批量处理可能需要更长时间）
   };
 
   // Supabase 必须使用 SSL，但证书链可能有自签名证书
+  // 在开发环境中，设置 rejectUnauthorized: false 以接受自签名证书
   if (isSupabase) {
     poolConfig.ssl = {
       rejectUnauthorized: false,
     };
+    // 在开发环境中，也设置全局环境变量以确保 SSL 连接成功
+    if (process.env.NODE_ENV === 'development' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
   }
 
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
+  aiDbPool = pool; // 保存 Pool 实例以便后续获取统计信息
   
-  try {
-    if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    }
-  } catch (e) {
-    console.error('[AI DB] Failed to set NODE_TLS_REJECT_UNAUTHORIZED:', e);
+  // 注意：我们只在数据库连接配置中使用 rejectUnauthorized: false
+  // 不设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量，以避免影响其他 HTTPS 请求
+  // 如果环境变量已经设置（例如在 package.json 的 dev 脚本中），这是可以接受的
+  // 但在生产环境中，应该依赖连接配置而不是全局环境变量
+  if (process.env.NODE_ENV !== 'development' || !!process.env.VERCEL) {
+    console.log('[AI DB] ℹ️  Using SSL with rejectUnauthorized: false (production mode, relying on connection config only)');
   }
 
   const dialect = new PostgresDialect({
@@ -326,4 +393,99 @@ export const aiDb = new Proxy({} as Kysely<AiDatabase>, {
 // - API 输出时统一转换为 camelCase。
 // - 使用 DIRECT 连接方式（端口 5432），确保连接稳定。
 // ------------------------------------------------------------
+
+// ============================================================
+// AI 数据库连接池统计函数
+// ============================================================
+
+export type AiDbPoolStats = {
+  total: number;
+  idle: number;
+  active: number;
+  waiting: number;
+  usageRate: number;
+  status: "healthy" | "warning" | "critical";
+};
+
+export function getAiDbPoolStats(): AiDbPoolStats | null {
+  if (!aiDbPool) {
+    // 如果 Pool 还没有创建，尝试初始化数据库实例
+    try {
+      // 触发数据库实例创建（这会创建 Pool）
+      const _ = aiDb;
+      // 如果还是 null，说明可能是占位符或构建时
+      if (!aiDbPool) {
+        return null;
+      }
+    } catch (err) {
+      console.error("[getAiDbPoolStats] Failed to initialize AI database:", err);
+      return null;
+    }
+  }
+
+  try {
+    // pg Pool 对象的属性（使用私有属性或公共属性）
+    // 注意：pg Pool 可能使用不同的属性名，这里尝试多种方式
+    const poolAny = aiDbPool as any;
+    
+    // 尝试获取连接池统计信息
+    // pg Pool 可能使用以下属性：
+    // - totalCount: 总连接数
+    // - idleCount: 空闲连接数  
+    // - waitingCount: 等待连接的请求数
+    // 或者使用私有属性：
+    // - _clients: 客户端数组
+    // - _idle: 空闲客户端数组
+    // - _waiting: 等待队列
+    
+    let total = 0;
+    let idle = 0;
+    let waiting = 0;
+    
+    // 方法1: 尝试使用公共属性
+    if (typeof poolAny.totalCount === 'number') {
+      total = poolAny.totalCount;
+      idle = poolAny.idleCount ?? 0;
+      waiting = poolAny.waitingCount ?? 0;
+    } 
+    // 方法2: 尝试使用私有属性
+    else if (Array.isArray(poolAny._clients)) {
+      total = poolAny._clients.length;
+      idle = Array.isArray(poolAny._idle) ? poolAny._idle.length : 0;
+      waiting = Array.isArray(poolAny._waiting) ? poolAny._waiting.length : 0;
+    }
+    // 方法3: 如果都不可用，返回默认值
+    else {
+      // 无法获取实际统计，返回默认值
+      console.warn("[getAiDbPoolStats] Unable to get pool statistics, using defaults");
+      total = 0;
+      idle = 0;
+      waiting = 0;
+    }
+    
+    const active = Math.max(0, total - idle);
+    const maxConnections = poolAny.options?.max ?? 20;
+    const usageRate = maxConnections > 0 ? Math.min(1, active / maxConnections) : 0;
+
+    // 判断状态
+    let status: "healthy" | "warning" | "critical" = "healthy";
+    if (usageRate >= 0.9 || waiting > 10) {
+      status = "critical";
+    } else if (usageRate >= 0.7 || waiting > 0) {
+      status = "warning";
+    }
+
+    return {
+      total,
+      idle,
+      active,
+      waiting,
+      usageRate,
+      status,
+    };
+  } catch (err) {
+    console.error("[getAiDbPoolStats] Error getting pool stats:", err);
+    return null;
+  }
+}
 

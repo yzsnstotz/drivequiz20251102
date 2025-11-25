@@ -1,19 +1,23 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
+import QuestionImage from '@/components/common/QuestionImage';
 import { loadUnifiedQuestionsPackage } from '@/lib/questionsLoader';
+import { useLanguage } from '@/lib/i18n';
+import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
+import FavoriteButton from './components/FavoriteButton';
 
 interface Question {
   id: number;
   type: 'single' | 'multiple' | 'truefalse';
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
   image?: string;
-  options?: string[];
+  options?: string[] | Array<{ zh: string; en?: string; ja?: string; [key: string]: string | undefined }>;
   correctAnswer: string | string[];
-  explanation?: string;
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+  hash?: string;
 }
 
 interface QuestionPageProps {
@@ -26,6 +30,7 @@ interface QuestionPageProps {
 }
 
 function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
+  const { language } = useLanguage();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | string[]>('');
   const [showAnswer, setShowAnswer] = useState(false);
@@ -276,6 +281,9 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
               {currentQuestion.type === 'single' ? '单选题' : 
                currentQuestion.type === 'multiple' ? '多选题' : '判断题'}
             </span>
+            <FavoriteButton
+              questionHash={(currentQuestion as any).hash || currentQuestion.id?.toString() || `q_${currentQuestion.id}`}
+            />
             <button
               onClick={() => setShowAIDialog(true)}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -288,17 +296,16 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
+          <p className="text-gray-900 text-lg mb-4">
+            {getQuestionContent(currentQuestion.content as any, language) || ''}
+          </p>
           {currentQuestion.image && (
-            <div className="mb-4">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt="题目图片"
-                width={800}
-                height={600}
-                className="max-w-full rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt="题目图片"
+              width={800}
+              height={600}
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (
@@ -319,7 +326,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
             </div>
           ) : (
             <div className="space-y-3">
-              {currentQuestion.options?.map((option, index) => {
+              {getQuestionOptions(currentQuestion.options as any, language).map((option, index) => {
                 const optionLabel = String.fromCharCode(65 + index);
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
@@ -383,7 +390,9 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
               {isCorrect() ? '答对了！' : '答错了...'}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{currentQuestion.explanation}</p>
+              <p className="text-gray-700">
+                {getQuestionContent(currentQuestion.explanation as any, language) || ''}
+              </p>
             )}
           </div>
         )}

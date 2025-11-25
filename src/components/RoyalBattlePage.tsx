@@ -1,23 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { ChevronLeft, Heart, Timer, Trophy } from 'lucide-react';
-import { loadAllQuestions } from '@/lib/questionsLoader';
-
-interface Question {
-  id: number;
-  type: 'single' | 'multiple' | 'truefalse';
-  content: string;
-  image?: string;
-  options?: string[];
-  correctAnswer: string | string[];
-  explanation?: string;
-}
+import QuestionImage from './common/QuestionImage';
+import { loadAllQuestions, Question } from '@/lib/questionsLoader';
+import { useLanguage } from '@/lib/i18n';
+import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 
 interface RoyalBattlePageProps {
   onBack: () => void;
 }
 
 function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
+  const { language } = useLanguage();
   const [lives, setLives] = useState(5);
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(20.0);
@@ -40,27 +33,10 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
     const loadQuestions = async () => {
       try {
         // 通过版本检查与缓存的统一加载器获取题库
-        let allQuestions: Question[] = await loadAllQuestions();
-        // 兼容旧逻辑：加载器失败时尝试老的静态导入
+        const allQuestions = await loadAllQuestions();
         if (!allQuestions || allQuestions.length === 0) {
-          try {
-            const unifiedResponse = await import(`../data/questions/zh/questions.json`);
-            const questions = unifiedResponse.questions || unifiedResponse.default?.questions || [];
-            allQuestions = questions as unknown as Question[];
-          } catch {
-            const categories = ['學科講習', '仮免', '免许'];
-            for (const category of categories) {
-              for (let i = 1; i <= 6; i++) {
-                try {
-                  const response = await import(`../data/questions/zh/${category}-${i}.json`);
-                  const questions = response.questions || response.default?.questions || [];
-                  allQuestions = [...allQuestions, ...(questions as unknown as Question[])];
-                } catch {
-                  // ignore
-                }
-              }
-            }
-          }
+          console.error('加载题目失败：未找到题目数据');
+          return;
         }
 
         // Fisher-Yates 洗牌算法
@@ -293,17 +269,14 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
           </div>
         </div>
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
+          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
           {currentQuestion.image && (
-            <div className="mb-4">
-              <Image
-                src={currentQuestion.image.trim()}
-                alt="题目图片"
-                width={800}
-                height={600}
-                className="max-w-full rounded-lg shadow-sm"
-              />
-            </div>
+            <QuestionImage
+              src={currentQuestion.image}
+              alt="题目图片"
+              width={800}
+              height={600}
+            />
           )}
           
           {currentQuestion.type === 'truefalse' ? (
@@ -325,7 +298,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
             </div>
           ) : (
             <div className="space-y-3">
-              {currentQuestion.options?.map((option, index) => {
+              {getQuestionOptions(currentQuestion.options as any, language as 'zh' | 'en' | 'ja').map((option, index) => {
                 const optionLabel = String.fromCharCode(65 + index);
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
@@ -342,6 +315,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
                         : 'bg-gray-50 border-2 border-transparent'
                     }`}
                   >
+                    <span className="font-medium">{optionLabel}: </span>
                     {option}
                   </button>
                 );
@@ -356,7 +330,7 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
               {isCorrect(selectedAnswer) ? '答对了！' : '答错了...'}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{currentQuestion.explanation}</p>
+              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             )}
           </div>
         )}

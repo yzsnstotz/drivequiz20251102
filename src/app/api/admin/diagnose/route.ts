@@ -22,6 +22,7 @@ export async function GET() {
     environment: {
       hasDatabaseUrl: !!process.env.DATABASE_URL,
       hasPostgresUrl: !!process.env.POSTGRES_URL,
+      hasSuperAdminPassword: !!process.env.SUPER_ADMIN_PASSWORD,
       nodeEnv: process.env.NODE_ENV,
     },
     connection: {

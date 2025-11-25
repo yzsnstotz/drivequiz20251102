@@ -5,6 +5,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Header from "@/components/common/Header";
 import AdSlot from "@/components/common/AdSlot";
 import QuestionAIDialog from "@/components/QuestionAIDialog";
+import QuestionImage from "@/components/common/QuestionImage";
 import { ArrowLeft, Clock, Bot } from "lucide-react";
 
 interface Question {
@@ -274,11 +275,10 @@ export default function LicenseExamPage() {
           </div>
 
           {currentQuestion.image && (
-            // eslint-disable-next-line @next/next/no-img-element -- 题目图片可能来自动态第三方域名，未知尺寸
-            <img
-              src={currentQuestion.image.trim()}
+            <QuestionImage
+              src={currentQuestion.image}
               alt="题目图片"
-              className="w-full max-w-md mx-auto mb-4 rounded-lg"
+              useNativeImg={true}
             />
           )}
 

@@ -24,9 +24,21 @@ function buildServer(config: LocalAIConfig): FastifyInstance {
 
   app.decorate("config", config);
 
-  // 注册 CORS
+  // 注册 CORS（允许浏览器直接调用，参考 ai-service 实现）
   app.register(cors, {
-    origin: false, // 默认关闭跨域，仅接受内部请求
+    origin: true, // 允许所有来源（与 ai-service 保持一致）
+    credentials: false,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Authorization", "Content-Type"],
+  });
+
+  // 为 /v1/ask 注册 OPTIONS 预检请求处理（确保 CORS 正常工作，参考 ai-service 实现）
+  app.options("/v1/ask", async (req, reply) => {
+    reply
+      .header("Access-Control-Allow-Origin", "*")
+      .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+      .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+      .send();
   });
 
   // 健康检查
@@ -49,8 +61,15 @@ function buildServer(config: LocalAIConfig): FastifyInstance {
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   try {
-    const askModule = await import("./routes/ask.js");
-    await askModule.default(app);
+    // 路由注册：/v1/**（问答主路由，与 ai-service 保持一致）
+    try {
+      const askModule = await import("./routes/ask.js");
+      await app.register(askModule.default, { prefix: "/v1" });
+      logger.info("[ROUTE] Registered /v1/ask route");
+    } catch (err) {
+      logger.error({ err }, "[ROUTE] Failed to register /v1/ask route");
+      throw err;
+    }
     
     const ragIngestModule = await import("./routes/ragIngest.js");
     await ragIngestModule.default(app);

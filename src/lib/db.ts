@@ -422,12 +422,16 @@ interface QuestionTable {
   id: Generated<number>;
   content_hash: string;
   type: "single" | "multiple" | "truefalse";
-  content: string;
-  options: any | null; // JSONB
-  correct_answer: any | null; // JSONB
+  content: any; // ✅ JSONB - 多语言内容对象
+  options: any | null; // ✅ JSONB
+  correct_answer: any | null; // ✅ JSONB
   image: string | null;
-  explanation: string | null;
-  license_types: string[] | null;
+  explanation: any | null; // ✅ JSONB - 多语言解析对象
+  license_types: string[] | null; // 兼容旧字段（数组）
+  license_type_tag: any | null; // ✅ JSONB - 驾照类型标签（JSONB 数组，内部约定为 string[]，例如 ["ALL","ORDINARY"]）
+  category: string | null; // 题目分类（如 "12"）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（兼容旧值，新值应为 "provisional" | "full" | "both"）
+  topic_tags: string[] | null; // 主题标签数组（如 ['traffic_sign']）
   version: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
@@ -445,6 +449,9 @@ interface QuestionAiAnswerTable {
   model: string | null;
   created_by: string | null; // UUID
   view_count: number;
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -470,6 +477,131 @@ interface QuestionPackageVersionTable {
   total_questions: number;
   ai_answers_count: number;
   package_content: any | null; // JSONB字段，存储完整的JSON包内容
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣8️⃣ languages 表结构定义
+// ------------------------------------------------------------
+interface LanguageTable {
+  id: Generated<number>;
+  locale: string;
+  name: string;
+  enabled: boolean;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣9️⃣ question_translations 表结构定义
+// ------------------------------------------------------------
+interface QuestionTranslationsTable {
+  id: Generated<number>;
+  content_hash: string;
+  locale: string;
+  content: string;
+  options: any | null; // JSONB
+  explanation: string | null;
+  image: string | null;
+  source: string | null; // ai / human / import
+  created_by: string | null; // UUID
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 2️⃣0️⃣ question_polish_reviews 表结构定义
+// ------------------------------------------------------------
+interface QuestionPolishReviewsTable {
+  id: Generated<number>;
+  content_hash: string;
+  locale: string;
+  proposed_content: string;
+  proposed_options: any | null; // JSONB
+  proposed_explanation: string | null;
+  status: "pending" | "approved" | "rejected";
+  notes: string | null;
+  created_by: string | null; // UUID
+  reviewed_by: string | null; // UUID
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
+  created_at: Generated<Date>;
+  reviewed_at: Date | null;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 2️⃣1️⃣ question_polish_history 表结构定义
+// ------------------------------------------------------------
+interface QuestionPolishHistoryTable {
+  id: Generated<number>;
+  content_hash: string;
+  locale: string;
+  old_content: string | null;
+  old_options: any | null; // JSONB
+  old_explanation: string | null;
+  new_content: string;
+  new_options: any | null; // JSONB
+  new_explanation: string | null;
+  approved_by: string | null; // UUID
+  category: string | null; // 题目分类（冗余字段，从questions表同步）
+  stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（冗余字段）
+  topic_tags: string[] | null; // 主题标签数组（冗余字段）
+  approved_at: Generated<Date>;
+  created_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 2️⃣0️⃣ batch_process_tasks 表结构定义
+// ------------------------------------------------------------
+interface BatchProcessTaskTable {
+  id: Generated<number>;
+  task_id: string;
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  operations: string[];
+  question_ids: number[] | null;
+  translate_options: any | null; // JSONB
+  polish_options: any | null; // JSONB
+  batch_size: number;
+  continue_on_error: boolean;
+  total_questions: number;
+  processed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  current_batch: number;
+  errors: any | null; // JSONB
+  details: any | null; // JSONB
+  created_by: string | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 2️⃣1️⃣ question_processing_task_items 表结构定义
+// ------------------------------------------------------------
+interface QuestionProcessingTaskItemsTable {
+  id: Generated<number>;
+  task_id: string;
+  question_id: number;
+  operation: string;
+  target_lang: string | null;
+  status: "pending" | "processing" | "succeeded" | "partially_succeeded" | "failed" | "skipped";
+  error_message: string | null;
+  started_at: Date | null;
+  finished_at: Date | null;
+  content_hash: string | null;      // 题目的 content_hash
+  ai_provider: string | null;        // AI 服务提供商
+  ai_request: any | null;          // AI 请求体（JSONB）
+  ai_response: any | null;          // AI 响应（JSONB）
+  processed_data: any | null;       // 处理后要入库的数据（JSONB）
+  error_detail: any | null;         // 错误详情（JSONB），包含结构化的诊断信息
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -505,6 +637,12 @@ interface Database {
   question_ai_answers: QuestionAiAnswerTable;
   question_ai_answer_pending_updates: QuestionAiAnswerPendingUpdateTable;
   question_package_versions: QuestionPackageVersionTable;
+  languages: LanguageTable;
+  // question_translations: QuestionTranslationsTable; // 已废弃：翻译现在存储在 questions.content JSONB 中
+  question_polish_reviews: QuestionPolishReviewsTable;
+  question_polish_history: QuestionPolishHistoryTable;
+  batch_process_tasks: BatchProcessTaskTable;
+  question_processing_task_items: QuestionProcessingTaskItemsTable;
 }
 
 // ------------------------------------------------------------
@@ -514,6 +652,7 @@ interface Database {
 // ------------------------------------------------------------
 
 let dbInstance: Kysely<Database> | null = null;
+let dbPool: Pool | null = null;
 
 // 检查是否在构建阶段（Next.js 在构建时会设置特定的环境变量）
 function isBuildTime(): boolean {
@@ -572,13 +711,13 @@ function createDbInstance(): Kysely<Database> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
-    // 连接池配置
+    // 连接池配置（针对批量处理场景优化）
     max: 20, // 最大连接数（适合大多数应用）
     min: 2, // 最小连接数（保持一些连接活跃）
     idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
-    connectionTimeoutMillis: 10000, // 连接超时10秒
-    statement_timeout: 30000, // 语句超时30秒
-    query_timeout: 30000, // 查询超时30秒
+    connectionTimeoutMillis: 30000, // ✅ 修复：连接超时30秒（批量处理需要更长时间，从10秒增加到30秒）
+    statement_timeout: 60000, // ✅ 修复：语句超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
+    query_timeout: 60000, // ✅ 修复：查询超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
   };
 
   // Supabase 必须使用 SSL，但证书链可能有自签名证书
@@ -598,6 +737,22 @@ function createDbInstance(): Kysely<Database> {
   // 创建 Pool 实例并传递给 PostgresDialect
   // 注意：必须在传递给 PostgresDialect 之前创建 Pool 实例，以确保 SSL 配置正确应用
   const pool = new Pool(poolConfig);
+  dbPool = pool; // 保存 Pool 实例以便后续获取统计信息
+
+  // 添加连接池错误处理
+  pool.on('error', (err) => {
+    console.error('[DB Pool] Unexpected error on idle client:', err);
+  });
+
+  // 添加连接池连接事件监听（开发环境）
+  if (process.env.NODE_ENV === 'development') {
+    pool.on('connect', () => {
+      console.log('[DB Pool] New client connected');
+    });
+    pool.on('remove', () => {
+      console.log('[DB Pool] Client removed from pool');
+    });
+  }
 
   // 添加连接池错误处理
   pool.on('error', (err) => {
@@ -625,14 +780,12 @@ function createDbInstance(): Kysely<Database> {
     
     // 尝试通过测试连接验证 SSL 配置
     // 注意：这只是用于调试，不会实际建立连接
-    try {
-      // 在开发环境中，我们可以设置 NODE_TLS_REJECT_UNAUTHORIZED 作为后备
-      if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        console.log('[DB Config] ⚠️  Set NODE_TLS_REJECT_UNAUTHORIZED=0 for Supabase SSL');
-      }
-    } catch (e) {
-      // 忽略错误
+    // 注意：我们只在数据库连接配置中使用 rejectUnauthorized: false
+    // 不设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量，以避免影响其他 HTTPS 请求
+    // 如果环境变量已经设置（例如在 package.json 的 dev 脚本中），这是可以接受的
+    // 但在生产环境中，应该依赖连接配置而不是全局环境变量
+    if (process.env.NODE_ENV !== 'development' || !!process.env.VERCEL) {
+      console.log('[DB Config] ℹ️  Using SSL with rejectUnauthorized: false (production mode, relying on connection config only)');
     }
   }
 
@@ -714,3 +867,98 @@ export const db = new Proxy({} as Kysely<Database>, {
 // - 字段命名遵循 snake_case。
 // - API 输出时统一转换为 camelCase。
 // ------------------------------------------------------------
+
+// ============================================================
+// 数据库连接池统计函数
+// ============================================================
+
+export type PoolStats = {
+  total: number;
+  idle: number;
+  active: number;
+  waiting: number;
+  usageRate: number;
+  status: "healthy" | "warning" | "critical";
+};
+
+export function getDbPoolStats(): PoolStats | null {
+  if (!dbPool) {
+    // 如果 Pool 还没有创建，尝试初始化数据库实例
+    try {
+      // 触发数据库实例创建（这会创建 Pool）
+      const _ = db;
+      // 如果还是 null，说明可能是占位符或构建时
+      if (!dbPool) {
+        return null;
+      }
+    } catch (err) {
+      console.error("[getDbPoolStats] Failed to initialize database:", err);
+      return null;
+    }
+  }
+
+  try {
+    // pg Pool 对象的属性（使用私有属性或公共属性）
+    // 注意：pg Pool 可能使用不同的属性名，这里尝试多种方式
+    const poolAny = dbPool as any;
+    
+    // 尝试获取连接池统计信息
+    // pg Pool 可能使用以下属性：
+    // - totalCount: 总连接数
+    // - idleCount: 空闲连接数  
+    // - waitingCount: 等待连接的请求数
+    // 或者使用私有属性：
+    // - _clients: 客户端数组
+    // - _idle: 空闲客户端数组
+    // - _waiting: 等待队列
+    
+    let total = 0;
+    let idle = 0;
+    let waiting = 0;
+    
+    // 方法1: 尝试使用公共属性
+    if (typeof poolAny.totalCount === 'number') {
+      total = poolAny.totalCount;
+      idle = poolAny.idleCount ?? 0;
+      waiting = poolAny.waitingCount ?? 0;
+    } 
+    // 方法2: 尝试使用私有属性
+    else if (Array.isArray(poolAny._clients)) {
+      total = poolAny._clients.length;
+      idle = Array.isArray(poolAny._idle) ? poolAny._idle.length : 0;
+      waiting = Array.isArray(poolAny._waiting) ? poolAny._waiting.length : 0;
+    }
+    // 方法3: 如果都不可用，返回默认值
+    else {
+      // 无法获取实际统计，返回默认值
+      console.warn("[getDbPoolStats] Unable to get pool statistics, using defaults");
+      total = 0;
+      idle = 0;
+      waiting = 0;
+    }
+    
+    const active = Math.max(0, total - idle);
+    const maxConnections = poolAny.options?.max ?? 20;
+    const usageRate = maxConnections > 0 ? Math.min(1, active / maxConnections) : 0;
+
+    // 判断状态
+    let status: "healthy" | "warning" | "critical" = "healthy";
+    if (usageRate >= 0.9 || waiting > 10) {
+      status = "critical";
+    } else if (usageRate >= 0.7 || waiting > 0) {
+      status = "warning";
+    }
+
+    return {
+      total,
+      idle,
+      active,
+      waiting,
+      usageRate,
+      status,
+    };
+  } catch (err) {
+    console.error("[getDbPoolStats] Error getting pool stats:", err);
+    return null;
+  }
+}

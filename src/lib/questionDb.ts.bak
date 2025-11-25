@@ -1,0 +1,106 @@
+// ============================================================
+// 文件路径: src/lib/questionDb.ts
+// 功能: 题目 AI 答案数据库操作
+// ============================================================
+
+import { aiDb } from "@/lib/aiDb";
+
+/**
+ * 从 JSON 包中获取 AI 答案
+ * @param questionHash 题目 hash
+ * @param locale 语言代码
+ * @returns AI 答案文本，如果不存在则返回 null
+ */
+export async function getAIAnswerFromJson(
+  questionHash: string,
+  locale: string = "zh"
+): Promise<string | null> {
+  // 注意：JSON 包在前端已经检查过，这里暂时不实现
+  // 如果需要，可以从 localStorage 或服务器获取 JSON 包
+  return null;
+}
+
+/**
+ * 从数据库获取 AI 答案
+ * @param questionHash 题目 hash
+ * @param locale 语言代码
+ * @returns AI 答案文本，如果不存在则返回 null
+ */
+export async function getAIAnswerFromDb(
+  questionHash: string,
+  locale: string = "zh"
+): Promise<string | null> {
+  try {
+    const result = await (aiDb as any)
+      .selectFrom("question_ai_answers")
+      .select(["answer"])
+      .where("question_hash", "=", questionHash)
+      .where("locale", "=", locale)
+      .executeTakeFirst();
+
+    return result?.answer || null;
+  } catch (error) {
+    console.error("[questionDb] getAIAnswerFromDb error:", (error as Error).message);
+    return null;
+  }
+}
+
+/**
+ * 保存 AI 答案到数据库
+ * @param questionHash 题目 hash
+ * @param answer AI 答案文本
+ * @param locale 语言代码
+ * @param model 模型名称
+ * @param sources RAG 来源数组
+ * @param userId 用户ID（可选）
+ * @returns 保存的记录ID，如果失败则返回 0
+ */
+export async function saveAIAnswerToDb(
+  questionHash: string,
+  answer: string,
+  locale: string = "zh",
+  model: string = "unknown",
+  sources?: Array<{ title: string; url: string; snippet?: string }>,
+  userId?: string
+): Promise<number> {
+  try {
+    // 检查是否已存在（防止并发请求重复写入）
+    const existing = await (aiDb as any)
+      .selectFrom("question_ai_answers")
+      .select(["id", "answer"])
+      .where("question_hash", "=", questionHash)
+      .where("locale", "=", locale)
+      .executeTakeFirst();
+
+    if (existing) {
+      // 如果已存在，返回现有记录的ID
+      return existing.id;
+    }
+
+    // 准备 sources JSONB 数据
+    const sourcesJson = sources && sources.length > 0 
+      ? JSON.stringify(sources) 
+      : null;
+
+    // 插入新记录
+    const result = await (aiDb as any)
+      .insertInto("question_ai_answers")
+      .values({
+        question_hash: questionHash,
+        answer: answer,
+        locale: locale,
+        model: model,
+        sources: sourcesJson as any, // JSONB 字段
+        created_by: userId || null,
+        created_at: new Date(),
+      })
+      .returning("id")
+      .executeTakeFirst();
+
+    return result?.id || 0;
+  } catch (error) {
+    console.error("[questionDb] saveAIAnswerToDb error:", (error as Error).message);
+    return 0;
+  }
+}
+
