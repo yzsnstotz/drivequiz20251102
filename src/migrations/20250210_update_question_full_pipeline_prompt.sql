@@ -6,6 +6,7 @@
 --       明确要求每种目标语言必须使用纯目标语言，禁止混入源语言
 --       强调必须为所有目标语言生成翻译，缺一不可
 --       只保留中文 prompt，删除日文和英文 prompt（使用 fallback 机制）
+--       修复：将 license_type_tags 和 stage_tags 改为单数形式（license_type_tag、stage_tag），与数据库字段名一致
 -- 日期: 2025-02-10
 -- 数据库: AI Service 数据库
 -- 注意: 此迁移文件必须在 AI Service 数据库中运行（使用 AI_DATABASE_URL）
@@ -24,8 +25,8 @@ SET
 2. 在源语言生成合理的解析 explanation
 3. 保持题目结构（判断题/单选/多选）
 4. 生成标签：
-   - license_type_tags: 数组，可包含 "ALL"（通用题目，适用于所有驾照类型）、"ORDINARY"（普通一类）、"LARGE_TRUCK"（大货车）、"LARGE_SPECIAL"（大特种车）、"BUS"（巴士）、"MOTORCYCLE"（摩托）、"MOPED"（原付）、"PROFESSIONAL"（营运）等
-   - stage_tags: 数组，如 "TEMPORARY_LICENSE"（临时驾照）、"FULL_LICENSE"（正式驾照）、"LICENSE_RENEWAL"（更新）等
+   - license_type_tag: 数组，可包含 "ALL"（通用题目，适用于所有驾照类型）、"ORDINARY"（普通一类）、"LARGE_TRUCK"（大货车）、"LARGE_SPECIAL"（大特种车）、"BUS"（巴士）、"MOTORCYCLE"（摩托）、"MOPED"（原付）、"PROFESSIONAL"（营运）等
+   - stage_tag: 数组，如 "TEMPORARY_LICENSE"（临时驾照）、"FULL_LICENSE"（正式驾照）、"LICENSE_RENEWAL"（更新）等
    - topic_tags: 数组，必须使用英语标识，如 ["traffic_sign", "right_turn", "intersection"] 等，不要使用中文或日文
    - difficulty_level: "easy" | "medium" | "hard"
 5. 对目标语言列表中的每种语言，分别生成完整的翻译（content, options, explanation）
@@ -57,8 +58,8 @@ SET
     "explanation": "..."
   },
   "tags": {
-    "license_type_tags": ["ALL", "ORDINARY"],
-    "stage_tags": ["FULL_LICENSE"],
+    "license_type_tag": ["ALL", "ORDINARY"],
+    "stage_tag": ["FULL_LICENSE"],
     "topic_tags": ["traffic_sign", "intersection", "right_turn"],
     "difficulty_level": "medium"
   },

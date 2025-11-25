@@ -246,8 +246,9 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
       };
 
       // ✅ 修复：只有 license_type_tag 存在时才更新（null/undefined 时不更新，保留原值）
+      // ✅ 使用 sanitizeJsonForDb 处理 JSONB 字段，确保格式正确
       if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
-        updateData.license_type_tag = (cleanedQuestion as any).license_type_tag;
+        updateData.license_type_tag = sanitizeJsonForDb((cleanedQuestion as any).license_type_tag) as any;
       }
 
       // ✅ 修复：只有 stage_tag 存在时才更新（null/undefined 时不更新，保留原值）
@@ -256,8 +257,9 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
       }
 
       // ✅ 修复：只有 topic_tags 存在时才更新（null/undefined 时不更新，保留原值）
+      // ✅ 使用 sanitizeJsonForDb 处理数组字段，确保格式正确
       if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
-        updateData.topic_tags = cleanedQuestion.topic_tags;
+        updateData.topic_tags = sanitizeJsonForDb(cleanedQuestion.topic_tags) as any;
       }
 
       await db
@@ -281,8 +283,9 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
       };
 
       // ✅ 修复：插入时，如果字段值存在则设置，否则使用 null（新插入允许 null）
+      // ✅ 使用 sanitizeJsonForDb 处理 JSONB 字段，确保格式正确
       if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
-        insertData.license_type_tag = (cleanedQuestion as any).license_type_tag;
+        insertData.license_type_tag = sanitizeJsonForDb((cleanedQuestion as any).license_type_tag) as any;
       } else {
         insertData.license_type_tag = null;
       }
@@ -293,8 +296,9 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         insertData.stage_tag = null;
       }
 
+      // ✅ 使用 sanitizeJsonForDb 处理数组字段，确保格式正确
       if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
-        insertData.topic_tags = cleanedQuestion.topic_tags;
+        insertData.topic_tags = sanitizeJsonForDb(cleanedQuestion.topic_tags) as any;
       } else {
         insertData.topic_tags = null;
       }

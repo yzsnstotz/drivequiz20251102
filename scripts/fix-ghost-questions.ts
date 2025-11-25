@@ -51,9 +51,9 @@ function sanitizeAiPayload(
     explanation?: string;
   }>;
   tags?: {
-    license_type_tags?: string[];
-    stage_tags?: string[];
-    topic_tags?: string[];
+    license_type_tag?: string[]; // ✅ 修复：使用单数形式，与数据库字段名一致
+    stage_tag?: string[]; // ✅ 修复：使用单数形式，与数据库字段名一致
+    topic_tags?: string[]; // 保持复数形式（数据库字段名就是复数）
     difficulty_level?: "easy" | "medium" | "hard" | null;
   };
   correct_answer?: any;
@@ -128,14 +128,19 @@ function sanitizeAiPayload(
   sanitized.translations = filteredTranslations;
 
   // 白名单：tags 字段
+  // ✅ 修复：严格按照数据库字段名，使用单数形式（stage_tag、license_type_tag）
+  // 数据库字段：stage_tag（单数）、license_type_tag（单数）、topic_tags（复数，特例）
   if (aiResult.tags && typeof aiResult.tags === "object") {
     sanitized.tags = {};
-    if (Array.isArray(aiResult.tags.license_type_tags)) {
-      sanitized.tags.license_type_tags = aiResult.tags.license_type_tags.filter((t: any) => typeof t === "string");
+    // ✅ 修复：从 license_type_tag（单数，与数据库字段名一致）读取
+    if (Array.isArray(aiResult.tags.license_type_tag)) {
+      sanitized.tags.license_type_tag = aiResult.tags.license_type_tag.filter((t: any) => typeof t === "string");
     }
-    if (Array.isArray(aiResult.tags.stage_tags)) {
-      sanitized.tags.stage_tags = aiResult.tags.stage_tags.filter((t: any) => typeof t === "string");
+    // ✅ 修复：从 stage_tag（单数，与数据库字段名一致）读取
+    if (Array.isArray(aiResult.tags.stage_tag)) {
+      sanitized.tags.stage_tag = aiResult.tags.stage_tag.filter((t: any) => typeof t === "string");
     }
+    // topic_tags 保持复数形式（数据库字段名就是复数）
     if (Array.isArray(aiResult.tags.topic_tags)) {
       sanitized.tags.topic_tags = aiResult.tags.topic_tags.filter((t: any) => typeof t === "string");
     }
@@ -219,14 +224,16 @@ function buildFullPipelineDbPayload(
     payload.topic_tags = rawTags.topic_tags;
   }
 
-  // license_type_tag：AI 输出为 license_type_tags，映射成 DB 字段名（保持数组）
-  if (Array.isArray(rawTags.license_type_tags) && rawTags.license_type_tags.length > 0) {
-    payload.license_type_tag = rawTags.license_type_tags;
+  // license_type_tag：AI 输出为 license_type_tag（单数，与数据库字段名一致），保持数组
+  if (Array.isArray(rawTags.license_type_tag) && rawTags.license_type_tag.length > 0) {
+    payload.license_type_tag = rawTags.license_type_tag;
   }
 
-  // stage_tag：当前 AI 输出为 stage_tags:string[]，DB 为单值
-  if (Array.isArray(rawTags.stage_tags) && rawTags.stage_tags.length === 1) {
-    const stageTag = rawTags.stage_tags[0].toUpperCase();
+  // stage_tag：AI 输出为 stage_tag（单数，与数据库字段名一致），DB 为单值
+  // 先采用保守策略：如果只有一个元素，则用该元素；多于一个则暂时保留原 DB 值（在 Save 层合并）
+  if (Array.isArray(rawTags.stage_tag) && rawTags.stage_tag.length === 1) {
+    // 处理 FULL_LICENSE -> regular 的映射
+    const stageTag = rawTags.stage_tag[0].toUpperCase();
     if (stageTag.includes("BOTH")) {
       payload.stage_tag = "both";
     } else if (stageTag.includes("FULL") || stageTag.includes("REGULAR") || stageTag.includes("FULL_LICENSE")) {
@@ -234,10 +241,11 @@ function buildFullPipelineDbPayload(
     } else if (stageTag.includes("PROVISIONAL")) {
       payload.stage_tag = "provisional";
     } else {
-      payload.stage_tag = rawTags.stage_tags[0].toLowerCase();
+      payload.stage_tag = rawTags.stage_tag[0].toLowerCase();
     }
-  } else if (Array.isArray(rawTags.stage_tags) && rawTags.stage_tags.length > 1) {
-    const normalized = rawTags.stage_tags
+  } else if (Array.isArray(rawTags.stage_tag) && rawTags.stage_tag.length > 1) {
+    // 多值情况：采用与 applyTagsFromFullPipeline 相同的逻辑
+    const normalized = rawTags.stage_tag
       .filter((t) => typeof t === "string" && t.trim().length > 0)
       .map((t) => t.trim().toUpperCase());
     
@@ -255,6 +263,7 @@ function buildFullPipelineDbPayload(
       payload.stage_tag = normalized[0].toLowerCase();
     }
   } else {
+    // 无值的情况留给 Save 层结合原值决定，避免乱写
     payload.stage_tag = null;
   }
 
@@ -263,31 +272,40 @@ function buildFullPipelineDbPayload(
 
 /**
  * 应用 tags 到 question 对象
+ * ✅ 修复：统一使用单数字段名，与数据库字段名一致
  */
 function applyTagsFromFullPipeline(
   tags: {
-    license_type_tags?: string[];
-    stage_tags?: string[];
-    topic_tags?: string[];
+    license_type_tag?: string[] | null; // ✅ 修复：使用单数形式，与数据库字段名一致
+    stage_tag?: string[] | null; // ✅ 修复：使用单数形式，与数据库字段名一致
+    topic_tags?: string[] | null; // 保持复数形式（数据库字段名就是复数）
     difficulty_level?: "easy" | "medium" | "hard" | null;
   },
   question: any
 ): void {
-  // 处理 license_type_tag
-  if (tags.license_type_tags && Array.isArray(tags.license_type_tags) && tags.license_type_tags.length > 0) {
-    const normalized = tags.license_type_tags
-      .filter((t) => typeof t === "string" && t.trim().length > 0)
-      .map((t) => t.trim());
-    question.license_tags = Array.from(new Set(normalized));
+  if (!tags) {
+    console.warn(`[applyTagsFromFullPipeline] AI 未返回 tags，跳过 tag 应用`);
+    return;
   }
 
-  // 处理 stage_tag
-  if (tags.stage_tags && Array.isArray(tags.stage_tags) && tags.stage_tags.length > 0) {
-    const normalized = tags.stage_tags
+  // ✅ 修复：使用 license_type_tag（单数，与数据库字段名一致）
+  if (Array.isArray(tags.license_type_tag) && tags.license_type_tag.length > 0) {
+    const normalized = tags.license_type_tag
+      .filter((t) => typeof t === "string" && t.trim().length > 0)
+      .map((t) => t.trim().toUpperCase());
+
+    // 直接使用数据库字段名 license_type_tag
+    (question as any).license_type_tag = Array.from(new Set(normalized));
+  }
+
+  // ✅ 修复：使用 stage_tag（单数，与数据库字段名一致）
+  if (Array.isArray(tags.stage_tag) && tags.stage_tag.length > 0) {
+    const normalized = tags.stage_tag
       .filter((t) => typeof t === "string" && t.trim().length > 0)
       .map((t) => t.trim().toUpperCase());
 
     if (normalized.length > 0) {
+      // ✅ 修复：使用更宽松的匹配逻辑，支持 FULL_LICENSE 等多种格式
       const hasBoth = normalized.some((t) => t.includes("BOTH"));
       const hasFull = normalized.some((t) => t.includes("FULL") || t.includes("REGULAR") || t.includes("FULL_LICENSE"));
       const hasProvisional = normalized.some((t) => t.includes("PROVISIONAL"));
@@ -299,18 +317,26 @@ function applyTagsFromFullPipeline(
       } else if (hasProvisional) {
         question.stage_tag = "provisional";
       } else {
+        // 兜底：直接用第一个，转小写
         question.stage_tag = normalized[0].toLowerCase();
       }
     }
   }
   
-  // 处理 topic_tags
-  if (tags.topic_tags && Array.isArray(tags.topic_tags) && tags.topic_tags.length > 0) {
+  // 处理 topic_tags（保持复数形式，数据库字段名就是复数）
+  const topicTags = tags.topic_tags ?? question.topic_tags ?? [];
+  if (Array.isArray(tags.topic_tags) && tags.topic_tags.length > 0) {
     const normalized = tags.topic_tags
       .filter((t) => typeof t === "string" && t.trim().length > 0)
       .map((t) => t.trim());
+
     question.topic_tags = Array.from(new Set(normalized));
+  } else if (Array.isArray(topicTags) && topicTags.length > 0) {
+    question.topic_tags = topicTags;
   }
+  
+  // difficulty_level 目前没有对应的数据库字段，暂不处理
+  // 如果需要，可以在后续添加 difficulty_level 字段
 }
 
 interface TaskItem {

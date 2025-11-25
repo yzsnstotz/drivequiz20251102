@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-25 12:10:37（修复full_pipeline中stage_tag和license_type_tag未入库问题）
-const BUILD_TIME = "2025-11-25 12:10:37";
+// 最后更新：2025-11-25 13:14:44（修复full_pipeline保存时JSON格式错误，使用sanitizeJsonForDb处理license_type_tag和topic_tags）
+const BUILD_TIME = "2025-11-25 13:14:44";
 
 /**
  * 获取版本号（构建时间）
