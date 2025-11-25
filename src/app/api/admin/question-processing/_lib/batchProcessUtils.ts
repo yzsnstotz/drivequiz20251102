@@ -2362,9 +2362,9 @@ function buildFullPipelineDbPayload(
       .filter((t: unknown) => typeof t === "string" && t.trim().length > 0)
       .map((t: string) => t.trim().toUpperCase());
     
-    const hasBoth = normalized.some((t) => t.includes("BOTH"));
-    const hasFull = normalized.some((t) => t.includes("FULL") || t.includes("REGULAR") || t.includes("FULL_LICENSE"));
-    const hasProvisional = normalized.some((t) => t.includes("PROVISIONAL"));
+    const hasBoth = normalized.some((t: string) => t.includes("BOTH"));
+    const hasFull = normalized.some((t: string) => t.includes("FULL") || t.includes("REGULAR") || t.includes("FULL_LICENSE"));
+    const hasProvisional = normalized.some((t: string) => t.includes("PROVISIONAL"));
 
     if (hasBoth) {
       payload.stage_tag = "both";
