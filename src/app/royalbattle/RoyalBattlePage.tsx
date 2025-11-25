@@ -4,21 +4,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import QuestionImage from '@/components/common/QuestionImage';
-import { loadAllQuestions } from '@/lib/questionsLoader';
+import { loadAllQuestions, Question } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
-
-interface Question {
-  id: number;
-  type: 'single' | 'multiple' | 'truefalse';
-  content: string;
-  image?: string;
-  options?: string[];
-  correctAnswer: string | string[];
-  explanation?: string;
-}
+import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 
 function RoyalBattlePage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   // 处理返回逻辑
   const handleBack = () => {
     window.history.back();
@@ -47,7 +38,7 @@ function RoyalBattlePage() {
     const loadQuestions = async () => {
       try {
         // 通过版本检查与缓存的统一加载器获取题库
-        const allQuestions: Question[] = await loadAllQuestions();
+        const allQuestions = await loadAllQuestions();
         if (!allQuestions || allQuestions.length === 0) {
           console.error('加载题目失败：未找到题目数据');
           setIsLoading(false);
@@ -295,7 +286,7 @@ function RoyalBattlePage() {
         </div>
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-gray-900 text-lg">{currentQuestion.content}</p>
+            <p className="text-gray-900 text-lg">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             <button
               onClick={() => setShowAIDialog(true)}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -333,7 +324,7 @@ function RoyalBattlePage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {currentQuestion.options?.map((option, index) => {
+              {getQuestionOptions(currentQuestion.options as any, language as 'zh' | 'en' | 'ja').map((option, index) => {
                 const optionLabel = String.fromCharCode(65 + index);
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
@@ -350,6 +341,7 @@ function RoyalBattlePage() {
                         : 'bg-gray-50 border-2 border-transparent'
                     }`}
                   >
+                    <span className="font-medium">{optionLabel}: </span>
                     {option}
                   </button>
                 );
@@ -364,7 +356,7 @@ function RoyalBattlePage() {
               {isCorrect(selectedAnswer) ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{currentQuestion.explanation}</p>
+              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             )}
           </div>
         )}
