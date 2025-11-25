@@ -61,7 +61,20 @@ type AskResult = {
 };
 
 /**
- * 从 Supabase 读取 AI Provider 超时配置
+ * 超时配置缓存（5分钟TTL）
+ */
+const TIMEOUT_CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5分钟
+
+type TimeoutConfigCacheEntry = {
+  timeout: number;
+  lastUpdated: number;
+};
+
+// 超时配置缓存（单例，因为超时配置是全局的）
+let timeoutConfigCache: TimeoutConfigCacheEntry | null = null;
+
+/**
+ * 从 Supabase 读取 AI Provider 超时配置（带缓存）
  */
 async function getProviderTimeout(config: LocalAIConfig): Promise<number> {
   const SUPABASE_URL = config.supabaseUrl;
@@ -71,6 +84,13 @@ async function getProviderTimeout(config: LocalAIConfig): Promise<number> {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     console.warn("[LOCAL-AI] Supabase 配置缺失，使用默认超时时间:", DEFAULT_TIMEOUT_MS);
     return DEFAULT_TIMEOUT_MS;
+  }
+
+  // 检查缓存是否有效
+  const now = Date.now();
+  if (timeoutConfigCache && now - timeoutConfigCache.lastUpdated < TIMEOUT_CONFIG_CACHE_TTL) {
+    console.log("[LOCAL-AI] 使用缓存的超时配置:", timeoutConfigCache.timeout, "ms (缓存年龄:", `${now - timeoutConfigCache.lastUpdated}ms)`);
+    return timeoutConfigCache.timeout;
   }
 
   try {
@@ -90,6 +110,11 @@ async function getProviderTimeout(config: LocalAIConfig): Promise<number> {
       if (data && data.length > 0) {
         const timeoutMs = Number(data[0].value);
         if (!isNaN(timeoutMs) && timeoutMs > 0) {
+          // 更新缓存
+          timeoutConfigCache = {
+            timeout: timeoutMs,
+            lastUpdated: now,
+          };
           console.log("[LOCAL-AI] 使用配置的超时时间:", timeoutMs, "ms");
           return timeoutMs;
         }
@@ -99,6 +124,11 @@ async function getProviderTimeout(config: LocalAIConfig): Promise<number> {
     console.warn("[LOCAL-AI] 读取超时配置失败，使用默认值:", error instanceof Error ? error.message : String(error));
   }
 
+  // 使用默认值并更新缓存（避免频繁查询数据库）
+  timeoutConfigCache = {
+    timeout: DEFAULT_TIMEOUT_MS,
+    lastUpdated: now,
+  };
   console.log("[LOCAL-AI] 使用默认超时时间:", DEFAULT_TIMEOUT_MS, "ms");
   return DEFAULT_TIMEOUT_MS;
 }

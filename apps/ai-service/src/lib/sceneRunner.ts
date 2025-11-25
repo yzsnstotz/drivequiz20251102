@@ -92,10 +92,47 @@ export interface SceneResult {
 }
 
 /**
- * 从 Supabase 读取场景配置
+ * 场景配置缓存（30分钟TTL）
+ */
+const SCENE_CONFIG_CACHE_TTL = 30 * 60 * 1000; // 30分钟
+
+type SceneConfigCacheEntry = {
+  config: SceneConfig;
+  lastUpdated: number;
+};
+
+// 场景配置缓存：key 为 "sceneKey:locale"
+const sceneConfigCache: Map<string, SceneConfigCacheEntry> = new Map();
+
+// 请求去重：key 为 "sceneKey:locale"，值为正在进行的 Promise
+const sceneConfigPendingRequests: Map<string, Promise<SceneConfig | null>> = new Map();
+
+/**
+ * 清除所有场景配置缓存
+ */
+export function clearSceneConfigCache(): void {
+  sceneConfigCache.clear();
+  sceneConfigPendingRequests.clear();
+}
+
+/**
+ * 清除指定场景的配置缓存
+ */
+export function clearSceneConfigCacheForScene(sceneKey: string, locale: string): void {
+  const cacheKey = `${sceneKey}:${locale}`;
+  sceneConfigCache.delete(cacheKey);
+  sceneConfigPendingRequests.delete(cacheKey);
+}
+
+/**
+ * 从 Supabase 读取场景配置（带缓存和请求去重）
  * 
  * 注意：此函数在两个服务中都需要使用，但实现略有不同（超时配置等）
  * 因此保留为可配置的函数，允许传入自定义的超时时间
+ * 
+ * 缓存机制：
+ * - 使用内存缓存，TTL 为 30 分钟
+ * - 使用 Promise 缓存实现请求去重，防止并发请求重复查询数据库
  * 
  * @param sceneKey 场景标识
  * @param locale 语言标识
@@ -117,6 +154,64 @@ export async function getSceneConfig(
     return null;
   }
 
+  // 构建缓存键
+  const cacheKey = `${sceneKey}:${locale}`;
+  const now = Date.now();
+
+  // 1. 检查缓存是否有效
+  const cached = sceneConfigCache.get(cacheKey);
+  if (cached && now - cached.lastUpdated < SCENE_CONFIG_CACHE_TTL) {
+    console.log("[SCENE-RUNNER] 使用缓存的场景配置:", { sceneKey, locale, cacheAge: `${now - cached.lastUpdated}ms` });
+    return cached.config;
+  }
+
+  // 2. 检查是否有正在进行的请求（请求去重）
+  const pendingRequest = sceneConfigPendingRequests.get(cacheKey);
+  if (pendingRequest) {
+    console.log("[SCENE-RUNNER] 等待正在进行的场景配置请求:", { sceneKey, locale });
+    return pendingRequest;
+  }
+
+  // 3. 创建新的请求 Promise
+  const fetchPromise = (async (): Promise<SceneConfig | null> => {
+    try {
+      return await fetchSceneConfigFromDb(sceneKey, locale, supabaseUrl, supabaseServiceKey, timeoutMs);
+    } finally {
+      // 请求完成后清除 pending 状态
+      sceneConfigPendingRequests.delete(cacheKey);
+    }
+  })();
+
+  // 4. 将 Promise 存入 pending 映射（用于请求去重）
+  sceneConfigPendingRequests.set(cacheKey, fetchPromise);
+
+  // 5. 等待请求完成并更新缓存
+  try {
+    const result = await fetchPromise;
+    if (result) {
+      // 只有成功获取到配置才更新缓存
+      sceneConfigCache.set(cacheKey, {
+        config: result,
+        lastUpdated: now,
+      });
+    }
+    return result;
+  } catch (error) {
+    // 请求失败时不更新缓存，直接抛出错误
+    throw error;
+  }
+}
+
+/**
+ * 从数据库实际获取场景配置（内部函数）
+ */
+async function fetchSceneConfigFromDb(
+  sceneKey: string,
+  locale: string,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  timeoutMs: number
+): Promise<SceneConfig | null> {
   try {
     const url = `${supabaseUrl.replace(/\/+$/, "")}/rest/v1/ai_scene_config?scene_key=eq.${encodeURIComponent(sceneKey)}&enabled=eq.true&select=system_prompt_zh,system_prompt_ja,system_prompt_en,output_format`;
     console.log("[SCENE-RUNNER] 读取场景配置:", { sceneKey, locale, timeoutMs, url: url.substring(0, 100) + "..." });
@@ -135,14 +230,26 @@ export async function getSceneConfig(
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => "");
-      console.warn("[SCENE-RUNNER] 场景配置请求失败:", { 
+      const errorDetails = {
         status: res.status, 
         statusText: res.statusText,
         errorText: errorText.substring(0, 200),
         duration: `${duration}ms`,
-        timeoutMs
-      });
-      return null;
+        timeoutMs,
+        sceneKey,
+        locale
+      };
+      
+      // 如果是 404，说明场景不存在
+      if (res.status === 404) {
+        console.warn("[SCENE-RUNNER] 场景配置不存在 (404):", errorDetails);
+        return null;
+      }
+      
+      // 其他 HTTP 错误（500, 401, 403 等）应该抛出错误
+      const errorMsg = `Supabase API 请求失败 (${res.status} ${res.statusText}): ${sceneKey} (${locale})。错误详情: ${errorText.substring(0, 200)}`;
+      console.error("[SCENE-RUNNER] 场景配置请求失败:", errorDetails);
+      throw new Error(errorMsg);
     }
 
     const data = (await res.json()) as Array<{
@@ -199,18 +306,37 @@ export async function getSceneConfig(
       error.message.includes("aborted")
     );
     
+    const isFetchFailed = error instanceof Error && (
+      error.message === "fetch failed" ||
+      error.message.includes("fetch failed") ||
+      error.cause instanceof Error
+    );
+    
     if (isTimeout) {
-      console.error(`[SCENE-RUNNER] 读取场景配置超时 (${timeoutMs}ms):`, { sceneKey, locale });
+      const errorMsg = `读取场景配置超时 (${timeoutMs}ms): ${sceneKey} (${locale})`;
+      console.error(`[SCENE-RUNNER] ${errorMsg}`, { sceneKey, locale, timeoutMs });
+      throw new Error(errorMsg);
+    } else if (isFetchFailed) {
+      const errorMsg = `无法连接到 Supabase 读取场景配置: ${sceneKey} (${locale})。请检查 SUPABASE_URL 和网络连接。原始错误: ${error instanceof Error ? error.message : String(error)}`;
+      console.error("[SCENE-RUNNER] 场景配置读取网络错误:", { 
+        error: error instanceof Error ? error.message : String(error),
+        errorCause: error instanceof Error && error.cause ? String(error.cause) : undefined,
+        sceneKey,
+        locale,
+        timeoutMs,
+        supabaseUrl: supabaseUrl ? supabaseUrl.substring(0, 50) + "..." : "未配置"
+      });
+      throw new Error(errorMsg);
     } else {
-      console.error("[SCENE-RUNNER] 读取场景配置失败:", { 
+      const errorMsg = `读取场景配置失败: ${sceneKey} (${locale})。错误: ${error instanceof Error ? error.message : String(error)}`;
+      console.error("[SCENE-RUNNER] 场景配置读取失败:", { 
         error: error instanceof Error ? error.message : String(error),
         sceneKey,
         locale,
         timeoutMs
       });
+      throw new Error(errorMsg);
     }
-    
-    return null;
   }
 }
 
@@ -586,15 +712,22 @@ export async function runScene(
   const defaultTimeoutMs = providerKind === "ollama" ? 15000 : 5000;
   const sceneConfigTimeoutMs = options.sceneConfigTimeoutMs ?? defaultTimeoutMs;
   
-  const sceneConfig = await getSceneConfig(
-    sceneKey, 
-    locale, 
-    config,
-    { timeoutMs: sceneConfigTimeoutMs }
-  );
+  let sceneConfig: SceneConfig | null = null;
+  try {
+    sceneConfig = await getSceneConfig(
+      sceneKey, 
+      locale, 
+      config,
+      { timeoutMs: sceneConfigTimeoutMs }
+    );
+  } catch (error) {
+    // 如果 getSceneConfig 抛出错误（网络错误等），直接重新抛出
+    throw error;
+  }
 
+  // 如果场景配置不存在（返回 null），说明场景在数据库中不存在或未启用
   if (!sceneConfig) {
-    throw new Error(`Scene not found: ${sceneKey} (${locale})`);
+    throw new Error(`Scene not found: ${sceneKey} (${locale})。请检查场景是否存在于数据库且 enabled=true`);
   }
 
   // 2. 替换占位符
