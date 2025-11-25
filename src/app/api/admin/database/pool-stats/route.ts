@@ -15,8 +15,8 @@ export const fetchCache = "force-no-store";
 import { NextRequest } from "next/server";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, internalError } from "@/app/api/_lib/errors";
-import { getDbPoolStats } from "@/lib/db";
-import { getAiDbPoolStats } from "@/lib/aiDb";
+import { getDbPoolStats, type PoolStats } from "@/lib/db";
+import { getAiDbPoolStats, type AiDbPoolStats } from "@/lib/aiDb";
 
 export const GET = withAdminAuth(async (_req: NextRequest) => {
   try {
