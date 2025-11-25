@@ -4,18 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Clock, CheckSquare, XSquare, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import QuestionImage from '@/components/common/QuestionImage';
-import { loadAllQuestions } from '@/lib/questionsLoader';
+import { loadAllQuestions, Question } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
-
-interface Question {
-  id: number;
-  type: 'single' | 'multiple' | 'truefalse';
-  content: string;
-  image?: string;
-  options?: string[];
-  correctAnswer: string | string[];
-  explanation?: string;
-}
+import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 
 interface ExamSet {
   id: string;
@@ -58,7 +49,7 @@ const examSets: ExamSet[] = [
 ];
 
 function ExamPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [selectedSet, setSelectedSet] = useState<ExamSet | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | string[]>('');
@@ -97,7 +88,7 @@ function ExamPage() {
     const loadQuestions = async () => {
       try {
         // 通过统一加载器读取题目
-        const allQuestions: Question[] = await loadAllQuestions();
+        const allQuestions = await loadAllQuestions();
         if (!allQuestions || allQuestions.length === 0) {
           console.error('加载题目失败：未找到题目数据');
           setIsLoading(false);
@@ -200,7 +191,7 @@ function ExamPage() {
     const practiceItem = {
       id: `exam-${selectedSet?.id}-${currentQuestionIndex}-${Date.now()}`,
       questionId: currentQuestion.id,
-      content: currentQuestion.content,
+      content: typeof currentQuestion.content === 'string' ? currentQuestion.content : (currentQuestion.content as any)?.zh || '',
       type: currentQuestion.type,
       correct: isCorrect,
       date: new Date().toLocaleString('zh-CN'),
@@ -384,7 +375,7 @@ function ExamPage() {
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{currentQuestion.content}</p>
+          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
           {currentQuestion.image && (
             <QuestionImage
               src={currentQuestion.image}
@@ -413,7 +404,7 @@ function ExamPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {currentQuestion.options?.map((option, index) => {
+              {getQuestionOptions(currentQuestion.options as any, language as 'zh' | 'en' | 'ja').map((option, index) => {
                 const optionLabel = String.fromCharCode(65 + index);
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
@@ -429,6 +420,7 @@ function ExamPage() {
                         : 'bg-gray-50 border-2 border-transparent'
                     }`}
                   >
+                    <span className="font-medium">{optionLabel}: </span>
                     {option}
                   </button>
                 );
@@ -485,7 +477,7 @@ function ExamPage() {
               )}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-sm">{currentQuestion.explanation}</p>
+              <p className="text-sm">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             )}
           </div>
         )}
