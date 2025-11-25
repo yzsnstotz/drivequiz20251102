@@ -130,17 +130,21 @@ async function getSceneConfig(sceneKey: string, locale: string = "zh"): Promise<
       return null;
     }
 
-    // 根据语言选择prompt
+    // 强制只使用中文 prompt（忽略 locale 参数）
+    // 原因：批量任务处理时，数据库中可能只有中文 prompt，其他语言的 prompt 可能不存在
+    // 为了避免 scene_not_found 错误，统一使用中文 prompt
     let prompt = sceneConfig.system_prompt_zh;
-    const lang = locale.toLowerCase();
-    if (lang.startsWith("ja") && sceneConfig.system_prompt_ja) {
-      prompt = sceneConfig.system_prompt_ja;
-    } else if (lang.startsWith("en") && sceneConfig.system_prompt_en) {
-      prompt = sceneConfig.system_prompt_en;
+    
+    // 如果中文 prompt 不存在或为空，记录警告
+    if (!prompt || prompt.trim() === "") {
+      console.warn(`[getSceneConfig] 中文 prompt 不存在或为空，使用空字符串:`, { sceneKey, locale });
+      prompt = "";
     }
+    
+    console.log(`[getSceneConfig] 使用中文 prompt (locale: ${locale}, 强制使用中文)`);
 
     return {
-      prompt: prompt || sceneConfig.system_prompt_zh,
+      prompt: prompt || "",
       outputFormat: sceneConfig.output_format || null,
       sceneName: sceneConfig.scene_name || sceneKey,
     };
