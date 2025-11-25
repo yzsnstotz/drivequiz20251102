@@ -5,7 +5,7 @@
 // 更新内容: 为 activation_codes 表增加后台管理字段
 // ============================================================
 
-import { Kysely, PostgresDialect, Generated, JsonValue } from "kysely";
+import { Kysely, PostgresDialect, Generated } from "kysely";
 import { Pool } from "pg";
 
 // ------------------------------------------------------------
@@ -422,13 +422,13 @@ interface QuestionTable {
   id: Generated<number>;
   content_hash: string;
   type: "single" | "multiple" | "truefalse";
-  content: JsonValue; // ✅ 修复：JSONB - 多语言内容对象
-  options: JsonValue | null; // ✅ 修复：JSONB
-  correct_answer: JsonValue | null; // ✅ 修复：JSONB
+  content: any; // ✅ JSONB - 多语言内容对象
+  options: any | null; // ✅ JSONB
+  correct_answer: any | null; // ✅ JSONB
   image: string | null;
-  explanation: JsonValue | null; // ✅ 修复：JSONB - 多语言解析对象
+  explanation: any | null; // ✅ JSONB - 多语言解析对象
   license_types: string[] | null; // 兼容旧字段（数组）
-  license_type_tag: JsonValue | null; // ✅ 修复：驾照类型标签（JSONB 数组，内部约定为 string[]，例如 ["ALL","ORDINARY"]）
+  license_type_tag: any | null; // ✅ JSONB - 驾照类型标签（JSONB 数组，内部约定为 string[]，例如 ["ALL","ORDINARY"]）
   category: string | null; // 题目分类（如 "12"）
   stage_tag: "both" | "provisional" | "regular" | null; // 阶段标签（兼容旧值，新值应为 "provisional" | "full" | "both"）
   topic_tags: string[] | null; // 主题标签数组（如 ['traffic_sign']）
