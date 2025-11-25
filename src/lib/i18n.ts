@@ -533,6 +533,24 @@ export const userTranslations: Translations = {
     'study.category.provisional': '仮免',
     'study.category.license': '免许',
     'study.loadError': '加载题目集失败',
+    'study.selectLicenseType': '选择驾照类型',
+    'study.selectStage': '选择考试阶段',
+    'study.selectMode': '选择模式',
+    'study.stage.provisional': '临时驾照（仮免）',
+    'study.stage.regular': '正式驾照（本免）',
+    'study.mode.study': '学科学习',
+    'study.mode.exam': '模拟考试',
+    'study.mode.studyDesc': '从符合条件的题目中学习，展示进度',
+    'study.mode.examDesc': '模拟真实考试，限时答题',
+    'study.back': '返回',
+    'study.next': '下一步',
+    'study.start': '开始',
+    'study.progress': '进度',
+    'study.totalQuestions': '总题数',
+    'study.answeredQuestions': '已答题数',
+    'study.loadingQuestions': '正在加载题目...',
+    'study.noQuestionsFound': '未找到符合条件的题目。请尝试选择其他驾照类型或考试阶段。',
+    'study.completed': '恭喜您完成所有题目！',
     
     // 考试页面
     'exam.title': '模拟考试',
@@ -571,6 +589,13 @@ export const userTranslations: Translations = {
     'mistakes.true': '正确',
     'mistakes.false': '错误',
     
+    // 收藏
+    'favorites.title': '我的收藏',
+    'favorites.empty': '暂无收藏',
+    'favorites.emptyDesc': '在学科学习或模拟考试中点击🌟号可以收藏题目',
+    'favorites.remove': '取消收藏',
+    'favorites.add': '添加收藏',
+    
     // 大乱斗
     'royalbattle.title': '大乱斗',
     'royalbattle.gameOver': '游戏结束',
@@ -607,6 +632,8 @@ export const userTranslations: Translations = {
     'profile.fromStudy': '学习',
     'profile.clearActivationConfirm': '确定要清除激活状态吗？清除后需要重新激活才能使用应用。',
     'profile.clearActivationSuccess': '激活状态已清除，页面将刷新',
+    'profile.favorites': '我的收藏',
+    'profile.favoritesDesc': '查看收藏的题目',
     
     // 食宿页面
     'nearby.title': '附近的店铺',
@@ -643,6 +670,7 @@ export const userTranslations: Translations = {
     'home.aiDescription': 'Answer your driving test questions anytime',
     'home.changeLanguage': 'Change Language',
     'home.subtitle': 'Start your driving journey',
+    'home.favorites': 'My Favorites',
     
     // 题目
     'question.previous': 'Previous',
@@ -680,6 +708,24 @@ export const userTranslations: Translations = {
     'study.category.provisional': 'Provisional',
     'study.category.license': 'License',
     'study.loadError': 'Failed to load question sets',
+    'study.selectLicenseType': 'Select License Type',
+    'study.selectStage': 'Select Exam Stage',
+    'study.selectMode': 'Select Mode',
+    'study.stage.provisional': 'Provisional License',
+    'study.stage.regular': 'Full License',
+    'study.mode.study': 'Study Mode',
+    'study.mode.exam': 'Exam Mode',
+    'study.mode.studyDesc': 'Learn from filtered questions with progress tracking',
+    'study.mode.examDesc': 'Simulate real exam with time limit',
+    'study.back': 'Back',
+    'study.next': 'Next',
+    'study.start': 'Start',
+    'study.progress': 'Progress',
+    'study.totalQuestions': 'Total Questions',
+    'study.answeredQuestions': 'Answered',
+    'study.loadingQuestions': 'Loading questions...',
+    'study.noQuestionsFound': 'No questions found matching the criteria. Please try selecting a different license type or exam stage.',
+    'study.completed': 'Congratulations! You have completed all questions!',
     
     // 考试页面
     'exam.title': 'Mock Exam',
@@ -698,6 +744,11 @@ export const userTranslations: Translations = {
     'exam.image': 'Question Image',
     'exam.true': 'True',
     'exam.false': 'False',
+    'exam.submit': 'Submit Answer',
+    'exam.finish': 'Finish Exam',
+    'exam.passed': 'Passed',
+    'exam.failed': 'Failed',
+    'exam.score': 'Score',
     
     // 错题本
     'mistakes.title': 'Mistakes',
@@ -717,6 +768,13 @@ export const userTranslations: Translations = {
     'mistakes.image': 'Question Image',
     'mistakes.true': 'True',
     'mistakes.false': 'False',
+    
+    // 收藏
+    'favorites.title': 'My Favorites',
+    'favorites.empty': 'No Favorites',
+    'favorites.emptyDesc': 'Click the 🌟 icon in study or exam mode to favorite questions',
+    'favorites.remove': 'Remove from Favorites',
+    'favorites.add': 'Add to Favorites',
     
     // 大乱斗
     'royalbattle.title': 'Battle',
@@ -754,6 +812,8 @@ export const userTranslations: Translations = {
     'profile.fromStudy': 'Study',
     'profile.clearActivationConfirm': 'Are you sure you want to clear the activation status? You will need to reactivate to use the app.',
     'profile.clearActivationSuccess': 'Activation status cleared, page will refresh',
+    'profile.favorites': 'My Favorites',
+    'profile.favoritesDesc': 'View favorited questions',
     
     // 食宿页面
     'nearby.title': 'Nearby Shops',
@@ -790,6 +850,7 @@ export const userTranslations: Translations = {
     'home.aiDescription': '運転免許試験の質問にいつでも答えます',
     'home.changeLanguage': '言語を変更',
     'home.subtitle': 'あなたの運転学習の旅を始めましょう',
+    'home.favorites': 'お気に入り',
     
     // 题目
     'question.previous': '前へ',
@@ -827,6 +888,24 @@ export const userTranslations: Translations = {
     'study.category.provisional': '仮免',
     'study.category.license': '免許',
     'study.loadError': '問題セットの読み込みに失敗しました',
+    'study.selectLicenseType': '免許タイプを選択',
+    'study.selectStage': '試験段階を選択',
+    'study.selectMode': 'モードを選択',
+    'study.stage.provisional': '仮免許',
+    'study.stage.regular': '本免許',
+    'study.mode.study': '学科学習',
+    'study.mode.exam': '模擬試験',
+    'study.mode.studyDesc': 'フィルタリングされた問題から学習し、進捗を表示',
+    'study.mode.examDesc': '制限時間付きで実際の試験をシミュレート',
+    'study.back': '戻る',
+    'study.next': '次へ',
+    'study.start': '開始',
+    'study.progress': '進捗',
+    'study.totalQuestions': '総問題数',
+    'study.answeredQuestions': '回答済み',
+    'study.loadingQuestions': '問題を読み込み中...',
+    'study.noQuestionsFound': '条件に合う問題が見つかりませんでした。別の免許タイプまたは試験段階を選択してください。',
+    'study.completed': 'おめでとうございます！すべての問題を完了しました！',
     
     // 考试页面
     'exam.title': '模擬試験',
@@ -845,6 +924,11 @@ export const userTranslations: Translations = {
     'exam.image': '問題画像',
     'exam.true': '正しい',
     'exam.false': '間違い',
+    'exam.submit': '回答を提出',
+    'exam.finish': '試験を終了',
+    'exam.passed': '合格',
+    'exam.failed': '不合格',
+    'exam.score': '得点',
     
     // 错题本
     'mistakes.title': '間違い',
@@ -864,6 +948,13 @@ export const userTranslations: Translations = {
     'mistakes.image': '問題画像',
     'mistakes.true': '正しい',
     'mistakes.false': '間違い',
+    
+    // 收藏
+    'favorites.title': 'お気に入り',
+    'favorites.empty': 'お気に入りなし',
+    'favorites.emptyDesc': '学科学習や模擬試験で🌟アイコンをクリックすると問題をお気に入りに追加できます',
+    'favorites.remove': 'お気に入りから削除',
+    'favorites.add': 'お気に入りに追加',
     
     // 大乱斗
     'royalbattle.title': 'バトル',
@@ -901,6 +992,8 @@ export const userTranslations: Translations = {
     'profile.fromStudy': '学習',
     'profile.clearActivationConfirm': '有効化状態をクリアしてもよろしいですか？アプリを使用するには再有効化が必要です。',
     'profile.clearActivationSuccess': '有効化状態がクリアされました。ページを更新します',
+    'profile.favorites': 'お気に入り',
+    'profile.favoritesDesc': 'お気に入りの問題を表示',
     
     // 食宿页面
     'nearby.title': '近くの店舗',

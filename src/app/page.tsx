@@ -18,6 +18,7 @@ import {
   Truck,
   Swords,
   Globe,
+  Star,
 } from "lucide-react";
 import AIPage from "@/components/AIPage";
 import MerchantAdCarousel from "@/components/MerchantAdCarousel";
@@ -443,6 +444,27 @@ export default function HomePage() {
                 {t('home.royalbattle')}
               </span>
             </div>
+          </a>
+        </div>
+
+        {/* Favorites Section */}
+        <div className="mb-6">
+          <a
+            href="/favorites"
+            className="bg-white rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow flex items-center space-x-4"
+          >
+            <div className="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center">
+              <Star className="h-6 w-6 text-yellow-600 fill-current" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-gray-900">
+                {t('home.favorites')}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {t('profile.favoritesDesc')}
+              </p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-gray-400" />
           </a>
         </div>
 

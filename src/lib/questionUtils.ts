@@ -16,7 +16,7 @@ export interface QuestionContent {
  * 获取题目的多语言内容
  * @param content 题目内容（可能是字符串或多语言对象）
  * @param locale 目标语言
- * @returns 对应语言的题目内容
+ * @returns 对应语言的题目内容，如果目标语言不存在则回退到中文
  */
 export function getQuestionContent(
   content: string | QuestionContent,
@@ -28,17 +28,27 @@ export function getQuestionContent(
   }
   
   // 新格式：多语言对象
-  // 只返回目标语言（必须是有效的非空字符串，且不是占位符），如果没有则返回null
-  const targetLangValue = content[locale];
-  // 检查是否是占位符（以 [EN] 或 [JA] 开头）
-  const isPlaceholder = targetLangValue && typeof targetLangValue === 'string' && 
-    (targetLangValue.trim().startsWith('[EN]') || targetLangValue.trim().startsWith('[JA]'));
+  // 检查是否是占位符的辅助函数
+  const isPlaceholder = (value: string | undefined): boolean => {
+    return value !== undefined && typeof value === 'string' && 
+      (value.trim().startsWith('[EN]') || value.trim().startsWith('[JA]'));
+  };
   
-  if (targetLangValue && typeof targetLangValue === 'string' && targetLangValue.trim().length > 0 && !isPlaceholder) {
+  // 首先尝试获取目标语言
+  const targetLangValue = content[locale];
+  if (targetLangValue && typeof targetLangValue === 'string' && targetLangValue.trim().length > 0 && !isPlaceholder(targetLangValue)) {
     return targetLangValue;
   }
   
-  // 如果目标语言不存在、为空或是占位符，返回null（不使用任何备用措施）
+  // 如果目标语言不存在、为空或是占位符，回退到中文（zh）
+  if (locale !== 'zh') {
+    const zhValue = content.zh;
+    if (zhValue && typeof zhValue === 'string' && zhValue.trim().length > 0 && !isPlaceholder(zhValue)) {
+      return zhValue;
+    }
+  }
+  
+  // 如果中文也不存在，返回null
   return null;
 }
 
@@ -66,4 +76,5 @@ export function getQuestionOptions(
     getQuestionContent(option, locale)
   ).filter((val): val is string => val !== null);
 }
+
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { User, XSquare, Settings, Edit2, Trophy, BookOpen } from 'lucide-react';
+import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star } from 'lucide-react';
 import Link from 'next/link';
 import { getLocalPackageVersion } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
@@ -96,6 +96,13 @@ function ProfilePage() {
       title: t('profile.mistakes'),
       description: t('profile.mistakesDesc'),
       href: '/mistakes'
+    },
+    {
+      id: 'favorites',
+      icon: <Star className="h-6 w-6 text-yellow-600 fill-current" />,
+      title: t('profile.favorites'),
+      description: t('profile.favoritesDesc'),
+      href: '/favorites'
     },
     {
       id: 'exam-history',

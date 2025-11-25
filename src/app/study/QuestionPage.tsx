@@ -7,6 +7,7 @@ import QuestionImage from '@/components/common/QuestionImage';
 import { loadUnifiedQuestionsPackage } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
 import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
+import FavoriteButton from './components/FavoriteButton';
 
 interface Question {
   id: number;
@@ -279,6 +280,9 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
               {currentQuestion.type === 'single' ? '单选题' : 
                currentQuestion.type === 'multiple' ? '多选题' : '判断题'}
             </span>
+            <FavoriteButton
+              questionHash={currentQuestion.hash || currentQuestion.id?.toString()}
+            />
             <button
               onClick={() => setShowAIDialog(true)}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
