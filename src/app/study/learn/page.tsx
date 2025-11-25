@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Bot } from "lucide-react";
-import { loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
+import { loadUnifiedQuestionsPackage, Question } from "@/lib/questionsLoader";
 import { filterQuestions } from "@/lib/questionFilter";
 import { useLanguage } from "@/lib/i18n";
 import { getQuestionContent, getQuestionOptions } from "@/lib/questionUtils";
@@ -11,30 +11,6 @@ import QuestionAIDialog from "@/components/QuestionAIDialog";
 import QuestionImage from "@/components/common/QuestionImage";
 import FavoriteButton from "../components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
-
-interface Question {
-  id: number;
-  type: "single" | "multiple" | "truefalse";
-  content:
-    | string
-    | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
-  image?: string;
-  options?:
-    | string[]
-    | Array<{
-        zh: string;
-        en?: string;
-        ja?: string;
-        [key: string]: string | undefined;
-      }>;
-  correctAnswer: string | string[];
-  explanation?:
-    | string
-    | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
-  hash?: string;
-  license_type_tag?: string[];
-  stage_tag?: "provisional" | "regular" | "full" | "both" | null;
-}
 
 export default function StudyModePage() {
   const searchParams = useSearchParams();

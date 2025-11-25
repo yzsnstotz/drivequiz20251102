@@ -7,13 +7,15 @@ type QuestionType = "single" | "multiple" | "truefalse";
 export interface Question {
   id: number;
   type: QuestionType;
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
   image?: string;
-  options?: string[];
+  options?: string[] | Array<{ zh: string; en?: string; ja?: string; [key: string]: string | undefined }>;
   correctAnswer: string | string[];
-  explanation?: string;
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
   hash?: string;
   category?: string;
+  license_type_tag?: string[];
+  stage_tag?: "provisional" | "regular" | "full" | "both" | null;
 }
 
 export interface UnifiedPackage {
