@@ -512,7 +512,8 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
 
         // 5) 使用统一的场景执行模块
         // ⚠️ 注意：所有场景执行逻辑都在 sceneRunner.ts 中，这里只负责调用
-        const promptLocale = targetLanguage || lang; // 优先使用 targetLanguage（翻译目标语言）
+        // ✅ 修复：强制使用 'zh' 作为 locale，因为场景配置只使用中文 prompt
+        const promptLocale = "zh"; // 强制使用中文，避免因缺少其他语言 prompt 导致的错误
         const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
         const refPrefix =
           lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
@@ -529,6 +530,7 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
           console.log("[LOCAL-AI] 使用场景执行模块:", {
             scene,
             locale: promptLocale,
+            originalLang: lang,
             sourceLanguage,
             targetLanguage,
             model: config.aiModel,
@@ -544,9 +546,10 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
           };
 
           // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
+          // ✅ 修复：强制使用 'zh' 作为 locale，因为场景配置只使用中文 prompt
           sceneResult = await runScene({
             sceneKey: scene,
-            locale: promptLocale,
+            locale: promptLocale, // 强制使用 'zh'
             question: normalizedQuestion,
             reference: reference || null,
             userPrefix,
