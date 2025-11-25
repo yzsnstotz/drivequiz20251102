@@ -3301,10 +3301,10 @@ export async function processFullPipelineBatch(
           if (onLog) {
             await onLog(question.id, {
               step: 'DB_WRITE_BEFORE',
-              cleanedJsonPreview: {
+              cleanedJsonPreview: JSON.stringify({
                 content: JSON.stringify(safeContent ?? {}).substring(0, 500),
                 explanation: JSON.stringify(safeExplanation ?? {}).substring(0, 500),
-              },
+              }),
               trace_id: batchTraceId, // ✅ Task 4: 添加 trace_id
             });
           }
