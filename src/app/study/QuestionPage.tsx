@@ -17,6 +17,7 @@ interface Question {
   options?: string[] | Array<{ zh: string; en?: string; ja?: string; [key: string]: string | undefined }>;
   correctAnswer: string | string[];
   explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+  hash?: string;
 }
 
 interface QuestionPageProps {
@@ -281,7 +282,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
                currentQuestion.type === 'multiple' ? '多选题' : '判断题'}
             </span>
             <FavoriteButton
-              questionHash={currentQuestion.hash || currentQuestion.id?.toString()}
+              questionHash={(currentQuestion as any).hash || currentQuestion.id?.toString() || `q_${currentQuestion.id}`}
             />
             <button
               onClick={() => setShowAIDialog(true)}
