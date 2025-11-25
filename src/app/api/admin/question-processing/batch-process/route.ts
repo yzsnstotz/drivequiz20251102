@@ -1332,10 +1332,12 @@ async function processBatchAsync(
           
           console.log(`[BatchProcess] [${requestId}] 正在进行题目ID ${question.id} 的${operationName}任务`);
 
-          // 在执行每个操作前，重新从数据库获取最新的 explanation（如果 fill_missing 已经更新了它）
+          // ✅ 修复：在执行每个操作前，重新从数据库获取最新的 explanation（如果 fill_missing 已经更新了它）
+          // 对于 translate 操作，同时获取 content 和 explanation，避免重复查询
+          const needsContent = operation === "translate";
           const currentQuestion = await db
             .selectFrom("questions")
-            .select(["explanation"])
+            .select(needsContent ? ["explanation", "content"] : ["explanation"])
             .where("id", "=", question.id)
             .executeTakeFirst();
           
@@ -1344,6 +1346,19 @@ async function processBatchAsync(
               explanation = currentQuestion.explanation;
             } else if (typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
               explanation = currentQuestion.explanation.zh || explanation;
+            }
+          }
+
+          // ✅ 修复：如果查询了 content，更新本地的 content 变量（用于翻译操作）
+          if (needsContent && currentQuestion && "content" in currentQuestion) {
+            if (currentQuestion.content) {
+              if (typeof currentQuestion.content === "string") {
+                content = currentQuestion.content;
+              } else if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
+                // 多语言对象，优先使用中文
+                const contentObj = currentQuestion.content as { [key: string]: string | undefined };
+                content = contentObj.zh || content;
+              }
             }
           }
 
@@ -1404,12 +1419,9 @@ async function processBatchAsync(
                 try {
                   // ✅ 修复 Task 4：更新子任务状态为 processing
                   await updateTaskItem(taskItemId, "processing", null, { aiProvider: currentAiProvider });
-                  // 在每次翻译前，重新从数据库获取最新的 explanation（确保获取到之前翻译的explanation）
-                  const currentQuestionBeforeTranslate = await db
-                    .selectFrom("questions")
-                    .select(["content", "explanation"])
-                    .where("id", "=", question.id)
-                    .executeTakeFirst();
+                  // ✅ 修复：重用之前查询的数据，避免重复查询
+                  // currentQuestion 已经在操作循环开始时查询过了，包含最新的 content 和 explanation
+                  const currentQuestionBeforeTranslate = currentQuestion as { content?: any; explanation?: any } | undefined;
 
                   if (!currentQuestionBeforeTranslate) {
                     throw new Error("Question not found");

@@ -1605,6 +1605,7 @@ export async function translateWithPolish(params: {
 /**
  * 规范化题目数据（在写库前统一处理）
  * 确保 True/False 题的 options 被清空
+ * 同时清理 options 数组中的无效元素（如 "explanation"）
  */
 export function normalizeQuestionBeforeSave(question: {
   id?: number;
@@ -1612,6 +1613,30 @@ export function normalizeQuestionBeforeSave(question: {
   options?: string[] | null;
   [key: string]: any;
 }): typeof question {
+  // ✅ 修复：先清理 options 数组，移除无效元素
+  if (question.options && Array.isArray(question.options)) {
+    const cleanedOptions = question.options
+      .filter((opt: any) => {
+        if (typeof opt !== "string") return false;
+        const trimmed = opt.trim();
+        // 过滤掉空字符串和无效的选项值
+        return trimmed !== "" && trimmed.toLowerCase() !== "explanation";
+      })
+      .map((opt: any) => {
+        // 处理包含多个选项的长字符串（用 \n 分隔）
+        if (typeof opt === "string" && opt.includes("\n")) {
+          return opt.split("\n")
+            .map((line: string) => line.trim())
+            .filter((line: string) => line !== "" && line.toLowerCase() !== "explanation");
+        }
+        return opt.trim();
+      })
+      .flat(); // 展平数组（处理分割后的选项）
+    
+    // 如果清理后数组为空，设置为空数组（保持数组类型）
+    question.options = cleanedOptions.length > 0 ? cleanedOptions : [];
+  }
+  
   if (question.type === "truefalse") {
     if (question.options && question.options.length) {
       console.warn(
@@ -3057,21 +3082,15 @@ export async function processFullPipelineBatch(
       
       // ✅ 使用事务确保保存到 questions 与 translations 的一致性
       // ✅ Task 4: 在事务前读取原题目数据，用于错误诊断
+      // ✅ 修复：合并重复查询，一次查询获取所有需要的数据
       dbRowBefore = await db
         .selectFrom("questions")
         .select(["id", "stage_tag", "topic_tags", "license_type_tag", "content", "explanation"])
         .where("id", "=", question.id)
         .executeTakeFirst();
       
-      // ✅ Task 4: 构建传给 saveQuestionToDb 的 payload，用于错误诊断
-      // 先读取数据库中的 explanation（保留原有内容），用于构建 payload
-      const dbQuestionForPayload = await db
-        .selectFrom("questions")
-        .select(["explanation"])
-        .where("id", "=", question.id)
-        .executeTakeFirst();
-      
       // ✅ 修复：构建传给 saveQuestionToDb 的 payload，优先使用 dbPayload 中的值
+      // 使用 dbRowBefore 中的 explanation，避免重复查询
       const savePayload: any = {
         id: question.id,
         hash: question.content_hash,
@@ -3079,7 +3098,7 @@ export async function processFullPipelineBatch(
         content: question.content,
         options: normalizedQuestion.options,
         correctAnswer: normalizedQuestion.correctAnswer,
-        explanation: dbQuestionForPayload?.explanation || null,
+        explanation: dbRowBefore?.explanation || null,
         mode: "updateOnly",
       };
 

@@ -173,6 +173,10 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
     }
     // 使用 sanitizeJsonForDb 清理 undefined 和无效值
     contentMultilang = sanitizeJsonForDb(contentMultilang);
+    // ✅ 修复：如果 contentMultilang 是空对象，转换为 null
+    if (contentMultilang && typeof contentMultilang === "object" && !Array.isArray(contentMultilang) && Object.keys(contentMultilang).length === 0) {
+      contentMultilang = null;
+    }
 
     // 规范化explanation字段：如果是字符串，转换为多语言对象
     let explanationMultilang: any = null;
@@ -186,12 +190,51 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
     }
     // 使用 sanitizeJsonForDb 清理 undefined 和无效值
     explanationMultilang = sanitizeJsonForDb(explanationMultilang);
+    // ✅ 修复：如果 explanationMultilang 是空对象，转换为 null
+    if (explanationMultilang && typeof explanationMultilang === "object" && !Array.isArray(explanationMultilang) && Object.keys(explanationMultilang).length === 0) {
+      explanationMultilang = null;
+    }
     
     // ✅ 使用 sanitizeJsonForDb 清理 options 字段
-    const cleanedOptions = sanitizeJsonForDb(cleanedQuestion.options);
+    let cleanedOptions = sanitizeJsonForDb(cleanedQuestion.options);
+    
+    // ✅ 修复：额外清理 options 数组，移除无效元素（如 "explanation"）
+    if (cleanedOptions && Array.isArray(cleanedOptions)) {
+      cleanedOptions = cleanedOptions
+        .filter((opt: any) => {
+          if (typeof opt !== "string") return false;
+          const trimmed = opt.trim();
+          // 过滤掉空字符串和无效的选项值
+          return trimmed !== "" && trimmed.toLowerCase() !== "explanation";
+        })
+        .map((opt: any) => {
+          // 处理包含多个选项的长字符串（用 \n 分隔）
+          if (typeof opt === "string" && opt.includes("\n")) {
+            return opt.split("\n")
+              .map((line: string) => line.trim())
+              .filter((line: string) => line !== "" && line.toLowerCase() !== "explanation");
+          }
+          return opt;
+        })
+        .flat(); // 展平数组（处理分割后的选项）
+      
+      // 如果清理后数组为空，设置为 null
+      if (cleanedOptions.length === 0) {
+        cleanedOptions = null;
+      }
+    } else if (cleanedOptions && Array.isArray(cleanedOptions) && cleanedOptions.length === 0) {
+      // ✅ 修复：如果 options 是空数组，转换为 null
+      cleanedOptions = null;
+    }
 
     // ✅ 使用 sanitizeJsonForDb 清理 correct_answer 字段
-    const cleanedCorrectAnswer = sanitizeJsonForDb(cleanedQuestion.correctAnswer);
+    let cleanedCorrectAnswer = sanitizeJsonForDb(cleanedQuestion.correctAnswer);
+    // ✅ 修复：如果 correct_answer 是空数组或空对象，转换为 null
+    if (cleanedCorrectAnswer && Array.isArray(cleanedCorrectAnswer) && cleanedCorrectAnswer.length === 0) {
+      cleanedCorrectAnswer = null;
+    } else if (cleanedCorrectAnswer && typeof cleanedCorrectAnswer === "object" && !Array.isArray(cleanedCorrectAnswer) && Object.keys(cleanedCorrectAnswer).length === 0) {
+      cleanedCorrectAnswer = null;
+    }
 
     // ✅ 轻量验证：确保可以正确序列化（用于提前发现 BigInt 等不支持类型）
     try {
@@ -206,6 +249,12 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
       }
       if (cleanedCorrectAnswer) {
         JSON.stringify(cleanedCorrectAnswer);
+      }
+      // ✅ 修复：验证 license_type_tag（JSONB 类型）可以正确序列化
+      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
+        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
+          JSON.stringify((cleanedQuestion as any).license_type_tag);
+        }
       }
     } catch (jsonError) {
       console.error("[saveQuestionToDb] JSON验证失败:", jsonError);
@@ -245,10 +294,20 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         updated_at: new Date(),
       };
 
-      // ✅ 修复：只有 license_type_tag 存在时才更新（null/undefined 时不更新，保留原值）
-      // ✅ 使用 sanitizeJsonForDb 处理 JSONB 字段，确保格式正确
+      // ✅ 修复：清理 license_type_tag 数组（JSONB 类型，内部约定为 string[]）
       if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
-        updateData.license_type_tag = sanitizeJsonForDb((cleanedQuestion as any).license_type_tag) as any;
+        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedLicenseTypeTag = (cleanedQuestion as any).license_type_tag
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          updateData.license_type_tag = cleanedLicenseTypeTag.length > 0 ? cleanedLicenseTypeTag : null;
+        } else {
+          // 如果不是数组，设置为 null
+          updateData.license_type_tag = null;
+        }
       }
 
       // ✅ 修复：只有 stage_tag 存在时才更新（null/undefined 时不更新，保留原值）
@@ -256,15 +315,115 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         updateData.stage_tag = cleanedQuestion.stage_tag;
       }
 
-      // ✅ 修复：只有 topic_tags 存在时才更新（null/undefined 时不更新，保留原值）
-      // ✅ 使用 sanitizeJsonForDb 处理数组字段，确保格式正确
+      // ✅ 修复：清理 topic_tags 数组（TEXT[] 类型）
       if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
-        updateData.topic_tags = sanitizeJsonForDb(cleanedQuestion.topic_tags) as any;
+        if (Array.isArray(cleanedQuestion.topic_tags)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedTopicTags = cleanedQuestion.topic_tags
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          updateData.topic_tags = cleanedTopicTags.length > 0 ? cleanedTopicTags : null;
+        } else {
+          // 如果不是数组，设置为 null
+          updateData.topic_tags = null;
+        }
+      }
+
+      // ✅ 修复：最终验证和清理所有 JSONB 字段，确保没有空对象或空数组
+      // 检查 content（JSONB）
+      if (updateData.content && typeof updateData.content === "object" && !Array.isArray(updateData.content) && Object.keys(updateData.content).length === 0) {
+        updateData.content = null;
+      }
+      // 检查 explanation（JSONB）
+      if (updateData.explanation && typeof updateData.explanation === "object" && !Array.isArray(updateData.explanation) && Object.keys(updateData.explanation).length === 0) {
+        updateData.explanation = null;
+      }
+      // 检查 options（JSONB）- 确保不是空数组
+      if (updateData.options && Array.isArray(updateData.options) && updateData.options.length === 0) {
+        updateData.options = null;
+      }
+      // 检查 correct_answer（JSONB）
+      if (updateData.correct_answer && Array.isArray(updateData.correct_answer) && updateData.correct_answer.length === 0) {
+        updateData.correct_answer = null;
+      } else if (updateData.correct_answer && typeof updateData.correct_answer === "object" && !Array.isArray(updateData.correct_answer) && Object.keys(updateData.correct_answer).length === 0) {
+        updateData.correct_answer = null;
+      }
+      // 检查 license_type_tag（JSONB）- 确保不是空数组
+      if (updateData.license_type_tag && Array.isArray(updateData.license_type_tag) && updateData.license_type_tag.length === 0) {
+        updateData.license_type_tag = null;
+      }
+
+      // ✅ 最终 JSON 序列化验证
+      try {
+        if (updateData.content) JSON.stringify(updateData.content);
+        if (updateData.explanation) JSON.stringify(updateData.explanation);
+        if (updateData.options) JSON.stringify(updateData.options);
+        if (updateData.correct_answer) JSON.stringify(updateData.correct_answer);
+        if (updateData.license_type_tag) JSON.stringify(updateData.license_type_tag);
+      } catch (finalJsonError) {
+        console.error("[saveQuestionToDb] 最终 JSON 验证失败:", finalJsonError, {
+          content: updateData.content,
+          explanation: updateData.explanation,
+          options: updateData.options,
+          correct_answer: updateData.correct_answer,
+          license_type_tag: updateData.license_type_tag,
+        });
+        throw new Error(`最终 JSON 格式错误: ${finalJsonError instanceof Error ? finalJsonError.message : String(finalJsonError)}`);
+      }
+
+      // ✅ 修复：使用 sql 模板显式转换所有 JSONB 字段，确保正确序列化
+      const finalUpdateData: any = {
+        type: updateData.type,
+        image: updateData.image,
+        category: updateData.category,
+        updated_at: updateData.updated_at,
+      };
+
+      // 转换 JSONB 字段
+      if (updateData.content !== null && updateData.content !== undefined) {
+        finalUpdateData.content = sql`${JSON.stringify(updateData.content)}::jsonb`;
+      } else {
+        finalUpdateData.content = sql`null::jsonb`;
+      }
+
+      if (updateData.explanation !== null && updateData.explanation !== undefined) {
+        finalUpdateData.explanation = sql`${JSON.stringify(updateData.explanation)}::jsonb`;
+      } else {
+        finalUpdateData.explanation = sql`null::jsonb`;
+      }
+
+      if (updateData.options !== null && updateData.options !== undefined) {
+        finalUpdateData.options = sql`${JSON.stringify(updateData.options)}::jsonb`;
+      } else {
+        finalUpdateData.options = sql`null::jsonb`;
+      }
+
+      if (updateData.correct_answer !== null && updateData.correct_answer !== undefined) {
+        finalUpdateData.correct_answer = sql`${JSON.stringify(updateData.correct_answer)}::jsonb`;
+      } else {
+        finalUpdateData.correct_answer = sql`null::jsonb`;
+      }
+
+      // 添加非 JSONB 字段
+      if (updateData.stage_tag !== null && updateData.stage_tag !== undefined) {
+        finalUpdateData.stage_tag = updateData.stage_tag;
+      }
+
+      if (updateData.topic_tags !== null && updateData.topic_tags !== undefined) {
+        finalUpdateData.topic_tags = updateData.topic_tags;
+      }
+
+      if (updateData.license_type_tag !== null && updateData.license_type_tag !== undefined) {
+        finalUpdateData.license_type_tag = sql`${JSON.stringify(updateData.license_type_tag)}::jsonb`;
+      } else {
+        finalUpdateData.license_type_tag = sql`null::jsonb`;
       }
 
       await db
         .updateTable("questions")
-        .set(updateData)
+        .set(finalUpdateData)
         .where("id", "=", existing.id)
         .execute();
 
@@ -282,10 +441,19 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         category: cleanedQuestion.category || null,
       };
 
-      // ✅ 修复：插入时，如果字段值存在则设置，否则使用 null（新插入允许 null）
-      // ✅ 使用 sanitizeJsonForDb 处理 JSONB 字段，确保格式正确
+      // ✅ 修复：插入时，清理 license_type_tag 数组（JSONB 类型）
       if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
-        insertData.license_type_tag = sanitizeJsonForDb((cleanedQuestion as any).license_type_tag) as any;
+        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedLicenseTypeTag = (cleanedQuestion as any).license_type_tag
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          insertData.license_type_tag = cleanedLicenseTypeTag.length > 0 ? cleanedLicenseTypeTag : null;
+        } else {
+          insertData.license_type_tag = null;
+        }
       } else {
         insertData.license_type_tag = null;
       }
@@ -296,16 +464,120 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         insertData.stage_tag = null;
       }
 
-      // ✅ 使用 sanitizeJsonForDb 处理数组字段，确保格式正确
+      // ✅ 修复：插入时，清理 topic_tags 数组（TEXT[] 类型）
       if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
-        insertData.topic_tags = sanitizeJsonForDb(cleanedQuestion.topic_tags) as any;
+        if (Array.isArray(cleanedQuestion.topic_tags)) {
+          // 清理数组：只保留有效的非空字符串
+          const cleanedTopicTags = cleanedQuestion.topic_tags
+            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+            .map((tag: any) => tag.trim());
+          
+          // 如果清理后数组为空，设置为 null
+          insertData.topic_tags = cleanedTopicTags.length > 0 ? cleanedTopicTags : null;
+        } else {
+          insertData.topic_tags = null;
+        }
       } else {
         insertData.topic_tags = null;
       }
 
+      // ✅ 修复：最终验证和清理所有 JSONB 字段，确保没有空对象或空数组
+      // 检查 content（JSONB）
+      if (insertData.content && typeof insertData.content === "object" && !Array.isArray(insertData.content) && Object.keys(insertData.content).length === 0) {
+        insertData.content = null;
+      }
+      // 检查 explanation（JSONB）
+      if (insertData.explanation && typeof insertData.explanation === "object" && !Array.isArray(insertData.explanation) && Object.keys(insertData.explanation).length === 0) {
+        insertData.explanation = null;
+      }
+      // 检查 options（JSONB）- 确保不是空数组
+      if (insertData.options && Array.isArray(insertData.options) && insertData.options.length === 0) {
+        insertData.options = null;
+      }
+      // 检查 correct_answer（JSONB）
+      if (insertData.correct_answer && Array.isArray(insertData.correct_answer) && insertData.correct_answer.length === 0) {
+        insertData.correct_answer = null;
+      } else if (insertData.correct_answer && typeof insertData.correct_answer === "object" && !Array.isArray(insertData.correct_answer) && Object.keys(insertData.correct_answer).length === 0) {
+        insertData.correct_answer = null;
+      }
+      // 检查 license_type_tag（JSONB）- 确保不是空数组
+      if (insertData.license_type_tag && Array.isArray(insertData.license_type_tag) && insertData.license_type_tag.length === 0) {
+        insertData.license_type_tag = null;
+      }
+
+      // ✅ 最终 JSON 序列化验证
+      try {
+        if (insertData.content) JSON.stringify(insertData.content);
+        if (insertData.explanation) JSON.stringify(insertData.explanation);
+        if (insertData.options) JSON.stringify(insertData.options);
+        if (insertData.correct_answer) JSON.stringify(insertData.correct_answer);
+        if (insertData.license_type_tag) JSON.stringify(insertData.license_type_tag);
+      } catch (finalJsonError) {
+        console.error("[saveQuestionToDb] 最终 JSON 验证失败（插入）:", finalJsonError, {
+          content: insertData.content,
+          explanation: insertData.explanation,
+          options: insertData.options,
+          correct_answer: insertData.correct_answer,
+          license_type_tag: insertData.license_type_tag,
+        });
+        throw new Error(`最终 JSON 格式错误（插入）: ${finalJsonError instanceof Error ? finalJsonError.message : String(finalJsonError)}`);
+      }
+
+      // ✅ 修复：使用 sql 模板显式转换所有 JSONB 字段，确保正确序列化
+      const finalInsertData: any = {
+        content_hash: insertData.content_hash,
+        type: insertData.type,
+        image: insertData.image,
+        category: insertData.category,
+      };
+
+      // 转换 JSONB 字段
+      if (insertData.content !== null && insertData.content !== undefined) {
+        finalInsertData.content = sql`${JSON.stringify(insertData.content)}::jsonb`;
+      } else {
+        finalInsertData.content = sql`null::jsonb`;
+      }
+
+      if (insertData.explanation !== null && insertData.explanation !== undefined) {
+        finalInsertData.explanation = sql`${JSON.stringify(insertData.explanation)}::jsonb`;
+      } else {
+        finalInsertData.explanation = sql`null::jsonb`;
+      }
+
+      if (insertData.options !== null && insertData.options !== undefined) {
+        finalInsertData.options = sql`${JSON.stringify(insertData.options)}::jsonb`;
+      } else {
+        finalInsertData.options = sql`null::jsonb`;
+      }
+
+      if (insertData.correct_answer !== null && insertData.correct_answer !== undefined) {
+        finalInsertData.correct_answer = sql`${JSON.stringify(insertData.correct_answer)}::jsonb`;
+      } else {
+        finalInsertData.correct_answer = sql`null::jsonb`;
+      }
+
+      // 添加非 JSONB 字段
+      if (insertData.stage_tag !== null && insertData.stage_tag !== undefined) {
+        finalInsertData.stage_tag = insertData.stage_tag;
+      } else {
+        finalInsertData.stage_tag = null;
+      }
+
+      if (insertData.topic_tags !== null && insertData.topic_tags !== undefined) {
+        finalInsertData.topic_tags = insertData.topic_tags;
+      } else {
+        finalInsertData.topic_tags = null;
+      }
+
+      if (insertData.license_type_tag !== null && insertData.license_type_tag !== undefined) {
+        finalInsertData.license_type_tag = sql`${JSON.stringify(insertData.license_type_tag)}::jsonb`;
+      } else {
+        finalInsertData.license_type_tag = sql`null::jsonb`;
+      }
+
       const result = await db
         .insertInto("questions")
-        .values(insertData)
+        .values(finalInsertData)
         .returning("id")
         .executeTakeFirst();
 

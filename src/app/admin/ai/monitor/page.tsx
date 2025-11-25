@@ -250,7 +250,10 @@ export default function AdminAiMonitorPage() {
     let heartbeatTimer: NodeJS.Timeout | null = null;
 
     loadData();
-    fetchHeartbeatData();
+    // ✅ 修复：只有在心跳服务启用时才执行初始心跳检查
+    if (heartbeatEnabled) {
+      fetchHeartbeatData();
+    }
 
     // 如果刚执行了重跑，10秒后自动刷新
     if (rebuildMessage) {
