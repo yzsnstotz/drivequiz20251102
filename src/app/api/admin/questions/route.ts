@@ -221,8 +221,8 @@ async function collectAllQuestions(): Promise<(Question & { content_hash?: strin
       // 这里保留兼容逻辑，但新代码应该明确区分
       const category = q.category || "其他";
 
-      // 处理content字段：如果是空对象，返回undefined；否则保持原格式
-      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | undefined;
+      // 处理content字段：如果是空对象，返回默认值；否则保持原格式
+      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
       if (typeof q.content === "string") {
         // 兼容旧格式：单语言字符串
         content = q.content;
@@ -230,13 +230,15 @@ async function collectAllQuestions(): Promise<(Question & { content_hash?: strin
         // 检查是否是空对象
         const keys = Object.keys(q.content);
         if (keys.length === 0) {
-          content = undefined;
+          // 空对象时返回默认值
+          content = { zh: "" };
         } else {
           // 新格式：多语言对象
           content = q.content as { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
         }
       } else {
-        content = undefined;
+        // null 或 undefined 时返回默认值
+        content = { zh: "" };
       }
 
       // 处理options字段：如果是多语言对象数组，需要转换为字符串数组（使用默认语言zh）
