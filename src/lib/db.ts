@@ -652,6 +652,7 @@ interface Database {
 // ------------------------------------------------------------
 
 let dbInstance: Kysely<Database> | null = null;
+let dbPool: Pool | null = null;
 
 // 检查是否在构建阶段（Next.js 在构建时会设置特定的环境变量）
 function isBuildTime(): boolean {
@@ -736,6 +737,7 @@ function createDbInstance(): Kysely<Database> {
   // 创建 Pool 实例并传递给 PostgresDialect
   // 注意：必须在传递给 PostgresDialect 之前创建 Pool 实例，以确保 SSL 配置正确应用
   const pool = new Pool(poolConfig);
+  dbPool = pool; // 保存 Pool 实例以便后续获取统计信息
 
   // 添加连接池错误处理
   pool.on('error', (err) => {
@@ -850,3 +852,98 @@ export const db = new Proxy({} as Kysely<Database>, {
 // - 字段命名遵循 snake_case。
 // - API 输出时统一转换为 camelCase。
 // ------------------------------------------------------------
+
+// ============================================================
+// 数据库连接池统计函数
+// ============================================================
+
+export type PoolStats = {
+  total: number;
+  idle: number;
+  active: number;
+  waiting: number;
+  usageRate: number;
+  status: "healthy" | "warning" | "critical";
+};
+
+export function getDbPoolStats(): PoolStats | null {
+  if (!dbPool) {
+    // 如果 Pool 还没有创建，尝试初始化数据库实例
+    try {
+      // 触发数据库实例创建（这会创建 Pool）
+      const _ = db;
+      // 如果还是 null，说明可能是占位符或构建时
+      if (!dbPool) {
+        return null;
+      }
+    } catch (err) {
+      console.error("[getDbPoolStats] Failed to initialize database:", err);
+      return null;
+    }
+  }
+
+  try {
+    // pg Pool 对象的属性（使用私有属性或公共属性）
+    // 注意：pg Pool 可能使用不同的属性名，这里尝试多种方式
+    const poolAny = dbPool as any;
+    
+    // 尝试获取连接池统计信息
+    // pg Pool 可能使用以下属性：
+    // - totalCount: 总连接数
+    // - idleCount: 空闲连接数  
+    // - waitingCount: 等待连接的请求数
+    // 或者使用私有属性：
+    // - _clients: 客户端数组
+    // - _idle: 空闲客户端数组
+    // - _waiting: 等待队列
+    
+    let total = 0;
+    let idle = 0;
+    let waiting = 0;
+    
+    // 方法1: 尝试使用公共属性
+    if (typeof poolAny.totalCount === 'number') {
+      total = poolAny.totalCount;
+      idle = poolAny.idleCount ?? 0;
+      waiting = poolAny.waitingCount ?? 0;
+    } 
+    // 方法2: 尝试使用私有属性
+    else if (Array.isArray(poolAny._clients)) {
+      total = poolAny._clients.length;
+      idle = Array.isArray(poolAny._idle) ? poolAny._idle.length : 0;
+      waiting = Array.isArray(poolAny._waiting) ? poolAny._waiting.length : 0;
+    }
+    // 方法3: 如果都不可用，返回默认值
+    else {
+      // 无法获取实际统计，返回默认值
+      console.warn("[getDbPoolStats] Unable to get pool statistics, using defaults");
+      total = 0;
+      idle = 0;
+      waiting = 0;
+    }
+    
+    const active = Math.max(0, total - idle);
+    const maxConnections = poolAny.options?.max ?? 20;
+    const usageRate = maxConnections > 0 ? Math.min(1, active / maxConnections) : 0;
+
+    // 判断状态
+    let status: "healthy" | "warning" | "critical" = "healthy";
+    if (usageRate >= 0.9 || waiting > 10) {
+      status = "critical";
+    } else if (usageRate >= 0.7 || waiting > 0) {
+      status = "warning";
+    }
+
+    return {
+      total,
+      idle,
+      active,
+      waiting,
+      usageRate,
+      status,
+    };
+  } catch (err) {
+    console.error("[getDbPoolStats] Error getting pool stats:", err);
+    return null;
+  }
+}

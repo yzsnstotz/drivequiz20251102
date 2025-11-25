@@ -170,6 +170,7 @@ interface AiDatabase {
 // ------------------------------------------------------------
 
 let aiDbInstance: Kysely<AiDatabase> | null = null;
+let aiDbPool: Pool | null = null;
 
 // 检查是否在构建阶段
 function isBuildTime(): boolean {
@@ -241,6 +242,7 @@ function createAiDbInstance(): Kysely<AiDatabase> {
 
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
+  aiDbPool = pool; // 保存 Pool 实例以便后续获取统计信息
   
   // 注意：我们只在数据库连接配置中使用 rejectUnauthorized: false
   // 不设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量，以避免影响其他 HTTPS 请求
@@ -391,4 +393,99 @@ export const aiDb = new Proxy({} as Kysely<AiDatabase>, {
 // - API 输出时统一转换为 camelCase。
 // - 使用 DIRECT 连接方式（端口 5432），确保连接稳定。
 // ------------------------------------------------------------
+
+// ============================================================
+// AI 数据库连接池统计函数
+// ============================================================
+
+export type AiDbPoolStats = {
+  total: number;
+  idle: number;
+  active: number;
+  waiting: number;
+  usageRate: number;
+  status: "healthy" | "warning" | "critical";
+};
+
+export function getAiDbPoolStats(): AiDbPoolStats | null {
+  if (!aiDbPool) {
+    // 如果 Pool 还没有创建，尝试初始化数据库实例
+    try {
+      // 触发数据库实例创建（这会创建 Pool）
+      const _ = aiDb;
+      // 如果还是 null，说明可能是占位符或构建时
+      if (!aiDbPool) {
+        return null;
+      }
+    } catch (err) {
+      console.error("[getAiDbPoolStats] Failed to initialize AI database:", err);
+      return null;
+    }
+  }
+
+  try {
+    // pg Pool 对象的属性（使用私有属性或公共属性）
+    // 注意：pg Pool 可能使用不同的属性名，这里尝试多种方式
+    const poolAny = aiDbPool as any;
+    
+    // 尝试获取连接池统计信息
+    // pg Pool 可能使用以下属性：
+    // - totalCount: 总连接数
+    // - idleCount: 空闲连接数  
+    // - waitingCount: 等待连接的请求数
+    // 或者使用私有属性：
+    // - _clients: 客户端数组
+    // - _idle: 空闲客户端数组
+    // - _waiting: 等待队列
+    
+    let total = 0;
+    let idle = 0;
+    let waiting = 0;
+    
+    // 方法1: 尝试使用公共属性
+    if (typeof poolAny.totalCount === 'number') {
+      total = poolAny.totalCount;
+      idle = poolAny.idleCount ?? 0;
+      waiting = poolAny.waitingCount ?? 0;
+    } 
+    // 方法2: 尝试使用私有属性
+    else if (Array.isArray(poolAny._clients)) {
+      total = poolAny._clients.length;
+      idle = Array.isArray(poolAny._idle) ? poolAny._idle.length : 0;
+      waiting = Array.isArray(poolAny._waiting) ? poolAny._waiting.length : 0;
+    }
+    // 方法3: 如果都不可用，返回默认值
+    else {
+      // 无法获取实际统计，返回默认值
+      console.warn("[getAiDbPoolStats] Unable to get pool statistics, using defaults");
+      total = 0;
+      idle = 0;
+      waiting = 0;
+    }
+    
+    const active = Math.max(0, total - idle);
+    const maxConnections = poolAny.options?.max ?? 20;
+    const usageRate = maxConnections > 0 ? Math.min(1, active / maxConnections) : 0;
+
+    // 判断状态
+    let status: "healthy" | "warning" | "critical" = "healthy";
+    if (usageRate >= 0.9 || waiting > 10) {
+      status = "critical";
+    } else if (usageRate >= 0.7 || waiting > 0) {
+      status = "warning";
+    }
+
+    return {
+      total,
+      idle,
+      active,
+      waiting,
+      usageRate,
+      status,
+    };
+  } catch (err) {
+    console.error("[getAiDbPoolStats] Error getting pool stats:", err);
+    return null;
+  }
+}
 
