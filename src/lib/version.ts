@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 04:00:36（修复 Database.Account.type 类型：从 'credentials' 改为 'email' | 'webauthn' 以匹配 AdapterAccountType）
-const BUILD_TIME = "2025-11-27 04:00:36";
+// 最后更新：2025-11-27 04:02:43（修复 Database.Account 和 User 类型：将 string | null 改为 string | undefined 以匹配 @auth/kysely-adapter）
+const BUILD_TIME = "2025-11-27 04:02:43";
 
 /**
  * 获取版本号（构建时间）

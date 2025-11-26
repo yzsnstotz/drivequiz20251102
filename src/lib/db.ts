@@ -449,13 +449,13 @@ interface AccountTable {
   provider: string;
   providerAccountId: string; // 驼峰命名，映射自 oauth_accounts.provider_account_id
   type: "oauth" | "oidc" | "email" | "webauthn"; // NextAuth adapter 期望的字段（AdapterAccountType）
-  accessToken: string | null; // 驼峰命名，映射自 oauth_accounts.access_token
-  refreshToken: string | null; // 驼峰命名，映射自 oauth_accounts.refresh_token
-  expiresAt: Date | null; // 驼峰命名，映射自 oauth_accounts.expires_at
-  tokenType: string | null; // 驼峰命名，映射自 oauth_accounts.token_type
-  scope: string | null;
-  idToken: string | null; // 驼峰命名，映射自 oauth_accounts.id_token
-  sessionState: string | null; // 驼峰命名，映射自 oauth_accounts.session_state
+  accessToken: string | undefined; // 驼峰命名，映射自 oauth_accounts.access_token（@auth/kysely-adapter 期望 undefined 而不是 null）
+  refreshToken: string | undefined; // 驼峰命名，映射自 oauth_accounts.refresh_token
+  expiresAt: Date | undefined; // 驼峰命名，映射自 oauth_accounts.expires_at
+  tokenType: string | undefined; // 驼峰命名，映射自 oauth_accounts.token_type
+  scope: string | undefined;
+  idToken: string | undefined; // 驼峰命名，映射自 oauth_accounts.id_token
+  sessionState: string | undefined; // 驼峰命名，映射自 oauth_accounts.session_state
   createdAt: Date; // 驼峰命名，映射自 oauth_accounts.created_at
   updatedAt: Date; // 驼峰命名，映射自 oauth_accounts.updated_at
 }
@@ -708,8 +708,8 @@ export interface Database {
   // ⚠️ 关键：覆盖 id 字段，从 Generated<string> 改为 string，满足 @auth/kysely-adapter 的类型要求
   User: Omit<UserTable, 'id'> & {
     id: string; // @auth/kysely-adapter 期望 string，而不是 Generated<string>
-    emailVerified: Date | null; // NextAuth adapter 期望的字段
-    image: string | null; // NextAuth adapter 期望的字段
+    emailVerified: Date | undefined; // NextAuth adapter 期望的字段（@auth/kysely-adapter 期望 undefined 而不是 null）
+    image: string | undefined; // NextAuth adapter 期望的字段（@auth/kysely-adapter 期望 undefined 而不是 null）
     createdAt: Date; // NextAuth adapter 期望的字段（映射自 created_at）
     updatedAt: Date; // NextAuth adapter 期望的字段（映射自 updated_at）
   };
