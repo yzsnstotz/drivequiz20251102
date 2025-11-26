@@ -194,7 +194,8 @@ class AiChatBehaviorCacheServer {
   /**
    * 批量写入记录到数据库
    */
-  private async batchWriteRecords(userId: number, records: ChatRecord[]): Promise<void> {
+  // ⚠️ 注意：userId 现在是字符串类型（UUID），不再使用 number
+  private async batchWriteRecords(userId: string, records: ChatRecord[]): Promise<void> {
     try {
       // 批量插入到user_behaviors表
       // 每条记录代表一次AI聊天，使用metadata存储聊天条数
