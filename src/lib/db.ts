@@ -716,7 +716,12 @@ export interface Database {
     updatedAt: Date; // NextAuth adapter 期望的字段（映射自 updated_at）
   };
   Account: AccountTable; // 映射到 Account 视图（使用驼峰命名，与 NextAuth AdapterAccount 一致）
-  Session: SessionTable; // 映射到 sessions 表
+  // ⚠️ 注意：Session 视图包含 sessionToken 和 userId 字段（映射自 session_token 和 user_id），但 SessionTable 使用下划线命名
+  // 为了满足 @auth/kysely-adapter 的类型要求，创建一个适配器类型
+  Session: Omit<SessionTable, 'session_token' | 'user_id'> & {
+    sessionToken: string; // NextAuth adapter 期望的字段（映射自 session_token）
+    userId: string; // NextAuth adapter 期望的字段（映射自 user_id）
+  };
   VerificationToken: VerificationTokenTable; // 映射到 verification_tokens 表
   questions: QuestionTable;
   question_ai_answers: QuestionAiAnswerTable;
