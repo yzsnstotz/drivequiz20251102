@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -35,7 +34,7 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
 
   // 优先检查NextAuth session
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (session?.user?.id) {
       const userId = session.user.id.toString();
       // ⚠️ 注意：user.id 现在是字符串类型（UUID），不再使用 parseInt

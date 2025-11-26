@@ -1,4 +1,5 @@
 import { NextAuthOptions } from "next-auth";
+import NextAuth from "next-auth";
 import { db } from "./db";
 import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
@@ -287,4 +288,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
+
+// NextAuth v5: 导出 auth 函数用于获取会话
+export const { auth } = NextAuth(authOptions);
 
