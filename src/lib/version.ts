@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 00:30:07（修复 OAuth Provider 类型导入路径：使用 next-auth/providers 作为统一导入路径，并更新 @auth/core 到 0.41.0）
-const BUILD_TIME = "2025-11-27 00:30:07";
+// 最后更新：2025-11-27 00:35:34（修复依赖冲突：在 .npmrc 中添加 legacy-peer-deps=true，解决 @auth/kysely-adapter 与 kysely 版本冲突）
+const BUILD_TIME = "2025-11-27 00:35:34";
 
 /**
  * 获取版本号（构建时间）
