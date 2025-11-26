@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 03:37:06（修复 users.id 类型错误：将 Map<number> 改为 Map<string>）
-const BUILD_TIME = "2025-11-27 03:37:06";
+// 最后更新：2025-11-27 03:39:14（修复 TypeScript 迭代器错误：使用 Array.from() 转换 Map.entries()）
+const BUILD_TIME = "2025-11-27 03:39:14";
 
 /**
  * 获取版本号（构建时间）

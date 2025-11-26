@@ -76,7 +76,8 @@ export function deleteQRToken(token: string): void {
 export function cleanupExpiredTokens(): void {
   const now = Date.now();
   let cleanedCount = 0;
-  for (const [token, data] of qrTokens.entries()) {
+  // 使用 Array.from() 来避免 TypeScript 迭代器问题
+  for (const [token, data] of Array.from(qrTokens.entries())) {
     if (now > data.expiresAt) {
       qrTokens.delete(token);
       cleanedCount++;
