@@ -922,6 +922,11 @@ function createPlaceholderDb(): Kysely<Database> {
       }),
     }),
     updateTable: () => {
+      // 创建一个共享的 executor，确保所有链式调用都使用同一个
+      const sharedExecutor = {
+        executeQuery: async () => ({ rows: [] }),
+      };
+      
       const updateBuilder: any = {
         set: (updates: any) => {
           const setBuilder: any = {
@@ -930,19 +935,16 @@ function createPlaceholderDb(): Kysely<Database> {
               // 它需要有 execute 和 getExecutor 方法
               const whereBuilder: any = {
                 execute: async () => [],
-                getExecutor: () => ({
-                  executeQuery: async () => ({ rows: [] }),
-                }),
+                getExecutor: () => sharedExecutor,
               };
               return whereBuilder;
             },
             execute: async () => [],
-            getExecutor: () => ({
-              executeQuery: async () => ({ rows: [] }),
-            }),
+            getExecutor: () => sharedExecutor,
           };
           return setBuilder;
         },
+        getExecutor: () => sharedExecutor,
       };
       return updateBuilder;
     },
