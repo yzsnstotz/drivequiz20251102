@@ -49,7 +49,6 @@ export function createPatchedKyselyAdapter(db: Kysely<Database>): Adapter {
         scope,
         expires_at,
         // 某些 provider 可能会带上 session_state
-        // @ts-expect-error: session_state 不在 AdapterAccount 类型里，但在实际返回中存在
         session_state,
       } = account as any;
 
