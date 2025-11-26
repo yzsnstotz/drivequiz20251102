@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 02:28:08（修复 LINE Provider 类型错误：将 redirectUri 访问也转换为 any 类型）
-const BUILD_TIME = "2025-11-27 02:28:08";
+// 最后更新：2025-11-27 02:29:56（修复 LINE Provider 类型错误：移除不支持的 callbackUrl 属性，NextAuth 会自动处理回调 URL）
+const BUILD_TIME = "2025-11-27 02:29:56";
 
 /**
  * 获取版本号（构建时间）

@@ -158,10 +158,8 @@ export default function LineProvider(
     // 确保 clientId 和 clientSecret 是字符串类型
     clientId: String(options.clientId || "").trim(),
     clientSecret: String(options.clientSecret || "").trim(),
-    // 设置回调地址，NextAuth 会自动使用这个地址
-    // 格式：{NEXTAUTH_URL}/api/auth/callback/{provider_id}
+    // 注意：NextAuth 会自动处理回调地址，格式为 {NEXTAUTH_URL}/api/auth/callback/{provider_id}
     // 例如：http://localhost:3000/api/auth/callback/line
-    callbackUrl: options.redirectUri || `${process.env.NEXTAUTH_URL}/api/auth/callback/line`,
     // 注意：client.id_token_signed_response_alg 配置已在 src/lib/auth.ts 中通过包装添加
     // 这里不再重复配置，避免配置冲突
     profile(profile) {
