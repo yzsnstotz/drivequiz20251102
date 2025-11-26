@@ -1,4 +1,4 @@
-import type { OAuthConfig, OAuthUserConfig } from "@auth/core/providers";
+import type { OAuthConfig, OAuthUserConfig } from "next-auth/providers";
 
 /**
  * LINE OAuth提供商配置

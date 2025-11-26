@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 00:23:37（修复 Twitter OAuth Provider 导入路径：从 next-auth/providers/oauth 改为 @auth/core/providers）
-const BUILD_TIME = "2025-11-27 00:23:37";
+// 最后更新：2025-11-27 00:30:07（修复 OAuth Provider 类型导入路径：使用 next-auth/providers 作为统一导入路径，并更新 @auth/core 到 0.41.0）
+const BUILD_TIME = "2025-11-27 00:30:07";
 
 /**
  * 获取版本号（构建时间）
