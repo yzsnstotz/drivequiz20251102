@@ -921,15 +921,21 @@ function createPlaceholderDb(): Kysely<Database> {
         }),
       }),
     }),
-    updateTable: () => ({
-      set: (updates: any) => ({
-        where: (...args: any[]) => createQueryBuilder(),
-        execute: async () => [],
-        getExecutor: () => ({
-          executeQuery: async () => ({ rows: [] }),
-        }),
-      }),
-    }),
+    updateTable: () => {
+      const updateBuilder: any = {
+        set: (updates: any) => {
+          const setBuilder: any = {
+            where: (...args: any[]) => createQueryBuilder(),
+            execute: async () => [],
+            getExecutor: () => ({
+              executeQuery: async () => ({ rows: [] }),
+            }),
+          };
+          return setBuilder;
+        },
+      };
+      return updateBuilder;
+    },
     deleteFrom: () => ({
       where: (...args: any[]) => createQueryBuilder(),
     }),
