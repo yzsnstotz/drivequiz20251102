@@ -88,50 +88,72 @@ function checkLanguageComplete(
 
 async function main() {
   try {
-    // 查询所有题目，提取 content 和 explanation 的多语言内容
-    const allQuestions = await db
-      .selectFrom("questions")
-      .select([
-        "id",
-        "content_hash",
-        // 提取 content 的多语言内容
-        sql<string | null>`content->>'zh'`.as("content_zh"),
-        sql<string | null>`content->>'en'`.as("content_en"),
-        sql<string | null>`content->>'ja'`.as("content_ja"),
-        // 提取 explanation 的多语言内容
-        sql<string | null>`explanation->>'zh'`.as("explanation_zh"),
-        sql<string | null>`explanation->>'en'`.as("explanation_en"),
-        sql<string | null>`explanation->>'ja'`.as("explanation_ja"),
-        // 原始 JSONB 字段（用于检查）
-        "content",
-        "explanation",
-      ])
-      .orderBy("id", "asc")
-      .execute();
-
-    // 筛选出内容不全的题目
+    console.log("开始查询多语言内容不全的题目...");
+    
+    // 分批查询，避免超时
+    const batchSize = 1000;
+    let offset = 0;
     const incompleteQuestions: IncompleteQuestion[] = [];
-
-    for (const q of allQuestions) {
-      const contentCheck = checkLanguageComplete(q.content, ["zh", "en", "ja"]);
-      const explanationCheck = checkLanguageComplete(q.explanation, ["zh", "en", "ja"]);
-
-      // 如果 content 或 explanation 不全，添加到列表
-      if (!contentCheck.isComplete || !explanationCheck.isComplete) {
-        incompleteQuestions.push({
-          id: q.id,
-          content_hash: q.content_hash,
-          content_zh: q.content_zh || null,
-          content_en: q.content_en || null,
-          content_ja: q.content_ja || null,
-          explanation_zh: q.explanation_zh || null,
-          explanation_en: q.explanation_en || null,
-          explanation_ja: q.explanation_ja || null,
-          content_missing_langs: contentCheck.missingLanguages,
-          explanation_missing_langs: explanationCheck.missingLanguages,
-        });
+    
+    while (true) {
+      console.log(`正在查询第 ${offset + 1} 到 ${offset + batchSize} 条记录...`);
+      
+      // 分批查询题目
+      const batchQuestions = await db
+        .selectFrom("questions")
+        .select([
+          "id",
+          "content_hash",
+          // 提取 content 的多语言内容
+          sql<string | null>`content->>'zh'`.as("content_zh"),
+          sql<string | null>`content->>'en'`.as("content_en"),
+          sql<string | null>`content->>'ja'`.as("content_ja"),
+          // 提取 explanation 的多语言内容
+          sql<string | null>`explanation->>'zh'`.as("explanation_zh"),
+          sql<string | null>`explanation->>'en'`.as("explanation_en"),
+          sql<string | null>`explanation->>'ja'`.as("explanation_ja"),
+          // 原始 JSONB 字段（用于检查）
+          "content",
+          "explanation",
+        ])
+        .orderBy("id", "asc")
+        .limit(batchSize)
+        .offset(offset)
+        .execute();
+      
+      if (batchQuestions.length === 0) {
+        break; // 没有更多数据了
       }
+      
+      // 筛选出内容不全的题目
+      for (const q of batchQuestions) {
+        const contentCheck = checkLanguageComplete(q.content, ["zh", "en", "ja"]);
+        const explanationCheck = checkLanguageComplete(q.explanation, ["zh", "en", "ja"]);
+        
+        // 如果 content 或 explanation 不全，添加到列表
+        if (!contentCheck.isComplete || !explanationCheck.isComplete) {
+          incompleteQuestions.push({
+            id: q.id,
+            content_hash: q.content_hash,
+            content_zh: q.content_zh || null,
+            content_en: q.content_en || null,
+            content_ja: q.content_ja || null,
+            explanation_zh: q.explanation_zh || null,
+            explanation_en: q.explanation_en || null,
+            explanation_ja: q.explanation_ja || null,
+            content_missing_langs: contentCheck.missingLanguages,
+            explanation_missing_langs: explanationCheck.missingLanguages,
+          });
+        }
+      }
+      
+      if (batchQuestions.length < batchSize) {
+        break; // 这是最后一批
+      }
+      
+      offset += batchSize;
     }
+
 
     if (incompleteQuestions.length === 0) {
       // 如果没有不全的题目，不输出任何内容
