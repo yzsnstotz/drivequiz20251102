@@ -702,7 +702,14 @@ export interface Database {
   sessions: SessionTable;
   verification_tokens: VerificationTokenTable;
   // NextAuth adapter 期望的表名映射（指向实际表或视图）
-  User: UserTable; // 映射到 users 表
+  // ⚠️ 注意：User 视图包含 emailVerified 字段（映射自 phone_verified_at），但 UserTable 没有
+  // 为了满足 @auth/kysely-adapter 的类型要求，创建一个适配器类型
+  User: UserTable & {
+    emailVerified: Date | null; // NextAuth adapter 期望的字段
+    image: string | null; // NextAuth adapter 期望的字段
+    createdAt: Date; // NextAuth adapter 期望的字段（映射自 created_at）
+    updatedAt: Date; // NextAuth adapter 期望的字段（映射自 updated_at）
+  };
   Account: AccountTable; // 映射到 Account 视图（使用驼峰命名，与 NextAuth AdapterAccount 一致）
   Session: SessionTable; // 映射到 sessions 表
   VerificationToken: VerificationTokenTable; // 映射到 verification_tokens 表
