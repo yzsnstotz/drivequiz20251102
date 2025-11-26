@@ -118,7 +118,8 @@ class AiChatBehaviorCacheServer {
   /**
    * 立即写入单条记录（用于Serverless环境）
    */
-  private async flushImmediateRecord(userId: number, record: ChatRecord): Promise<void> {
+  // ⚠️ 注意：userId 现在是字符串类型（UUID），不再使用 number
+  private async flushImmediateRecord(userId: string, record: ChatRecord): Promise<void> {
     try {
       await this.batchWriteRecords(userId, [record]);
       // 从缓存中移除已写入的记录
