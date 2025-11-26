@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 04:08:08（修复 Database.Session 类型：添加 sessionToken 和 userId 字段以满足 AdapterSession 类型要求）
-const BUILD_TIME = "2025-11-27 04:08:08";
+// 最后更新：2025-11-27 04:10:02（修复 auth-kysely-adapter 类型：创建 NextAuthDatabase 子类型以满足 @auth/kysely-adapter 的类型要求）
+const BUILD_TIME = "2025-11-27 04:10:02";
 
 /**
  * 获取版本号（构建时间）
