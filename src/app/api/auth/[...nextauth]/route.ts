@@ -17,7 +17,8 @@ let handlers: { GET: any; POST: any } | null = null;
 
 async function getHandlers() {
   if (!handlers) {
-    const { authOptions } = await import("@/lib/auth");
+    // 使用相对路径的动态导入，避免构建时路径别名解析问题
+    const { authOptions } = await import("../../../../lib/auth");
     const nextAuth = NextAuth(authOptions);
     handlers = nextAuth.handlers;
   }
