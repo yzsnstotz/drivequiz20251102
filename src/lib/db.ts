@@ -927,18 +927,31 @@ function createPlaceholderDb(): Kysely<Database> {
         executeQuery: async () => ({ rows: [] }),
       };
       
+      // 创建一个基础对象，包含所有必需的方法
+      const createUpdateQueryBuilder = () => {
+        const builder: any = {
+          execute: async () => [],
+          getExecutor: () => sharedExecutor,
+        };
+        // 使用 Proxy 确保任何属性访问都返回一个有效的对象
+        return new Proxy(builder, {
+          get(target, prop) {
+            if (prop in target) {
+              return target[prop];
+            }
+            // 如果访问的属性不存在，返回一个具有 getExecutor 的对象
+            if (typeof prop === 'string' && prop !== 'then' && prop !== 'catch' && prop !== 'finally') {
+              return () => createUpdateQueryBuilder();
+            }
+            return undefined;
+          },
+        });
+      };
+      
       const updateBuilder: any = {
         set: (updates: any) => {
           const setBuilder: any = {
-            where: (...args: any[]) => {
-              // where() 返回的对象本身就是一个更新查询构建器
-              // 它需要有 execute 和 getExecutor 方法
-              const whereBuilder: any = {
-                execute: async () => [],
-                getExecutor: () => sharedExecutor,
-              };
-              return whereBuilder;
-            },
+            where: (...args: any[]) => createUpdateQueryBuilder(),
             execute: async () => [],
             getExecutor: () => sharedExecutor,
           };
