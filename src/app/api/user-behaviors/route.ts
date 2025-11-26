@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 从 token 中提取用户 ID（支持 act-{activationId} 格式）
-    let userId: number | null = null;
+    // ⚠️ 注意：users.id 现在是字符串类型（UUID），不再使用 number
+    let userId: string | null = null;
     
     if (token.startsWith("act-")) {
       try {
