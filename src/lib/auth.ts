@@ -258,7 +258,7 @@ export const authOptions: NextAuthConfig = {
     async jwt({ token, user }) {
       // 首次登录时，将用户信息添加到token
       // ⚠️ 注意：user.id 现在是字符串类型（UUID），直接使用，不要 parseInt
-      if (user) {
+      if (user?.id) {
         token.userId = user.id.toString();
       }
       return token;
