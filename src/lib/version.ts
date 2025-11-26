@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 04:13:39（移除未使用的 @ts-expect-error 指令）
-const BUILD_TIME = "2025-11-27 04:13:39";
+// 最后更新：2025-11-27 04:15:30（修复 NextAuth v5 API：将 NextAuthOptions 替换为 NextAuthConfig）
+const BUILD_TIME = "2025-11-27 04:15:30";
 
 /**
  * 获取版本号（构建时间）

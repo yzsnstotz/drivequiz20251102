@@ -1,4 +1,4 @@
-import { NextAuthOptions } from "next-auth";
+import type { NextAuthConfig } from "next-auth";
 import NextAuth from "next-auth";
 import { db } from "./db";
 import GoogleProvider from "next-auth/providers/google";
@@ -37,7 +37,7 @@ if (process.env.NODE_ENV === "development") {
   }
 }
 
-export const authOptions: NextAuthOptions = {
+export const authOptions: NextAuthConfig = {
   adapter: createPatchedKyselyAdapter(db),
   debug: process.env.NODE_ENV === "development",
   // 允许将同一个邮箱关联到多个 OAuth 账户
