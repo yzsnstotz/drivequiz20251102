@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 00:16:55（修复 Twitter OAuth 2.0 403 Forbidden 错误：补全 scope 权限，添加 tweet.read）
-const BUILD_TIME = "2025-11-27 00:16:55";
+// 最后更新：2025-11-27 00:23:37（修复 Twitter OAuth Provider 导入路径：从 next-auth/providers/oauth 改为 @auth/core/providers）
+const BUILD_TIME = "2025-11-27 00:23:37";
 
 /**
  * 获取版本号（构建时间）
