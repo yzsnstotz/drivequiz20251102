@@ -925,7 +925,14 @@ function createPlaceholderDb(): Kysely<Database> {
       const updateBuilder: any = {
         set: (updates: any) => {
           const setBuilder: any = {
-            where: (...args: any[]) => createQueryBuilder(),
+            where: (...args: any[]) => {
+              const whereBuilder = createQueryBuilder();
+              // 确保 where 返回的对象也有 getExecutor
+              whereBuilder.getExecutor = () => ({
+                executeQuery: async () => ({ rows: [] }),
+              });
+              return whereBuilder;
+            },
             execute: async () => [],
             getExecutor: () => ({
               executeQuery: async () => ({ rows: [] }),
