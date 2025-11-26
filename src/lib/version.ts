@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 03:53:40（修复 Database.User 类型：添加 emailVerified 等字段以满足 @auth/kysely-adapter 要求）
-const BUILD_TIME = "2025-11-27 03:53:40";
+// 最后更新：2025-11-27 03:56:30（修复 Database.User.id 类型：从 Generated<string> 改为 string 以满足 @auth/kysely-adapter 要求）
+const BUILD_TIME = "2025-11-27 03:56:30";
 
 /**
  * 获取版本号（构建时间）

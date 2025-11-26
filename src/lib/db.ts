@@ -704,7 +704,9 @@ export interface Database {
   // NextAuth adapter 期望的表名映射（指向实际表或视图）
   // ⚠️ 注意：User 视图包含 emailVerified 字段（映射自 phone_verified_at），但 UserTable 没有
   // 为了满足 @auth/kysely-adapter 的类型要求，创建一个适配器类型
-  User: UserTable & {
+  // ⚠️ 关键：覆盖 id 字段，从 Generated<string> 改为 string，满足 @auth/kysely-adapter 的类型要求
+  User: Omit<UserTable, 'id'> & {
+    id: string; // @auth/kysely-adapter 期望 string，而不是 Generated<string>
     emailVerified: Date | null; // NextAuth adapter 期望的字段
     image: string | null; // NextAuth adapter 期望的字段
     createdAt: Date; // NextAuth adapter 期望的字段（映射自 created_at）
