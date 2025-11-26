@@ -7,11 +7,8 @@
 
 import type { Kysely } from 'kysely';
 import type { Adapter, AdapterAccount } from '@auth/core/adapters';
-import { KyselyAdapter as OriginalKyselyAdapter } from '@auth/kysely-adapter';
+import { KyselyAdapter as OriginalKyselyAdapter, type Database as NextAuthDatabase } from '@auth/kysely-adapter';
 import type { Database } from './db';
-
-// 创建一个只包含 NextAuth 表的子类型，以满足 @auth/kysely-adapter 的类型要求
-type NextAuthDatabase = Pick<Database, 'User' | 'Account' | 'Session' | 'VerificationToken'>;
 
 /**
  * 创建修复后的 KyselyAdapter
