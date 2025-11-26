@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 04:24:51（修复 NextAuth v5 API：将 allowDangerousEmailAccountLinking 移到 provider 级别）
-const BUILD_TIME = "2025-11-27 04:24:51";
+// 最后更新：2025-11-27 04:27:16（修复占位符数据库对象：添加 getExecutor 方法以支持 Kysely 查询构建器）
+const BUILD_TIME = "2025-11-27 04:27:16";
 
 /**
  * 获取版本号（构建时间）

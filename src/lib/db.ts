@@ -890,27 +890,56 @@ function createDbInstance(): Kysely<Database> {
 
 // 创建一个占位符对象，用于构建时
 function createPlaceholderDb(): Kysely<Database> {
-  // 在构建时，返回一个不会实际工作的对象
-  // 这只是一个占位符，不会被实际调用
-  const placeholder = {
-    selectFrom: () => ({
-      select: () => ({ execute: async () => [] }),
-      selectAll: () => ({ execute: async () => [] }),
-      where: () => ({ execute: async () => [] }),
-    }),
+  // 创建一个支持链式调用的查询构建器占位符
+  const createQueryBuilder = () => {
+    const builder: any = {
+      select: (...args: any[]) => builder,
+      selectAll: () => builder,
+      where: (...args: any[]) => builder,
+      orderBy: (...args: any[]) => builder,
+      limit: (...args: any[]) => builder,
+      offset: (...args: any[]) => builder,
+      execute: async () => [],
+      executeTakeFirst: async () => undefined,
+      executeTakeFirstOrThrow: async () => { throw new Error('Placeholder DB'); },
+      getExecutor: () => ({
+        executeQuery: async () => ({ rows: [] }),
+      }),
+    };
+    return builder;
+  };
+
+  const placeholder: any = {
+    selectFrom: () => createQueryBuilder(),
     insertInto: () => ({
-      values: () => ({ returning: () => ({ execute: async () => [] }) }),
+      values: () => ({
+        returning: (...args: any[]) => createQueryBuilder(),
+        execute: async () => [],
+        executeTakeFirstOrThrow: async () => { throw new Error('Placeholder DB'); },
+        getExecutor: () => ({
+          executeQuery: async () => ({ rows: [] }),
+        }),
+      }),
     }),
     updateTable: () => ({
-      set: () => ({ where: () => ({ execute: async () => [] }) }),
+      set: (updates: any) => ({
+        where: (...args: any[]) => createQueryBuilder(),
+        execute: async () => [],
+        getExecutor: () => ({
+          executeQuery: async () => ({ rows: [] }),
+        }),
+      }),
     }),
     deleteFrom: () => ({
-      where: () => ({ execute: async () => [] }),
+      where: (...args: any[]) => createQueryBuilder(),
     }),
     transaction: () => ({
-      execute: async (callback: any) => callback(placeholder),
+      execute: async (callback: any) => {
+        const placeholder = createPlaceholderDb();
+        return callback(placeholder);
+      },
     }),
-  } as any;
+  };
   
   return placeholder;
 }
