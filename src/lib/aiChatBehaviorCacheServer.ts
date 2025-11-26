@@ -7,7 +7,8 @@ import crypto from 'crypto';
 import { db } from './db';
 
 interface ChatRecord {
-  userId: number;
+  // ⚠️ 注意：userId 现在是字符串类型（UUID），不再使用 number
+  userId: string;
   questionHash: string; // 问题的hash，用于去重
   timestamp: number;
   ipAddress: string | null;
@@ -16,7 +17,8 @@ interface ChatRecord {
 }
 
 class AiChatBehaviorCacheServer {
-  private cache: Map<number, ChatRecord[]> = new Map(); // userId -> ChatRecord[]
+  // ⚠️ 注意：userId 现在是字符串类型（UUID），不再使用 number
+  private cache: Map<string, ChatRecord[]> = new Map(); // userId -> ChatRecord[]
   private flushInterval: number = 30000; // 30秒自动刷新（减少延迟，更快看到记录）
   private maxCacheSize: number = 1000; // 最大缓存条数
   private flushTimer: NodeJS.Timeout | null = null;
@@ -39,7 +41,8 @@ class AiChatBehaviorCacheServer {
    * @param immediateFlush 是否立即写入数据库（在Serverless环境中建议使用）
    */
   addChatRecord(
-    userId: number,
+    // ⚠️ 注意：userId 现在是字符串类型（UUID），不再使用 number
+    userId: string,
     question: string,
     ipAddress: string | null = null,
     userAgent: string | null = null,
