@@ -10,13 +10,34 @@ export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
 import NextAuth from "next-auth";
-import { authOptions } from "../_lib/authOptions";
+import type { NextRequest } from "next/server";
+import path from "path";
 
-// NextAuth v5 返回 { handlers: { GET, POST }, auth }
-// 解构出 handlers，然后导出 GET 和 POST
-const { handlers } = NextAuth(authOptions);
+// 延迟初始化 NextAuth，避免构建时模块解析问题
+// 使用绝对路径 require，完全绕过 webpack 的静态分析
+let handlers: { GET: any; POST: any } | null = null;
+
+function getHandlers() {
+  if (!handlers) {
+    // 使用绝对路径 require，避免 webpack 构建时解析
+    const authPath = path.join(process.cwd(), "src", "lib", "auth");
+    const authModule = require(authPath);
+    const { authOptions } = authModule;
+    const nextAuth = NextAuth(authOptions);
+    handlers = nextAuth.handlers;
+  }
+  return handlers;
+}
 
 // 路由层只做请求分发，不承载业务逻辑
 // 符合 A1：路由层禁止承载业务逻辑，只做请求分发
-export const { GET, POST } = handlers;
+export function GET(req: NextRequest, context: any) {
+  const { GET } = getHandlers();
+  return GET(req, context);
+}
+
+export function POST(req: NextRequest, context: any) {
+  const { POST } = getHandlers();
+  return POST(req, context);
+}
 
