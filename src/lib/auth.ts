@@ -40,9 +40,6 @@ if (process.env.NODE_ENV === "development") {
 export const authOptions: NextAuthConfig = {
   adapter: createPatchedKyselyAdapter(db),
   debug: process.env.NODE_ENV === "development",
-  // 允许将同一个邮箱关联到多个 OAuth 账户
-  // 这对于支持多个登录方式的用户很重要
-  allowDangerousEmailAccountLinking: true,
   providers: [
     // Google OAuth
     GoogleProvider({
@@ -50,16 +47,19 @@ export const authOptions: NextAuthConfig = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
       // NextAuth 会自动使用 /api/auth/callback/google 作为回调地址
       // 不需要手动指定 callbackUrl
+      allowDangerousEmailAccountLinking: true, // 允许将同一个邮箱关联到多个 OAuth 账户
     }),
     // Facebook OAuth
     FacebookProvider({
       clientId: process.env.FACEBOOK_CLIENT_ID || "",
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET || "",
+      allowDangerousEmailAccountLinking: true, // 允许将同一个邮箱关联到多个 OAuth 账户
     }),
     // Twitter OAuth 2.0（自定义 provider，限制 scope 权限）
     TwitterProvider({
       clientId: process.env.TWITTER_CLIENT_ID || "",
       clientSecret: process.env.TWITTER_CLIENT_SECRET || "",
+      allowDangerousEmailAccountLinking: true, // 允许将同一个邮箱关联到多个 OAuth 账户
     }),
     // 微信OAuth（自定义提供商）
     WeChatProvider({
