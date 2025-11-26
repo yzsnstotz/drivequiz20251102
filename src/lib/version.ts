@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 02:35:47（修复 Twitter Provider 重复属性错误：移除第一次设置的 checks，只在最后设置一次）
-const BUILD_TIME = "2025-11-27 02:35:47";
+// 最后更新：2025-11-27 02:37:53（修复 WeChat Provider 类型错误：将 redirectUri 访问转换为 any 类型）
+const BUILD_TIME = "2025-11-27 02:37:53";
 
 /**
  * 获取版本号（构建时间）

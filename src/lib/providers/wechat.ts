@@ -28,7 +28,7 @@ export default function WeChatProvider(
       url: "https://open.weixin.qq.com/connect/qrconnect",
       params: {
         appid: options.clientId!,
-        redirect_uri: options.redirectUri || `${process.env.NEXTAUTH_URL}/api/auth/callback/wechat`,
+        redirect_uri: (options as any).redirectUri || `${process.env.NEXTAUTH_URL}/api/auth/callback/wechat`,
         response_type: "code",
         scope: "snsapi_login",
         state: "STATE",
