@@ -448,6 +448,7 @@ interface AccountTable {
   userId: string; // 驼峰命名，映射自 oauth_accounts.user_id
   provider: string;
   providerAccountId: string; // 驼峰命名，映射自 oauth_accounts.provider_account_id
+  type: "oauth" | "oidc" | "credentials"; // NextAuth adapter 期望的字段
   accessToken: string | null; // 驼峰命名，映射自 oauth_accounts.access_token
   refreshToken: string | null; // 驼峰命名，映射自 oauth_accounts.refresh_token
   expiresAt: Date | null; // 驼峰命名，映射自 oauth_accounts.expires_at
