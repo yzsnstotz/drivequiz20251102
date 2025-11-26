@@ -955,7 +955,19 @@ function createPlaceholderDb(): Kysely<Database> {
             execute: async () => [],
             getExecutor: () => sharedExecutor,
           };
-          return setBuilder;
+          // 使用 Proxy 包装 setBuilder，确保所有属性访问都返回有效的对象
+          return new Proxy(setBuilder, {
+            get(target, prop) {
+              if (prop in target) {
+                return target[prop];
+              }
+              // 如果访问的属性不存在，返回一个具有 getExecutor 的对象
+              if (typeof prop === 'string' && prop !== 'then' && prop !== 'catch' && prop !== 'finally') {
+                return () => createUpdateQueryBuilder();
+              }
+              return undefined;
+            },
+          });
         },
         getExecutor: () => sharedExecutor,
       };
