@@ -930,14 +930,25 @@ function createPlaceholderDb(): Kysely<Database> {
       // 创建一个基础对象，包含所有必需的方法
       const createUpdateQueryBuilder = () => {
         const builder: any = {
-          execute: async () => [],
+          execute: async function() {
+            // 在 execute() 方法中，Kysely 可能会访问 this.getExecutor()
+            // 确保 this 指向 builder 对象
+            return [];
+          },
           getExecutor: () => sharedExecutor,
         };
+        // 确保 execute 方法绑定到 builder
+        builder.execute = builder.execute.bind(builder);
         // 使用 Proxy 确保任何属性访问都返回一个有效的对象
         return new Proxy(builder, {
           get(target, prop) {
             if (prop in target) {
-              return target[prop];
+              const value = target[prop];
+              // 如果是方法，确保它绑定到 target
+              if (typeof value === 'function') {
+                return value.bind(target);
+              }
+              return value;
             }
             // 如果访问的属性不存在，返回一个具有 getExecutor 的对象
             if (typeof prop === 'string' && prop !== 'then' && prop !== 'catch' && prop !== 'finally') {
