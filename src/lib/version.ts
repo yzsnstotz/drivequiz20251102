@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 03:41:10（修复 user-behaviors 路由：将 userId 类型从 number 改为 string）
-const BUILD_TIME = "2025-11-27 03:41:10";
+// 最后更新：2025-11-27 03:42:45（安装 @types/qrcode 类型定义，修复 TypeScript 编译错误）
+const BUILD_TIME = "2025-11-27 03:42:45";
 
 /**
  * 获取版本号（构建时间）
