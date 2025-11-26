@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 02:29:56（修复 LINE Provider 类型错误：移除不支持的 callbackUrl 属性，NextAuth 会自动处理回调 URL）
-const BUILD_TIME = "2025-11-27 02:29:56";
+// 最后更新：2025-11-27 02:33:14（修复 Twitter Provider 类型错误：在 ...options 之后显式设置 checks，确保只包含 OAuth2 支持的选项）
+const BUILD_TIME = "2025-11-27 02:33:14";
 
 /**
  * 获取版本号（构建时间）

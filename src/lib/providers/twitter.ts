@@ -214,6 +214,8 @@ Please check your Twitter Developer Portal settings:
       text: "#fff",
     },
     ...options,
+    // 确保 checks 只包含 OAuth2 支持的选项，覆盖 options 中可能包含的 "nonce"
+    checks: ["pkce", "state"] as const,
   };
 }
 
