@@ -22,7 +22,6 @@ export default function TwitterProvider(
     id: "twitter",
     name: "Twitter",
     type: "oauth",
-    checks: ["pkce", "state"],
     authorization: {
       url: "https://x.com/i/oauth2/authorize",
       params: {
