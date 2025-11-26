@@ -496,6 +496,7 @@ export const userTranslations: Translations = {
     'home.aiDescription': '随时解答你的驾考问题',
     'home.changeLanguage': '切换语言',
     'home.subtitle': '开启你的学车之旅',
+    'home.login': '登录',
     
     // 题目
     'question.previous': '上一题',
@@ -551,6 +552,29 @@ export const userTranslations: Translations = {
     'study.loadingQuestions': '正在加载题目...',
     'study.noQuestionsFound': '未找到符合条件的题目。请尝试选择其他驾照类型或考试阶段。',
     'study.completed': '恭喜您完成所有题目！',
+    
+    // 登录/注册
+    'auth.login.title': '登录',
+    'auth.login.subtitle': '选择登录方式',
+    'auth.login.withWeChat': '微信登录',
+    'auth.login.withLINE': 'LINE登录',
+    'auth.login.withGoogle': 'Google登录',
+    'auth.login.withFacebook': 'Facebook登录',
+    'auth.login.withTwitter': 'Twitter登录',
+    'auth.login.qrCode': '扫码登录',
+    'auth.login.redirect': '跳转授权',
+    'auth.login.error': '登录失败',
+    'auth.login.cancel': '取消登录',
+    'auth.phone.title': '输入电话号码',
+    'auth.phone.subtitle': '首次登录需要输入电话号码',
+    'auth.phone.input': '电话号码',
+    'auth.phone.placeholder': '请输入您的电话号码',
+    'auth.phone.submit': '提交',
+    'auth.phone.skip': '跳过（稍后输入）',
+    'auth.phone.error': '电话号码格式不正确',
+    'auth.phone.success': '电话号码已保存',
+    'auth.logout': '退出登录',
+    'auth.session.expired': '会话已过期，请重新登录',
     
     // 考试页面
     'exam.title': '模拟考试',
@@ -671,6 +695,7 @@ export const userTranslations: Translations = {
     'home.changeLanguage': 'Change Language',
     'home.subtitle': 'Start your driving journey',
     'home.favorites': 'My Favorites',
+    'home.login': 'Login',
     
     // 题目
     'question.previous': 'Previous',
@@ -726,6 +751,29 @@ export const userTranslations: Translations = {
     'study.loadingQuestions': 'Loading questions...',
     'study.noQuestionsFound': 'No questions found matching the criteria. Please try selecting a different license type or exam stage.',
     'study.completed': 'Congratulations! You have completed all questions!',
+    
+    // Login/Register
+    'auth.login.title': 'Login',
+    'auth.login.subtitle': 'Choose login method',
+    'auth.login.withWeChat': 'Login with WeChat',
+    'auth.login.withLINE': 'Login with LINE',
+    'auth.login.withGoogle': 'Login with Google',
+    'auth.login.withFacebook': 'Login with Facebook',
+    'auth.login.withTwitter': 'Login with Twitter',
+    'auth.login.qrCode': 'QR Code Login',
+    'auth.login.redirect': 'Redirect Authorization',
+    'auth.login.error': 'Login failed',
+    'auth.login.cancel': 'Cancel Login',
+    'auth.phone.title': 'Enter Phone Number',
+    'auth.phone.subtitle': 'Phone number required for first-time login',
+    'auth.phone.input': 'Phone Number',
+    'auth.phone.placeholder': 'Please enter your phone number',
+    'auth.phone.submit': 'Submit',
+    'auth.phone.skip': 'Skip (enter later)',
+    'auth.phone.error': 'Invalid phone number format',
+    'auth.phone.success': 'Phone number saved',
+    'auth.logout': 'Logout',
+    'auth.session.expired': 'Session expired, please login again',
     
     // 考试页面
     'exam.title': 'Mock Exam',
@@ -851,6 +899,7 @@ export const userTranslations: Translations = {
     'home.changeLanguage': '言語を変更',
     'home.subtitle': 'あなたの運転学習の旅を始めましょう',
     'home.favorites': 'お気に入り',
+    'home.login': 'ログイン',
     
     // 题目
     'question.previous': '前へ',
@@ -906,6 +955,29 @@ export const userTranslations: Translations = {
     'study.loadingQuestions': '問題を読み込み中...',
     'study.noQuestionsFound': '条件に合う問題が見つかりませんでした。別の免許タイプまたは試験段階を選択してください。',
     'study.completed': 'おめでとうございます！すべての問題を完了しました！',
+    
+    // ログイン/登録
+    'auth.login.title': 'ログイン',
+    'auth.login.subtitle': 'ログイン方法を選択',
+    'auth.login.withWeChat': 'WeChatでログイン',
+    'auth.login.withLINE': 'LINEでログイン',
+    'auth.login.withGoogle': 'Googleでログイン',
+    'auth.login.withFacebook': 'Facebookでログイン',
+    'auth.login.withTwitter': 'Twitterでログイン',
+    'auth.login.qrCode': 'QRコードログイン',
+    'auth.login.redirect': 'リダイレクト認証',
+    'auth.login.error': 'ログインに失敗しました',
+    'auth.login.cancel': 'ログインをキャンセル',
+    'auth.phone.title': '電話番号を入力',
+    'auth.phone.subtitle': '初回ログインには電話番号が必要です',
+    'auth.phone.input': '電話番号',
+    'auth.phone.placeholder': '電話番号を入力してください',
+    'auth.phone.submit': '送信',
+    'auth.phone.skip': 'スキップ（後で入力）',
+    'auth.phone.error': '電話番号の形式が正しくありません',
+    'auth.phone.success': '電話番号が保存されました',
+    'auth.logout': 'ログアウト',
+    'auth.session.expired': 'セッションが期限切れです。再度ログインしてください',
     
     // 考试页面
     'exam.title': '模擬試験',

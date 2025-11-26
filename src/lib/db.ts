@@ -210,6 +210,7 @@ interface ServiceCategoryTable {
 interface ServiceReviewTable {
   id: Generated<number>;
   service_id: number;
+  user_id: string | null; // ✅ 改为字符串类型（UUID），NextAuth v5 使用字符串 ID
   rating: number;
   comment: string | null;
   metadata: Record<string, any> | null;
@@ -302,7 +303,7 @@ interface AdContentsTable {
 interface AdLogsTable {
   id: Generated<number>;
   ad_content_id: number;
-  user_id: number | null;
+  user_id: string | null; // ✅ 改为字符串类型，关联 users.id（UUID）
   log_type: "impression" | "click" | "conversion";
   ip_address: string | null;
   user_agent: string | null;
@@ -342,7 +343,7 @@ interface TermsOfServiceTable {
 // ------------------------------------------------------------
 interface UserProfileTable {
   id: Generated<number>;
-  user_id: number;
+  user_id: string; // ✅ 改为字符串类型，关联 users.id（UUID）
   language: string | null;
   goals: string[] | null;
   level: "beginner" | "intermediate" | "advanced" | "expert";
@@ -356,7 +357,7 @@ interface UserProfileTable {
 // ------------------------------------------------------------
 interface UserInterestsTable {
   id: Generated<number>;
-  user_id: number;
+  user_id: string; // ✅ 改为字符串类型，关联 users.id（UUID）
   vehicle_brands: string[] | null;
   service_types: string[] | null;
   other_interests: Record<string, any> | null;
@@ -384,7 +385,7 @@ interface AiLogsTable {
 // 1️⃣2️⃣ users 表结构定义
 // ------------------------------------------------------------
 interface UserTable {
-  id: Generated<number>;
+  id: Generated<string>; // ✅ 改为字符串类型（UUID），NextAuth v5 使用字符串 ID
   userid: string | null; // 用户唯一标识符（区别于id，用于AI日志关联）
   email: string;
   name: string | null;
@@ -392,6 +393,8 @@ interface UserTable {
   status: "active" | "inactive" | "suspended" | "pending";
   activation_code_id: number | null;
   registration_info: any | null; // JSONB
+  phone_verified_at: Date | null; // 电话号码验证时间（暂时不使用）
+  oauth_provider: string | null; // 首次登录使用的OAuth提供商
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
   last_login_at: Date | null;
@@ -403,7 +406,7 @@ interface UserTable {
 // ------------------------------------------------------------
 interface UserBehaviorTable {
   id: Generated<number>;
-  user_id: number;
+  user_id: string; // ✅ 改为字符串类型，关联 users.id（UUID）
   behavior_type: "login" | "logout" | "start_quiz" | "complete_quiz" | "pause_quiz" | "resume_quiz" | "view_page" | "ai_chat" | "other";
   ip_address: string | null;
   user_agent: string | null;
@@ -413,6 +416,68 @@ interface UserBehaviorTable {
   metadata: any | null; // JSONB
   created_at: Generated<Date>;
   notes: string | null;
+}
+
+// ------------------------------------------------------------
+// 1️⃣4️⃣ oauth_accounts 表结构定义
+// ------------------------------------------------------------
+interface OAuthAccountTable {
+  id: Generated<number>;
+  user_id: string; // ✅ 改为字符串类型，关联 users.id（UUID）
+  provider: string; // 'wechat', 'line', 'google', 'facebook', 'twitter'
+  provider_account_id: string; // 第三方平台的用户ID
+  access_token: string | null;
+  refresh_token: string | null;
+  expires_at: Date | null;
+  token_type: string | null;
+  scope: string | null;
+  id_token: string | null;
+  session_state: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣4️⃣-1️⃣ Account 视图结构定义（用于 NextAuth KyselyAdapter）
+// 注意：使用驼峰命名，与 KyselyAdapter 查询一致
+// 写入时，KyselyAdapter 传入的对象可能使用下划线命名（来自 TokenEndpointResponse），
+// 但触发器会处理这种映射
+// ------------------------------------------------------------
+interface AccountTable {
+  id: string; // 视图返回字符串类型
+  userId: string; // 驼峰命名，映射自 oauth_accounts.user_id
+  provider: string;
+  providerAccountId: string; // 驼峰命名，映射自 oauth_accounts.provider_account_id
+  accessToken: string | null; // 驼峰命名，映射自 oauth_accounts.access_token
+  refreshToken: string | null; // 驼峰命名，映射自 oauth_accounts.refresh_token
+  expiresAt: Date | null; // 驼峰命名，映射自 oauth_accounts.expires_at
+  tokenType: string | null; // 驼峰命名，映射自 oauth_accounts.token_type
+  scope: string | null;
+  idToken: string | null; // 驼峰命名，映射自 oauth_accounts.id_token
+  sessionState: string | null; // 驼峰命名，映射自 oauth_accounts.session_state
+  createdAt: Date; // 驼峰命名，映射自 oauth_accounts.created_at
+  updatedAt: Date; // 驼峰命名，映射自 oauth_accounts.updated_at
+}
+
+// ------------------------------------------------------------
+// 1️⃣5️⃣ sessions 表结构定义 (NextAuth)
+// ------------------------------------------------------------
+interface SessionTable {
+  id: string;
+  session_token: string;
+  user_id: string; // ✅ 改为字符串类型，关联 users.id（UUID）
+  expires: Date;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
+// 1️⃣6️⃣ verification_tokens 表结构定义 (NextAuth)
+// ------------------------------------------------------------
+interface VerificationTokenTable {
+  identifier: string;
+  token: string;
+  expires: Date;
 }
 
 // ------------------------------------------------------------
@@ -633,6 +698,14 @@ interface Database {
   ai_logs: AiLogsTable;
   users: UserTable;
   user_behaviors: UserBehaviorTable;
+  oauth_accounts: OAuthAccountTable;
+  sessions: SessionTable;
+  verification_tokens: VerificationTokenTable;
+  // NextAuth adapter 期望的表名映射（指向实际表或视图）
+  User: UserTable; // 映射到 users 表
+  Account: AccountTable; // 映射到 Account 视图（使用驼峰命名，与 NextAuth AdapterAccount 一致）
+  Session: SessionTable; // 映射到 sessions 表
+  VerificationToken: VerificationTokenTable; // 映射到 verification_tokens 表
   questions: QuestionTable;
   question_ai_answers: QuestionAiAnswerTable;
   question_ai_answer_pending_updates: QuestionAiAnswerPendingUpdateTable;

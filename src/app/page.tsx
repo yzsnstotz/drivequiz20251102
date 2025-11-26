@@ -19,7 +19,10 @@ import {
   Swords,
   Globe,
   Star,
+  LogIn,
+  LogOut,
 } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
 import AIPage from "@/components/AIPage";
 import MerchantAdCarousel from "@/components/MerchantAdCarousel";
 import SplashScreenAd from "@/components/SplashScreenAd";
@@ -71,6 +74,7 @@ type AdSlotConfig = {
 
 export default function HomePage() {
   const { language, setLanguage, t } = useLanguage();
+  const { data: session, status } = useSession();
   const [showAI, setShowAI] = useState(false);
   const [totalProgress, setTotalProgress] = useState(0);
   const [currentWelcomeIndex, setCurrentWelcomeIndex] = useState(0);
@@ -131,7 +135,12 @@ export default function HomePage() {
               const popupConfig = items.find((item: AdSlotConfig) => item.slotKey === "popup_ad");
               if (popupConfig) {
                 try {
-                  const res = await fetch("/api/merchant-ads?adSlot=popup_ad");
+                  const res = await fetch("/api/merchant-ads?adSlot=popup_ad", {
+                    method: "GET",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                  });
                   if (res.ok) {
                     const data = await res.json();
                     if (data.ok && data.data.items && data.data.items.length > 0) {
@@ -141,10 +150,13 @@ export default function HomePage() {
                       }, 500);
                     }
                   } else {
-                    console.error("[广告加载] 弹窗广告请求失败:", res.status);
+                    console.error("[广告加载] 弹窗广告请求失败:", res.status, res.statusText);
                   }
                 } catch (error) {
-                  console.error("[广告加载] 检查弹窗广告失败:", error);
+                  // 静默处理错误，不显示给用户
+                  if (process.env.NODE_ENV === "development") {
+                    console.error("[广告加载] 检查弹窗广告失败:", error);
+                  }
                 }
               }
             };
@@ -264,6 +276,46 @@ export default function HomePage() {
             </span>
           </div>
           <div className="flex items-center space-x-2">
+            {/* 登录/用户信息 */}
+            {status === "loading" ? (
+              <div className="px-3 py-1.5 text-gray-400">
+                <span className="text-sm">{t('common.loading')}</span>
+              </div>
+            ) : session?.user ? (
+              <div className="flex items-center space-x-2">
+                <Link
+                  href="/profile"
+                  className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                  aria-label={session.user.name || session.user.email || "用户"}
+                >
+                  <User className="h-5 w-5" />
+                  <span className="text-sm font-medium hidden sm:inline">
+                    {session.user.name || session.user.email || "用户"}
+                  </span>
+                </Link>
+                <button
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                  className="flex items-center space-x-1 px-3 py-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                  aria-label={t('header.logout')}
+                >
+                  <LogOut className="h-5 w-5" />
+                  <span className="text-sm font-medium hidden sm:inline">
+                    {t('header.logout')}
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                aria-label={t('home.login')}
+              >
+                <LogIn className="h-5 w-5" />
+                <span className="text-sm font-medium hidden sm:inline">
+                  {t('home.login')}
+                </span>
+              </Link>
+            )}
             {/* 语言切换按钮 */}
             <div className="relative">
               <button

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -9,7 +11,7 @@ export const runtime = "nodejs";
  */
 export interface UserInfo {
   userId: string; // 用户ID（可能是UUID或act-格式）
-  userDbId?: number; // 数据库中的用户ID（users.id）
+  userDbId?: string; // ✅ 数据库中的用户ID（users.id），现在也是字符串类型（UUID）
 }
 
 /**
@@ -20,14 +22,34 @@ const userInfoCache = new WeakMap<NextRequest, UserInfo | null>();
 /**
  * 获取用户认证信息
  * 支持多种认证方式：
- * 1. Authorization: Bearer <jwt>
- * 2. Cookie: USER_TOKEN
- * 3. Query参数: ?token=<jwt>
+ * 1. NextAuth Session (优先)
+ * 2. Authorization: Bearer <jwt>
+ * 3. Cookie: USER_TOKEN
+ * 4. Query参数: ?token=<jwt>
  */
 export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
   // 检查缓存
   if (userInfoCache.has(req)) {
     return userInfoCache.get(req) || null;
+  }
+
+  // 优先检查NextAuth session
+  try {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      const userId = session.user.id.toString();
+      // ⚠️ 注意：user.id 现在是字符串类型（UUID），不再使用 parseInt
+      // userDbId 现在也是字符串类型，与 userId 相同
+      const userInfo: UserInfo = {
+        userId,
+        userDbId: userId, // ✅ 现在 userDbId 也是字符串类型
+      };
+      userInfoCache.set(req, userInfo);
+      return userInfo;
+    }
+  } catch (e) {
+    // NextAuth session获取失败，继续尝试其他方式
+    console.error("[UserAuth] NextAuth session error", (e as Error).message);
   }
 
   const USER_JWT_SECRET = process.env.USER_JWT_SECRET;
@@ -101,7 +123,7 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
               if (user) {
                 const userInfo: UserInfo = {
                   userId: user.userid || userId,
-                  userDbId: user.id,
+                  userDbId: user.id.toString(), // ✅ user.id 现在是字符串类型
                 };
                 userInfoCache.set(req, userInfo);
                 return userInfo;
@@ -200,7 +222,7 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
       if (user) {
         const userInfo: UserInfo = {
           userId: user.userid || userId,
-          userDbId: user.id,
+          userDbId: user.id.toString(), // ✅ user.id 现在是字符串类型
         };
         userInfoCache.set(req, userInfo);
         return userInfo;
@@ -264,7 +286,7 @@ export function withUserAuth<T extends (...args: any[]) => Promise<Response>>(
   return (async (req: NextRequest, ...rest: any[]) => {
     const userInfo = await getUserInfo(req);
 
-    if (!userInfo || !userInfo.userDbId) {
+    if (!userInfo || !userInfo.userId) {
       return unauthorized("需要登录才能访问此资源");
     }
 

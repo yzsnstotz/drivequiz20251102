@@ -46,15 +46,41 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
         : category 
         ? `category=${encodeURIComponent(category)}`
         : "";
-      const res = await fetch(`/api/merchant-ads?${params}`);
+      
+      if (!params) {
+        // 如果没有参数，不发送请求
+        setMerchants([]);
+        return;
+      }
+      
+      const res = await fetch(`/api/merchant-ads?${params}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
       if (res.ok) {
         const data = await res.json();
         if (data.ok) {
           setMerchants(data.data.items || []);
+        } else {
+          // API 返回错误，设置空数组
+          setMerchants([]);
         }
+      } else {
+        // HTTP 错误，设置空数组
+        if (process.env.NODE_ENV === "development") {
+          console.error("[商家广告] 请求失败:", res.status, res.statusText);
+        }
+        setMerchants([]);
       }
     } catch (error) {
-      console.error("加载商家广告失败:", error);
+      // 网络错误或其他错误，静默处理
+      if (process.env.NODE_ENV === "development") {
+        console.error("[商家广告] 加载失败:", error);
+      }
+      setMerchants([]);
     } finally {
       setLoading(false);
     }

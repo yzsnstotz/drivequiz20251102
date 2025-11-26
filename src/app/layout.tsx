@@ -16,6 +16,7 @@ export const viewport: Viewport = {
 };
 
 import ActivationProvider from "../components/ActivationProvider";
+import AuthProvider from "../components/AuthProvider";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 export default function RootLayout({
@@ -27,10 +28,12 @@ export default function RootLayout({
     <html lang="zh">
       <body className="pb-20">
         <LanguageProvider>
-          <ActivationProvider>
-            {children}
-            <BottomNavigation />
-          </ActivationProvider>
+          <AuthProvider>
+            <ActivationProvider>
+              {children}
+              <BottomNavigation />
+            </ActivationProvider>
+          </AuthProvider>
         </LanguageProvider>
       </body>
     </html>
