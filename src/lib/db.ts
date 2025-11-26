@@ -458,6 +458,8 @@ interface AccountTable {
   sessionState: string | undefined; // 驼峰命名，映射自 oauth_accounts.session_state
   createdAt: Date; // 驼峰命名，映射自 oauth_accounts.created_at
   updatedAt: Date; // 驼峰命名，映射自 oauth_accounts.updated_at
+  // 索引签名：满足 AdapterAccount 的类型要求（继承自 Account，而 Account 继承自 Partial<TokenEndpointResponse>）
+  [key: string]: any;
 }
 
 // ------------------------------------------------------------

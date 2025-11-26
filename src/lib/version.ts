@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 04:04:30（修复 Database.Account 和 User 类型：Date 字段使用 null，string 字段使用 undefined）
-const BUILD_TIME = "2025-11-27 04:04:30";
+// 最后更新：2025-11-27 04:06:24（修复 Database.Account 类型：添加索引签名以满足 AdapterAccount 类型要求）
+const BUILD_TIME = "2025-11-27 04:06:24";
 
 /**
  * 获取版本号（构建时间）
