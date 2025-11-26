@@ -1,3 +1,6 @@
+import NextAuth from "next-auth";
+import { authOptions } from "@/lib/auth";
+
 /**
  * ✅ Dynamic Route Declaration
  * 防止 Next.js 静态预渲染报错 (DYNAMIC_SERVER_USAGE)
@@ -9,31 +12,11 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
-import NextAuth from "next-auth";
-import type { NextRequest } from "next/server";
-
-// 延迟导入 authOptions，避免构建时模块解析问题
-let handlers: { GET: any; POST: any } | null = null;
-
-async function getHandlers() {
-  if (!handlers) {
-    // 使用相对路径的动态导入，避免构建时路径别名解析问题
-    const { authOptions } = await import("../../../../lib/auth");
-    const nextAuth = NextAuth(authOptions);
-    handlers = nextAuth.handlers;
-  }
-  return handlers;
-}
+// NextAuth v5 返回 { handlers: { GET, POST }, auth }
+// 解构出 handlers，然后导出 GET 和 POST
+const { handlers } = NextAuth(authOptions);
 
 // 路由层只做请求分发，不承载业务逻辑
 // 符合 A1：路由层禁止承载业务逻辑，只做请求分发
-export async function GET(req: NextRequest, context: any) {
-  const { GET } = await getHandlers();
-  return GET(req, context);
-}
-
-export async function POST(req: NextRequest, context: any) {
-  const { POST } = await getHandlers();
-  return POST(req, context);
-}
+export const { GET, POST } = handlers;
 
