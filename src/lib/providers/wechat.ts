@@ -36,7 +36,7 @@ export default function WeChatProvider(
     },
     token: {
       url: "https://api.weixin.qq.com/sns/oauth2/access_token",
-      async request({ provider, params }) {
+      async request({ provider, params }: { provider: OAuthConfig<any>; params: any }) {
         const url = new URL(provider.token?.url as string);
         url.searchParams.set("appid", provider.clientId as string);
         url.searchParams.set("secret", provider.clientSecret as string);
@@ -80,7 +80,7 @@ export default function WeChatProvider(
     },
     userinfo: {
       url: "https://api.weixin.qq.com/sns/userinfo",
-      async request({ provider, tokens }) {
+      async request({ provider, tokens }: { provider: OAuthConfig<any>; tokens: any }) {
         const url = new URL(provider.userinfo?.url as string);
         url.searchParams.set("access_token", (tokens as any).access_token);
         url.searchParams.set("openid", (tokens as any).openid);

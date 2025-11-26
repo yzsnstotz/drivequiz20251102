@@ -39,7 +39,7 @@ export default function LineProvider(
     },
     token: {
       url: "https://api.line.me/oauth2/v2.1/token",
-      async request({ provider, params }) {
+      async request({ provider, params }: { provider: OAuthConfig<LineProfile>; params: any }) {
         console.log("[LINE Provider] Token request started");
         console.log("[LINE Provider] Client ID type:", typeof provider.clientId);
         console.log("[LINE Provider] Client ID value:", provider.clientId);
@@ -108,7 +108,7 @@ export default function LineProvider(
     },
     userinfo: {
       url: "https://api.line.me/v2/profile",
-      async request({ provider, tokens }) {
+      async request({ provider, tokens }: { provider: OAuthConfig<LineProfile>; tokens: any }) {
         console.log("[LINE Provider] Userinfo request started");
         const response = await fetch(provider.userinfo?.url as string, {
           method: "GET",

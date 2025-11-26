@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 00:35:34（修复依赖冲突：在 .npmrc 中添加 legacy-peer-deps=true，解决 @auth/kysely-adapter 与 kysely 版本冲突）
-const BUILD_TIME = "2025-11-27 00:35:34";
+// 最后更新：2025-11-27 01:37:19（修复 TypeScript 类型错误：为所有 OAuth Provider 的 request 函数添加显式类型注解）
+const BUILD_TIME = "2025-11-27 01:37:19";
 
 /**
  * 获取版本号（构建时间）

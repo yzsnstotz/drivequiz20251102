@@ -37,7 +37,7 @@ export default function TwitterProvider(
     },
     token: {
       url: "https://api.x.com/2/oauth2/token",
-      async request({ provider, params }) {
+      async request({ provider, params }: { provider: OAuthConfig<TwitterProfile>; params: any }) {
         console.log("[Twitter Provider] Token request started");
         console.log("[Twitter Provider] Token URL:", provider.token?.url);
         console.log("[Twitter Provider] Code:", params.code?.substring(0, 20) + "...");
@@ -94,7 +94,7 @@ export default function TwitterProvider(
       params: {
         "user.fields": "profile_image_url",
       },
-      async request({ provider, tokens }) {
+          async request({ provider, tokens }: { provider: OAuthConfig<TwitterProfile>; tokens: any }) {
         console.log("[Twitter Provider] Userinfo request started");
         console.log("[Twitter Provider] Userinfo URL:", provider.userinfo?.url);
         console.log("[Twitter Provider] Has access_token:", !!(tokens as any).access_token);
