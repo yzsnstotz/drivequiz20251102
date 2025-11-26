@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 01:37:19（修复 TypeScript 类型错误：为所有 OAuth Provider 的 request 函数添加显式类型注解）
-const BUILD_TIME = "2025-11-27 01:37:19";
+// 最后更新：2025-11-27 02:28:08（修复 LINE Provider 类型错误：将 redirectUri 访问也转换为 any 类型）
+const BUILD_TIME = "2025-11-27 02:28:08";
 
 /**
  * 获取版本号（构建时间）

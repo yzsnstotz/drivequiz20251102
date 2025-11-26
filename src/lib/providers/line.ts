@@ -49,7 +49,7 @@ export default function LineProvider(
         body.append("code", String(params.code || ""));
         // 使用 NextAuth 自动生成的回调地址
         // NextAuth 会自动使用 {NEXTAUTH_URL}/api/auth/callback/{provider_id} 格式
-        const redirectUri = (provider as any).callbackUrl || provider.redirectUri || `${process.env.NEXTAUTH_URL}/api/auth/callback/line`;
+        const redirectUri = (provider as any).callbackUrl || (provider as any).redirectUri || `${process.env.NEXTAUTH_URL}/api/auth/callback/line`;
         body.append("redirect_uri", String(redirectUri));
         body.append("client_id", String(provider.clientId || "")); // 确保是字符串
         body.append("client_secret", String(provider.clientSecret || ""));
