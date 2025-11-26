@@ -66,7 +66,7 @@ export const authOptions: NextAuthConfig = {
       clientId: process.env.WECHAT_CLIENT_ID || "",
       clientSecret: process.env.WECHAT_CLIENT_SECRET || "",
       redirectUri: process.env.WECHAT_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/auth/callback/wechat`,
-    }),
+    } as any),
     // LINE OAuth（自定义 OAuth2 provider，绕过 OIDC issuer 校验）
     // 使用 type: "oauth" 而不是 oidc，避免 NextAuth 用全局 issuer 校验 LINE 的 JWT
     {
