@@ -451,7 +451,7 @@ interface AccountTable {
   type: "oauth" | "oidc" | "email" | "webauthn"; // NextAuth adapter 期望的字段（AdapterAccountType）
   accessToken: string | undefined; // 驼峰命名，映射自 oauth_accounts.access_token（@auth/kysely-adapter 期望 undefined 而不是 null）
   refreshToken: string | undefined; // 驼峰命名，映射自 oauth_accounts.refresh_token
-  expiresAt: Date | undefined; // 驼峰命名，映射自 oauth_accounts.expires_at
+  expiresAt: Date | null; // 驼峰命名，映射自 oauth_accounts.expires_at（@auth/kysely-adapter 期望 Date 字段使用 null）
   tokenType: string | undefined; // 驼峰命名，映射自 oauth_accounts.token_type
   scope: string | undefined;
   idToken: string | undefined; // 驼峰命名，映射自 oauth_accounts.id_token
@@ -708,7 +708,7 @@ export interface Database {
   // ⚠️ 关键：覆盖 id 字段，从 Generated<string> 改为 string，满足 @auth/kysely-adapter 的类型要求
   User: Omit<UserTable, 'id'> & {
     id: string; // @auth/kysely-adapter 期望 string，而不是 Generated<string>
-    emailVerified: Date | undefined; // NextAuth adapter 期望的字段（@auth/kysely-adapter 期望 undefined 而不是 null）
+    emailVerified: Date | null; // NextAuth adapter 期望的字段（@auth/kysely-adapter 期望 Date 字段使用 null）
     image: string | undefined; // NextAuth adapter 期望的字段（@auth/kysely-adapter 期望 undefined 而不是 null）
     createdAt: Date; // NextAuth adapter 期望的字段（映射自 created_at）
     updatedAt: Date; // NextAuth adapter 期望的字段（映射自 updated_at）
