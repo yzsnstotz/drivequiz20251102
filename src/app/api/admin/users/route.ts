@@ -137,8 +137,10 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const rows = await q.execute();
 
     // 获取每个用户的最近一次登录 IP 和 User Agent（优化：批量查询避免 N+1）
-    const userIds = rows.map((r: any) => r.id).filter((id: number) => id);
-    const lastLoginMap = new Map<number, any>();
+    // ⚠️ 注意：users.id 现在是字符串类型（UUID），不再使用 number
+    const userIds = rows.map((r: any) => r.id).filter((id: string) => id);
+    // ⚠️ 注意：user_id 现在是字符串类型（UUID），不再使用 number
+    const lastLoginMap = new Map<string, any>();
     
     if (userIds.length > 0) {
       // 获取所有登录记录，在应用层按用户分组取最近一条
@@ -157,7 +159,8 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         .execute();
 
       // 按用户ID分组，取每个用户最近一条记录
-      const userLatestMap = new Map<number, any>();
+      // ⚠️ 注意：user_id 现在是字符串类型（UUID），不再使用 number
+      const userLatestMap = new Map<string, any>();
       for (const behavior of allLoginBehaviors) {
         if (!userLatestMap.has(behavior.user_id)) {
           userLatestMap.set(behavior.user_id, behavior);
