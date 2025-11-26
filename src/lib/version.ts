@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 03:33:10（修复 NextAuth v5：将 getServerSession 替换为 auth() 函数）
-const BUILD_TIME = "2025-11-27 03:33:10";
+// 最后更新：2025-11-27 03:35:03（修复 users.id 类型错误：将 Number 改为字符串类型）
+const BUILD_TIME = "2025-11-27 03:35:03";
 
 /**
  * 获取版本号（构建时间）

@@ -42,8 +42,9 @@ export async function GET(
   return withAdminAuth(async (req: NextRequest) => {
     try {
       const { id } = await params;
-      const userId = Number(id);
-      if (isNaN(userId) || userId <= 0) {
+      // ⚠️ 注意：users.id 现在是字符串类型（UUID），不再使用 Number
+      const userId = id;
+      if (!userId || typeof userId !== "string") {
         return badRequest("Invalid user ID");
       }
 
