@@ -1,6 +1,3 @@
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
-
 /**
  * ✅ Dynamic Route Declaration
  * 防止 Next.js 静态预渲染报错 (DYNAMIC_SERVER_USAGE)
@@ -11,6 +8,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
+
+import NextAuth from "next-auth";
+import { authOptions } from "../../../../lib/auth";
 
 // NextAuth v5 返回 { handlers: { GET, POST }, auth }
 // 解构出 handlers，然后导出 GET 和 POST
