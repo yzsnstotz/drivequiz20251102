@@ -674,7 +674,7 @@ interface QuestionProcessingTaskItemsTable {
 // ------------------------------------------------------------
 // 1️⃣1️⃣ 数据库总接口定义
 // ------------------------------------------------------------
-interface Database {
+export interface Database {
   activations: ActivationTable;
   activation_codes: ActivationCodeTable;
   admins: AdminTable;

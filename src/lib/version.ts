@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 03:49:22（修复 aiChatBehaviorCacheServer：修复 batchWriteRecords 函数参数类型）
-const BUILD_TIME = "2025-11-27 03:49:22";
+// 最后更新：2025-11-27 03:51:22（导出 Database 接口，修复 auth-kysely-adapter 类型错误）
+const BUILD_TIME = "2025-11-27 03:51:22";
 
 /**
  * 获取版本号（构建时间）
