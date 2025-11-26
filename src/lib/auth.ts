@@ -279,13 +279,8 @@ export const authOptions: NextAuthConfig = {
         });
       }
     },
-    async error({ error }) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("[NextAuth] Error event:", error);
-        console.error("[NextAuth] Error type:", error?.name);
-        console.error("[NextAuth] Error message:", error?.message);
-      }
-    },
+    // ⚠️ NextAuth v5 中 events.error 回调已被移除
+    // 错误处理现在通过其他方式（如 middleware 或全局错误处理）进行
   },
 };
 
