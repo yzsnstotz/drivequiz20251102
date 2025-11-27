@@ -10,6 +10,7 @@ export const fetchCache = "force-no-store";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { Pool } from "pg";
+import { initPgSslDefaults } from "@/lib/pgSslDefaults";
 
 /**
  * GET /api/admin/diagnose
@@ -69,22 +70,15 @@ export async function GET() {
     );
   }
 
-  // 测试数据库连接
-  const isSupabase = connectionString.includes("supabase.com") || connectionString.includes("sslmode=require");
+  // 初始化 pg 默认 SSL 配置（统一为所有使用 pg 的客户端设置 SSL 策略）
+  initPgSslDefaults(connectionString);
   
-  // 确保 SSL 配置正确应用（Supabase 需要 SSL，但证书链可能有自签名证书）
+  // 测试数据库连接（使用 pg.defaults.ssl）
   const poolConfig: {
     connectionString: string;
-    ssl?: { rejectUnauthorized: boolean };
   } = {
     connectionString,
   };
-  
-  if (isSupabase) {
-    poolConfig.ssl = {
-      rejectUnauthorized: false, // 允许自签名证书（Supabase 需要）
-    };
-  }
   
   const pool = new Pool(poolConfig);
 

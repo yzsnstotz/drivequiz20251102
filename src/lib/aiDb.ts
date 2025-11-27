@@ -7,6 +7,7 @@
 
 import { Kysely, PostgresDialect, Generated } from "kysely";
 import { Pool } from "pg";
+import { initPgSslDefaults } from "./pgSslDefaults";
 
 // ------------------------------------------------------------
 // AI 数据库表结构定义
@@ -200,17 +201,16 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     return createPlaceholderAiDb();
   }
 
-  // 检测是否需要SSL连接（Supabase必须使用SSL）
-  const isSupabase = connectionString && (
-    connectionString.includes('supabase.com') || 
-    connectionString.includes('supabase.co') ||
-    connectionString.includes('sslmode=require')
+  // 初始化 pg 默认 SSL 配置（统一为所有使用 pg 的客户端设置 SSL 策略）
+  initPgSslDefaults(connectionString);
+
+  console.log("[AI DB][Config] Using connection string (first 80 chars):",
+    connectionString.substring(0, 80) + "...",
   );
 
   // 创建 Pool 配置对象
   const poolConfig: {
     connectionString: string;
-    ssl?: boolean | { rejectUnauthorized: boolean };
     max?: number; // 最大连接数
     min?: number; // 最小连接数
     idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
@@ -219,6 +219,8 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
+    // ❌ 不再显式传 ssl，统一走 pg.defaults.ssl
+    // ssl 相关逻辑已在 initPgSslDefaults 中处理
     // 连接池配置（与主数据库保持一致，但针对批量处理场景优化）
     max: 20, // 最大连接数（适合大多数应用）
     min: 2, // 最小连接数（保持一些连接活跃）
@@ -228,27 +230,9 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     query_timeout: 60000, // ✅ 修复：查询超时60秒（批量处理可能需要更长时间）
   };
 
-  // Supabase 必须使用 SSL，但证书链可能有自签名证书
-  // 在开发环境中，设置 rejectUnauthorized: false 以接受自签名证书
-  if (isSupabase) {
-    poolConfig.ssl = {
-      rejectUnauthorized: false,
-    };
-    // v4: 不再设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量
-    // 只在数据库连接配置中使用 rejectUnauthorized: false，不影响其他 HTTPS 请求
-  }
-
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
   aiDbPool = pool; // 保存 Pool 实例以便后续获取统计信息
-  
-  // 注意：我们只在数据库连接配置中使用 rejectUnauthorized: false
-  // 不设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量，以避免影响其他 HTTPS 请求
-  // 如果环境变量已经设置（例如在 package.json 的 dev 脚本中），这是可以接受的
-  // 但在生产环境中，应该依赖连接配置而不是全局环境变量
-  if (process.env.NODE_ENV !== 'development' || !!process.env.VERCEL) {
-    console.log('[AI DB] ℹ️  Using SSL with rejectUnauthorized: false (production mode, relying on connection config only)');
-  }
 
   const dialect = new PostgresDialect({
     pool,

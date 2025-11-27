@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 22:00:00（NextAuth Adapter SELF_SIGNED_CERT_IN_CHAIN 修复：统一 DB SSL 配置收口）
-const BUILD_TIME = "2025-11-27 22:00:00";
+// 最后更新：2025-11-27 22:30:00（NextAuth Adapter SELF_SIGNED_CERT_IN_CHAIN 修复 v3：统一 pg.defaults.ssl 配置）
+const BUILD_TIME = "2025-11-27 22:30:00";
 
 /**
  * 获取版本号（构建时间）

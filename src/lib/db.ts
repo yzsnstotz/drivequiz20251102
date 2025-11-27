@@ -7,6 +7,7 @@
 
 import { Kysely, PostgresDialect, Generated } from "kysely";
 import { Pool } from "pg";
+import { initPgSslDefaults } from "./pgSslDefaults";
 
 // ------------------------------------------------------------
 // 1️⃣ activation_codes 表结构定义
@@ -770,48 +771,6 @@ function getConnectionString(): string {
   return connectionString;
 }
 
-/**
- * 统一的 SSL 配置函数
- * 
- * 安全层级：
- * 1. 最佳：使用 DB_CA_CERT 环境变量提供 CA 证书，严格校验
- * 2. 当前权衡：如果没有 CA，使用 rejectUnauthorized: false，但只作用于 DB 连接
- * 
- * @param connectionString - 数据库连接字符串
- * @returns SSL 配置对象或 false
- */
-function buildDbSslConfig(connectionString: string): false | { rejectUnauthorized: boolean } | { ca: string } {
-  const isProd = process.env.NODE_ENV === "production";
-  
-  // 检测是否需要 SSL 连接（Supabase 必须使用 SSL）
-  const isSupabase = connectionString && (
-    connectionString.includes('supabase.com') || 
-    connectionString.includes('sslmode=require')
-  );
-
-  // 本地开发直连，无 SSL
-  if (!isProd && !isSupabase) {
-    return false;
-  }
-
-  // 生产环境或 Supabase 连接需要 SSL
-  if (isProd || isSupabase) {
-    // 优先使用 CA 证书（更安全）
-    if (process.env.DB_CA_CERT) {
-      return {
-        ca: process.env.DB_CA_CERT,
-      };
-    }
-
-    // 没有提供 CA 时，退而求其次，只对 DB 连接关闭证书严格校验
-    return {
-      rejectUnauthorized: false,
-    };
-  }
-
-  return false;
-}
-
 function createDbInstance(): Kysely<Database> {
   // 获取连接字符串（如果不存在会返回占位符）
   const connectionString = getConnectionString();
@@ -824,22 +783,16 @@ function createDbInstance(): Kysely<Database> {
     return createPlaceholderDb();
   }
 
-  // 统一的 SSL 配置
-  const ssl = buildDbSslConfig(connectionString);
+  // 初始化 pg 默认 SSL 配置（统一为所有使用 pg 的客户端设置 SSL 策略）
+  initPgSslDefaults(connectionString);
 
-  // 输出 SSL 配置日志
-  const sslMode = typeof ssl === "object" 
-    ? ("ca" in ssl ? "ca-cert" : "rejectUnauthorized-false")
-    : "disabled";
-  console.log("[DB][Config] Using SSL config:", {
-    enabled: !!ssl,
-    mode: sslMode,
-  });
+  console.log("[DB][Config] Using connection string (first 80 chars):",
+    connectionString.substring(0, 80) + "...",
+  );
 
   // 创建 Pool 配置对象
   const poolConfig: {
     connectionString: string;
-    ssl?: false | { rejectUnauthorized: boolean } | { ca: string };
     max?: number; // 最大连接数
     min?: number; // 最小连接数
     idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
@@ -848,7 +801,8 @@ function createDbInstance(): Kysely<Database> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
-    ssl, // 关键：在这里传入 ssl 配置，而不是靠 NODE_TLS_REJECT_UNAUTHORIZED
+    // ❌ 不再显式传 ssl，统一走 pg.defaults.ssl
+    // ssl 相关逻辑已在 initPgSslDefaults 中处理
     // 连接池配置（针对批量处理场景优化）
     max: 20, // 最大连接数（适合大多数应用）
     min: 2, // 最小连接数（保持一些连接活跃）
