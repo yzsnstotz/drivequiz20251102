@@ -7,51 +7,41 @@ import TwitterProvider from "./providers/twitter";
 import WeChatProvider from "./providers/wechat";
 import type { Adapter } from "next-auth/adapters";
 import { createPatchedKyselyAdapter } from "./auth-kysely-adapter";
-import { getAuthEnvConfig } from "@/lib/env";
+import { getAuthEnvConfig, getAuthBaseUrl } from "@/lib/env";
 
 // 解析环境变量配置
-const { secret: authSecret, url: authUrl } = getAuthEnvConfig();
+const { secret: authSecret } = getAuthEnvConfig();
 
-// 配置验证：检查必要的环境变量（在所有环境中都检查）
-const requiredVars = {
-  NEXTAUTH_URL: process.env.NEXTAUTH_URL,
-  AUTH_URL: process.env.AUTH_URL,
-  NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
-  AUTH_SECRET: process.env.AUTH_SECRET,
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
-};
-
-const missingVars = Object.entries(requiredVars)
-  .filter(([_, value]) => !value)
-  .map(([key]) => key);
-
-// 检查关键环境变量
-const hasAuthUrl = !!(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
-const hasAuthSecret = !!(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET);
-
-if (!hasAuthUrl) {
-  console.error("[NextAuth] ❌ 严重错误：NEXTAUTH_URL 或 AUTH_URL 未设置！");
-  console.error("[NextAuth] 这会导致 OAuth 回调失败（redirect_uri_mismatch）");
-  console.error("[NextAuth] 请在 Vercel 环境变量中设置 NEXTAUTH_URL 或 AUTH_URL");
+// 统一使用 getAuthBaseUrl() 获取 base URL（强校验）
+let authBaseUrl: string;
+try {
+  authBaseUrl = getAuthBaseUrl();
+} catch (error) {
+  // 生产环境：如果 getAuthBaseUrl() 抛出错误，应该阻止启动
+  // 但在模块加载时，我们无法直接阻止，错误会在调用时抛出
+  // 这里先设置为空字符串，实际使用时会抛出错误
+  if (process.env.NODE_ENV === "production") {
+    // 生产环境：重新抛出错误，阻止应用启动
+    throw error;
+  }
+  // 开发环境：使用默认值（虽然不应该发生，因为 getAuthBaseUrl() 有默认值）
+  authBaseUrl = "http://localhost:3000";
 }
 
+// 输出诊断信息（在所有环境中）
+console.log("[NextAuth] 📋 环境变量诊断:");
+console.log("[NextAuth]   使用的 Auth URL:", authBaseUrl);
+console.log("[NextAuth]   Google Callback URL:", `${authBaseUrl}/api/auth/callback/google`);
+console.log("[NextAuth] ⚠️  重要：请确保 Google Cloud Console 中配置的回调 URI 与此完全匹配");
+
+// 检查其他必要的环境变量（仅警告，不阻止启动）
+const hasAuthSecret = !!(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET);
 if (!hasAuthSecret) {
   console.error("[NextAuth] ❌ 严重错误：NEXTAUTH_SECRET 或 AUTH_SECRET 未设置！");
 }
 
-// 输出诊断信息（在所有环境中）
-const effectiveAuthUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "";
-console.log("[NextAuth] 📋 环境变量诊断:");
-console.log("[NextAuth]   NEXTAUTH_URL:", process.env.NEXTAUTH_URL || "❌ 未设置");
-console.log("[NextAuth]   AUTH_URL:", process.env.AUTH_URL || "❌ 未设置");
-console.log("[NextAuth]   使用的 Auth URL:", effectiveAuthUrl || "❌ 未设置（将导致 OAuth 失败）");
-console.log("[NextAuth]   Google Client ID:", process.env.GOOGLE_CLIENT_ID ? process.env.GOOGLE_CLIENT_ID.substring(0, 20) + "..." : "❌ 未设置");
-const googleCallbackUrl = effectiveAuthUrl ? `${effectiveAuthUrl}/api/auth/callback/google` : "❌ 无法生成（缺少 NEXTAUTH_URL 或 AUTH_URL）";
-console.log("[NextAuth]   Google Callback URL:", googleCallbackUrl);
-console.log("[NextAuth] ⚠️  重要：请确保 Google Cloud Console 中配置的回调 URI 与此完全匹配");
 if (process.env.TWITTER_CLIENT_ID) {
-  console.log("[NextAuth]   Twitter Callback URL:", effectiveAuthUrl ? `${effectiveAuthUrl}/api/auth/callback/twitter` : "❌ 无法生成");
+  console.log("[NextAuth]   Twitter Callback URL:", `${authBaseUrl}/api/auth/callback/twitter`);
 }
 
 export const authOptions: NextAuthConfig = {
@@ -87,7 +77,7 @@ export const authOptions: NextAuthConfig = {
     WeChatProvider({
       clientId: process.env.WECHAT_CLIENT_ID || "",
       clientSecret: process.env.WECHAT_CLIENT_SECRET || "",
-      redirectUri: process.env.WECHAT_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/auth/callback/wechat`,
+      redirectUri: process.env.WECHAT_REDIRECT_URI || `${authBaseUrl}/api/auth/callback/wechat`,
     } as any),
     // LINE OAuth（自定义 OAuth2 provider，绕过 OIDC issuer 校验）
     // 使用 type: "oauth" 而不是 oidc，避免 NextAuth 用全局 issuer 校验 LINE 的 JWT
