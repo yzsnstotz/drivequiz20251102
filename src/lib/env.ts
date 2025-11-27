@@ -1,5 +1,25 @@
 // src/lib/env.ts
 
+// v3: 在模块加载时同步 AUTH_URL ← NEXTAUTH_URL
+// Auth.js v5 推荐使用 AUTH_URL，而当前项目主要配置 NEXTAUTH_URL
+// 通过此同步逻辑，确保框架内部使用统一的 base URL
+if (process.env.NEXTAUTH_URL && !process.env.AUTH_URL) {
+  // 将 NEXTAUTH_URL 同步给 AUTH_URL，确保 Auth.js v5 内部使用统一的 base URL
+  process.env.AUTH_URL = process.env.NEXTAUTH_URL;
+
+  if (process.env.NODE_ENV === "production") {
+    console.log(
+      "[NextAuth][Config] AUTH_URL 未设置，已在运行时自动同步为 NEXTAUTH_URL=",
+      process.env.NEXTAUTH_URL,
+    );
+  } else {
+    console.log(
+      "[NextAuth][Config] (dev) AUTH_URL 同步自 NEXTAUTH_URL=",
+      process.env.NEXTAUTH_URL,
+    );
+  }
+}
+
 type AuthEnvConfig = {
   secret: string;
   url: string;
@@ -23,6 +43,15 @@ type AuthEnvConfig = {
 export function getAuthBaseUrl(): string {
   const isProduction = process.env.NODE_ENV === "production";
   const nextAuthUrl = process.env.NEXTAUTH_URL;
+  const authUrl = process.env.AUTH_URL;
+
+  // v3: 输出环境变量快照，便于排查
+  console.log("[NextAuth][Config] 环境变量快照:", {
+    NODE_ENV: process.env.NODE_ENV,
+    NEXTAUTH_URL: nextAuthUrl,
+    AUTH_URL: authUrl,
+    AUTH_TRUST_HOST: process.env.AUTH_TRUST_HOST,
+  });
 
   // 生产环境：必须存在 NEXTAUTH_URL
   if (isProduction) {

@@ -28,10 +28,14 @@ try {
   authBaseUrl = "http://localhost:3000";
 }
 
+// v3: 增强 Google Provider 的调试日志
+const googleCallbackUrl = `${authBaseUrl}/api/auth/callback/google`;
+console.log("[NextAuth][Google] 预期的 redirect_uri:", googleCallbackUrl);
+
 // 输出诊断信息（在所有环境中）
 console.log("[NextAuth] 📋 环境变量诊断:");
 console.log("[NextAuth]   使用的 Auth URL:", authBaseUrl);
-console.log("[NextAuth]   Google Callback URL:", `${authBaseUrl}/api/auth/callback/google`);
+console.log("[NextAuth]   Google Callback URL:", googleCallbackUrl);
 console.log("[NextAuth] ⚠️  重要：请确保 Google Cloud Console 中配置的回调 URI 与此完全匹配");
 
 // 检查其他必要的环境变量（仅警告，不阻止启动）
@@ -48,7 +52,8 @@ export const authOptions: NextAuthConfig = {
   adapter: createPatchedKyselyAdapter(db),
   debug: process.env.NODE_ENV === "development",
 
-  // ✅ 让 Auth.js 根据 AUTH_URL / NEXTAUTH_URL 正确推断 host
+  // ✅ v3: 显式设置 trustHost，确保 Auth.js 使用 AUTH_URL 而不是请求 Host
+  // AUTH_URL 已在 env.ts 中与 NEXTAUTH_URL 同步，因此框架内部会使用统一的 base URL
   trustHost: true,
 
   providers: [
@@ -56,9 +61,8 @@ export const authOptions: NextAuthConfig = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-      // NextAuth 会自动使用 /api/auth/callback/google 作为回调地址
-      // 回调地址格式：{NEXTAUTH_URL 或 AUTH_URL}/api/auth/callback/google
-      // 请确保 Google Cloud Console 中配置的回调 URI 与此完全匹配
+      // v3: 不要手动配置 redirectUri，保持默认行为，由 Auth.js 根据 AUTH_URL 自动生成
+      // 预期的 redirect_uri 已在模块加载时通过日志输出：${authBaseUrl}/api/auth/callback/google
       allowDangerousEmailAccountLinking: true, // 允许将同一个邮箱关联到多个 OAuth 账户
     }),
     // Facebook OAuth
