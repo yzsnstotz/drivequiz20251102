@@ -9,6 +9,21 @@ export default function AdminLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
+  // 后台登录页面强制使用亮色模式，禁用暗色模式
+  useEffect(() => {
+    // 强制移除 dark 类，确保后台登录页面始终使用亮色模式
+    document.documentElement.classList.remove("dark");
+    
+    // 返回清理函数：当组件卸载时，恢复之前的暗色模式状态
+    return () => {
+      // 检查 localStorage 中的暗色模式设置
+      const darkMode = localStorage.getItem("darkMode") === "true";
+      if (darkMode) {
+        document.documentElement.classList.add("dark");
+      }
+    };
+  }, []);
+
   // 首次挂载：本地已存在 ADMIN_TOKEN 则直接校验
   useEffect(() => {
     const t = localStorage.getItem('ADMIN_TOKEN');
@@ -74,7 +89,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 text-gray-900" style={{ colorScheme: 'light' }}>
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
           <h1 className="text-xl sm:text-2xl font-semibold text-center mb-2">Admin Login</h1>

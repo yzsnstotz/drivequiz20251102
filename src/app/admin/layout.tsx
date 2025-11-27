@@ -87,6 +87,21 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   // 移动端菜单开关状态
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // 后台强制使用亮色模式，禁用暗色模式
+  useEffect(() => {
+    // 强制移除 dark 类，确保后台始终使用亮色模式
+    document.documentElement.classList.remove("dark");
+    
+    // 返回清理函数：当组件卸载时，恢复之前的暗色模式状态
+    return () => {
+      // 检查 localStorage 中的暗色模式设置
+      const darkMode = localStorage.getItem("darkMode") === "true";
+      if (darkMode) {
+        document.documentElement.classList.add("dark");
+      }
+    };
+  }, []);
   
   // 将导航项转换为带翻译的 NavItem（使用useMemo，依赖language确保实时更新）
   const ALL_NAV_ITEMS: NavItem[] = useMemo(() => {
@@ -241,7 +256,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // 在未完成校验前不渲染主体，避免无 Token 的闪屏
   if (!checked) {
     return (
-      <div className="min-h-screen grid place-items-center bg-gray-50 text-gray-500">
+      <div className="min-h-screen grid place-items-center bg-gray-50 text-gray-900">
         <div className="text-sm">{t('common.loading')}</div>
       </div>
     );
@@ -253,7 +268,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 md:bg-gray-100">
+    <div className="min-h-screen bg-gray-50 md:bg-gray-100 text-gray-900" style={{ colorScheme: 'light' }}>
       {/* 顶部条 */}
       <header className="sticky top-0 z-20 h-14 bg-white/80 backdrop-blur-md border-b border-gray-200/50 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
