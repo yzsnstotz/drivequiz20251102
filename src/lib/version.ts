@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 20:11:41（Google OAuth redirect_uri_mismatch 错误 v2 修复：删除 VERCEL_URL 回退，强校验 NEXTAUTH_URL）
-const BUILD_TIME = "2025-11-27 20:11:41";
+// 最后更新：2025-11-27 20:24:48（Google OAuth redirect_uri_mismatch 错误 v3 修复：AUTH_URL 同步，新增诊断接口）
+const BUILD_TIME = "2025-11-27 20:24:48";
 
 /**
  * 获取版本号（构建时间）
