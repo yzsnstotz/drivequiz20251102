@@ -1,8 +1,11 @@
 import type { OAuthConfig, OAuthUserConfig } from "next-auth/providers";
+import { getAuthBaseUrl } from "@/lib/env";
 
 /**
  * 微信OAuth提供商配置
  * 参考：https://developers.weixin.qq.com/doc/oplatform/en/Website_App/WeChat_Login/Wechat_Login.html
+ * 
+ * v4: 使用统一的 getAuthBaseUrl() 生成 redirect_uri，不再手动配置
  */
 
 export interface WeChatProfile {
@@ -20,6 +23,10 @@ export interface WeChatProfile {
 export default function WeChatProvider(
   options: OAuthUserConfig<WeChatProfile>
 ): OAuthConfig<WeChatProfile> {
+  // v4: 使用统一的 base URL 生成 redirect_uri（唯一真相来源）
+  const authBaseUrl = getAuthBaseUrl();
+  const redirectUri = (options as any).redirectUri || `${authBaseUrl}/api/auth/callback/wechat`;
+
   return {
     id: "wechat",
     name: "WeChat",
@@ -28,7 +35,7 @@ export default function WeChatProvider(
       url: "https://open.weixin.qq.com/connect/qrconnect",
       params: {
         appid: options.clientId!,
-        redirect_uri: (options as any).redirectUri || `${process.env.NEXTAUTH_URL}/api/auth/callback/wechat`,
+        redirect_uri: redirectUri,
         response_type: "code",
         scope: "snsapi_login",
         state: "STATE",

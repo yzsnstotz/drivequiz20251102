@@ -234,10 +234,8 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     poolConfig.ssl = {
       rejectUnauthorized: false,
     };
-    // 在开发环境中，也设置全局环境变量以确保 SSL 连接成功
-    if (process.env.NODE_ENV === 'development' && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    }
+    // v4: 不再设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量
+    // 只在数据库连接配置中使用 rejectUnauthorized: false，不影响其他 HTTPS 请求
   }
 
   // 创建 Pool 实例并传递给 PostgresDialect

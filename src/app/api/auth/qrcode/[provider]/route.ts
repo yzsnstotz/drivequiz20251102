@@ -37,7 +37,10 @@ export async function POST(
     } else if (provider === "line") {
       // LINE QR Code登录
       const clientId = process.env.LINE_CLIENT_ID;
-      const redirectUri = process.env.LINE_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/auth/callback/line`;
+      // v4: 使用统一的 getAuthBaseUrl() 生成 redirect_uri
+      const { getAuthBaseUrl } = await import("@/lib/env");
+      const authBaseUrl = getAuthBaseUrl();
+      const redirectUri = process.env.LINE_REDIRECT_URI || `${authBaseUrl}/api/auth/callback/line`;
       
       if (clientId) {
         try {

@@ -1,8 +1,11 @@
 import type { OAuthConfig, OAuthUserConfig } from "next-auth/providers";
+import { getAuthBaseUrl } from "@/lib/env";
 
 /**
  * LINE OAuth提供商配置
  * 参考：https://developers.line.biz/en/docs/line-login/
+ * 
+ * v4: 使用统一的 getAuthBaseUrl() 生成 redirect_uri，不再手动配置
  */
 
 export interface LineProfile {
@@ -16,40 +19,31 @@ export interface LineProfile {
 export default function LineProvider(
   options: OAuthUserConfig<LineProfile>
 ): OAuthConfig<LineProfile> {
+  // v4: 使用统一的 base URL 生成 redirect_uri（唯一真相来源）
+  const authBaseUrl = getAuthBaseUrl();
+  const defaultRedirectUri = `${authBaseUrl}/api/auth/callback/line`;
+
   return {
     id: "line",
     name: "LINE",
     type: "oauth",
-    // 配置安全检查：NextAuth 会自动添加 state 参数用于 CSRF 保护
     checks: ["pkce", "state"],
     authorization: {
       url: "https://access.line.me/oauth2/v2.1/authorize",
       params: {
         response_type: "code",
-        // LINE 要求必须包含 openid scope，否则会返回 INVALID_SCOPE 错误
-        // openid scope 会导致 LINE 返回 id_token（使用 HS256）
-        // 我们已经通过 client.id_token_signed_response_alg: "HS256" 配置告诉 NextAuth 使用 HS256 算法验证
         scope: "profile openid email",
-        // 注意：
-        // 1. 不设置 client_id，让 NextAuth 自动从 clientId 属性添加
-        // 2. 不设置 redirect_uri，让 NextAuth 自动处理（基于 NEXTAUTH_URL 和 provider id）
-        // 3. 不设置 state，让 NextAuth 自动处理（通过 checks: ["state"] 配置）
-        // 这样可以确保 NextAuth 正确处理所有 OAuth 参数
+        // v4: 不设置 redirect_uri，让 NextAuth 自动处理（基于 AUTH_URL 和 provider id）
       },
     },
     token: {
       url: "https://api.line.me/oauth2/v2.1/token",
       async request({ provider, params }: { provider: OAuthConfig<LineProfile>; params: any }) {
-        console.log("[LINE Provider] Token request started");
-        console.log("[LINE Provider] Client ID type:", typeof provider.clientId);
-        console.log("[LINE Provider] Client ID value:", provider.clientId);
-        
         const body = new URLSearchParams();
         body.append("grant_type", "authorization_code");
         body.append("code", String(params.code || ""));
-        // 使用 NextAuth 自动生成的回调地址
-        // NextAuth 会自动使用 {NEXTAUTH_URL}/api/auth/callback/{provider_id} 格式
-        const redirectUri = (provider as any).callbackUrl || (provider as any).redirectUri || `${process.env.NEXTAUTH_URL}/api/auth/callback/line`;
+        // v4: 使用统一的 base URL 生成 redirect_uri（优先使用 NextAuth 传递的，否则使用默认值）
+        const redirectUri = params.redirect_uri || (provider as any).callbackUrl || (provider as any).redirectUri || defaultRedirectUri;
         body.append("redirect_uri", String(redirectUri));
         body.append("client_id", String(provider.clientId || "")); // 确保是字符串
         body.append("client_secret", String(provider.clientSecret || ""));

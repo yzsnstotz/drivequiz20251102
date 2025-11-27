@@ -12,48 +12,28 @@ import { getAuthEnvConfig, getAuthBaseUrl } from "@/lib/env";
 // 解析环境变量配置
 const { secret: authSecret } = getAuthEnvConfig();
 
-// 统一使用 getAuthBaseUrl() 获取 base URL（强校验）
+// v4: 统一使用 getAuthBaseUrl() 获取 base URL（强校验）
 let authBaseUrl: string;
 try {
   authBaseUrl = getAuthBaseUrl();
 } catch (error) {
   // 生产环境：如果 getAuthBaseUrl() 抛出错误，应该阻止启动
-  // 但在模块加载时，我们无法直接阻止，错误会在调用时抛出
-  // 这里先设置为空字符串，实际使用时会抛出错误
   if (process.env.NODE_ENV === "production") {
-    // 生产环境：重新抛出错误，阻止应用启动
     throw error;
   }
-  // 开发环境：使用默认值（虽然不应该发生，因为 getAuthBaseUrl() 有默认值）
+  // 开发环境：使用默认值
   authBaseUrl = "http://localhost:3000";
 }
 
-// v3: 增强 Google Provider 的调试日志
+// v4: 精简日志 - 只输出 Google Provider 预期的 redirect_uri（唯一真相来源）
 const googleCallbackUrl = `${authBaseUrl}/api/auth/callback/google`;
-console.log("[NextAuth][Google] 预期的 redirect_uri:", googleCallbackUrl);
-
-// 输出诊断信息（在所有环境中）
-console.log("[NextAuth] 📋 环境变量诊断:");
-console.log("[NextAuth]   使用的 Auth URL:", authBaseUrl);
-console.log("[NextAuth]   Google Callback URL:", googleCallbackUrl);
-console.log("[NextAuth] ⚠️  重要：请确保 Google Cloud Console 中配置的回调 URI 与此完全匹配");
-
-// 检查其他必要的环境变量（仅警告，不阻止启动）
-const hasAuthSecret = !!(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET);
-if (!hasAuthSecret) {
-  console.error("[NextAuth] ❌ 严重错误：NEXTAUTH_SECRET 或 AUTH_SECRET 未设置！");
-}
-
-if (process.env.TWITTER_CLIENT_ID) {
-  console.log("[NextAuth]   Twitter Callback URL:", `${authBaseUrl}/api/auth/callback/twitter`);
-}
+console.log("[NextAuth][Google] expected redirect_uri:", googleCallbackUrl);
 
 export const authOptions: NextAuthConfig = {
   adapter: createPatchedKyselyAdapter(db),
   debug: process.env.NODE_ENV === "development",
 
-  // ✅ v3: 显式设置 trustHost，确保 Auth.js 使用 AUTH_URL 而不是请求 Host
-  // AUTH_URL 已在 env.ts 中与 NEXTAUTH_URL 同步，因此框架内部会使用统一的 base URL
+  // v4: 显式设置 trustHost，确保 Auth.js 使用 AUTH_URL 而不是请求 Host
   trustHost: true,
 
   providers: [
@@ -61,9 +41,8 @@ export const authOptions: NextAuthConfig = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-      // v3: 不要手动配置 redirectUri，保持默认行为，由 Auth.js 根据 AUTH_URL 自动生成
-      // 预期的 redirect_uri 已在模块加载时通过日志输出：${authBaseUrl}/api/auth/callback/google
-      allowDangerousEmailAccountLinking: true, // 允许将同一个邮箱关联到多个 OAuth 账户
+      // v4: 不手动配置 redirectUri，由 Auth.js 根据 AUTH_URL 自动生成
+      allowDangerousEmailAccountLinking: true,
     }),
     // Facebook OAuth
     FacebookProvider({
@@ -81,7 +60,8 @@ export const authOptions: NextAuthConfig = {
     WeChatProvider({
       clientId: process.env.WECHAT_CLIENT_ID || "",
       clientSecret: process.env.WECHAT_CLIENT_SECRET || "",
-      redirectUri: process.env.WECHAT_REDIRECT_URI || `${authBaseUrl}/api/auth/callback/wechat`,
+      // v4: 不手动配置 redirectUri，由 WeChatProvider 内部使用 getAuthBaseUrl() 生成
+      redirectUri: process.env.WECHAT_REDIRECT_URI || undefined,
     } as any),
     // LINE OAuth（自定义 OAuth2 provider，绕过 OIDC issuer 校验）
     // 使用 type: "oauth" 而不是 oidc，避免 NextAuth 用全局 issuer 校验 LINE 的 JWT
