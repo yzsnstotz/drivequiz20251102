@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 12:36:12（修复 NextAuth /api/auth/error 端点 Bad Request 问题，新增自定义错误端点重定向逻辑）
-const BUILD_TIME = "2025-11-27 12:36:12";
+// 最后更新：2025-11-27 12:49:23（修复 NextAuth /api/auth/session 和 /api/auth/providers 返回 400 错误，添加环境变量检查）
+const BUILD_TIME = "2025-11-27 12:49:23";
 
 /**
  * 获取版本号（构建时间）
