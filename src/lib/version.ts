@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 09:59:36（撤回动态 require() 实现，恢复标准 NextAuth v5 静态 import，解决 Vercel 构建时模块找不到错误）
-const BUILD_TIME = "2025-11-27 09:59:36";
+// 最后更新：2025-11-27 12:36:12（修复 NextAuth /api/auth/error 端点 Bad Request 问题，新增自定义错误端点重定向逻辑）
+const BUILD_TIME = "2025-11-27 12:36:12";
 
 /**
  * 获取版本号（构建时间）

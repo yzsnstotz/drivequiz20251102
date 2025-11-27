@@ -18,8 +18,13 @@ function LoginErrorContent() {
         return "访问被拒绝，请重试";
       case "Verification":
         return "验证失败，请重试";
+      case "Default":
+      case null:
+      case "":
+        return "登录过程中发生错误，请稍后重试";
       default:
-        return error || "登录过程中发生错误";
+        // 兜底：展示 error code，方便调试
+        return `登录过程中发生错误（错误代码：${error}）`;
     }
   };
 
