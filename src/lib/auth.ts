@@ -12,33 +12,46 @@ import { getAuthEnvConfig } from "@/lib/env";
 // 解析环境变量配置
 const { secret: authSecret, url: authUrl } = getAuthEnvConfig();
 
-// 配置验证：检查必要的环境变量
-if (process.env.NODE_ENV === "development") {
-  const requiredVars = {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
-    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
-    TWITTER_CLIENT_ID: process.env.TWITTER_CLIENT_ID,
-    TWITTER_CLIENT_SECRET: process.env.TWITTER_CLIENT_SECRET,
-  };
+// 配置验证：检查必要的环境变量（在所有环境中都检查）
+const requiredVars = {
+  NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+  AUTH_URL: process.env.AUTH_URL,
+  NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
+  AUTH_SECRET: process.env.AUTH_SECRET,
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+};
 
-  const missingVars = Object.entries(requiredVars)
-    .filter(([_, value]) => !value)
-    .map(([key]) => key);
+const missingVars = Object.entries(requiredVars)
+  .filter(([_, value]) => !value)
+  .map(([key]) => key);
 
-  if (missingVars.length > 0) {
-    console.warn("[NextAuth] ⚠️ 缺少必要的环境变量:", missingVars.join(", "));
-  } else {
-    console.log("[NextAuth] ✅ 环境变量检查通过");
-    console.log("[NextAuth] NEXTAUTH_URL:", process.env.NEXTAUTH_URL);
-    console.log("[NextAuth] Google Client ID:", process.env.GOOGLE_CLIENT_ID?.substring(0, 20) + "...");
-    console.log("[NextAuth] Google Callback URL:", `${process.env.NEXTAUTH_URL}/api/auth/callback/google`);
-    if (process.env.TWITTER_CLIENT_ID) {
-      console.log("[NextAuth] Twitter Client ID:", process.env.TWITTER_CLIENT_ID?.substring(0, 20) + "...");
-      console.log("[NextAuth] Twitter Callback URL:", `${process.env.NEXTAUTH_URL}/api/auth/callback/twitter`);
-    }
-  }
+// 检查关键环境变量
+const hasAuthUrl = !!(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
+const hasAuthSecret = !!(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET);
+
+if (!hasAuthUrl) {
+  console.error("[NextAuth] ❌ 严重错误：NEXTAUTH_URL 或 AUTH_URL 未设置！");
+  console.error("[NextAuth] 这会导致 OAuth 回调失败（redirect_uri_mismatch）");
+  console.error("[NextAuth] 请在 Vercel 环境变量中设置 NEXTAUTH_URL 或 AUTH_URL");
+}
+
+if (!hasAuthSecret) {
+  console.error("[NextAuth] ❌ 严重错误：NEXTAUTH_SECRET 或 AUTH_SECRET 未设置！");
+}
+
+// 输出诊断信息（在所有环境中）
+const effectiveAuthUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || "";
+console.log("[NextAuth] 📋 环境变量诊断:");
+console.log("[NextAuth]   NEXTAUTH_URL:", process.env.NEXTAUTH_URL || "❌ 未设置");
+console.log("[NextAuth]   AUTH_URL:", process.env.AUTH_URL || "❌ 未设置");
+console.log("[NextAuth]   使用的 Auth URL:", effectiveAuthUrl || "❌ 未设置（将导致 OAuth 失败）");
+console.log("[NextAuth]   Google Client ID:", process.env.GOOGLE_CLIENT_ID ? process.env.GOOGLE_CLIENT_ID.substring(0, 20) + "..." : "❌ 未设置");
+const googleCallbackUrl = effectiveAuthUrl ? `${effectiveAuthUrl}/api/auth/callback/google` : "❌ 无法生成（缺少 NEXTAUTH_URL 或 AUTH_URL）";
+console.log("[NextAuth]   Google Callback URL:", googleCallbackUrl);
+console.log("[NextAuth] ⚠️  重要：请确保 Google Cloud Console 中配置的回调 URI 与此完全匹配");
+if (process.env.TWITTER_CLIENT_ID) {
+  console.log("[NextAuth]   Twitter Callback URL:", effectiveAuthUrl ? `${effectiveAuthUrl}/api/auth/callback/twitter` : "❌ 无法生成");
 }
 
 export const authOptions: NextAuthConfig = {
@@ -54,7 +67,8 @@ export const authOptions: NextAuthConfig = {
       clientId: process.env.GOOGLE_CLIENT_ID || "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
       // NextAuth 会自动使用 /api/auth/callback/google 作为回调地址
-      // 不需要手动指定 callbackUrl
+      // 回调地址格式：{NEXTAUTH_URL 或 AUTH_URL}/api/auth/callback/google
+      // 请确保 Google Cloud Console 中配置的回调 URI 与此完全匹配
       allowDangerousEmailAccountLinking: true, // 允许将同一个邮箱关联到多个 OAuth 账户
     }),
     // Facebook OAuth
