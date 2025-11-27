@@ -1,6 +1,6 @@
 // src/lib/env.ts
 
-// v3: 在模块加载时同步 AUTH_URL ← NEXTAUTH_URL
+// v3: 在模块加载时双向同步 AUTH_URL ↔ NEXTAUTH_URL
 // Auth.js v5 推荐使用 AUTH_URL，而当前项目主要配置 NEXTAUTH_URL
 // 通过此同步逻辑，确保框架内部使用统一的 base URL
 if (process.env.NEXTAUTH_URL && !process.env.AUTH_URL) {
@@ -16,6 +16,22 @@ if (process.env.NEXTAUTH_URL && !process.env.AUTH_URL) {
     console.log(
       "[NextAuth][Config] (dev) AUTH_URL 同步自 NEXTAUTH_URL=",
       process.env.NEXTAUTH_URL,
+    );
+  }
+} else if (process.env.AUTH_URL && !process.env.NEXTAUTH_URL) {
+  // v3.1: 反向同步 - 如果只设置了 AUTH_URL，同步给 NEXTAUTH_URL
+  // 这样可以支持只配置 AUTH_URL 的情况（Auth.js v5 推荐方式）
+  process.env.NEXTAUTH_URL = process.env.AUTH_URL;
+
+  if (process.env.NODE_ENV === "production") {
+    console.log(
+      "[NextAuth][Config] NEXTAUTH_URL 未设置，已在运行时自动同步为 AUTH_URL=",
+      process.env.AUTH_URL,
+    );
+  } else {
+    console.log(
+      "[NextAuth][Config] (dev) NEXTAUTH_URL 同步自 AUTH_URL=",
+      process.env.AUTH_URL,
     );
   }
 }
