@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import LicenseTypeSelector from "../components/LicenseTypeSelector";
@@ -8,7 +8,7 @@ import StageSelector from "../components/StageSelector";
 import { useLanguage } from "@/lib/i18n";
 import { useSession } from "next-auth/react";
 
-export default function LicenseSelectPage() {
+function LicenseSelectContent() {
   const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -149,6 +149,20 @@ export default function LicenseSelectPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LicenseSelectPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto px-4 py-6 pb-20">
+        <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
+          <p className="text-gray-600">加载中...</p>
+        </div>
+      </div>
+    }>
+      <LicenseSelectContent />
+    </Suspense>
   );
 }
 
