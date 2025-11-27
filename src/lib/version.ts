@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 13:17:25（进一步修复 NextAuth /api/auth/session 400 错误，强制 Node.js runtime，添加 Auth.js 内建 logger）
-const BUILD_TIME = "2025-11-27 13:17:25";
+// 最后更新：2025-11-27 13:21:10（修复 NextAuth route 类型错误，将 Request 改为 NextRequest）
+const BUILD_TIME = "2025-11-27 13:21:10";
 
 /**
  * 获取版本号（构建时间）

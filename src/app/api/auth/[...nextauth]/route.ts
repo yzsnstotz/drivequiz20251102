@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 import NextAuth from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAuthEnvConfig } from "@/lib/env";
+import { NextRequest } from "next/server";
 
 // NextAuth v5 正确用法：使用静态 import + 标准 handlers 解构
 // 路由层只做请求分发，不承载业务逻辑
@@ -38,7 +39,7 @@ if (process.env.NODE_ENV === "production") {
 const { handlers } = NextAuth(authOptions);
 
 // 包装 handlers 以添加错误日志（不改变返回结构，仅用于增加上下文）
-export const GET = async (req: Request) => {
+export const GET = async (req: NextRequest) => {
   try {
     return await handlers.GET!(req);
   } catch (error) {
@@ -47,7 +48,7 @@ export const GET = async (req: Request) => {
   }
 };
 
-export const POST = async (req: Request) => {
+export const POST = async (req: NextRequest) => {
   try {
     return await handlers.POST!(req);
   } catch (error) {
