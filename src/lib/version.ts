@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 21:00:00（前台后台登录系统隔离：隐藏后台和登录页面的底部导航栏，确保 AuthGuard 不影响 admin 路由）
-const BUILD_TIME = "2025-11-27 21:00:00";
+// 最后更新：2025-11-27 22:00:00（NextAuth Adapter SELF_SIGNED_CERT_IN_CHAIN 修复：统一 DB SSL 配置收口）
+const BUILD_TIME = "2025-11-27 22:00:00";
 
 /**
  * 获取版本号（构建时间）

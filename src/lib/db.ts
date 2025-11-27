@@ -770,6 +770,48 @@ function getConnectionString(): string {
   return connectionString;
 }
 
+/**
+ * 统一的 SSL 配置函数
+ * 
+ * 安全层级：
+ * 1. 最佳：使用 DB_CA_CERT 环境变量提供 CA 证书，严格校验
+ * 2. 当前权衡：如果没有 CA，使用 rejectUnauthorized: false，但只作用于 DB 连接
+ * 
+ * @param connectionString - 数据库连接字符串
+ * @returns SSL 配置对象或 false
+ */
+function buildDbSslConfig(connectionString: string): false | { rejectUnauthorized: boolean } | { ca: string } {
+  const isProd = process.env.NODE_ENV === "production";
+  
+  // 检测是否需要 SSL 连接（Supabase 必须使用 SSL）
+  const isSupabase = connectionString && (
+    connectionString.includes('supabase.com') || 
+    connectionString.includes('sslmode=require')
+  );
+
+  // 本地开发直连，无 SSL
+  if (!isProd && !isSupabase) {
+    return false;
+  }
+
+  // 生产环境或 Supabase 连接需要 SSL
+  if (isProd || isSupabase) {
+    // 优先使用 CA 证书（更安全）
+    if (process.env.DB_CA_CERT) {
+      return {
+        ca: process.env.DB_CA_CERT,
+      };
+    }
+
+    // 没有提供 CA 时，退而求其次，只对 DB 连接关闭证书严格校验
+    return {
+      rejectUnauthorized: false,
+    };
+  }
+
+  return false;
+}
+
 function createDbInstance(): Kysely<Database> {
   // 获取连接字符串（如果不存在会返回占位符）
   const connectionString = getConnectionString();
@@ -782,17 +824,19 @@ function createDbInstance(): Kysely<Database> {
     return createPlaceholderDb();
   }
 
-  // 检测是否需要SSL连接（Supabase必须使用SSL）
-  // 强制检测：如果包含 supabase.com，必须使用 SSL
-  const isSupabase = connectionString && (
-    connectionString.includes('supabase.com') || 
-    connectionString.includes('sslmode=require')
-  );
+  // 统一的 SSL 配置
+  const ssl = buildDbSslConfig(connectionString);
+
+  // 输出 SSL 配置日志
+  console.log("[DB][Config] Using SSL config:", {
+    enabled: !!ssl,
+    mode: typeof ssl === "object" ? (ssl.ca ? "ca-cert" : "rejectUnauthorized-false") : "disabled",
+  });
 
   // 创建 Pool 配置对象
   const poolConfig: {
     connectionString: string;
-    ssl?: { rejectUnauthorized: boolean };
+    ssl?: false | { rejectUnauthorized: boolean } | { ca: string };
     max?: number; // 最大连接数
     min?: number; // 最小连接数
     idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
@@ -801,6 +845,7 @@ function createDbInstance(): Kysely<Database> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
+    ssl, // 关键：在这里传入 ssl 配置，而不是靠 NODE_TLS_REJECT_UNAUTHORIZED
     // 连接池配置（针对批量处理场景优化）
     max: 20, // 最大连接数（适合大多数应用）
     min: 2, // 最小连接数（保持一些连接活跃）
@@ -809,20 +854,6 @@ function createDbInstance(): Kysely<Database> {
     statement_timeout: 60000, // ✅ 修复：语句超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
     query_timeout: 60000, // ✅ 修复：查询超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
   };
-
-  // Supabase 必须使用 SSL，但证书链可能有自签名证书
-  if (isSupabase) {
-    poolConfig.ssl = {
-      rejectUnauthorized: false,
-    };
-    // 调试：在开发环境打印配置信息
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[DB Config] ✅ SSL enabled for Supabase connection');
-      console.log('[DB Config] Connection string (first 50 chars):', connectionString.substring(0, 50) + '...');
-    }
-  } else if (process.env.NODE_ENV === 'development') {
-    console.log('[DB Config] ℹ️  SSL not enabled (not Supabase connection)');
-  }
 
   // 创建 Pool 实例并传递给 PostgresDialect
   // 注意：必须在传递给 PostgresDialect 之前创建 Pool 实例，以确保 SSL 配置正确应用
@@ -842,41 +873,6 @@ function createDbInstance(): Kysely<Database> {
     pool.on('remove', () => {
       console.log('[DB Pool] Client removed from pool');
     });
-  }
-
-  // 添加连接池错误处理
-  pool.on('error', (err) => {
-    console.error('[DB Pool] Unexpected error on idle client:', err);
-  });
-
-  // 添加连接池连接事件监听（开发环境）
-  if (process.env.NODE_ENV === 'development') {
-    pool.on('connect', () => {
-      console.log('[DB Pool] New client connected');
-    });
-    pool.on('remove', () => {
-      console.log('[DB Pool] Client removed from pool');
-    });
-  }
-
-  // 验证 Pool 配置（开发环境）
-  if (process.env.NODE_ENV === 'development' && isSupabase) {
-    // 检查 Pool 的配置是否正确
-    // pg Pool 的配置存储在内部，需要检查是否正确应用
-    console.log('[DB Config] Pool config applied:', {
-      hasSSL: !!poolConfig.ssl,
-      sslConfig: poolConfig.ssl,
-    });
-    
-    // 尝试通过测试连接验证 SSL 配置
-    // 注意：这只是用于调试，不会实际建立连接
-    // 注意：我们只在数据库连接配置中使用 rejectUnauthorized: false
-    // 不设置全局 NODE_TLS_REJECT_UNAUTHORIZED 环境变量，以避免影响其他 HTTPS 请求
-    // 如果环境变量已经设置（例如在 package.json 的 dev 脚本中），这是可以接受的
-    // 但在生产环境中，应该依赖连接配置而不是全局环境变量
-    if (process.env.NODE_ENV !== 'development' || !!process.env.VERCEL) {
-      console.log('[DB Config] ℹ️  Using SSL with rejectUnauthorized: false (production mode, relying on connection config only)');
-    }
   }
 
   const dialect = new PostgresDialect({
