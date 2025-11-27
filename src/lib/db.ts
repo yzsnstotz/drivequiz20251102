@@ -775,7 +775,15 @@ function getConnectionString(): string {
  * 彻底无视任何 PGHOST 等环境变量
  */
 function buildPoolConfigFromConnectionString(connectionString: string): PoolConfig {
-  const url = new URL(connectionString);
+  // 清理可能的前缀（如 "DATABASE_URL=" 或 "POSTGRES_URL="）
+  let cleanedConnectionString = connectionString.trim();
+  if (cleanedConnectionString.startsWith('DATABASE_URL=')) {
+    cleanedConnectionString = cleanedConnectionString.substring('DATABASE_URL='.length);
+  } else if (cleanedConnectionString.startsWith('POSTGRES_URL=')) {
+    cleanedConnectionString = cleanedConnectionString.substring('POSTGRES_URL='.length);
+  }
+  
+  const url = new URL(cleanedConnectionString);
 
   const host = url.hostname;
   const port = url.port ? Number(url.port) : 5432;
