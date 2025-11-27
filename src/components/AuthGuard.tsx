@@ -13,12 +13,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // 排除 admin 路由，admin 路由使用独立的认证系统
-  if (pathname.startsWith('/admin/')) {
-    return <>{children}</>;
-  }
-
   useEffect(() => {
+    // 排除 admin 路由，admin 路由使用独立的认证系统
+    if (pathname.startsWith('/admin/')) {
+      return;
+    }
+
     // 等待 session 加载完成
     if (status === "loading") {
       return;
@@ -70,6 +70,11 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       checkLicensePreference();
     }
   }, [session, status, router, pathname]);
+
+  // 排除 admin 路由，admin 路由使用独立的认证系统
+  if (pathname.startsWith('/admin/')) {
+    return <>{children}</>;
+  }
 
   return <>{children}</>;
 }
