@@ -26,7 +26,7 @@ export default function ActivationRulesPage() {
                 <li>激活码自首次激活之日起开始计算有效期</li>
                 <li>有效期根据激活码类型而定，可能为按天、按月或按年计算</li>
                 <li>有效期到期后，激活码将自动失效，需要重新激活</li>
-                <li>您可以在"我的"页面查看当前激活码的到期时间</li>
+                <li>您可以在&ldquo;我的&rdquo;页面查看当前激活码的到期时间</li>
               </ul>
             </section>
 
