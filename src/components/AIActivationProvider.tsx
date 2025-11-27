@@ -244,6 +244,7 @@ export default function AIActivationProvider({
       )}
       {showSuccessModal && (
         <SuccessModal
+          isOpen={showSuccessModal}
           expiresAt={successExpiresAt}
           onClose={() => setShowSuccessModal(false)}
         />
