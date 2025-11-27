@@ -372,7 +372,13 @@ export default function HomePage() {
               )}
             </div>
             <button
-              onClick={() => setShowAI(true)}
+              onClick={() => {
+                if (isActivated) {
+                  router.push('/ai');
+                } else {
+                  router.push('/activation');
+                }
+              }}
               className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
               aria-label={t('home.aiAssistant')}
             >
