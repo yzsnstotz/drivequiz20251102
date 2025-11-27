@@ -279,6 +279,23 @@ export const authOptions: NextAuthConfig = {
 
   // ✅ secret 同时兼容 NEXTAUTH_SECRET 与 AUTH_SECRET
   secret: authSecret || undefined,
+
+  // ✅ 打开 Auth.js 内建 logger，捕获真实错误
+  logger: {
+    error(code, metadata) {
+      console.error("[NextAuth][Error]", code, metadata);
+    },
+    warn(code, metadata) {
+      console.warn("[NextAuth][Warn]", code, metadata);
+    },
+    debug(code, metadata) {
+      // 只在本地和预览环境输出 debug，避免生产过多日志
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[NextAuth][Debug]", code, metadata);
+      }
+    },
+  },
+
   // 添加错误处理和配置验证
   events: {
     async signIn({ user, account, profile }) {
