@@ -8,6 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { getQuestionOptions, getQuestionContent } from "@/lib/questionUtils";
 import { callAiDirect } from "@/lib/aiClient.front";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
+import { useAIActivation } from "@/components/AIActivationProvider";
 
 // 前端内存缓存（按题目hash存储）
 // 格式：Map<questionHash, answer>
@@ -81,6 +82,7 @@ export default function QuestionAIDialog({
   const { language } = useLanguage();
   const [currentProvider, setCurrentProvider] = useState<"local" | "render">("render");
   const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
+  const { isActivated, showActivationModal } = useAIActivation();
 
   // 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
   const cleanModelName = (model: string | undefined): string | undefined => {
@@ -376,6 +378,14 @@ export default function QuestionAIDialog({
         // （本地缓存会在下次打开对话框时生效）
       } else {
         // 用户追问：不检查缓存，直接调用AI服务
+      }
+      
+      // 检查激活状态（只有在需要调用AI服务时才检查）
+      if (!isActivated) {
+        showActivationModal();
+        setIsLoading(false);
+        setIsInitialLoading(false);
+        return;
       }
       
       // 3. 直接调用 ai-service（首次提问：如果缓存中没有；追问：直接请求）

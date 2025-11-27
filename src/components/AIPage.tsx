@@ -6,6 +6,7 @@ import { detectLanguage, type Language } from "@/lib/i18n";
 import { callAiDirect, type AiProviderKey } from "@/lib/aiClient.front";
 import { getAiExpectedTime } from "@/lib/aiStatsClient";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
+import AIActivationProvider, { useAIActivation } from "@/components/AIActivationProvider";
 
 /** ---- 协议与类型 ---- */
 type Role = "user" | "ai";
@@ -107,7 +108,9 @@ function getWelcomeMessage(lang: Language): string {
   }
 }
 
-const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
+const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
+  const { isActivated, showActivationModal } = useAIActivation();
+  
   // 初始化消息历史：从 localStorage 读取，如果不存在则使用默认欢迎消息
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (typeof window !== "undefined") {
@@ -198,6 +201,12 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
   const handleSend = useCallback(async () => {
     const q = input.trim();
     if (!q || loading) return;
+
+    // 检查激活状态
+    if (!isActivated) {
+      showActivationModal();
+      return;
+    }
 
     setErrorTip("");
     setLoading(true);
@@ -338,7 +347,7 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
       // 重新聚焦输入框
       inputRef.current?.focus();
     }
-  }, [input, loading, pushMessage, messages]);
+  }, [input, loading, pushMessage, messages, isActivated, showActivationModal]);
 
 
   return (
@@ -598,6 +607,14 @@ const AIPage: React.FC<AIPageProps> = ({ onBack }) => {
         )}
       </div>
     </div>
+  );
+};
+
+const AIPage: React.FC<AIPageProps> = (props) => {
+  return (
+    <AIActivationProvider>
+      <AIPageContent {...props} />
+    </AIActivationProvider>
   );
 };
 

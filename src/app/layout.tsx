@@ -15,8 +15,9 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-import ActivationProvider from "../components/ActivationProvider";
 import AuthProvider from "../components/AuthProvider";
+import AuthGuard from "../components/AuthGuard";
+import AIActivationProvider from "../components/AIActivationProvider";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 export default function RootLayout({
@@ -29,10 +30,12 @@ export default function RootLayout({
       <body className="pb-20">
         <LanguageProvider>
           <AuthProvider>
-            <ActivationProvider>
-              {children}
-              <BottomNavigation />
-            </ActivationProvider>
+            <AIActivationProvider>
+              <AuthGuard>
+                {children}
+                <BottomNavigation />
+              </AuthGuard>
+            </AIActivationProvider>
           </AuthProvider>
         </LanguageProvider>
       </body>

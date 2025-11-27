@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Header from "@/components/common/Header";
-import { Send, X, MessageCircle } from "lucide-react";
+import { Send, MessageCircle } from "lucide-react";
 import { callAiDirect } from "@/lib/aiClient.front";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
+import AIActivationProvider, { useAIActivation } from "@/components/AIActivationProvider";
 
 type Context = "license" | "vehicle" | "service" | "general";
 
@@ -34,6 +34,7 @@ function AIPageContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentProvider, setCurrentProvider] = useState<"local" | "render">("render");
   const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
+  const { isActivated } = useAIActivation();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -58,6 +59,12 @@ function AIPageContent() {
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
+
+    // 检查激活状态
+    if (!isActivated) {
+      router.push('/activation');
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -129,80 +136,87 @@ function AIPageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Header title="AI助手" showAIButton={false} />
-      
-      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 py-6">
-        {/* Context选择器 */}
-        <div className="mb-4 flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-700">上下文:</span>
-          <div className="flex space-x-2">
-            {(["general", "license", "vehicle", "service"] as Context[]).map((ctx) => (
-              <button
-                key={ctx}
-                onClick={() => setContext(ctx)}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                  context === ctx
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                }`}
-              >
-                {contextLabels[ctx]}
-              </button>
-            ))}
-          </div>
+    <div className="flex flex-col bg-gray-100 fixed inset-0 z-[100]" style={{
+      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      height: '100dvh',
+      maxHeight: '100dvh',
+      overflow: 'hidden'
+    }}>
+      {/* 顶栏 */}
+      <div className="flex items-center justify-between border-b bg-white p-4 flex-shrink-0">
+        <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-lg p-1 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            aria-label="返回"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h1 className="text-xl font-bold text-gray-900">AI 助手</h1>
+          <span className="text-xs text-gray-500 ml-2">by Zalem</span>
         </div>
-
+      </div>
+      
+      <div className="flex-1 flex flex-col overflow-hidden px-4 py-4">
         {/* 消息列表 */}
-        <div className="flex-1 overflow-y-auto bg-white rounded-lg shadow-md p-4 mb-4">
+        <div
+          className="flex-1 space-y-4 overflow-y-auto p-4 pb-6 min-h-0"
+          aria-live="polite"
+        >
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-gray-500">
               <div className="text-center">
                 <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
                 <p className="text-lg font-medium mb-2">开始对话</p>
-                <p className="text-sm">选择上下文后，输入您的问题</p>
+                <p className="text-sm">输入您的问题</p>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+            <>
+              {messages.map((message) => {
+                const isUser = message.role === "user";
+                return (
                   <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
-                      message.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-100 text-gray-900"
-                    }`}
+                    key={message.id}
+                    className={`flex flex-col ${isUser ? "items-end" : "items-start"} space-y-1`}
                   >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
-                    {message.sources && message.sources.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-300">
-                        <p className="text-xs font-medium mb-1">参考来源:</p>
-                        <ul className="space-y-1">
-                          {message.sources.map((source, idx) => (
-                            <li key={idx} className="text-xs">
-                              <a
-                                href={source.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline"
-                              >
-                                {source.title}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    <div
+                      className={`max-w-[78%] rounded-lg p-3 text-sm leading-relaxed ${
+                        isUser
+                          ? "bg-blue-500 text-white"
+                          : "bg-white text-gray-900 shadow-md"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                      {message.sources && message.sources.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-300">
+                          <p className="text-xs font-medium mb-1">参考来源:</p>
+                          <ul className="space-y-1">
+                            {message.sources.map((source, idx) => (
+                              <li key={idx} className="text-xs">
+                                <a
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  {source.title}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-100 rounded-lg p-3">
+                  <div className="bg-white rounded-lg p-3 shadow-md">
                     <div className="flex space-x-2">
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
@@ -212,42 +226,54 @@ function AIPageContent() {
                 </div>
               )}
               <div ref={messagesEndRef} />
-            </div>
+            </>
           )}
         </div>
 
         {/* 错误提示 */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <div className="mt-2 text-xs text-red-600" role="alert">
             {error}
-            <button
-              onClick={() => setError(null)}
-              className="ml-2 text-red-600 hover:text-red-800"
-            >
-              <X className="h-4 w-4 inline" />
-            </button>
           </div>
         )}
 
         {/* 输入框 */}
-        <div className="flex items-center space-x-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="输入您的问题..."
-            disabled={loading}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!input.trim() || loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-          >
-            <Send className="h-5 w-5" />
-            <span>发送</span>
-          </button>
+        <div className="border-t bg-white p-3 flex-shrink-0" style={{ 
+          paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 1.5rem))',
+          paddingTop: '0.75rem',
+        }}>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="输入问题..."
+                disabled={loading}
+                className="w-full h-11 rounded-lg border px-3 pr-20 outline-none transition-[border-color] focus:border-blue-500 text-base"
+                style={{ fontSize: '16px' }}
+              />
+              {input.trim().length > 0 && (
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-xs text-gray-400">
+                  {input.trim().length}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={sendMessage}
+              disabled={!input.trim() || loading}
+              className={`inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2.5 h-11 transition-colors flex-shrink-0 ${
+                loading || !input.trim()
+                  ? "cursor-not-allowed bg-gray-200 text-gray-500"
+                  : "bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700"
+              }`}
+              aria-busy={loading}
+            >
+              <Send className="h-4 w-4" />
+              {loading ? "发送中…" : "发送"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -256,9 +282,11 @@ function AIPageContent() {
 
 export default function AIPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">加载中...</div>}>
-      <AIPageContent />
-    </Suspense>
+    <AIActivationProvider>
+      <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">加载中...</div>}>
+        <AIPageContent />
+      </Suspense>
+    </AIActivationProvider>
   );
 }
 

@@ -16,6 +16,11 @@ export default function BottomNavigation() {
   const pathname = usePathname();
   const { t } = useLanguage();
   
+  // 在AI页面隐藏底部导航栏
+  if (pathname === '/ai') {
+    return null;
+  }
+  
   const navItems = [
     { 
       href: '/', 

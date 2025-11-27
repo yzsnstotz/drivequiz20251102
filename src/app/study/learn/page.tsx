@@ -47,6 +47,8 @@ function StudyModePageContent() {
     new Set()
   );
   const [correctAnswers, setCorrectAnswers] = useState(0);
+  // 跟踪每道题的答题状态（hash -> isCorrect）
+  const [questionCorrectness, setQuestionCorrectness] = useState<Record<string, boolean>>({});
   const [showAIDialog, setShowAIDialog] = useState(false);
   const [favoriteState, setFavoriteState] = useState<Record<string, boolean>>(
     {}
@@ -103,6 +105,14 @@ function StudyModePageContent() {
             startIndex = progress.currentIndex || 0;
             setAnsweredQuestions(new Set(progress.answeredQuestions || []));
             setCorrectAnswers(progress.correctAnswers || 0);
+            // 恢复每道题的答题状态
+            if (progress.questionCorrectness) {
+              setQuestionCorrectness(progress.questionCorrectness);
+            } else {
+              // 如果没有保存的状态，从answeredQuestions和correctAnswers重建
+              // 但这是不准确的，所以初始化为空
+              setQuestionCorrectness({});
+            }
 
             // 验证保存的题目顺序是否仍然有效
             if (
@@ -143,6 +153,7 @@ function StudyModePageContent() {
                 currentIndex: 0,
                 answeredQuestions: [],
                 correctAnswers: 0,
+                questionCorrectness: {},
               })
             );
           }
@@ -161,6 +172,7 @@ function StudyModePageContent() {
               currentIndex: 0,
               answeredQuestions: [],
               correctAnswers: 0,
+              questionCorrectness: {},
             })
           );
         }
@@ -193,13 +205,38 @@ function StudyModePageContent() {
         questions[currentIndex]?.id?.toString() ||
         `q_${questions[currentIndex]?.id}`;
 
+      const wasAlreadyAnswered = answeredQuestions.has(currentHash);
+      const previousWasCorrect = questionCorrectness[currentHash] === true;
+
       const newAnsweredQuestions = new Set(answeredQuestions);
       newAnsweredQuestions.add(currentHash);
       setAnsweredQuestions(newAnsweredQuestions);
 
-      const newCorrectAnswers = isAnswerCorrect
-        ? correctAnswers + 1
-        : correctAnswers;
+      // 更新答题状态
+      const newQuestionCorrectness = {
+        ...questionCorrectness,
+        [currentHash]: isAnswerCorrect,
+      };
+      setQuestionCorrectness(newQuestionCorrectness);
+
+      // 计算新的正确数
+      let newCorrectAnswers = correctAnswers;
+      if (!wasAlreadyAnswered) {
+        // 第一次答题
+        if (isAnswerCorrect) {
+          newCorrectAnswers = correctAnswers + 1;
+        }
+      } else {
+        // 重新答题
+        if (previousWasCorrect && !isAnswerCorrect) {
+          // 之前答对了，现在答错了，减少
+          newCorrectAnswers = correctAnswers - 1;
+        } else if (!previousWasCorrect && isAnswerCorrect) {
+          // 之前答错了，现在答对了，增加
+          newCorrectAnswers = correctAnswers + 1;
+        }
+        // 如果状态没变（都对或都错），不需要调整
+      }
       setCorrectAnswers(newCorrectAnswers);
 
       const progressKey = `study_progress_${licenseType}_${stage}`;
@@ -210,6 +247,7 @@ function StudyModePageContent() {
           currentIndex,
           answeredQuestions: Array.from(newAnsweredQuestions),
           correctAnswers: newCorrectAnswers,
+          questionCorrectness: newQuestionCorrectness,
         })
       );
     },
@@ -221,6 +259,7 @@ function StudyModePageContent() {
       answeredQuestions,
       correctAnswers,
       questions,
+      questionCorrectness,
     ]
   );
 
@@ -467,12 +506,6 @@ function StudyModePageContent() {
   return (
     <div className="container mx-auto px-4 py-6 pb-24">
       <div className="flex items-center space-x-4 mb-6">
-        <button
-          onClick={() => router.push("/study")}
-          className="text-gray-600 hover:text-gray-900"
-        >
-          <ChevronLeft className="h-6 w-6" />
-        </button>
         <h1 className="text-xl font-bold text-gray-900">
           {t("study.mode.study")}
         </h1>

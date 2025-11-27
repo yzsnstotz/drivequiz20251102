@@ -23,13 +23,14 @@ import {
   LogOut,
 } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
-import AIPage from "@/components/AIPage";
 import MerchantAdCarousel from "@/components/MerchantAdCarousel";
 import SplashScreenAd from "@/components/SplashScreenAd";
 import PopupAd from "@/components/PopupAd";
 import { useLanguage, type Language } from "@/lib/i18n";
 import Link from "next/link";
 import { getFormattedVersion } from "@/lib/version";
+import { useAIActivation } from "@/components/AIActivationProvider";
+import { useRouter } from "next/navigation";
 
 const welcomeData = [
   {
@@ -75,7 +76,9 @@ type AdSlotConfig = {
 export default function HomePage() {
   const { language, setLanguage, t } = useLanguage();
   const { data: session, status } = useSession();
-  const [showAI, setShowAI] = useState(false);
+  const { isActivated } = useAIActivation();
+  const router = useRouter();
+  const [savedLicensePreference, setSavedLicensePreference] = useState<{ licenseType: string; stage: string } | null>(null);
   const [totalProgress, setTotalProgress] = useState(0);
   const [currentWelcomeIndex, setCurrentWelcomeIndex] = useState(0);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
@@ -222,10 +225,6 @@ export default function HomePage() {
     }
   };
 
-  // 如果显示 AI 页面，渲染 AIPage 组件
-  if (showAI) {
-    return <AIPage onBack={() => setShowAI(false)} />;
-  }
 
   // 如果显示启动页广告，只渲染启动页广告
   if (showSplash) {
@@ -442,8 +441,21 @@ export default function HomePage() {
 
         {/* Main Features */}
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <a
-            href="/study"
+          <button
+            onClick={() => {
+              if (savedLicensePreference) {
+                // 如果有保存的选择，直接跳转到学习页面（默认学习模式）
+                const params = new URLSearchParams({
+                  licenseType: savedLicensePreference.licenseType,
+                  stage: savedLicensePreference.stage,
+                  mode: 'study',
+                });
+                window.location.href = `/study/learn?${params.toString()}`;
+              } else {
+                // 如果没有保存的选择，跳转到选择页面
+                window.location.href = '/study';
+              }
+            }}
             className="bg-white rounded-2xl p-4 text-center shadow-sm cursor-pointer hover:shadow-md transition-shadow"
           >
             <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2">
@@ -454,7 +466,7 @@ export default function HomePage() {
                 {t('home.study')}
               </span>
             </div>
-          </a>
+          </button>
 
           <a
             href="/exam"
@@ -510,7 +522,7 @@ export default function HomePage() {
             </div>
             <div className="flex-1">
               <h3 className="text-sm font-medium text-gray-900">
-                {t('home.favorites')}
+                {t('profile.favorites')}
               </h3>
               <p className="text-xs text-gray-500 mt-1">
                 {t('profile.favoritesDesc')}
@@ -523,7 +535,13 @@ export default function HomePage() {
         {/* AI 助手入口 */}
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-4 mb-6 shadow-md">
           <button
-            onClick={() => setShowAI(true)}
+            onClick={() => {
+              if (isActivated) {
+                router.push('/ai');
+              } else {
+                router.push('/activation');
+              }
+            }}
             className="w-full flex items-center justify-between text-white hover:opacity-90 transition-opacity"
           >
             <div className="flex items-center space-x-3">

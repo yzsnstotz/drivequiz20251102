@@ -247,7 +247,7 @@ export const authOptions: NextAuthConfig = {
           // ⚠️ 注意：user.id 现在是字符串类型（UUID），直接使用，不要 parseInt
           const dbUser = await db
             .selectFrom("users")
-            .select(["phone", "oauth_provider"])
+            .select(["phone", "oauth_provider", "email"])
             .where("id", "=", user.id.toString())
             .executeTakeFirst();
 
@@ -256,6 +256,100 @@ export const authOptions: NextAuthConfig = {
             (session.user as any).phone = dbUser.phone;
             (session.user as any).needsPhone = !dbUser.phone;
             (session.user as any).oauthProvider = dbUser.oauth_provider;
+
+            // 检查激活状态
+            if (dbUser.email) {
+              try {
+                const latestActivation = await db
+                  .selectFrom("activations")
+                  .select(["id", "email", "activation_code", "activated_at"])
+                  .where("email", "=", dbUser.email)
+                  .orderBy("activated_at", "desc")
+                  .limit(1)
+                  .executeTakeFirst();
+
+                if (latestActivation) {
+                  const activationCode = await db
+                    .selectFrom("activation_codes")
+                    .select([
+                      "id",
+                      "code",
+                      "status",
+                      "expires_at",
+                      "validity_period",
+                      "validity_unit",
+                      "activation_started_at",
+                      "usage_limit",
+                      "used_count",
+                    ])
+                    .where("code", "=", latestActivation.activation_code)
+                    .executeTakeFirst();
+
+                  if (activationCode) {
+                    const status = String(activationCode.status || "").toLowerCase();
+                    const now = new Date();
+                    let calculatedExpiresAt: Date | null = null;
+
+                    if (
+                      activationCode.activation_started_at &&
+                      activationCode.validity_period &&
+                      activationCode.validity_unit
+                    ) {
+                      const startDate = new Date(
+                        activationCode.activation_started_at as unknown as string
+                      );
+                      if (!isNaN(startDate.getTime())) {
+                        calculatedExpiresAt = new Date(startDate);
+                        const period = Number(activationCode.validity_period);
+                        const unit = activationCode.validity_unit;
+
+                        switch (unit) {
+                          case "day":
+                            calculatedExpiresAt.setDate(calculatedExpiresAt.getDate() + period);
+                            break;
+                          case "month":
+                            calculatedExpiresAt.setMonth(calculatedExpiresAt.getMonth() + period);
+                            break;
+                          case "year":
+                            calculatedExpiresAt.setFullYear(
+                              calculatedExpiresAt.getFullYear() + period
+                            );
+                            break;
+                        }
+                      }
+                    } else if (activationCode.expires_at) {
+                      calculatedExpiresAt = new Date(
+                        activationCode.expires_at as unknown as string
+                      );
+                    }
+
+                    const isValid =
+                      status !== "suspended" &&
+                      status !== "expired" &&
+                      status !== "disabled" &&
+                      (!calculatedExpiresAt ||
+                        !isNaN(calculatedExpiresAt.getTime()) &&
+                          calculatedExpiresAt.getTime() >= now.getTime()) &&
+                      (Number(activationCode.usage_limit ?? 0) === 0 ||
+                        Number(activationCode.used_count ?? 0) <
+                          Number(activationCode.usage_limit ?? 0));
+
+                    (session.user as any).isActivated = isValid;
+                    if (calculatedExpiresAt) {
+                      (session.user as any).activationExpiresAt =
+                        calculatedExpiresAt.toISOString();
+                    }
+                  } else {
+                    (session.user as any).isActivated = false;
+                  }
+                } else {
+                  (session.user as any).isActivated = false;
+                }
+              } catch (activationError) {
+                console.error("Session callback activation check error:", activationError);
+                (session.user as any).isActivated = false;
+              }
+            }
           }
         } catch (error) {
           console.error("Session callback error:", error);

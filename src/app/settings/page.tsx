@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/apiClient.front";
 import { useLanguage } from "@/lib/i18n";
 import Header from "@/components/common/Header";
-import { Settings, Globe, Shield, Bell, Save, Check, X } from "lucide-react";
+import { Settings, Globe, Shield, Bell, Save, Check, X, Moon, Sun } from "lucide-react";
 
 interface ProfileData {
   language: string;
@@ -31,6 +31,7 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   
   // 表单状态
   const [formData, setFormData] = useState<ProfileData>({
@@ -203,7 +204,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Header title="设置" showAIButton={false} />
       
       <div className="container mx-auto px-4 py-6">
@@ -223,14 +224,14 @@ export default function SettingsPage() {
         )}
 
         {/* 语言设置 */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
-            <Globe className="h-6 w-6 text-blue-600" />
-            <h2 className="text-xl font-semibold text-gray-900">语言设置</h2>
+            <Globe className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">语言设置</h2>
           </div>
           
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2">选择语言</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">选择语言</label>
             <div className="grid grid-cols-3 gap-3">
               {[
                 { value: "ja", label: "日本語", flag: "🇯🇵" },
@@ -242,23 +243,56 @@ export default function SettingsPage() {
                   onClick={() => handleLanguageChange(lang.value)}
                   className={`p-4 rounded-lg border-2 transition-colors ${
                     formData.language === lang.value
-                      ? "border-blue-600 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
+                      ? "border-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-400"
+                      : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                   }`}
                 >
                   <div className="text-2xl mb-2">{lang.flag}</div>
-                  <div className="text-sm font-medium text-gray-900">{lang.label}</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">{lang.label}</div>
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* 隐私偏好 */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        {/* 主题设置 */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
-            <Shield className="h-6 w-6 text-blue-600" />
-            <h2 className="text-xl font-semibold text-gray-900">隐私偏好</h2>
+            {isDarkMode ? (
+              <Moon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            ) : (
+              <Sun className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            )}
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">主题设置</h2>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium text-gray-900 dark:text-white">暗色模式</label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">切换暗色/亮色主题</p>
+              </div>
+              <button
+                onClick={toggleDarkMode}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  isDarkMode ? "bg-blue-600" : "bg-gray-200"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isDarkMode ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 隐私偏好 */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <Shield className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">隐私偏好</h2>
           </div>
           
           <div className="space-y-4">
@@ -303,10 +337,10 @@ export default function SettingsPage() {
         </div>
 
         {/* 通知偏好 */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
-            <Bell className="h-6 w-6 text-blue-600" />
-            <h2 className="text-xl font-semibold text-gray-900">通知偏好</h2>
+            <Bell className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">通知偏好</h2>
           </div>
           
           <div className="space-y-4">
