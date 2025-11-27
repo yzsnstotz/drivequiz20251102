@@ -14,11 +14,11 @@ export default function LoginPage() {
   const [loginMethod, setLoginMethod] = useState<"redirect" | "qrcode" | null>(null);
 
   const providers = [
-    { id: "wechat", name: t("auth.login.withWeChat"), icon: "💬" },
-    { id: "line", name: t("auth.login.withLINE"), icon: "💚" },
-    { id: "google", name: t("auth.login.withGoogle"), icon: "🔍" },
-    { id: "facebook", name: t("auth.login.withFacebook"), icon: "📘" },
-    { id: "twitter", name: t("auth.login.withTwitter"), icon: "🐦" },
+    // { id: "wechat", name: t("auth.login.withWeChat") }, // 暂时隐藏
+    { id: "line", name: t("auth.login.withLINE") },
+    { id: "google", name: t("auth.login.withGoogle") },
+    // { id: "facebook", name: t("auth.login.withFacebook") }, // 暂时隐藏
+    { id: "twitter", name: t("auth.login.withTwitter") },
   ];
 
   const handleProviderSelect = (providerId: string) => {
@@ -77,7 +77,6 @@ export default function LoginPage() {
                   key={provider.id}
                   provider={provider.id}
                   name={provider.name}
-                  icon={provider.icon}
                   onClick={() => handleProviderSelect(provider.id)}
                 />
               ))}
@@ -100,7 +99,7 @@ export default function LoginPage() {
                   {t("auth.login.redirect")}
                 </button>
                 
-                {(selectedProvider === "wechat" || selectedProvider === "line") && (
+                {selectedProvider === "line" && (
                   <button
                     onClick={() => handleLoginMethodSelect("qrcode")}
                     className="w-full px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-medium"
@@ -120,7 +119,7 @@ export default function LoginPage() {
                 ← {t("common.back")}
               </button>
               
-              {(selectedProvider === "wechat" || selectedProvider === "line") && (
+              {selectedProvider === "line" && (
                 <QRCodeLogin provider={selectedProvider} />
               )}
             </div>
