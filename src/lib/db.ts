@@ -828,9 +828,12 @@ function createDbInstance(): Kysely<Database> {
   const ssl = buildDbSslConfig(connectionString);
 
   // 输出 SSL 配置日志
+  const sslMode = typeof ssl === "object" 
+    ? ("ca" in ssl ? "ca-cert" : "rejectUnauthorized-false")
+    : "disabled";
   console.log("[DB][Config] Using SSL config:", {
     enabled: !!ssl,
-    mode: typeof ssl === "object" ? (ssl.ca ? "ca-cert" : "rejectUnauthorized-false") : "disabled",
+    mode: sslMode,
   });
 
   // 创建 Pool 配置对象
