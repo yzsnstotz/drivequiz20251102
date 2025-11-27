@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 13:24:00（修复 NextAuth logger 类型错误，为参数添加明确的类型注解）
-const BUILD_TIME = "2025-11-27 13:24:00";
+// 最后更新：2025-11-27 13:40:00（修复 NextAuth UnknownAction 错误，移除 handlers 包装函数，直接导出 handlers）
+const BUILD_TIME = "2025-11-27 13:40:00";
 
 /**
  * 获取版本号（构建时间）

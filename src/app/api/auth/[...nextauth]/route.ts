@@ -12,7 +12,6 @@ export const runtime = "nodejs";
 import NextAuth from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAuthEnvConfig } from "@/lib/env";
-import { NextRequest } from "next/server";
 
 // NextAuth v5 正确用法：使用静态 import + 标准 handlers 解构
 // 路由层只做请求分发，不承载业务逻辑
@@ -38,22 +37,8 @@ if (process.env.NODE_ENV === "production") {
 // 初始化 NextAuth handlers
 const { handlers } = NextAuth(authOptions);
 
-// 包装 handlers 以添加错误日志（不改变返回结构，仅用于增加上下文）
-export const GET = async (req: NextRequest) => {
-  try {
-    return await handlers.GET!(req);
-  } catch (error) {
-    console.error("[NextAuth][GET] Unhandled error in /api/auth route:", error);
-    throw error;
-  }
-};
-
-export const POST = async (req: NextRequest) => {
-  try {
-    return await handlers.POST!(req);
-  } catch (error) {
-    console.error("[NextAuth][POST] Unhandled error in /api/auth route:", error);
-    throw error;
-  }
-};
+// ✅ NextAuth v5 正确用法：直接导出 handlers，不包装
+// 包装函数会改变请求对象类型，导致 NextAuth 无法解析 action
+// 错误日志由 NextAuth logger 配置处理（已在 src/lib/auth.ts 中配置）
+export const { GET, POST } = handlers;
 
