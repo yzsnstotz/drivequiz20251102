@@ -365,7 +365,31 @@ export const authOptions: NextAuthConfig = {
   // ✅ 打开 Auth.js 内建 logger，捕获真实错误
   logger: {
     error(error: Error) {
-      console.error("[NextAuth][Error]", error);
+      console.error("[NextAuth][Error][raw]", error);
+
+      // 针对 AdapterError 展开 cause
+      if ((error as any).type === "AdapterError") {
+        const adapterError = error as any;
+        console.error("[NextAuth][AdapterError][kind]", adapterError.kind);
+        if (adapterError.cause) {
+          console.error(
+            "[NextAuth][AdapterError][cause]",
+            adapterError.cause,
+          );
+          // 如果是 PG 错误，通常会有这些字段
+          const c = adapterError.cause as any;
+          if (c.code || c.detail || c.schema || c.table || c.constraint) {
+            console.error("[NextAuth][AdapterError][pg-details]", {
+              code: c.code,
+              detail: c.detail,
+              schema: c.schema,
+              table: c.table,
+              constraint: c.constraint,
+              message: c.message,
+            });
+          }
+        }
+      }
     },
     warn(message: string) {
       console.warn("[NextAuth][Warn]", message);
