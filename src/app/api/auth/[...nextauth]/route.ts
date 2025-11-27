@@ -10,27 +10,12 @@ export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
 import NextAuth from "next-auth";
-import path from "path";
+import { authOptions } from "@/lib/auth";
 
-// 延迟初始化 NextAuth，避免构建时模块解析问题
-// 使用绝对路径 require，完全绕过 webpack 的静态分析
-let handlers: { GET: any; POST: any } | null = null;
-
-function getHandlers() {
-  if (!handlers) {
-    // 使用绝对路径 require，避免 webpack 构建时解析
-    const authPath = path.join(process.cwd(), "src", "lib", "auth");
-    const authModule = require(authPath);
-    const { authOptions } = authModule;
-    const nextAuth = NextAuth(authOptions);
-    handlers = nextAuth.handlers;
-  }
-  return handlers;
-}
-
-// NextAuth v5 正确用法：解构 handlers 对象导出 GET 和 POST
+// NextAuth v5 正确用法：使用静态 import + 标准 handlers 解构
 // 路由层只做请求分发，不承载业务逻辑
 // 符合 A1：路由层禁止承载业务逻辑，只做请求分发
-const authHandlers = getHandlers();
-export const { GET, POST } = authHandlers;
+const { handlers } = NextAuth(authOptions);
+
+export const { GET, POST } = handlers;
 
