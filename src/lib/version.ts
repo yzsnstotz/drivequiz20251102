@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 23:00:00（NextAuth Adapter SELF_SIGNED_CERT_IN_CHAIN 修复 v4：删除 SSL 补丁，简化数据库连接配置）
-const BUILD_TIME = "2025-11-27 23:00:00";
+// 最后更新：2025-11-27 23:30:00（NextAuth Adapter SELF_SIGNED_CERT_IN_CHAIN 修复 v5：显式解析 DATABASE_URL，强制覆盖 host）
+const BUILD_TIME = "2025-11-27 23:30:00";
 
 /**
  * 获取版本号（构建时间）

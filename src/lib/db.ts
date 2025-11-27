@@ -6,7 +6,7 @@
 // ============================================================
 
 import { Kysely, PostgresDialect, Generated } from "kysely";
-import { Pool } from "pg";
+import { Pool, PoolConfig } from "pg";
 
 // ------------------------------------------------------------
 // 1️⃣ activation_codes 表结构定义
@@ -770,6 +770,53 @@ function getConnectionString(): string {
   return connectionString;
 }
 
+/**
+ * 从连接字符串显式解析 host/port/user/password/database/ssl
+ * 彻底无视任何 PGHOST 等环境变量
+ */
+function buildPoolConfigFromConnectionString(connectionString: string): PoolConfig {
+  const url = new URL(connectionString);
+
+  const host = url.hostname;
+  const port = url.port ? Number(url.port) : 5432;
+  const database = url.pathname ? url.pathname.slice(1) : undefined;
+  const user = url.username ? decodeURIComponent(url.username) : undefined;
+  const password = url.password ? decodeURIComponent(url.password) : undefined;
+
+  const sslMode = url.searchParams.get("sslmode");
+
+  // 对于 Supabase 的托管 Postgres，官方建议是关闭证书严格校验
+  // 这里不再玩复杂逻辑，统一用 rejectUnauthorized: false
+  const ssl =
+    sslMode && sslMode !== "disable"
+      ? { rejectUnauthorized: false }
+      : undefined;
+
+  console.log("[DB][Config] Parsed DATABASE_URL:", {
+    host,
+    port,
+    database,
+    sslMode,
+    sslEnabled: !!ssl,
+  });
+
+  const config: PoolConfig = {
+    host,
+    port,
+    database,
+    user,
+    password,
+    ssl,
+    max: 20,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 30_000,
+    statement_timeout: 60_000,
+    query_timeout: 60_000,
+  };
+
+  return config;
+}
+
 function createDbInstance(): Kysely<Database> {
   // 获取连接字符串（如果不存在会返回占位符）
   const connectionString = getConnectionString();
@@ -787,29 +834,13 @@ function createDbInstance(): Kysely<Database> {
     throw new Error("[DB][Config] DATABASE_URL is not set");
   }
 
-  console.log("[DB][Config] Using DATABASE_URL (first 80 chars):",
+  console.log(
+    "[DB][Config] Using raw DATABASE_URL (first 80 chars):",
     connectionString.substring(0, 80) + "...",
   );
 
-  // 创建 Pool 配置对象（只保留必需字段，所有连接参数由 connectionString 自动解析）
-  const poolConfig: {
-    connectionString: string;
-    max?: number; // 最大连接数
-    min?: number; // 最小连接数
-    idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
-    connectionTimeoutMillis?: number; // 连接超时时间（毫秒）
-    statement_timeout?: number; // 语句超时时间（毫秒）
-    query_timeout?: number; // 查询超时时间（毫秒）
-  } = {
-    connectionString,
-    // 连接池配置（针对批量处理场景优化）
-    max: 20, // 最大连接数（适合大多数应用）
-    min: 2, // 最小连接数（保持一些连接活跃）
-    idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
-    connectionTimeoutMillis: 30000, // 连接超时30秒（批量处理需要更长时间）
-    statement_timeout: 60000, // 语句超时60秒（批量处理可能需要更长时间）
-    query_timeout: 60000, // 查询超时60秒（批量处理可能需要更长时间）
-  };
+  // 从连接字符串显式解析配置，彻底无视任何 PGHOST 等环境变量
+  const poolConfig = buildPoolConfigFromConnectionString(connectionString);
 
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
