@@ -7,6 +7,10 @@ import TwitterProvider from "./providers/twitter";
 import WeChatProvider from "./providers/wechat";
 import type { Adapter } from "next-auth/adapters";
 import { createPatchedKyselyAdapter } from "./auth-kysely-adapter";
+import { getAuthEnvConfig } from "@/lib/env";
+
+// 解析环境变量配置
+const { secret: authSecret, url: authUrl } = getAuthEnvConfig();
 
 // 配置验证：检查必要的环境变量
 if (process.env.NODE_ENV === "development") {
@@ -40,6 +44,10 @@ if (process.env.NODE_ENV === "development") {
 export const authOptions: NextAuthConfig = {
   adapter: createPatchedKyselyAdapter(db),
   debug: process.env.NODE_ENV === "development",
+
+  // ✅ 让 Auth.js 根据 AUTH_URL / NEXTAUTH_URL 正确推断 host
+  trustHost: true,
+
   providers: [
     // Google OAuth
     GoogleProvider({
@@ -264,10 +272,13 @@ export const authOptions: NextAuthConfig = {
       return token;
     },
   },
+  // ✅ 保留数据库 session 策略
   session: {
-    strategy: "database", // 使用数据库session策略
+    strategy: "database",
   },
-  secret: process.env.NEXTAUTH_SECRET,
+
+  // ✅ secret 同时兼容 NEXTAUTH_SECRET 与 AUTH_SECRET
+  secret: authSecret || undefined,
   // 添加错误处理和配置验证
   events: {
     async signIn({ user, account, profile }) {

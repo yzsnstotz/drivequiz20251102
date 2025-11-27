@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 12:49:23（修复 NextAuth /api/auth/session 和 /api/auth/providers 返回 400 错误，添加环境变量检查）
-const BUILD_TIME = "2025-11-27 12:49:23";
+// 最后更新：2025-11-27 13:12:01（修复 NextAuth /api/auth/session 400 错误，统一处理 NEXTAUTH_* 与 AUTH_* 环境变量，添加 trustHost 配置）
+const BUILD_TIME = "2025-11-27 13:12:01";
 
 /**
  * 获取版本号（构建时间）
