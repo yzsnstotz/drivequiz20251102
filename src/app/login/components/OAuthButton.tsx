@@ -10,7 +10,7 @@ interface OAuthButtonProps {
   onClick: () => void;
 }
 
-const getProviderIcon = (provider: string) => {
+const getProviderIcon = (provider: string, fallbackIcon?: string) => {
   switch (provider.toLowerCase()) {
     case "wechat":
       return <WeChatIcon className="w-6 h-6" />;
@@ -23,7 +23,7 @@ const getProviderIcon = (provider: string) => {
     case "facebook":
       return <FacebookIcon className="w-6 h-6" />;
     default:
-      return icon ? <span className="text-2xl">{icon}</span> : null;
+      return fallbackIcon ? <span className="text-2xl">{fallbackIcon}</span> : null;
   }
 };
 
@@ -38,7 +38,7 @@ export default function OAuthButton({
       onClick={onClick}
       className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all flex items-center justify-center space-x-3 font-medium text-gray-700"
     >
-      {getProviderIcon(provider)}
+      {getProviderIcon(provider, icon)}
       <span>{name}</span>
     </button>
   );
