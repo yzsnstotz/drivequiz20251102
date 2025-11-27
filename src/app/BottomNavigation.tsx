@@ -16,8 +16,8 @@ export default function BottomNavigation() {
   const pathname = usePathname();
   const { t } = useLanguage();
   
-  // 在AI页面隐藏底部导航栏
-  if (pathname === '/ai') {
+  // 在AI页面、admin路由、登录页面隐藏底部导航栏
+  if (pathname === '/ai' || pathname.startsWith('/admin/') || pathname.startsWith('/login')) {
     return null;
   }
   

@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 20:45:00（AdapterError 修复：增强诊断日志，展开 AdapterError 的 cause 和 PostgreSQL 错误详情）
-const BUILD_TIME = "2025-11-27 20:45:00";
+// 最后更新：2025-11-27 21:00:00（前台后台登录系统隔离：隐藏后台和登录页面的底部导航栏，确保 AuthGuard 不影响 admin 路由）
+const BUILD_TIME = "2025-11-27 21:00:00";
 
 /**
  * 获取版本号（构建时间）
