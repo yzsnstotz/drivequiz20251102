@@ -38,7 +38,7 @@ export default function AIButton({ context = "general", className = "", onClick 
   return (
     <button
       onClick={handleClick}
-      className={`ai-button flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors ${className}`}
+      className={`ai-button ios-button flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl shadow-ios-sm active:shadow-ios ${className}`}
       aria-label="AI助手"
     >
       <MessageCircle className="h-5 w-5" />

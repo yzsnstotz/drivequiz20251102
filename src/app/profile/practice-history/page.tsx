@@ -33,32 +33,32 @@ export default function PracticeHistoryPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-black">
       <Header title={t('profile.practiceHistoryTitle')} />
       
       <div className="container mx-auto px-4 py-6 pb-20">
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm">
           {practiceHistory.length === 0 ? (
             <div className="text-center py-12">
-              <BookOpen className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">{t('profile.noPracticeHistory')}</p>
+              <BookOpen className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400 text-lg">{t('profile.noPracticeHistory')}</p>
             </div>
           ) : (
             <div className="space-y-4">
               {practiceHistory.slice().reverse().map((item, index) => (
-                <div key={item.id || index} className="border-b border-gray-100 pb-4 last:border-b-0">
+                <div key={item.id || index} className="border-b border-gray-100 dark:border-ios-dark-border pb-4 last:border-b-0">
                   <div className="flex justify-between items-start">
                     <div className="flex-1 pr-4">
-                      <p className="text-sm text-gray-900 line-clamp-2 mb-2">{item.content}</p>
-                      <p className="text-xs text-gray-500">{item.date}</p>
+                      <p className="text-sm text-gray-900 dark:text-white line-clamp-2 mb-2">{item.content}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{item.date}</p>
                     </div>
                     <div className="flex flex-col items-end space-y-1 flex-shrink-0">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        item.correct ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        item.correct ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
                       }`}>
                         {item.correct ? t('profile.correct') : t('profile.incorrect')}
                       </span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
                         {item.from === 'exam' ? t('profile.fromExam') : t('profile.fromStudy')}
                       </span>
                     </div>

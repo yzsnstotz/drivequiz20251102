@@ -259,17 +259,17 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-black">
       {/* 启动弹窗广告 */}
       {showPopup && (
         <PopupAd onClose={() => setShowPopup(false)} />
       )}
       {/* Navigation Bar */}
-      <nav className="bg-white border-b">
+      <nav className="bg-white dark:bg-ios-dark-bg-secondary border-b dark:border-ios-dark-border">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <Truck className="h-6 w-6 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900">ZALEM</span>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">ZALEM</span>
             <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">
               {getFormattedVersion()}
             </span>
@@ -284,7 +284,7 @@ export default function HomePage() {
               <div className="flex items-center space-x-2">
                 <Link
                   href="/profile"
-                  className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-500/20 rounded-lg transition-colors"
                   aria-label={session.user.name || session.user.email || "用户"}
                 >
                   <User className="h-5 w-5" />
@@ -294,7 +294,7 @@ export default function HomePage() {
                 </Link>
                 <button
                   onClick={() => signOut({ callbackUrl: "/" })}
-                  className="flex items-center space-x-1 px-3 py-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                  className="flex items-center space-x-1 px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
                   aria-label={t('header.logout')}
                 >
                   <LogOut className="h-5 w-5" />
@@ -306,7 +306,7 @@ export default function HomePage() {
             ) : (
               <Link
                 href="/login"
-                className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                className="flex items-center space-x-1 px-3 py-1.5 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-500/20 rounded-lg transition-colors"
                 aria-label={t('home.login')}
               >
                 <LogIn className="h-5 w-5" />
@@ -319,7 +319,7 @@ export default function HomePage() {
             <div className="relative">
               <button
                 onClick={() => setShowLanguageMenu(!showLanguageMenu)}
-                className="flex items-center space-x-1 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center space-x-1 px-3 py-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary rounded-lg transition-colors"
                 aria-label={t('home.changeLanguage')}
               >
                 <Globe className="h-5 w-5" />
@@ -333,14 +333,14 @@ export default function HomePage() {
                     className="fixed inset-0 z-10" 
                     onClick={() => setShowLanguageMenu(false)}
                   />
-                  <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border z-20">
+                  <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-ios-dark-bg-secondary rounded-lg shadow-lg border dark:border-ios-dark-border z-20">
                     <button
                       onClick={() => {
                         setLanguage('zh');
                         setShowLanguageMenu(false);
                       }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 first:rounded-t-lg ${
-                        language === 'zh' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary first:rounded-t-lg ${
+                        language === 'zh' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'
                       }`}
                     >
                       {t('language.chinese')}
@@ -350,8 +350,8 @@ export default function HomePage() {
                         setLanguage('en');
                         setShowLanguageMenu(false);
                       }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                        language === 'en' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary ${
+                        language === 'en' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'
                       }`}
                     >
                       {t('language.english')}
@@ -361,8 +361,8 @@ export default function HomePage() {
                         setLanguage('ja');
                         setShowLanguageMenu(false);
                       }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 last:rounded-b-lg ${
-                        language === 'ja' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary last:rounded-b-lg ${
+                        language === 'ja' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'
                       }`}
                     >
                       {t('language.japanese')}
@@ -373,7 +373,7 @@ export default function HomePage() {
             </div>
             <button
               onClick={() => setShowAI(true)}
-              className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 transition-colors"
+              className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
               aria-label={t('home.aiAssistant')}
             >
               <Bot className="h-6 w-6" />
@@ -385,12 +385,12 @@ export default function HomePage() {
       {/* Main Content */}
       <main className="container mx-auto px-2 py-4">
         {/* Welcome Section */}
-        <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 mb-6 shadow-ios-sm dark:shadow-ios-dark-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-900">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
               {t('home.welcome')}
             </h2>
-            <p className="text-gray-600 text-sm mt-1">{t('home.subtitle')}</p>
+            <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">{t('home.subtitle')}</p>
           </div>
           <div className="relative">
             <div
@@ -426,13 +426,13 @@ export default function HomePage() {
             </div>
             <button
               onClick={handleWelcomePrevious}
-              className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white/30 hover:bg-white/50 rounded-full p-2 backdrop-blur-sm transition-colors"
+              className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white/30 rounded-full p-2 backdrop-blur-sm ios-button active:bg-white/50 active:scale-95"
             >
               <ChevronLeft className="h-6 w-6 text-white" />
             </button>
             <button
               onClick={handleWelcomeNext}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white/30 hover:bg-white/50 rounded-full p-2 backdrop-blur-sm transition-colors"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white/30 rounded-full p-2 backdrop-blur-sm ios-button active:bg-white/50 active:scale-95"
             >
               <ChevronRight className="h-6 w-6 text-white" />
             </button>
@@ -456,13 +456,13 @@ export default function HomePage() {
                 window.location.href = '/study';
               }
             }}
-            className="bg-white rounded-2xl p-4 text-center shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+            className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 text-center shadow-ios-sm dark:shadow-ios-dark-sm cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98]"
           >
-            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-              <Book className="h-6 w-6 text-blue-600" />
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/20 rounded-xl flex items-center justify-center mx-auto mb-2">
+              <Book className="h-6 w-6 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="h-5 flex items-center justify-center">
-              <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+              <span className="text-sm font-medium text-gray-900 dark:text-ios-dark-text whitespace-nowrap">
                 {t('home.study')}
               </span>
             </div>
@@ -470,13 +470,13 @@ export default function HomePage() {
 
           <a
             href="/exam"
-            className="bg-white rounded-2xl p-4 text-center shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+            className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 text-center shadow-ios-sm dark:shadow-ios-dark-sm cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98]"
           >
-            <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-              <FileText className="h-6 w-6 text-orange-600" />
+            <div className="w-12 h-12 bg-orange-50 dark:bg-orange-500/20 rounded-xl flex items-center justify-center mx-auto mb-2">
+              <FileText className="h-6 w-6 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="h-5 flex items-center justify-center">
-              <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+              <span className="text-sm font-medium text-gray-900 dark:text-ios-dark-text whitespace-nowrap">
                 {t('home.exam')}
               </span>
             </div>
@@ -484,13 +484,13 @@ export default function HomePage() {
 
           <a
             href="/mistakes"
-            className="bg-white rounded-2xl p-4 text-center shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+            className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 text-center shadow-ios-sm dark:shadow-ios-dark-sm cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98]"
           >
-            <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-              <XSquare className="h-6 w-6 text-red-600" />
+            <div className="w-12 h-12 bg-red-50 dark:bg-red-500/20 rounded-xl flex items-center justify-center mx-auto mb-2">
+              <XSquare className="h-6 w-6 text-red-600 dark:text-red-400" />
             </div>
             <div className="h-5 flex items-center justify-center">
-              <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+              <span className="text-sm font-medium text-gray-900 dark:text-ios-dark-text whitespace-nowrap">
                 {t('home.mistakes')}
               </span>
             </div>
@@ -498,13 +498,13 @@ export default function HomePage() {
 
           <a
             href="/royalbattle"
-            className="bg-white rounded-2xl p-4 text-center shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+            className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 text-center shadow-ios-sm dark:shadow-ios-dark-sm cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98]"
           >
-            <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-              <Swords className="h-6 w-6 text-purple-600" />
+            <div className="w-12 h-12 bg-purple-50 dark:bg-purple-500/20 rounded-xl flex items-center justify-center mx-auto mb-2">
+              <Swords className="h-6 w-6 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="h-5 flex items-center justify-center">
-              <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+              <span className="text-sm font-medium text-gray-900 dark:text-ios-dark-text whitespace-nowrap">
                 {t('home.royalbattle')}
               </span>
             </div>
@@ -515,16 +515,16 @@ export default function HomePage() {
         <div className="mb-6">
           <a
             href="/favorites"
-            className="bg-white rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow flex items-center space-x-4"
+            className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 shadow-ios-sm dark:shadow-ios-dark-sm cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98] flex items-center space-x-4"
           >
             <div className="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center">
               <Star className="h-6 w-6 text-yellow-600 fill-current" />
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-medium text-gray-900">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-ios-dark-text">
                 {t('profile.favorites')}
               </h3>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">
                 {t('profile.favoritesDesc')}
               </p>
             </div>
@@ -542,15 +542,15 @@ export default function HomePage() {
                 router.push('/activation');
               }
             }}
-            className="w-full flex items-center justify-between text-white hover:opacity-90 transition-opacity"
+            className="w-full flex items-center justify-between text-white ios-button active:opacity-80 active:scale-[0.98]"
           >
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
                 <Bot className="h-6 w-6" />
               </div>
               <div className="text-left">
-                <h3 className="text-lg font-bold">{t('home.aiAssistant')}</h3>
-                <p className="text-sm text-white/90">{t('home.aiDescription')} <span className="text-white/70">by Zalem</span></p>
+                <h3 className="text-lg font-bold text-white dark:text-white">{t('home.aiAssistant')}</h3>
+                <p className="text-sm text-white/90 dark:text-white/90">{t('home.aiDescription')} <span className="text-white/70 dark:text-white/70">by Zalem</span></p>
               </div>
             </div>
             <ChevronRight className="h-6 w-6" />

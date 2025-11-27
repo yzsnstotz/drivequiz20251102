@@ -493,6 +493,9 @@ export const userTranslations: Translations = {
     'home.mistakes': '错题本',
     'home.royalbattle': '大乱斗',
     'home.aiAssistant': 'AI 智能助手',
+    'activation.activate': '激活',
+    'activation.activating': '激活中...',
+    'profile.goToActivate': '前往激活',
     'home.aiDescription': '随时解答你的驾考问题',
     'home.changeLanguage': '切换语言',
     'home.subtitle': '开启你的学车之旅',
@@ -552,6 +555,8 @@ export const userTranslations: Translations = {
     'study.loadingQuestions': '正在加载题目...',
     'study.noQuestionsFound': '未找到符合条件的题目。请尝试选择其他驾照类型或考试阶段。',
     'study.completed': '恭喜您完成所有题目！',
+    'study.currentSelection': '当前选择',
+    'study.adjust': '调整',
     
     // 登录/注册
     'auth.login.title': '登录',
@@ -656,6 +661,10 @@ export const userTranslations: Translations = {
     'profile.fromStudy': '学习',
     'profile.clearActivationConfirm': '确定要清除激活状态吗？清除后需要重新激活才能使用应用。',
     'profile.clearActivationSuccess': '激活状态已清除，页面将刷新',
+    'profile.about': '关于',
+    'profile.aboutDesc': '查看版本信息',
+    'profile.appVersion': '软件版本号',
+    'profile.appVersionUnknown': '未知',
     'profile.favorites': '我的收藏',
     'profile.favoritesDesc': '查看收藏的题目',
     
@@ -691,6 +700,9 @@ export const userTranslations: Translations = {
     'home.mistakes': 'Mistakes',
     'home.royalbattle': 'Battle',
     'home.aiAssistant': 'AI Assistant',
+    'activation.activate': 'Activate',
+    'activation.activating': 'Activating...',
+    'profile.goToActivate': 'Go to Activate',
     'home.aiDescription': 'Answer your driving test questions anytime',
     'home.changeLanguage': 'Change Language',
     'home.subtitle': 'Start your driving journey',
@@ -751,6 +763,8 @@ export const userTranslations: Translations = {
     'study.loadingQuestions': 'Loading questions...',
     'study.noQuestionsFound': 'No questions found matching the criteria. Please try selecting a different license type or exam stage.',
     'study.completed': 'Congratulations! You have completed all questions!',
+    'study.currentSelection': 'Current Selection',
+    'study.adjust': 'Adjust',
     
     // Login/Register
     'auth.login.title': 'Login',
@@ -860,6 +874,10 @@ export const userTranslations: Translations = {
     'profile.fromStudy': 'Study',
     'profile.clearActivationConfirm': 'Are you sure you want to clear the activation status? You will need to reactivate to use the app.',
     'profile.clearActivationSuccess': 'Activation status cleared, page will refresh',
+    'profile.about': 'About',
+    'profile.aboutDesc': 'View version information',
+    'profile.appVersion': 'App Version',
+    'profile.appVersionUnknown': 'Unknown',
     'profile.favorites': 'My Favorites',
     'profile.favoritesDesc': 'View favorited questions',
     
@@ -896,6 +914,9 @@ export const userTranslations: Translations = {
     'home.royalbattle': 'バトル',
     'home.aiAssistant': 'AIアシスタント',
     'home.aiDescription': '運転免許試験の質問にいつでも答えます',
+    'activation.activate': 'アクティベート',
+    'activation.activating': 'アクティベート中...',
+    'profile.goToActivate': 'アクティベートへ',
     'home.changeLanguage': '言語を変更',
     'home.subtitle': 'あなたの運転学習の旅を始めましょう',
     'home.favorites': 'お気に入り',
@@ -955,6 +976,8 @@ export const userTranslations: Translations = {
     'study.loadingQuestions': '問題を読み込み中...',
     'study.noQuestionsFound': '条件に合う問題が見つかりませんでした。別の免許タイプまたは試験段階を選択してください。',
     'study.completed': 'おめでとうございます！すべての問題を完了しました！',
+    'study.currentSelection': '現在の選択',
+    'study.adjust': '調整',
     
     // ログイン/登録
     'auth.login.title': 'ログイン',
@@ -1064,6 +1087,10 @@ export const userTranslations: Translations = {
     'profile.fromStudy': '学習',
     'profile.clearActivationConfirm': '有効化状態をクリアしてもよろしいですか？アプリを使用するには再有効化が必要です。',
     'profile.clearActivationSuccess': '有効化状態がクリアされました。ページを更新します',
+    'profile.about': 'について',
+    'profile.aboutDesc': 'バージョン情報を表示',
+    'profile.appVersion': 'アプリバージョン',
+    'profile.appVersionUnknown': '不明',
     'profile.favorites': 'お気に入り',
     'profile.favoritesDesc': 'お気に入りの問題を表示',
     

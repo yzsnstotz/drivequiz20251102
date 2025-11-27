@@ -193,7 +193,7 @@ export default function LicensePage() {
                 ?.questionSets.map((set) => (
                   <div
                     key={set.id}
-                    className="bg-white rounded-xl shadow-sm p-3 hover:shadow-md transition-all ios-card"
+                    className="bg-white rounded-xl shadow-ios-sm p-3 ios-button active:shadow-ios active:scale-[0.98]"
                   >
                     <h3 className="text-sm font-semibold text-gray-900 mb-1">{set.title}</h3>
                     <p className="text-xs text-gray-600 mb-2 line-clamp-2">{set.description}</p>
@@ -201,13 +201,13 @@ export default function LicensePage() {
                     <div className="flex space-x-1.5">
                       <button
                         onClick={() => handleStudy(set)}
-                        className="flex-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium active:scale-95"
+                        className="flex-1 px-3 py-1.5 bg-blue-600 text-white rounded-xl shadow-ios-sm ios-button active:bg-blue-700 text-xs font-medium"
                       >
                         学习
                       </button>
                       <button
                         onClick={() => handleExam(set)}
-                        className="flex-1 px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-xs font-medium active:scale-95"
+                        className="flex-1 px-3 py-1.5 bg-orange-600 text-white rounded-xl shadow-ios-sm ios-button active:bg-orange-700 text-xs font-medium"
                       >
                         考试
                       </button>

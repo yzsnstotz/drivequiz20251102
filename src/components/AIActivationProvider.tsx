@@ -48,16 +48,34 @@ export default function AIActivationProvider({
   const [successExpiresAt, setSuccessExpiresAt] = useState<string | null>(null);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isCheckingRef = useRef<boolean>(false);
+  const lastActivatedStateRef = useRef<boolean>(false); // 保存上次的激活状态
+
+  // 从localStorage读取初始激活状态（作为fallback）
+  const getInitialActivationState = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    // 检查是否有USER_TOKEN或激活标记
+    const hasToken = localStorage.getItem("USER_TOKEN");
+    const hasActivation = localStorage.getItem("drive-quiz-activated") === "true";
+    return !!(hasToken || hasActivation);
+  }, []);
 
   // 检查激活状态
   const checkActivationStatus = useCallback(async () => {
     if (isCheckingRef.current) return;
+    
+    // 如果没有session，检查localStorage作为fallback
     if (!session?.user?.email) {
-      setIsActivated(false);
+      const localActivated = getInitialActivationState();
+      setIsActivated(localActivated);
+      lastActivatedStateRef.current = localActivated;
       return;
     }
 
     isCheckingRef.current = true;
+    
+    // 在检查前先获取当前状态（从ref或localStorage）
+    const previousState = lastActivatedStateRef.current || getInitialActivationState();
+    
     try {
       const response = await fetch("/api/activation/status", {
         method: "GET",
@@ -65,28 +83,56 @@ export default function AIActivationProvider({
       });
 
       if (!response.ok) {
-        setIsActivated(false);
+        // 网络错误时，保持之前的状态或使用localStorage状态
+        const localActivated = getInitialActivationState();
+        const finalState = localActivated || previousState;
+        setIsActivated(finalState);
+        lastActivatedStateRef.current = finalState;
+        console.warn("[AIActivationProvider] API request failed, using cached state");
         return;
       }
 
       const result = await response.json();
       if (result.ok && result.data) {
         const status: ActivationStatus = result.data;
-        setIsActivated(status.valid === true);
+        const isValid = status.valid === true;
+        setIsActivated(isValid);
+        lastActivatedStateRef.current = isValid;
+        
+        // 如果激活有效，保存到localStorage
+        if (isValid) {
+          localStorage.setItem("drive-quiz-activated", "true");
+          if (session?.user?.email) {
+            localStorage.setItem("drive-quiz-email", session.user.email);
+          }
+        } else {
+          // 如果API明确返回无效，清除localStorage
+          localStorage.removeItem("drive-quiz-activated");
+          localStorage.removeItem("drive-quiz-email");
+        }
         
         if (status.valid && status.expiresAt) {
           setSuccessExpiresAt(status.expiresAt);
         }
       } else {
-        setIsActivated(false);
+        // API返回错误，但不清除状态，使用localStorage作为fallback
+        const localActivated = getInitialActivationState();
+        const finalState = localActivated || previousState;
+        setIsActivated(finalState);
+        lastActivatedStateRef.current = finalState;
+        console.warn("[AIActivationProvider] API returned error, using cached state");
       }
     } catch (error) {
       console.error("[AIActivationProvider] Check activation status error:", error);
-      setIsActivated(false);
+      // 网络错误时，保持之前的状态或使用localStorage状态
+      const localActivated = getInitialActivationState();
+      const finalState = localActivated || previousState;
+      setIsActivated(finalState);
+      lastActivatedStateRef.current = finalState;
     } finally {
       isCheckingRef.current = false;
     }
-  }, [session]);
+  }, [session, getInitialActivationState]);
 
   // 激活码提交处理
   const handleActivationSubmit = async (email: string, activationCode: string) => {
@@ -106,12 +152,27 @@ export default function AIActivationProvider({
 
       const result = await response.json();
       if (result.ok) {
+        // 保存激活状态到localStorage
+        localStorage.setItem("drive-quiz-activated", "true");
+        localStorage.setItem("drive-quiz-email", email);
+        
+        // 保存USER_TOKEN
+        if (result.data?.userToken) {
+          localStorage.setItem("USER_TOKEN", result.data.userToken);
+          // 同时设置cookie
+          const expires = new Date();
+          expires.setTime(expires.getTime() + 30 * 24 * 60 * 60 * 1000);
+          document.cookie = `USER_TOKEN=${encodeURIComponent(result.data.userToken)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
+        }
+        
         setShowModal(false);
         setShowSuccessModal(true);
+        setIsActivated(true); // 立即设置为激活状态
+        lastActivatedStateRef.current = true; // 更新ref状态
         if (result.data?.expiresAt) {
           setSuccessExpiresAt(result.data.expiresAt);
         }
-        // 重新检查激活状态
+        // 重新检查激活状态（验证服务器状态）
         await checkActivationStatus();
       } else {
         alert(result.message || "激活失败");
@@ -129,12 +190,20 @@ export default function AIActivationProvider({
 
   // 初始化时检查激活状态
   useEffect(() => {
+    // 首先从localStorage读取初始状态
+    const localActivated = getInitialActivationState();
+    setIsActivated(localActivated);
+    lastActivatedStateRef.current = localActivated;
+    
     if (session?.user?.email) {
+      // 如果有session，异步检查服务器状态
       checkActivationStatus();
-    } else {
+    } else if (!localActivated) {
+      // 如果没有session且localStorage也没有激活状态，设置为false
       setIsActivated(false);
+      lastActivatedStateRef.current = false;
     }
-  }, [session, checkActivationStatus]);
+  }, [session, checkActivationStatus, getInitialActivationState]);
 
   // 设置定期检查（每30分钟）
   useEffect(() => {

@@ -21,7 +21,7 @@ function StudyModePageFallback() {
       </div>
       <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
         <div className="flex flex-col items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-200 border-t-blue-600 mb-4" style={{ animation: 'spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}></div>
           <p className="text-gray-600">{t("common.loading")}</p>
         </div>
       </div>
@@ -454,7 +454,7 @@ function StudyModePageContent() {
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <div className="flex flex-col items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-200 border-t-blue-600 mb-4" style={{ animation: 'spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}></div>
             <p className="text-gray-600">{t("common.loading")}</p>
             <p className="text-sm text-gray-500 mt-2">{t("study.loadingQuestions")}</p>
           </div>
@@ -538,7 +538,7 @@ function StudyModePageContent() {
             />
             <button
               onClick={() => setShowAIDialog(true)}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-500/30 transition-colors text-sm font-medium"
             >
               <Bot className="h-4 w-4" />
               <span>{t("exam.aiAssistant")}</span>

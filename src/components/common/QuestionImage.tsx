@@ -50,8 +50,8 @@ export default function QuestionImage({
   if (imageError) {
     return (
       <div className={`mb-4 relative ${className}`}>
-        <div className="flex flex-col items-center justify-center bg-gray-100 rounded-lg p-8 min-h-[200px]">
-          <div className="text-gray-400 mb-4">
+        <div className="flex flex-col items-center justify-center bg-gray-100 dark:bg-ios-dark-bg-tertiary rounded-lg p-8 min-h-[200px]">
+          <div className="text-gray-400 dark:text-gray-600 mb-4">
             <svg
               className="w-16 h-16 mx-auto"
               fill="none"
@@ -66,7 +66,7 @@ export default function QuestionImage({
               />
             </svg>
           </div>
-          <p className="text-gray-600 text-sm mb-4">图片加载失败</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">图片加载失败</p>
           <button
             onClick={handleRefresh}
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -83,8 +83,8 @@ export default function QuestionImage({
   return (
     <div className={`mb-4 relative ${className}`}>
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg z-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-ios-dark-bg-tertiary rounded-lg z-10">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
         </div>
       )}
       {useNativeImg ? (

@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star } from 'lucide-react';
+import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star, Info } from 'lucide-react';
 import Link from 'next/link';
-import { getLocalPackageVersion } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
 import ActivationStatusCard from '@/components/ActivationStatusCard';
 
@@ -12,21 +11,12 @@ function ProfilePage() {
   const [nickname, setNickname] = useState('User');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
-  const [pkgVersion, setPkgVersion] = useState<string | null>(null);
 
   useEffect(() => {
     // 从 localStorage 加载用户昵称
     const savedNickname = localStorage.getItem('user_nickname');
     if (savedNickname) {
       setNickname(savedNickname);
-    }
-
-    // 读取当前本地题库版本号（用于测试校对显示）
-    try {
-      const v = getLocalPackageVersion();
-      setPkgVersion(v);
-    } catch {
-      setPkgVersion(null);
     }
   }, []);
 
@@ -104,13 +94,20 @@ function ProfilePage() {
       title: t('profile.settings'),
       description: t('profile.settingsDesc'),
       href: '/settings'
+    },
+    {
+      id: 'about',
+      icon: <Info className="h-6 w-6 text-blue-600" />,
+      title: t('profile.about'),
+      description: t('profile.aboutDesc') || '查看版本信息',
+      href: '/profile/about'
     }
   ];
 
   return (
     <div className="container mx-auto px-4 py-6 pb-20">
       {/* 用户信息区域 */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm mb-6">
         <div className="flex flex-col items-center">
           <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
             <User className="h-12 w-12 text-gray-40" />
@@ -132,16 +129,12 @@ function ProfilePage() {
               onClick={handleEditClick}
               className="flex items-center space-x-2 cursor-pointer group"
             >
-              <h2 className="text-xl font-bold text-gray-900 group-hover:text-blue-600">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
                 {nickname}
               </h2>
-              <Edit2 className="h-4 w-4 text-gray-400 group-hover:text-blue-600" />
+              <Edit2 className="h-4 w-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
             </div>
           )}
-          {/* 本地题库版本展示 */}
-          <div className="mt-2 text-xs text-gray-500">
-            {t('profile.questionBankVersion')}：{pkgVersion ? pkgVersion : t('profile.questionBankVersionUnknown')}
-          </div>
         </div>
       </div>
 
@@ -161,17 +154,17 @@ function ProfilePage() {
                 href={item.href}
                 className="block"
               >
-                <div className={`bg-white rounded-2xl p-4 shadow-sm flex items-center space-x-4 cursor-pointer transition-colors ${
-                  item.isDanger ? 'hover:bg-red-50' : 'hover:bg-gray-50'
+                <div className={`bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 shadow-ios-sm dark:shadow-ios-dark-sm flex items-center space-x-4 cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98] ${
+                  item.isDanger ? 'active:bg-red-50 dark:active:bg-red-900/20' : 'active:bg-gray-50 dark:active:bg-ios-dark-bg-tertiary'
                 }`}>
                   <div className="flex-shrink-0">
                     {item.icon}
                   </div>
                   <div className="flex-grow">
                     <h3 className={`font-medium ${
-                      item.isDanger ? 'text-red-600' : 'text-gray-900'
+                      item.isDanger ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-ios-dark-text'
                     }`}>{item.title}</h3>
-                    <p className="text-gray-500 text-sm">{item.description}</p>
+                    <p className="text-gray-500 dark:text-ios-dark-text-secondary text-sm">{item.description}</p>
                   </div>
                 </div>
               </Link>
@@ -189,17 +182,17 @@ function ProfilePage() {
               }}
               className="block"
             >
-              <div className={`bg-white rounded-2xl p-4 shadow-sm flex items-center space-x-4 cursor-pointer transition-colors ${
-                item.isDanger ? 'hover:bg-red-50' : 'hover:bg-gray-50'
+              <div className={`bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 shadow-ios-sm dark:shadow-ios-dark-sm flex items-center space-x-4 cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98] ${
+                item.isDanger ? 'active:bg-red-50 dark:active:bg-red-900/20' : 'active:bg-gray-50 dark:active:bg-ios-dark-bg-tertiary'
               }`}>
                 <div className="flex-shrink-0">
                   {item.icon}
                 </div>
                 <div className="flex-grow">
                   <h3 className={`font-medium ${
-                    item.isDanger ? 'text-red-600' : 'text-gray-900'
+                    item.isDanger ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'
                   }`}>{item.title}</h3>
-                  <p className="text-gray-500 text-sm">{item.description}</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">{item.description}</p>
                 </div>
               </div>
             </div>

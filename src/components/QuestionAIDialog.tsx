@@ -527,18 +527,18 @@ export default function QuestionAIDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 p-4">
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl shadow-xl dark:shadow-ios-dark-sm w-full max-w-4xl max-h-[90vh] flex flex-col">
         {/* 头部 */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b dark:border-ios-dark-border">
           <div className="flex items-center space-x-2">
-            <Bot className="h-6 w-6 text-blue-600" />
-            <h2 className="text-lg font-bold text-gray-900">AI智能助手</h2>
-            <span className="text-xs text-gray-500 ml-2">by Zalem</span>
+            <Bot className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">AI智能助手</h2>
+            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">by Zalem</span>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             aria-label="关闭"
           >
             <X className="h-6 w-6" />
@@ -546,9 +546,9 @@ export default function QuestionAIDialog({
         </div>
 
         {/* 题目显示区域 */}
-        <div className="p-4 border-b bg-gray-50 max-h-48 overflow-y-auto">
-          <div className="text-sm font-medium text-gray-700 mb-2">当前题目：</div>
-          <div className="text-gray-900 mb-2">
+        <div className="p-4 border-b dark:border-ios-dark-border bg-gray-50 dark:bg-black max-h-48 overflow-y-auto">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">当前题目：</div>
+          <div className="text-gray-900 dark:text-white mb-2">
             {typeof question.content === 'string' 
               ? question.content 
               : (question.content?.zh || '')}
@@ -565,7 +565,7 @@ export default function QuestionAIDialog({
             </div>
           )}
           {question.options && question.options.length > 0 && (
-            <div className="mt-2 text-sm text-gray-600">
+            <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
               {getQuestionOptions(question.options, language).map((option, index) => {
                 const label = String.fromCharCode(65 + index);
                 return (
@@ -582,8 +582,8 @@ export default function QuestionAIDialog({
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {isInitialLoading && messages.length === 0 ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-              <span className="ml-2 text-gray-600">AI正在思考中...</span>
+              <Loader2 className="h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" />
+              <span className="ml-2 text-gray-600 dark:text-gray-400">AI正在思考中...</span>
             </div>
           ) : (
             <>
@@ -597,8 +597,8 @@ export default function QuestionAIDialog({
                   <div
                     className={`max-w-[80%] rounded-lg p-3 ${
                       message.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-100 text-gray-900"
+                        ? "bg-blue-600 dark:bg-blue-500 text-white"
+                        : "bg-gray-100 dark:bg-ios-dark-bg-tertiary text-gray-900 dark:text-white"
                     }`}
                   >
                     <div className="whitespace-pre-wrap break-words">
@@ -736,8 +736,8 @@ export default function QuestionAIDialog({
               ))}
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-100 rounded-lg p-3">
-                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                  <div className="bg-gray-100 dark:bg-ios-dark-bg-tertiary rounded-lg p-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
                   </div>
                 </div>
               )}

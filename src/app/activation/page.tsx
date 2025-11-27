@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Key, MessageCircle, FileText, Handshake, ShoppingCart } from "lucide-react";
-import Header from "@/components/common/Header";
+import { useLanguage } from "@/lib/i18n";
 import SuccessModal from "@/components/SuccessModal";
-import { APP_VERSION } from "@/config/version";
+import { useAIActivation } from "@/components/AIActivationProvider";
 
 interface ContactInfo {
   type: 'business' | 'purchase';
@@ -21,6 +21,8 @@ interface TermsOfService {
 
 export default function ActivationPage() {
   const router = useRouter();
+  const { t } = useLanguage();
+  const { checkActivationStatus } = useAIActivation();
   const [email, setEmail] = useState("");
   const [activationCode, setActivationCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -97,6 +99,27 @@ export default function ActivationPage() {
 
       const result = await response.json();
       if (result.ok) {
+        // 保存激活状态到localStorage
+        localStorage.setItem("drive-quiz-activated", "true");
+        localStorage.setItem("drive-quiz-email", email);
+        
+        // 保存USER_TOKEN到localStorage和cookie
+        if (result.data?.userToken) {
+          const token = result.data.userToken;
+          localStorage.setItem("USER_TOKEN", token);
+          // 设置cookie（30天有效期）
+          const expires = new Date();
+          expires.setTime(expires.getTime() + 30 * 24 * 60 * 60 * 1000);
+          document.cookie = `USER_TOKEN=${encodeURIComponent(token)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
+        }
+        
+        // 更新AIActivationProvider的状态
+        try {
+          await checkActivationStatus();
+        } catch (err) {
+          console.error("[ActivationPage] Failed to update activation status:", err);
+        }
+        
         setShowSuccessModal(true);
         if (result.data?.expiresAt) {
           setSuccessExpiresAt(result.data.expiresAt);
@@ -134,16 +157,11 @@ export default function ActivationPage() {
   const [adminCode, setAdminCode] = useState("");
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header title="产品激活" />
-
+    <div className="min-h-screen bg-gray-50 dark:bg-black">
       <div className="container mx-auto px-4 py-6 pb-20 max-w-2xl">
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <h2 className="text-2xl font-bold text-center mb-2">产品激活</h2>
-          <p className="text-gray-600 text-center mb-6">请输入您的邮箱和激活码以激活产品</p>
-          <div className="text-center mb-4">
-            <span className="text-xs text-gray-400">版本号: {APP_VERSION}</span>
-          </div>
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm">
+          <h2 className="text-2xl font-bold text-center mb-2 dark:text-ios-dark-text">AI服务激活</h2>
+          <p className="text-gray-600 dark:text-ios-dark-text-secondary text-center mb-6">请输入您的邮箱和激活码以激活AI服务</p>
 
           {error && (
             <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4">{error}</div>
@@ -159,7 +177,7 @@ export default function ActivationPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl ios-input focus:border-blue-500 focus:shadow-ios-sm"
                 placeholder="your@email.com"
                 disabled={loading}
                 required
@@ -175,7 +193,7 @@ export default function ActivationPage() {
                 type="text"
                 value={activationCode}
                 onChange={(e) => setActivationCode(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl ios-input focus:border-blue-500 focus:shadow-ios-sm"
                 placeholder="XXXX-XXXX-XXXX-XXXX"
                 disabled={loading}
                 required
@@ -184,10 +202,10 @@ export default function ActivationPage() {
 
             <button
               type="submit"
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white dark:text-white rounded-xl shadow-ios-sm dark:shadow-ios-dark-sm ios-button active:shadow-ios dark:active:shadow-ios-dark disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={loading}
             >
-              {loading ? "激活中..." : "激活"}
+              {loading ? t('activation.activating') : t('activation.activate')}
             </button>
           </form>
 
@@ -280,7 +298,7 @@ export default function ActivationPage() {
                 <div className="text-sm">
                   <button
                     onClick={() => setShowTerms(true)}
-                    className="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors"
+                    className="flex items-center gap-2 text-blue-600 ios-button active:text-blue-800 active:opacity-80"
                   >
                     <FileText className="h-4 w-4" />
                     服务条款
@@ -309,7 +327,7 @@ export default function ActivationPage() {
                     alert("管理员代码错误");
                   }
                 }}
-                className="px-4 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors whitespace-nowrap"
+                className="px-4 py-1.5 text-sm bg-gray-600 text-white rounded-xl shadow-ios-sm ios-button active:shadow-ios whitespace-nowrap"
               >
                 登录
               </button>
@@ -341,7 +359,7 @@ export default function ActivationPage() {
             )}
             <button
               onClick={() => setShowTerms(false)}
-              className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-xl shadow-ios-sm ios-button active:shadow-ios"
             >
               关闭
             </button>

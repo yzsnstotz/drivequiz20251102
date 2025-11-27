@@ -21,12 +21,12 @@ export default function Header({ title, showAIButton = true, aiContext = "genera
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
+    <header className="sticky top-0 z-50 bg-white dark:bg-ios-dark-bg-secondary border-b border-gray-200 dark:border-ios-dark-border shadow-sm dark:shadow-ios-dark-sm">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo / Title */}
           <div className="flex items-center gap-2">
-            <Link href="/" className="text-xl font-bold text-blue-600">
+            <Link href="/" className="text-xl font-bold text-blue-600 dark:text-blue-500">
               {title || "ZALEM"}
             </Link>
             <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">

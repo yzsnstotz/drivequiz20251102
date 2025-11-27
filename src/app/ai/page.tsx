@@ -148,7 +148,7 @@ function AIPageContent() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-lg p-1 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            className="rounded-xl p-1 text-gray-600 ios-button active:bg-gray-100 active:text-gray-900 active:scale-95"
             aria-label="返回"
           >
             <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -216,11 +216,11 @@ function AIPageContent() {
               })}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-white rounded-lg p-3 shadow-md">
-                    <div className="flex space-x-2">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
+                  <div className="bg-white rounded-xl p-3 shadow-ios-sm">
+                    <div className="flex space-x-1.5">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ios-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ios-bounce" style={{ animationDelay: "0.15s" }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ios-bounce" style={{ animationDelay: "0.3s" }}></div>
                     </div>
                   </div>
                 </div>
@@ -251,7 +251,7 @@ function AIPageContent() {
                 onKeyPress={handleKeyPress}
                 placeholder="输入问题..."
                 disabled={loading}
-                className="w-full h-11 rounded-lg border px-3 pr-20 outline-none transition-[border-color] focus:border-blue-500 text-base"
+                className="w-full h-11 rounded-xl border border-gray-200 px-3 pr-20 outline-none ios-input focus:border-blue-500 focus:shadow-ios-sm text-base"
                 style={{ fontSize: '16px' }}
               />
               {input.trim().length > 0 && (
@@ -263,10 +263,10 @@ function AIPageContent() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || loading}
-              className={`inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2.5 h-11 transition-colors flex-shrink-0 ${
+              className={`inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2.5 h-11 ios-button flex-shrink-0 shadow-ios-sm ${
                 loading || !input.trim()
                   ? "cursor-not-allowed bg-gray-200 text-gray-500"
-                  : "bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700"
+                  : "bg-blue-500 text-white active:bg-blue-600 active:scale-[0.97]"
               }`}
               aria-busy={loading}
             >
@@ -283,7 +283,7 @@ function AIPageContent() {
 export default function AIPage() {
   return (
     <AIActivationProvider>
-      <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">加载中...</div>}>
+      <Suspense fallback={<div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center text-gray-600 dark:text-gray-300">Loading...</div>}>
         <AIPageContent />
       </Suspense>
     </AIActivationProvider>

@@ -351,25 +351,25 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
 
 
   return (
-    <div className="flex flex-col bg-gray-100 fixed inset-0 z-[100]" style={{
+    <div className="flex flex-col bg-gray-100 dark:bg-black fixed inset-0 z-[100]" style={{
       paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       height: '100dvh', // 使用动态视口高度，适配移动端浏览器
       maxHeight: '100dvh',
       overflow: 'hidden'
     }}>
       {/* 顶栏 */}
-      <div className="flex items-center justify-between border-b bg-white p-4 flex-shrink-0">
+      <div className="flex items-center justify-between border-b dark:border-ios-dark-border bg-white dark:bg-ios-dark-bg-secondary p-4 flex-shrink-0">
         <div className="flex items-center space-x-3">
           <button
             type="button"
             onClick={onBack}
-            className="rounded-lg p-1 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            className="rounded-lg p-1 text-gray-600 dark:text-gray-300 transition-colors hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary hover:text-gray-900 dark:hover:text-white"
             aria-label="返回"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">AI 助手</h1>
-          <span className="text-xs text-gray-500 ml-2">by Zalem</span>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI 助手</h1>
+          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">by Zalem</span>
         </div>
         <button
           type="button"
@@ -387,7 +387,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
               },
             ]);
           }}
-          className="rounded-lg px-3 py-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+          className="rounded-lg px-3 py-1 text-sm text-gray-600 dark:text-gray-300 transition-colors hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary hover:text-gray-900 dark:hover:text-white"
           aria-label="清空历史"
         >
           清空历史
@@ -410,15 +410,15 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
               <div
                 className={`max-w-[78%] rounded-lg p-3 text-sm leading-relaxed ${
                   isUser
-                    ? "bg-blue-500 text-white"
-                    : "bg-white text-gray-900 shadow-md"
+                    ? "bg-blue-500 dark:bg-blue-600 text-white"
+                    : "bg-white dark:bg-ios-dark-bg-secondary text-gray-900 dark:text-white shadow-md dark:shadow-ios-dark-sm"
                 }`}
               >
                 {m.content}
               </div>
               {/* AI reply metadata */}
               {!isUser && m.metadata && (
-                <div className="max-w-[78%] px-2 py-0.5 text-xs text-gray-500">
+                <div className="max-w-[78%] px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400">
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* AI Service Provider and Model */}
                     {m.metadata.aiProvider && (
@@ -544,7 +544,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       </div>
 
       {/* 底部输入区 - 移动端优化：确保不被浏览器导航栏遮挡 */}
-      <div className="border-t bg-white p-3 flex-shrink-0" style={{ 
+      <div className="border-t dark:border-ios-dark-border bg-white dark:bg-ios-dark-bg-secondary p-3 flex-shrink-0" style={{ 
         paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 1.5rem + 80px))',
         paddingTop: '0.75rem',
         marginBottom: 'max(0px, calc(env(safe-area-inset-bottom) - 10px))',

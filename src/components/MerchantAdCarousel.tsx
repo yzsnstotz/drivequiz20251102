@@ -134,8 +134,8 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
 
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
-        <div className="text-center text-gray-500 py-8">加载中...</div>
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 mb-6 shadow-ios-sm dark:shadow-ios-dark-sm">
+        <div className="text-center text-gray-500 dark:text-gray-400 py-8">加载中...</div>
       </div>
     );
   }
@@ -145,11 +145,11 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
   }
 
   return (
-    <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm">
+    <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 mb-6 shadow-ios-sm dark:shadow-ios-dark-sm">
       <div className="mb-4">
-        <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
         {description && (
-          <p className="text-gray-600 text-sm mt-1">{description}</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">{description}</p>
         )}
       </div>
       <div className="relative">

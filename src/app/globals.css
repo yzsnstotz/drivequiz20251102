@@ -28,10 +28,147 @@
 /* iOS风格卡片阴影 */
 @layer components {
   .ios-card {
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    box-shadow: 
+      0 1px 2px 0 rgba(0, 0, 0, 0.03),
+      0 1px 3px 0 rgba(0, 0, 0, 0.08),
+      0 0 0 0.5px rgba(0, 0, 0, 0.02);
   }
   
   .ios-card-hover {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 
+      0 2px 4px 0 rgba(0, 0, 0, 0.04),
+      0 4px 8px 0 rgba(0, 0, 0, 0.06),
+      0 0 0 0.5px rgba(0, 0, 0, 0.02);
+    transform: translateY(-1px);
+  }
+  
+  .ios-button {
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  .ios-button:active {
+    transform: scale(0.97);
+    opacity: 0.8;
+  }
+  
+  .ios-input {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  
+  .ios-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  
+  .ios-switch {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .ios-switch-thumb {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .ios-loading {
+    animation: ios-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes ios-pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+  
+  .ios-bounce {
+    animation: ios-bounce 1.4s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+  }
+  
+  @keyframes ios-bounce {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-25%);
+    }
+  }
+  
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scale-in 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .ios-nav-blur {
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    background-color: rgba(255, 255, 255, 0.72);
+  }
+  
+  .ios-nav-blur-dark {
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    background-color: rgba(28, 28, 30, 0.8);
+  }
+  
+  /* iOS暗色模式全局样式 */
+  .dark {
+    color-scheme: dark;
+  }
+  
+  .dark body {
+    background-color: #000000;
+    color: #FFFFFF;
+  }
+  
+  /* iOS暗色模式下的输入框 */
+  .dark .ios-input {
+    background-color: #1C1C1E;
+    border-color: #38383A;
+    color: #FFFFFF;
+  }
+  
+  .dark .ios-input:focus {
+    border-color: #0A84FF;
+    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.1);
+  }
+  
+  /* iOS暗色模式下的按钮 */
+  .dark .ios-button {
+    color: #0A84FF;
+  }
+  
+  /* iOS暗色模式下的卡片 */
+  .dark .ios-card {
+    background-color: #1C1C1E;
+    box-shadow: 
+      0 1px 2px 0 rgba(0, 0, 0, 0.3),
+      0 1px 3px 0 rgba(0, 0, 0, 0.4);
   }
 }
