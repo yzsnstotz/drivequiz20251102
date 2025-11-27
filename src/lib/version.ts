@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 13:21:10（修复 NextAuth route 类型错误，将 Request 改为 NextRequest）
-const BUILD_TIME = "2025-11-27 13:21:10";
+// 最后更新：2025-11-27 13:22:30（修复 NextAuth logger 类型错误，调整 logger 参数类型）
+const BUILD_TIME = "2025-11-27 13:22:30";
 
 /**
  * 获取版本号（构建时间）

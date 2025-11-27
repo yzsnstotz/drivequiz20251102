@@ -282,19 +282,19 @@ export const authOptions: NextAuthConfig = {
 
   // ✅ 打开 Auth.js 内建 logger，捕获真实错误
   logger: {
-    error(code, metadata) {
-      console.error("[NextAuth][Error]", code, metadata);
+    error(error) {
+      console.error("[NextAuth][Error]", error);
     },
-    warn(code, metadata) {
-      console.warn("[NextAuth][Warn]", code, metadata);
+    warn(message) {
+      console.warn("[NextAuth][Warn]", message);
     },
-    debug(code, metadata) {
+    debug(message) {
       // 只在本地和预览环境输出 debug，避免生产过多日志
       if (process.env.NODE_ENV !== "production") {
-        console.log("[NextAuth][Debug]", code, metadata);
+        console.log("[NextAuth][Debug]", message);
       }
     },
-  },
+  } as any,
 
   // 添加错误处理和配置验证
   events: {
