@@ -4,9 +4,24 @@
 const isProduction = process.env.NODE_ENV === "production";
 if (isProduction && process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
   throw new Error(
-    "[Security][FATAL] NODE_TLS_REJECT_UNAUTHORIZED=0 detected in production. " +
-    "This disables TLS certificate verification and is strictly forbidden. " +
-    "Please remove NODE_TLS_REJECT_UNAUTHORIZED from the environment variables on Vercel."
+    "\n" +
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+    "  [Security][FATAL] NODE_TLS_REJECT_UNAUTHORIZED=0 detected in production\n" +
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+    "\n" +
+    "  This disables TLS certificate verification and is strictly forbidden.\n" +
+    "  This is a critical security risk that could expose your application to\n" +
+    "  man-in-the-middle attacks.\n" +
+    "\n" +
+    "  🔧 How to fix:\n" +
+    "  1. Go to Vercel Dashboard > Your Project > Settings > Environment Variables\n" +
+    "  2. Find and DELETE the variable: NODE_TLS_REJECT_UNAUTHORIZED\n" +
+    "  3. Redeploy your application\n" +
+    "\n" +
+    "  ⚠️  Note: If you need this for database connections, use connection-level\n" +
+    "     configuration (rejectUnauthorized: false) instead of a global env variable.\n" +
+    "\n" +
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
   );
 }
 
