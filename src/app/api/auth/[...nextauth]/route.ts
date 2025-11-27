@@ -14,22 +14,23 @@ import path from "path";
 
 // 延迟初始化 NextAuth，避免构建时模块解析问题
 // 使用绝对路径 require，完全绕过 webpack 的静态分析
-let handler: ReturnType<typeof NextAuth> | null = null;
+let handlers: { GET: any; POST: any } | null = null;
 
-function getHandler() {
-  if (!handler) {
+function getHandlers() {
+  if (!handlers) {
     // 使用绝对路径 require，避免 webpack 构建时解析
     const authPath = path.join(process.cwd(), "src", "lib", "auth");
     const authModule = require(authPath);
     const { authOptions } = authModule;
-    handler = NextAuth(authOptions);
+    const nextAuth = NextAuth(authOptions);
+    handlers = nextAuth.handlers;
   }
-  return handler;
+  return handlers;
 }
 
-// NextAuth v5 正确用法：直接导出 handler 作为 GET 和 POST
+// NextAuth v5 正确用法：解构 handlers 对象导出 GET 和 POST
 // 路由层只做请求分发，不承载业务逻辑
 // 符合 A1：路由层禁止承载业务逻辑，只做请求分发
-const authHandler = getHandler();
-export const { GET, POST } = authHandler;
+const authHandlers = getHandlers();
+export const { GET, POST } = authHandlers;
 
