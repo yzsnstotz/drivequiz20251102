@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-27 13:40:00（修复 NextAuth UnknownAction 错误，移除 handlers 包装函数，直接导出 handlers）
-const BUILD_TIME = "2025-11-27 13:40:00";
+// 最后更新：2025-11-27 20:11:41（Google OAuth redirect_uri_mismatch 错误 v2 修复：删除 VERCEL_URL 回退，强校验 NEXTAUTH_URL）
+const BUILD_TIME = "2025-11-27 20:11:41";
 
 /**
  * 获取版本号（构建时间）
