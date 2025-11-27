@@ -2,7 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 
+// 检测是否在构建阶段
+const IS_BUILD_TIME =
+  typeof process.env.NEXT_PHASE !== "undefined" &&
+  process.env.NEXT_PHASE === "phase-production-build";
+
 export async function POST(request: NextRequest) {
+  // 构建阶段不做任何 DB 读写，直接返回一个安全的占位响应
+  if (IS_BUILD_TIME) {
+    return NextResponse.json(
+      {
+        ok: true,
+        buildTimeStub: true,
+      },
+      { status: 200 }
+    );
+  }
+
   try {
     const session = await auth();
 

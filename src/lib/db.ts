@@ -927,68 +927,19 @@ function createPlaceholderDb(): Kysely<Database> {
         executeQuery: async () => ({ rows: [] }),
       };
       
-      // 创建一个基础对象，包含所有必需的方法
-      const createUpdateQueryBuilder = () => {
-        const builder: any = {
-          execute: async function() {
-            // 在 execute() 方法中，Kysely 可能会访问 this.getExecutor()
-            // 确保 this 指向 builder 对象
-            return [];
-          },
-          getExecutor: () => sharedExecutor,
-        };
-        // 确保 execute 方法绑定到 builder
-        builder.execute = builder.execute.bind(builder);
-        // 使用 Proxy 确保任何属性访问都返回一个有效的对象
-        return new Proxy(builder, {
-          get(target, prop) {
-            if (prop in target) {
-              const value = target[prop];
-              // 如果是方法，确保它绑定到 target
-              if (typeof value === 'function') {
-                return value.bind(target);
-              }
-              return value;
-            }
-            // 如果访问的属性不存在，返回一个具有 getExecutor 的对象
-            if (typeof prop === 'string' && prop !== 'then' && prop !== 'catch' && prop !== 'finally') {
-              return () => createUpdateQueryBuilder();
-            }
-            return undefined;
-          },
-        });
-      };
-      
       const updateBuilder: any = {
-        set: (updates: any) => {
+        set: (_updates: any) => {
           const setBuilder: any = {
-            where: (...args: any[]) => createUpdateQueryBuilder(),
+            where: (..._args: any[]) => {
+              return {
+                execute: async () => [],
+                getExecutor: () => sharedExecutor,
+              };
+            },
             execute: async () => [],
             getExecutor: () => sharedExecutor,
           };
-          // 使用 Proxy 包装 setBuilder，确保所有属性访问都返回有效的对象
-          return new Proxy(setBuilder, {
-            get(target, prop) {
-              if (prop in target) {
-                const value = target[prop];
-                // 如果是方法，确保它绑定到 target
-                if (typeof value === 'function') {
-                  return value.bind(target);
-                }
-                return value;
-              }
-              // 如果访问的属性不存在，返回一个具有 getExecutor 的对象
-              // 但不要返回函数，而是返回一个对象
-              if (typeof prop === 'string' && prop !== 'then' && prop !== 'catch' && prop !== 'finally' && prop !== 'Symbol' && !prop.startsWith('Symbol')) {
-                // 返回一个具有 getExecutor 的对象，而不是函数
-                return {
-                  getExecutor: () => sharedExecutor,
-                  execute: async () => [],
-                };
-              }
-              return undefined;
-            },
-          });
+          return setBuilder;
         },
         getExecutor: () => sharedExecutor,
       };
@@ -1011,10 +962,14 @@ function createPlaceholderDb(): Kysely<Database> {
 // 延迟初始化：只在运行时访问时创建实例
 export const db = new Proxy({} as Kysely<Database>, {
   get(_target, prop) {
-    // 检查是否在构建阶段或没有数据库连接字符串
-    // 如果是，返回占位符对象，避免抛出错误
+    // 检查是否有数据库连接字符串
     const hasDbUrl = !!(process.env.DATABASE_URL || process.env.POSTGRES_URL);
-    const shouldUsePlaceholder = isBuildTime() || !hasDbUrl;
+    
+    // 占位符使用条件：
+    // 1. 测试环境 (NODE_ENV === "test")
+    // 2. 没有数据库连接字符串
+    // 在 Vercel 生产环境，只要配置了 DATABASE_URL，就会使用真实数据库
+    const shouldUsePlaceholder = process.env.NODE_ENV === "test" || !hasDbUrl;
     
     if (shouldUsePlaceholder) {
       const placeholder = createPlaceholderDb();
