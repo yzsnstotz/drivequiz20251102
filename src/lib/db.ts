@@ -7,7 +7,6 @@
 
 import { Kysely, PostgresDialect, Generated } from "kysely";
 import { Pool } from "pg";
-import { initPgSslDefaults } from "./pgSslDefaults";
 
 // ------------------------------------------------------------
 // 1️⃣ activation_codes 表结构定义
@@ -783,14 +782,16 @@ function createDbInstance(): Kysely<Database> {
     return createPlaceholderDb();
   }
 
-  // 初始化 pg 默认 SSL 配置（统一为所有使用 pg 的客户端设置 SSL 策略）
-  initPgSslDefaults(connectionString);
+  // 验证连接字符串存在
+  if (!connectionString) {
+    throw new Error("[DB][Config] DATABASE_URL is not set");
+  }
 
-  console.log("[DB][Config] Using connection string (first 80 chars):",
+  console.log("[DB][Config] Using DATABASE_URL (first 80 chars):",
     connectionString.substring(0, 80) + "...",
   );
 
-  // 创建 Pool 配置对象
+  // 创建 Pool 配置对象（只保留必需字段，所有连接参数由 connectionString 自动解析）
   const poolConfig: {
     connectionString: string;
     max?: number; // 最大连接数
@@ -801,19 +802,16 @@ function createDbInstance(): Kysely<Database> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
-    // ❌ 不再显式传 ssl，统一走 pg.defaults.ssl
-    // ssl 相关逻辑已在 initPgSslDefaults 中处理
     // 连接池配置（针对批量处理场景优化）
     max: 20, // 最大连接数（适合大多数应用）
     min: 2, // 最小连接数（保持一些连接活跃）
     idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
-    connectionTimeoutMillis: 30000, // ✅ 修复：连接超时30秒（批量处理需要更长时间，从10秒增加到30秒）
-    statement_timeout: 60000, // ✅ 修复：语句超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
-    query_timeout: 60000, // ✅ 修复：查询超时60秒（批量处理可能需要更长时间，从30秒增加到60秒）
+    connectionTimeoutMillis: 30000, // 连接超时30秒（批量处理需要更长时间）
+    statement_timeout: 60000, // 语句超时60秒（批量处理可能需要更长时间）
+    query_timeout: 60000, // 查询超时60秒（批量处理可能需要更长时间）
   };
 
   // 创建 Pool 实例并传递给 PostgresDialect
-  // 注意：必须在传递给 PostgresDialect 之前创建 Pool 实例，以确保 SSL 配置正确应用
   const pool = new Pool(poolConfig);
   dbPool = pool; // 保存 Pool 实例以便后续获取统计信息
 

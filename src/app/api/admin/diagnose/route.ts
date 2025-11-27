@@ -10,7 +10,6 @@ export const fetchCache = "force-no-store";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { Pool } from "pg";
-import { initPgSslDefaults } from "@/lib/pgSslDefaults";
 
 /**
  * GET /api/admin/diagnose
@@ -70,10 +69,7 @@ export async function GET() {
     );
   }
 
-  // 初始化 pg 默认 SSL 配置（统一为所有使用 pg 的客户端设置 SSL 策略）
-  initPgSslDefaults(connectionString);
-  
-  // 测试数据库连接（使用 pg.defaults.ssl）
+  // 测试数据库连接（所有连接参数由 connectionString 自动解析）
   const poolConfig: {
     connectionString: string;
   } = {
