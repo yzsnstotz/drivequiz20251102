@@ -86,7 +86,7 @@ export default function HomePage() {
   const [adSlots, setAdSlots] = useState<AdSlotConfig[]>([]);
   const [showSplash, setShowSplash] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
-  const [splashDuration, setSplashDuration] = useState(3);
+  const [splashDuration, setSplashDuration] = useState(4);
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
 
   useEffect(() => {
@@ -100,18 +100,15 @@ export default function HomePage() {
             const items = data.data.items || [];
             setAdSlots(items);
             
-            // 检查启动页广告 - 只在首次访问时显示
+            // 检查启动页广告 - 每次访问都显示
             const checkSplashAd = async () => {
-              // 检查是否已经显示过启动页广告
-              const hasShownSplash = localStorage.getItem("splash_ad_shown");
-              if (hasShownSplash === "true") {
-                return false; // 已显示过，不需要检查弹窗
-              }
-
               const splashConfig = items.find((item: AdSlotConfig & { splashDuration?: number }) => item.slotKey === "splash_screen");
               if (splashConfig) {
+                // 如果配置中有时长，使用配置的时长+1秒；否则使用默认4秒
                 if (splashConfig.splashDuration) {
-                  setSplashDuration(splashConfig.splashDuration);
+                  setSplashDuration(splashConfig.splashDuration + 1);
+                } else {
+                  setSplashDuration(4);
                 }
                 try {
                   const res = await fetch("/api/merchant-ads?adSlot=splash_screen");
@@ -119,8 +116,6 @@ export default function HomePage() {
                     const data = await res.json();
                     if (data.ok && data.data.items && data.data.items.length > 0) {
                       setShowSplash(true);
-                      // 标记为已显示
-                      localStorage.setItem("splash_ad_shown", "true");
                       return true; // 有启动页广告，不需要检查弹窗
                     }
                   } else {
