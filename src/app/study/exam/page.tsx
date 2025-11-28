@@ -21,12 +21,12 @@ function ExamModePageFallback() {
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex items-center space-x-4 mb-6">
-        <h1 className="text-xl font-bold text-gray-900">{t("study.mode.exam")}</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">{t("study.mode.exam")}</h1>
       </div>
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
         <div className="flex flex-col items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">{t("common.loading")}</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
+          <p className="text-gray-600 dark:text-ios-dark-text-secondary">{t("common.loading")}</p>
         </div>
       </div>
     </div>
@@ -340,11 +340,11 @@ function ExamModePageContent() {
             {t("study.mode.exam")}
           </h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
           <div className="flex flex-col items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-gray-600">{t("common.loading")}</p>
-            <p className="text-sm text-gray-500 mt-2">{t("study.loadingQuestions")}</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
+            <p className="text-gray-600 dark:text-ios-dark-text-secondary">{t("common.loading")}</p>
+            <p className="text-sm text-gray-500 dark:text-ios-dark-text-secondary mt-2">{t("study.loadingQuestions")}</p>
           </div>
         </div>
       </div>
@@ -382,13 +382,13 @@ function ExamModePageContent() {
                 />
               </svg>
             </div>
-            <p className="text-gray-900 font-medium mb-2">
+            <p className="text-gray-900 dark:text-ios-dark-text font-medium mb-2">
               {questions.length === 0
                 ? t("question.loadError")
                 : t("question.loading")}
             </p>
             {questions.length === 0 && (
-              <p className="text-sm text-gray-600 text-center max-w-md">
+              <p className="text-sm text-gray-600 dark:text-ios-dark-text-secondary text-center max-w-md">
                 {t("study.noQuestionsFound")}
               </p>
             )}
@@ -445,27 +445,27 @@ function ExamModePageContent() {
       <div className="flex items-center space-x-4 mb-6">
         <button
           onClick={() => router.push("/study")}
-          className="text-gray-600 hover:text-gray-900"
+          className="text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">
           {t("study.mode.exam")}
         </h1>
         <div className="ml-auto flex items-center space-x-4">
-          <div className="flex items-center space-x-2 text-red-600">
+          <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
             <Clock className="h-5 w-5" />
             <span className="font-medium">{formatTime(timeLeft)}</span>
           </div>
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">
             {t("exam.progress")}: {currentIndex + 1}/{questions.length}
           </span>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
         <div className="flex justify-between items-center mb-4">
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">
             {t("question.current")} {currentIndex + 1}/{questions.length}
           </span>
           <div className="flex items-center space-x-3">
@@ -491,7 +491,7 @@ function ExamModePageContent() {
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{contentText || ""}</p>
+          <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">{contentText || ""}</p>
           {currentQuestion.image && (
             <QuestionImage
               src={currentQuestion.image}
@@ -519,13 +519,13 @@ function ExamModePageContent() {
                     className={`w-full p-4 rounded-xl text-left transition-colors ${
                       showAnswer
                         ? isCorrectOption
-                          ? "bg-green-50 border-2 border-green-500"
+                          ? "bg-green-50 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-400 text-gray-900 dark:text-ios-dark-text"
                           : isSelected
-                          ? "bg-red-50 border-2 border-red-500"
-                          : "bg-gray-50 border-2 border-transparent"
+                          ? "bg-red-50 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-400 text-gray-900 dark:text-ios-dark-text"
+                          : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent text-gray-900 dark:text-ios-dark-text"
                         : isSelected
-                        ? "bg-blue-50 border-2 border-blue-600"
-                        : "bg-gray-50 border-2 border-transparent hover:bg-gray-100"
+                        ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-ios-dark-text"
+                        : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary/80 text-gray-900 dark:text-ios-dark-text"
                     }`}
                   >
                     {option === "true" ? t("exam.true") : t("exam.false")}
@@ -554,13 +554,13 @@ function ExamModePageContent() {
                     className={`w-full p-4 rounded-xl text-left transition-colors ${
                       showAnswer
                         ? isCorrectOption
-                          ? "bg-green-50 border-2 border-green-500"
+                          ? "bg-green-50 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-400 text-gray-900 dark:text-ios-dark-text"
                           : isSelected
-                          ? "bg-red-50 border-2 border-red-500"
-                          : "bg-gray-50 border-2 border-transparent"
+                          ? "bg-red-50 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-400 text-gray-900 dark:text-ios-dark-text"
+                          : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent text-gray-900 dark:text-ios-dark-text"
                         : isSelected
-                        ? "bg-blue-50 border-2 border-blue-600"
-                        : "bg-gray-50 border-2 border-transparent hover:bg-gray-100"
+                        ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-ios-dark-text"
+                        : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary/80 text-gray-900 dark:text-ios-dark-text"
                     }`}
                   >
                     <span className="font-medium">{optionLabel}: </span>
@@ -572,14 +572,14 @@ function ExamModePageContent() {
           )}
         </div>
 
-        <div className="bg-white border-t py-4 flex justify-between items-center">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary border-t dark:border-ios-dark-border py-4 flex justify-between items-center">
           <button
             onClick={handlePrevious}
             disabled={currentIndex === 0}
             className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
               currentIndex === 0
-                ? "text-gray-400 cursor-not-allowed"
-                : "text-gray-600 hover:text-gray-900"
+                ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                : "text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text"
             }`}
           >
             <ChevronLeft className="h-5 w-5" />
@@ -595,7 +595,7 @@ function ExamModePageContent() {
                 checkAnswer(selectedAnswer);
               }
             }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
           >
             {showAnswer ? t("question.next") : t("exam.submit")}
           </button>
@@ -605,8 +605,8 @@ function ExamModePageContent() {
             disabled={currentIndex === questions.length - 1}
             className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
               currentIndex === questions.length - 1
-                ? "text-gray-400 cursor-not-allowed"
-                : "text-gray-600 hover:text-gray-900"
+                ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                : "text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text"
             }`}
           >
             <span>{t("question.next")}</span>
@@ -615,14 +615,14 @@ function ExamModePageContent() {
         </div>
 
         {showAnswer && (
-          <div className="mt-6 p-4 rounded-lg border bg-blue-50 border-blue-200 animate-fadeIn">
-            <h3 className="text-gray-800 font-medium mb-2">
+          <div className="mt-6 p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 animate-fadeIn">
+            <h3 className="text-gray-800 dark:text-ios-dark-text font-medium mb-2">
               {isCorrect()
                 ? t("question.correctAnswer")
                 : t("question.wrongAnswer")}
             </h3>
             {explanationText && (
-              <p className="text-gray-700">{explanationText}</p>
+              <p className="text-gray-700 dark:text-ios-dark-text-secondary">{explanationText}</p>
             )}
           </div>
         )}
