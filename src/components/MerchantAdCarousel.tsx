@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 interface MerchantAd {
   id: number;
@@ -26,6 +27,7 @@ interface MerchantAdCarouselProps {
 }
 
 function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAdCarouselProps) {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [merchants, setMerchants] = useState<MerchantAd[]>([]);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -135,7 +137,7 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
   if (loading) {
     return (
       <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 mb-6 shadow-ios-sm dark:shadow-ios-dark-sm">
-        <div className="text-center text-gray-500 dark:text-gray-400 py-8">加载中...</div>
+        <div className="text-center text-gray-500 dark:text-gray-400 py-8">{t('common.loading')}</div>
       </div>
     );
   }

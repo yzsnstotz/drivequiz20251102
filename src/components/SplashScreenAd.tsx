@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
+import { useLanguage } from "@/lib/i18n";
 
 interface MerchantAd {
   id: number;
@@ -16,6 +17,7 @@ interface SplashScreenAdProps {
 }
 
 export default function SplashScreenAd({ duration, onClose }: SplashScreenAdProps) {
+  const { t } = useLanguage();
   const [merchant, setMerchant] = useState<MerchantAd | null>(null);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(duration);
@@ -66,7 +68,7 @@ export default function SplashScreenAd({ duration, onClose }: SplashScreenAdProp
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
-        <div className="text-gray-500">加载中...</div>
+        <div className="text-gray-500">{t('common.loading')}</div>
       </div>
     );
   }
