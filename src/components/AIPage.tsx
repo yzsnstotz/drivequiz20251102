@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Send } from "lucide-react";
+import Image from "next/image";
 import { detectLanguage, type Language, useLanguage } from "@/lib/i18n";
 import { callAiDirect, type AiProviderKey } from "@/lib/aiClient.front";
 import { getAiExpectedTime } from "@/lib/aiStatsClient";
@@ -518,9 +519,23 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       {/* 消息区 */}
       <div
         ref={listRef}
-        className="flex-1 space-y-4 overflow-y-auto p-4 pb-6 min-h-0"
+        className="flex-1 space-y-4 overflow-y-auto p-4 pb-6 min-h-0 relative"
         aria-live="polite"
       >
+        {/* Logo水印背景 */}
+        <div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center opacity-10 dark:opacity-5">
+          <div className="relative w-64 h-64 md:w-80 md:h-80 backdrop-blur-sm">
+            <Image
+              src="/favicon.png"
+              alt="ZALEM Logo"
+              fill
+              sizes="(max-width: 768px) 256px, 320px"
+              className="object-contain"
+              priority={false}
+            />
+          </div>
+        </div>
+        <div className="relative z-10">
         {messages.map((m) => {
           const isUser = m.role === "user";
           return (
@@ -646,6 +661,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* 底部输入区 - 移动端优化：确保不被浏览器导航栏遮挡 */}

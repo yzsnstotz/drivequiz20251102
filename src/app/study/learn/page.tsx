@@ -80,7 +80,34 @@ function StudyModePageContent() {
           stageTag: stage === "provisional" ? "provisional" : "regular",
         });
 
+        // 调试：找出被过滤掉的题目
+        const filteredOut = allQuestions.filter((q) => {
+          const qWithTags = q as Question & {
+            license_type_tag?: string[];
+            stage_tag?: "provisional" | "regular" | "full" | "both" | null;
+          };
+          const matchesLicense = !qWithTags.license_type_tag || 
+            qWithTags.license_type_tag.length === 0 ||
+            qWithTags.license_type_tag.includes(licenseType) ||
+            qWithTags.license_type_tag.includes("common_all");
+          const matchesStage = !qWithTags.stage_tag ||
+            (stage === "provisional" && (qWithTags.stage_tag === "provisional" || qWithTags.stage_tag === "both")) ||
+            (stage === "regular" && (qWithTags.stage_tag === "regular" || qWithTags.stage_tag === "full" || qWithTags.stage_tag === "both"));
+          return !(matchesLicense && matchesStage);
+        });
+
         console.log(`[StudyMode] Loaded ${allQuestions.length} total questions, filtered to ${filtered.length} questions for licenseType=${licenseType}, stage=${stage}`);
+        if (filteredOut.length > 0) {
+          console.log(`[StudyMode] Filtered out ${filteredOut.length} questions:`, filteredOut.map(q => ({
+            id: q.id,
+            license_type_tag: (q as any).license_type_tag,
+            stage_tag: (q as any).stage_tag,
+            category: q.category
+          })));
+        }
+        if (allQuestions.length - filtered.length !== filteredOut.length) {
+          console.warn(`[StudyMode] Mismatch: expected ${allQuestions.length - filtered.length} filtered out, but found ${filteredOut.length}`);
+        }
 
         if (filtered.length === 0) {
           console.warn("No questions found for filters:", {

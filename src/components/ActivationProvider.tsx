@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useRe
 import { usePathname } from 'next/navigation';
 import ActivationModal from './ActivationModal';
 import SuccessModal from './SuccessModal';
+import { saveLoginMemory, getLoginMemory } from '@/lib/loginMemory';
 
 // 激活成功后保存到 localStorage 的 key
 const ACTIVATION_KEY = 'drive-quiz-activated';
@@ -25,6 +26,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
   const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5分钟
   const isCheckingRef = useRef<boolean>(false); // 防止并发检查
   const abortControllerRef = useRef<AbortController | null>(null); // 用于取消正在进行的请求
+  const LAST_VALID_CHECK_TIME_KEY = 'lastValidActivationCheckTime'; // 最后成功检查的时间
 
   const storeUserId = useCallback((userId: string | null) => {
     if (typeof window === 'undefined') return;
@@ -144,8 +146,24 @@ export default function ActivationProvider({ children }: ActivationProviderProps
         return;
       }
 
-      // 如果没有邮箱也没有激活状态，显示激活模态框
+      // 如果没有邮箱也没有激活状态，检查是否有最近的成功检查记录
       if (!email) {
+        // 检查是否有最近24小时内的成功检查记录
+        const lastValidCheckTime = localStorage.getItem(LAST_VALID_CHECK_TIME_KEY);
+        if (lastValidCheckTime) {
+          const timeSinceLastValidCheck = Date.now() - parseInt(lastValidCheckTime, 10);
+          const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+          if (timeSinceLastValidCheck < TWENTY_FOUR_HOURS) {
+            // 24小时内有成功检查记录，保持激活状态
+            console.log('[ActivationProvider] No email but recent valid check found, keeping activation state', {
+              timeSinceLastValidCheck: Math.round(timeSinceLastValidCheck / 1000 / 60) + ' minutes ago'
+            });
+            setIsActivated(true);
+            setShowModal(false);
+            isCheckingRef.current = false;
+            return;
+          }
+        }
         setIsActivated(false);
         setShowModal(true);
         storeUserId(null);
@@ -193,6 +211,23 @@ export default function ActivationProvider({ children }: ActivationProviderProps
           status: response.status,
           statusText: response.statusText
         });
+        // 检查是否有最近24小时内的成功检查记录
+        const lastValidCheckTime = localStorage.getItem(LAST_VALID_CHECK_TIME_KEY);
+        if (lastValidCheckTime) {
+          const timeSinceLastValidCheck = Date.now() - parseInt(lastValidCheckTime, 10);
+          const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+          if (timeSinceLastValidCheck < TWENTY_FOUR_HOURS) {
+            // 24小时内有成功检查记录，保持激活状态
+            const currentActivated = localStorage.getItem(ACTIVATION_KEY);
+            const currentEmail = localStorage.getItem(ACTIVATION_EMAIL_KEY);
+            if (currentActivated === 'true' && currentEmail) {
+              setIsActivated(true);
+              setShowModal(false);
+            }
+            isCheckingRef.current = false;
+            return;
+          }
+        }
         const currentActivated = localStorage.getItem(ACTIVATION_KEY);
         const currentEmail = localStorage.getItem(ACTIVATION_EMAIL_KEY);
         if (currentActivated === 'true' && currentEmail) {
@@ -209,6 +244,23 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       } catch (parseError) {
         // JSON解析失败，视为API错误，保持当前激活状态
         console.warn('[ActivationProvider] Failed to parse API response, keeping current activation state');
+        // 检查是否有最近24小时内的成功检查记录
+        const lastValidCheckTime = localStorage.getItem(LAST_VALID_CHECK_TIME_KEY);
+        if (lastValidCheckTime) {
+          const timeSinceLastValidCheck = Date.now() - parseInt(lastValidCheckTime, 10);
+          const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+          if (timeSinceLastValidCheck < TWENTY_FOUR_HOURS) {
+            // 24小时内有成功检查记录，保持激活状态
+            const currentActivated = localStorage.getItem(ACTIVATION_KEY);
+            const currentEmail = localStorage.getItem(ACTIVATION_EMAIL_KEY);
+            if (currentActivated === 'true' && currentEmail) {
+              setIsActivated(true);
+              setShowModal(false);
+            }
+            isCheckingRef.current = false;
+            return;
+          }
+        }
         const currentActivated = localStorage.getItem(ACTIVATION_KEY);
         const currentEmail = localStorage.getItem(ACTIVATION_EMAIL_KEY);
         if (currentActivated === 'true' && currentEmail) {
@@ -222,9 +274,20 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       if (result.ok && result.data?.valid === true) {
         // 激活状态有效，更新本地状态
         localStorage.setItem(ACTIVATION_KEY, 'true');
+        // 记录最后成功检查的时间
+        localStorage.setItem(LAST_VALID_CHECK_TIME_KEY, Date.now().toString());
         setIsActivated(true);
         setShowModal(false);
         console.log('[ActivationProvider] Activation status validated successfully');
+        
+        // 更新登录记忆（如果有email）
+        if (email) {
+          const memory = getLoginMemory();
+          if (memory) {
+            // 如果已有登录记忆，更新email
+            saveLoginMemory(memory.provider, email);
+          }
+        }
         
         // 记录登录行为（异步，不阻塞）
         // 注意：这里会在服务器端检查是否需要记录（避免频繁记录）
@@ -309,13 +372,28 @@ export default function ActivationProvider({ children }: ActivationProviderProps
       }
       // 重要：出错时不清除激活状态，避免误判导致用户被强制激活
       // 如果有本地激活状态，继续信任本地状态
+      // 检查是否有最近24小时内的成功检查记录
+      const lastValidCheckTime = localStorage.getItem(LAST_VALID_CHECK_TIME_KEY);
+      let shouldKeepActivation = false;
+      
+      if (lastValidCheckTime) {
+        const timeSinceLastValidCheck = Date.now() - parseInt(lastValidCheckTime, 10);
+        const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+        if (timeSinceLastValidCheck < TWENTY_FOUR_HOURS) {
+          shouldKeepActivation = true;
+        }
+      }
+      
       const currentActivated = localStorage.getItem(ACTIVATION_KEY);
       const currentEmail = localStorage.getItem(ACTIVATION_EMAIL_KEY);
-      if (currentActivated === 'true' && currentEmail) {
+      if ((currentActivated === 'true' && currentEmail) || shouldKeepActivation) {
         // 保持激活状态，不显示模态框
         setIsActivated(true);
         setShowModal(false);
-        console.log('[ActivationProvider] Keeping activation state due to check error');
+        console.log('[ActivationProvider] Keeping activation state due to check error', {
+          hasRecentValidCheck: shouldKeepActivation,
+          hasLocalActivation: currentActivated === 'true'
+        });
       }
       isCheckingRef.current = false;
     } finally {
@@ -422,7 +500,7 @@ export default function ActivationProvider({ children }: ActivationProviderProps
               // 静默失败，保持激活状态
             });
           }
-        }, 30 * 60 * 1000); // 30分钟
+        }, 60 * 60 * 1000); // 60分钟
       }
     } else if (!email) {
       // 没有邮箱，需要激活
@@ -517,6 +595,13 @@ export default function ActivationProvider({ children }: ActivationProviderProps
 
         if (result.data?.userid) {
           storeUserId(result.data.userid);
+        }
+        
+        // 更新登录记忆（如果有email和provider信息）
+        // 注意：激活码登录可能没有provider，这里只更新email（如果有记忆）
+        const memory = getLoginMemory();
+        if (memory && email) {
+          saveLoginMemory(memory.provider, email);
         }
         
         // 保存有效期信息用于显示

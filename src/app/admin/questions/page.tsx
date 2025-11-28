@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { ApiError, apiFetch, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 
 type QuestionType = "single" | "multiple" | "truefalse";
@@ -1013,7 +1014,16 @@ export default function QuestionsPage() {
     <div className="space-y-3 sm:space-y-4">
       {/* 顶部操作区 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-        <h2 className="text-base sm:text-lg font-semibold">题库管理</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-base sm:text-lg font-semibold">题库管理</h2>
+          <Link
+            href="/admin/questions/list"
+            className="inline-flex items-center rounded-xl bg-indigo-500 text-white text-sm font-medium px-3 py-2 hover:bg-indigo-600 active:bg-indigo-700 touch-manipulation transition-colors shadow-sm"
+            title="切换到列表视图"
+          >
+            列表视图
+          </Link>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
             className="inline-flex items-center rounded-xl bg-green-500 text-white text-sm font-medium px-4 py-2.5 sm:px-3 sm:py-2 hover:bg-green-600 active:bg-green-700 touch-manipulation transition-colors shadow-sm"
@@ -1491,7 +1501,7 @@ export default function QuestionsPage() {
             value={filters.search}
             onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-            placeholder="搜索题目内容、选项、解析..."
+            placeholder="搜索题目ID、内容、选项、解析..."
           />
         </div>
         <button

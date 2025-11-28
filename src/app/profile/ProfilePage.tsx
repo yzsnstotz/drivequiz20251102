@@ -45,6 +45,7 @@ function ProfilePage() {
         document.cookie = 'USER_TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
         // 清除其他可能的激活相关存储
         localStorage.removeItem('activation-status');
+        // 注意：不清除登录记忆，允许快速重新登录
         alert(t('profile.clearActivationSuccess'));
         window.location.reload();
       }

@@ -791,8 +791,21 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
     // 内容搜索
     if (search) {
-      const searchLower = search.toLowerCase();
+      const searchLower = search.toLowerCase().trim();
+      const searchNum = search.trim();
+      
+      // 检查是否是纯数字（用于 ID 搜索）
+      const isNumericSearch = /^\d+$/.test(searchNum);
+      
       allQuestions = allQuestions.filter((q) => {
+        // 如果搜索词是纯数字，优先匹配题目 ID
+        if (isNumericSearch) {
+          const questionId = typeof q.id === 'number' ? q.id : parseInt(String(q.id), 10);
+          if (!isNaN(questionId) && String(questionId) === searchNum) {
+            return true; // 精确匹配 ID
+          }
+        }
+        
         // 搜索题目内容、选项、解释
         // 处理多语言content字段
         let contentText = '';

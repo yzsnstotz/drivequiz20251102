@@ -1472,7 +1472,7 @@ export default function QuestionsPage() {
             value={filters.search}
             onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-            placeholder="搜索题目内容、选项、解析..."
+            placeholder="搜索题目ID、内容、选项、解析..."
           />
         </div>
         <button
@@ -1588,27 +1588,27 @@ export default function QuestionsPage() {
                       </span>
                     </td>
                     {/* 题目内容 - 中文 */}
-                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-blue-50" title={getQuestionContent(item.content, 'zh') || ''}>
-                      {getQuestionContent(item.content, 'zh') || '—'}
+                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-blue-50" title={String(getQuestionContent(item.content, 'zh') || '')}>
+                      {String(getQuestionContent(item.content, 'zh') || '—')}
                     </td>
                     {/* 题目内容 - 日文 */}
-                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-green-50" title={getQuestionContent(item.content, 'ja') || ''}>
-                      {getQuestionContent(item.content, 'ja') || '—'}
+                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-green-50" title={String(getQuestionContent(item.content, 'ja') || '')}>
+                      {String(getQuestionContent(item.content, 'ja') || '—')}
                     </td>
                     {/* 题目内容 - 英文 */}
-                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-yellow-50" title={getQuestionContent(item.content, 'en') || ''}>
-                      {getQuestionContent(item.content, 'en') || '—'}
+                    <td className="py-2 px-3 text-xs max-w-xs truncate bg-yellow-50" title={String(getQuestionContent(item.content, 'en') || '')}>
+                      {String(getQuestionContent(item.content, 'en') || '—')}
                     </td>
                     <td className="py-2 px-3 text-xs">
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
-                        : item.correctAnswer}
+                        : String(item.correctAnswer || '—')}
                     </td>
                     {/* 解析 - 中文 */}
                     <td className="py-2 px-3 text-xs max-w-xs bg-blue-50">
                       {item.explanation ? (
-                        <div className="truncate" title={getQuestionContent(item.explanation, 'zh') || ''}>
-                          {getQuestionContent(item.explanation, 'zh') || '—'}
+                        <div className="truncate" title={String(getQuestionContent(item.explanation, 'zh') || '')}>
+                          {String(getQuestionContent(item.explanation, 'zh') || '—')}
                         </div>
                       ) : (
                         <span className="text-gray-400 text-[10px]">—</span>
@@ -1617,8 +1617,8 @@ export default function QuestionsPage() {
                     {/* 解析 - 日文 */}
                     <td className="py-2 px-3 text-xs max-w-xs bg-green-50">
                       {item.explanation ? (
-                        <div className="truncate" title={getQuestionContent(item.explanation, 'ja') || ''}>
-                          {getQuestionContent(item.explanation, 'ja') || '—'}
+                        <div className="truncate" title={String(getQuestionContent(item.explanation, 'ja') || '')}>
+                          {String(getQuestionContent(item.explanation, 'ja') || '—')}
                         </div>
                       ) : (
                         <span className="text-gray-400 text-[10px]">—</span>
@@ -1627,8 +1627,8 @@ export default function QuestionsPage() {
                     {/* 解析 - 英文 */}
                     <td className="py-2 px-3 text-xs max-w-xs bg-yellow-50">
                       {item.explanation ? (
-                        <div className="truncate" title={getQuestionContent(item.explanation, 'en') || ''}>
-                          {getQuestionContent(item.explanation, 'en') || '—'}
+                        <div className="truncate" title={String(getQuestionContent(item.explanation, 'en') || '')}>
+                          {String(getQuestionContent(item.explanation, 'en') || '—')}
                         </div>
                       ) : (
                         <span className="text-gray-400 text-[10px]">—</span>
@@ -2014,15 +2014,15 @@ export default function QuestionsPage() {
                   <div className="space-y-2">
                     <div className="text-sm bg-blue-50 p-2 rounded">
                       <div className="text-xs text-gray-500 mb-0.5">中文</div>
-                      <div>{getQuestionContent(item.content, 'zh') || '—'}</div>
+                      <div>{String(getQuestionContent(item.content, 'zh') || '—')}</div>
                     </div>
                     <div className="text-sm bg-green-50 p-2 rounded">
                       <div className="text-xs text-gray-500 mb-0.5">日文</div>
-                      <div>{getQuestionContent(item.content, 'ja') || '—'}</div>
+                      <div>{String(getQuestionContent(item.content, 'ja') || '—')}</div>
                     </div>
                     <div className="text-sm bg-yellow-50 p-2 rounded">
                       <div className="text-xs text-gray-500 mb-0.5">英文</div>
-                      <div>{getQuestionContent(item.content, 'en') || '—'}</div>
+                      <div>{String(getQuestionContent(item.content, 'en') || '—')}</div>
                     </div>
                   </div>
                 </div>
@@ -2031,7 +2031,7 @@ export default function QuestionsPage() {
                   <div className="text-xs">
                     {Array.isArray(item.correctAnswer)
                       ? item.correctAnswer.join(", ")
-                      : item.correctAnswer}
+                      : String(item.correctAnswer || '—')}
                   </div>
                 </div>
                 {item.explanation && (
@@ -2040,15 +2040,15 @@ export default function QuestionsPage() {
                     <div className="space-y-2">
                       <div className="text-xs text-gray-700 bg-blue-50 p-2 rounded">
                         <div className="text-xs text-gray-500 mb-0.5">中文</div>
-                        <div>{getQuestionContent(item.explanation, 'zh') || '—'}</div>
+                        <div>{String(getQuestionContent(item.explanation, 'zh') || '—')}</div>
                       </div>
                       <div className="text-xs text-gray-700 bg-green-50 p-2 rounded">
                         <div className="text-xs text-gray-500 mb-0.5">日文</div>
-                        <div>{getQuestionContent(item.explanation, 'ja') || '—'}</div>
+                        <div>{String(getQuestionContent(item.explanation, 'ja') || '—')}</div>
                       </div>
                       <div className="text-xs text-gray-700 bg-yellow-50 p-2 rounded">
                         <div className="text-xs text-gray-500 mb-0.5">英文</div>
-                        <div>{getQuestionContent(item.explanation, 'en') || '—'}</div>
+                        <div>{String(getQuestionContent(item.explanation, 'en') || '—')}</div>
                       </div>
                     </div>
                   </div>

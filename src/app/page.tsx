@@ -320,8 +320,28 @@ export default function HomePage() {
       <nav className="bg-white dark:bg-ios-dark-bg-secondary border-b dark:border-ios-dark-border">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
           <div className="flex items-center space-x-2">
-            <Truck className="h-6 w-6 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900 dark:text-white">ZALEM</span>
+            <div className="relative w-6 h-6 flex-shrink-0">
+              <Image
+                src="/favicon.png"
+                alt="ZALEM Logo"
+                fill
+                sizes="24px"
+                className="object-contain"
+                priority
+              />
+            </div>
+            <div className="flex flex-col items-start">
+              <span className="text-xl font-bold text-gray-900 dark:text-white leading-tight">
+                {language === 'ja' ? (
+                  <>
+                    <span className="block">ザレム.APP</span>
+                    <span className="text-xs font-normal text-gray-500 dark:text-gray-400">ZALEM.APP</span>
+                  </>
+                ) : (
+                  'ZALEM.APP'
+                )}
+              </span>
+            </div>
             <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">
               {getFormattedVersion()}
             </span>

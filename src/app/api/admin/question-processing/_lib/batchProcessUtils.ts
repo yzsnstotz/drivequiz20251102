@@ -465,27 +465,63 @@ export function detectLanguageByChars(text: string): "zh_like" | "ja_like" | "la
   let hasKatakana = false;
   let hasLatin = false;
   let hasCJK = false;
+  
+  // 统计字符数量，用于判断主导语言
+  let latinCount = 0;
+  let cjkCount = 0;
+  let hiraganaCount = 0;
+  let katakanaCount = 0;
+  let totalRelevantChars = 0; // 只统计相关字符，忽略标点、空格等
 
   for (const ch of s) {
     const code = ch.charCodeAt(0);
     // CJK 统一表意文字
-    if (code >= 0x4e00 && code <= 0x9fff) hasCJK = true;
+    if (code >= 0x4e00 && code <= 0x9fff) {
+      hasCJK = true;
+      cjkCount++;
+      totalRelevantChars++;
+    }
     // 平假名
-    else if (code >= 0x3040 && code <= 0x309f) hasHiragana = true;
+    else if (code >= 0x3040 && code <= 0x309f) {
+      hasHiragana = true;
+      hiraganaCount++;
+      totalRelevantChars++;
+    }
     // 片假名
-    else if (code >= 0x30a0 && code <= 0x30ff) hasKatakana = true;
+    else if (code >= 0x30a0 && code <= 0x30ff) {
+      hasKatakana = true;
+      katakanaCount++;
+      totalRelevantChars++;
+    }
     // 拉丁字母
     else if (
       (code >= 0x0041 && code <= 0x005a) ||
       (code >= 0x0061 && code <= 0x007a)
     ) {
       hasLatin = true;
+      latinCount++;
+      totalRelevantChars++;
     }
   }
 
+  // 如果同时有假名和 CJK，优先判断为日文
   if ((hasHiragana || hasKatakana) && hasCJK) return "ja_like";
+  
+  // 如果拉丁字母占主导（超过 70%），即使有少量 CJK 也判断为拉丁语系
+  // 这样可以处理英文文本中包含少量 CJK 字符（如括号中的术语）的情况
+  if (hasLatin && totalRelevantChars > 0) {
+    const latinRatio = latinCount / totalRelevantChars;
+    if (latinRatio > 0.7) {
+      return "latin_like";
+    }
+  }
+  
+  // 如果只有拉丁字母且没有 CJK
   if (hasLatin && !hasCJK) return "latin_like";
+  
+  // 如果有 CJK 且没有假名
   if (hasCJK && !hasHiragana && !hasKatakana) return "zh_like";
+  
   return "unknown";
 }
 

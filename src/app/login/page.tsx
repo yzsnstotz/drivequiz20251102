@@ -5,9 +5,10 @@ import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useLanguage } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
-import { Mail, MessageCircle, FileText, Handshake, ShoppingCart } from "lucide-react";
+import { Mail, MessageCircle, FileText, Handshake, ShoppingCart, User, X } from "lucide-react";
 import OAuthButton from "./components/OAuthButton";
 import QRCodeLogin from "./components/QRCodeLogin";
+import { getLoginMemory, saveLoginMemory, clearLoginMemory } from "@/lib/loginMemory";
 
 interface ContactInfo {
   type: 'business' | 'purchase';
@@ -30,6 +31,8 @@ export default function LoginPage() {
   const [termsOfService, setTermsOfService] = useState<TermsOfService | null>(null);
   const [showTerms, setShowTerms] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [loginMemory, setLoginMemory] = useState<{ provider: string; email?: string } | null>(null);
+  const [showSwitchAccount, setShowSwitchAccount] = useState(false);
 
   useEffect(() => {
     // 加载联系信息
@@ -51,6 +54,12 @@ export default function LoginPage() {
         }
       })
       .catch((err) => console.error("Failed to load terms of service:", err));
+
+    // 检查登录记忆
+    const memory = getLoginMemory();
+    if (memory) {
+      setLoginMemory(memory);
+    }
   }, []);
 
   const copyToClipboard = (text: string) => {
@@ -84,6 +93,8 @@ export default function LoginPage() {
   const handleProviderSelect = (providerId: string) => {
     setSelectedProvider(providerId);
     setLoginMethod(null);
+    // 保存选择的provider到登录记忆（即使没有email）
+    saveLoginMemory(providerId);
   };
 
   const handleLoginMethodSelect = (method: "redirect" | "qrcode") => {
@@ -96,8 +107,10 @@ export default function LoginPage() {
     }
   };
 
-  const handleRedirectLogin = async (provider: string) => {
+  const handleRedirectLogin = async (provider: string, email?: string) => {
     try {
+      // 保存登录记忆
+      saveLoginMemory(provider, email);
       await signIn(provider, {
         callbackUrl: "/",
         redirect: true,
@@ -106,6 +119,18 @@ export default function LoginPage() {
       console.error("Login error:", error);
       alert(t("auth.login.error"));
     }
+  };
+
+  const handleQuickLogin = async () => {
+    if (loginMemory) {
+      await handleRedirectLogin(loginMemory.provider, loginMemory.email);
+    }
+  };
+
+  const handleSwitchAccount = () => {
+    clearLoginMemory();
+    setLoginMemory(null);
+    setShowSwitchAccount(false);
   };
 
   const handleBack = () => {
@@ -155,14 +180,59 @@ export default function LoginPage() {
           {!selectedProvider ? (
             // 选择提供商
             <div className="space-y-3">
-              {providers.map((provider) => (
-                <OAuthButton
-                  key={provider.id}
-                  provider={provider.id}
-                  name={provider.name}
-                  onClick={() => handleProviderSelect(provider.id)}
-                />
-              ))}
+              {/* 快速登录 */}
+              {loginMemory && !showSwitchAccount && (
+                <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <User className="h-5 w-5 text-blue-600" />
+                      <span className="text-sm font-medium text-gray-700">
+                        {loginMemory.email ? `快速登录 (${loginMemory.email})` : '快速登录'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setShowSwitchAccount(true)}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      切换账号
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleQuickLogin}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+                  >
+                    <span>使用 {providers.find(p => p.id === loginMemory.provider)?.name || loginMemory.provider} 快速登录</span>
+                  </button>
+                </div>
+              )}
+
+              {/* 切换账号模式或没有登录记忆时显示所有提供商 */}
+              {(showSwitchAccount || !loginMemory) && (
+                <>
+                  {showSwitchAccount && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
+                      <span className="text-sm text-gray-600">选择其他账号登录</span>
+                      <button
+                        onClick={handleSwitchAccount}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  {providers.map((provider) => (
+                    <OAuthButton
+                      key={provider.id}
+                      provider={provider.id}
+                      name={provider.name}
+                      onClick={() => {
+                        handleProviderSelect(provider.id);
+                        setShowSwitchAccount(false);
+                      }}
+                    />
+                  ))}
+                </>
+              )}
             </div>
           ) : !loginMethod ? (
             // 选择登录方式

@@ -11,12 +11,13 @@ interface HeaderProps {
   title?: string;
   showAIButton?: boolean;
   aiContext?: "license" | "vehicle" | "service" | "general";
+  showNavigation?: boolean;
 }
 
 /**
  * 顶部导航栏组件
  */
-export default function Header({ title, showAIButton = true, aiContext = "general" }: HeaderProps) {
+export default function Header({ title, showAIButton = true, aiContext = "general", showNavigation = true }: HeaderProps) {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -35,6 +36,7 @@ export default function Header({ title, showAIButton = true, aiContext = "genera
           </div>
 
           {/* Desktop Navigation */}
+          {showNavigation && (
           <nav className="hidden md:flex items-center space-x-6">
             <Link
               href="/license"
@@ -77,6 +79,7 @@ export default function Header({ title, showAIButton = true, aiContext = "genera
               我的
             </Link>
           </nav>
+          )}
 
           {/* AI Button & Mobile Menu */}
           <div className="flex items-center space-x-4">
@@ -92,7 +95,7 @@ export default function Header({ title, showAIButton = true, aiContext = "genera
         </div>
 
         {/* Mobile Navigation */}
-        {isMenuOpen && (
+        {showNavigation && isMenuOpen && (
           <nav className="md:hidden py-4 border-t">
             <div className="flex flex-col space-y-2">
               <Link

@@ -175,7 +175,7 @@ export default function SettingsPage() {
         }
         
         setProfile(response.data);
-        setSuccess("设置已保存");
+        setSuccess(t('settings.saved'));
         
         // 2秒后清除成功消息
         setTimeout(() => {
@@ -236,7 +236,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-black">
-        <Header title="设置" showAIButton={false} />
+        <Header title={t('settings.title')} showAIButton={false} showNavigation={false} />
         <div className="container mx-auto px-4 py-12 text-center">
           <div className="relative inline-block">
             <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-200 dark:border-gray-700 border-t-blue-600 dark:border-t-blue-500 mx-auto" style={{ animation: 'spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}></div>
@@ -252,7 +252,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Header title="设置" showAIButton={false} />
+      <Header title={t('settings.title')} showAIButton={false} />
       
       <div className="container mx-auto px-4 py-6">
         {/* 成功/错误提示 */}
@@ -310,14 +310,14 @@ export default function SettingsPage() {
             ) : (
               <Sun className="h-6 w-6 text-blue-600 dark:text-blue-400" />
             )}
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">主题设置</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('settings.theme')}</h2>
           </div>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-900 dark:text-ios-dark-text">暗色模式</label>
-                <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">切换暗色/亮色主题</p>
+                <label className="text-sm font-medium text-gray-900 dark:text-ios-dark-text">{t('settings.theme.darkMode')}</label>
+                <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">{t('settings.theme.darkModeDesc')}</p>
               </div>
               <button
                 onClick={toggleDarkMode}
@@ -339,14 +339,14 @@ export default function SettingsPage() {
         <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl shadow-ios-sm dark:shadow-ios-dark-sm p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
             <Shield className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">隐私偏好</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('settings.privacy')}</h2>
           </div>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-900">共享数据用于改进</label>
-                <p className="text-xs text-gray-500 mt-1">允许我们使用匿名数据改进服务</p>
+                <label className="text-sm font-medium text-gray-900 dark:text-ios-dark-text">{t('settings.privacy.shareData')}</label>
+                <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">{t('settings.privacy.shareDataDesc')}</p>
               </div>
               <button
                 onClick={() => handlePrivacyChange("shareData", !formData.metadata?.privacy?.shareData)}
@@ -364,8 +364,8 @@ export default function SettingsPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-900">分析数据</label>
-                <p className="text-xs text-gray-500 mt-1">允许收集使用情况分析数据</p>
+                <label className="text-sm font-medium text-gray-900 dark:text-ios-dark-text">{t('settings.privacy.analytics')}</label>
+                <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">{t('settings.privacy.analyticsDesc')}</p>
               </div>
               <button
                 onClick={() => handlePrivacyChange("analytics", !formData.metadata?.privacy?.analytics)}
@@ -387,14 +387,14 @@ export default function SettingsPage() {
         <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl shadow-ios-sm dark:shadow-ios-dark-sm p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
             <Bell className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">通知偏好</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('settings.notifications')}</h2>
           </div>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-900">邮件通知</label>
-                <p className="text-xs text-gray-500 mt-1">接收重要更新和提醒邮件</p>
+                <label className="text-sm font-medium text-gray-900 dark:text-ios-dark-text">{t('settings.notifications.email')}</label>
+                <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">{t('settings.notifications.emailDesc')}</p>
               </div>
               <button
                 onClick={() => handleNotificationChange("email", !formData.metadata?.notifications?.email)}
@@ -412,8 +412,8 @@ export default function SettingsPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-900">推送通知</label>
-                <p className="text-xs text-gray-500 mt-1">接收浏览器推送通知</p>
+                <label className="text-sm font-medium text-gray-900 dark:text-ios-dark-text">{t('settings.notifications.push')}</label>
+                <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">{t('settings.notifications.pushDesc')}</p>
               </div>
               <button
                 onClick={() => handleNotificationChange("push", !formData.metadata?.notifications?.push)}
@@ -435,7 +435,7 @@ export default function SettingsPage() {
         {saving && (
           <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-500/20 border border-blue-200 dark:border-blue-500/30 rounded-lg flex items-center space-x-2">
             <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-200 dark:border-gray-700 border-t-blue-600 dark:border-t-blue-400"></div>
-            <span className="text-blue-800 dark:text-blue-300">保存中...</span>
+            <span className="text-blue-800 dark:text-blue-300">{t('settings.saving')}</span>
           </div>
         )}
       </div>
