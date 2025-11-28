@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star, Info, Trash2 } from 'lucide-react';
+import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star, Info } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/lib/i18n';
 import ActivationStatusCard from '@/components/ActivationStatusCard';
-import { clearAllCache } from '@/lib/clearCache';
 
 function ProfilePage() {
   const { t } = useLanguage();
@@ -34,37 +33,6 @@ function ProfilePage() {
     setIsEditing(false);
   };
 
-  const handleClearActivation = () => {
-    if (confirm(t('profile.clearActivationConfirm'))) {
-      if (typeof window !== 'undefined') {
-        // 清除旧的激活状态
-        localStorage.removeItem('drive-quiz-activated');
-        localStorage.removeItem('drive-quiz-email');
-        // 清除新的激活相关存储
-        localStorage.removeItem('USER_TOKEN');
-        // 清除cookie中的USER_TOKEN
-        document.cookie = 'USER_TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-        // 清除其他可能的激活相关存储
-        localStorage.removeItem('activation-status');
-        // 注意：不清除登录记忆，允许快速重新登录
-        alert(t('profile.clearActivationSuccess'));
-        window.location.reload();
-      }
-    }
-  };
-
-  const handleClearCache = () => {
-    if (confirm(t('profile.clearCacheConfirm'))) {
-      try {
-        clearAllCache();
-        alert(t('profile.clearCacheSuccess'));
-        window.location.reload();
-      } catch (error) {
-        console.error('[ProfilePage] 清除缓存失败:', error);
-        alert('清除缓存失败，请查看控制台');
-      }
-    }
-  };
 
   const menuItems = [
     {
@@ -94,22 +62,6 @@ function ProfilePage() {
       title: t('profile.practiceHistory'),
       description: t('profile.practiceHistoryDesc'),
       href: '/profile/practice-history'
-    },
-    {
-      id: 'clear-activation',
-      icon: <XSquare className="h-6 w-6 text-red-600" />,
-      title: t('profile.clearActivation'),
-      description: t('profile.clearActivationDesc'),
-      onClick: handleClearActivation,
-      isDanger: true
-    },
-    {
-      id: 'clear-cache',
-      icon: <Trash2 className="h-6 w-6 text-orange-600" />,
-      title: t('profile.clearCache'),
-      description: t('profile.clearCacheDesc'),
-      onClick: handleClearCache,
-      isDanger: true
     },
     {
       id: 'settings',

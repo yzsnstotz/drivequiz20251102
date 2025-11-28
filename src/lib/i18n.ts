@@ -763,6 +763,8 @@ export const userTranslations: Translations = {
     'profile.clearCacheDesc': '清除所有缓存和本地数据（用于测试）',
     'profile.clearCacheConfirm': '确定要清除所有缓存吗？这将清除所有本地数据，包括学习进度、错题本、考试历史等。此操作不可恢复！',
     'profile.clearCacheSuccess': '所有缓存已清除，页面将刷新',
+    'profile.testingFeatures': '测试用功能（慎用）',
+    'profile.testingFeaturesDesc': '以下功能仅用于测试，使用后可能导致数据丢失，请谨慎操作！',
     
     // 设置页面
     'settings.title': '设置',
@@ -1101,6 +1103,8 @@ export const userTranslations: Translations = {
     'profile.clearCacheDesc': 'Clear all cache and local data (for testing)',
     'profile.clearCacheConfirm': 'Are you sure you want to clear all cache? This will remove all local data including learning progress, mistake book, exam history, etc. This action cannot be undone!',
     'profile.clearCacheSuccess': 'All cache has been cleared, page will refresh',
+    'profile.testingFeatures': 'Testing Features (Use with Caution)',
+    'profile.testingFeaturesDesc': 'The following features are for testing only. Using them may result in data loss. Please use with caution!',
     
     // 设置页面
     'settings.title': 'Settings',
@@ -1439,6 +1443,8 @@ export const userTranslations: Translations = {
     'profile.clearCacheDesc': 'すべてのキャッシュとローカルデータをクリア（テスト用）',
     'profile.clearCacheConfirm': 'すべてのキャッシュをクリアしてもよろしいですか？これにより、学習進捗、間違いノート、試験履歴などのすべてのローカルデータが削除されます。この操作は元に戻せません！',
     'profile.clearCacheSuccess': 'すべてのキャッシュがクリアされました。ページが更新されます',
+    'profile.testingFeatures': 'テスト用機能（注意して使用）',
+    'profile.testingFeaturesDesc': '以下の機能はテスト用のみです。使用するとデータが失われる可能性があります。注意して使用してください！',
     
     // 设置页面
     'settings.title': '設定',
