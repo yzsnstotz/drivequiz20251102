@@ -15,10 +15,10 @@ export default function BrandSplashScreen({ onClose }: BrandSplashScreenProps) {
 
   useEffect(() => {
     setMounted(true);
-    // 2秒后自动关闭
+    // 3秒后自动关闭（延长1秒）
     const timer = setTimeout(() => {
       onClose();
-    }, 2000);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [onClose]);
