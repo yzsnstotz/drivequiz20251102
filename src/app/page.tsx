@@ -100,8 +100,17 @@ export default function HomePage() {
             const items = data.data.items || [];
             setAdSlots(items);
             
-            // 检查启动页广告 - 每次访问都显示
+            // 检查启动页广告 - 只在当天首次访问时显示
             const checkSplashAd = async () => {
+              // 检查今天是否已经显示过
+              const today = new Date().toDateString();
+              const lastShownDate = localStorage.getItem("splash_ad_shown_date");
+              
+              if (lastShownDate === today) {
+                // 今天已经显示过，不再显示
+                return false;
+              }
+
               const splashConfig = items.find((item: AdSlotConfig & { splashDuration?: number }) => item.slotKey === "splash_screen");
               if (splashConfig) {
                 // 如果配置中有时长，使用配置的时长+1秒；否则使用默认4秒
@@ -116,6 +125,8 @@ export default function HomePage() {
                     const data = await res.json();
                     if (data.ok && data.data.items && data.data.items.length > 0) {
                       setShowSplash(true);
+                      // 标记今天已显示
+                      localStorage.setItem("splash_ad_shown_date", today);
                       return true; // 有启动页广告，不需要检查弹窗
                     }
                   } else {
