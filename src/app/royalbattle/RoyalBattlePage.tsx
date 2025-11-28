@@ -187,6 +187,11 @@ function RoyalBattlePage() {
 
 
   const currentQuestion = questions[currentQuestionIndex];
+  
+  // 调试：检查图片路径
+  if (currentQuestion?.image) {
+    console.log('[RoyalBattle] Current question image:', currentQuestion.image, 'Question ID:', currentQuestion.id);
+  }
 
   if (isLoading) {
     return (

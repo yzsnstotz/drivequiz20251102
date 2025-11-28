@@ -54,7 +54,7 @@ export default function ExamHistoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black">
-      <Header title={t('profile.examHistory')} />
+      <Header title={t('profile.examHistory')} showNavigation={false} />
       
       <div className="container mx-auto px-4 py-6 pb-20">
         <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm">

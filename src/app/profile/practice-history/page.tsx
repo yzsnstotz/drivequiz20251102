@@ -5,11 +5,12 @@ import { BookOpen, ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/lib/i18n';
 import Header from '@/components/common/Header';
+import { getQuestionContent } from '@/lib/questionUtils';
 
 interface PracticeHistory {
   id: string;
   questionId: number;
-  content: string;
+  content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
   type: string;
   correct: boolean;
   date: string;
@@ -17,7 +18,7 @@ interface PracticeHistory {
 }
 
 export default function PracticeHistoryPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const [practiceHistory, setPracticeHistory] = useState<PracticeHistory[]>([]);
 
@@ -34,7 +35,7 @@ export default function PracticeHistoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black">
-      <Header title={t('profile.practiceHistoryTitle')} />
+      <Header title={t('profile.practiceHistoryTitle')} showNavigation={false} />
       
       <div className="container mx-auto px-4 py-6 pb-20">
         <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm">
@@ -49,7 +50,11 @@ export default function PracticeHistoryPage() {
                 <div key={item.id || index} className="border-b border-gray-100 dark:border-ios-dark-border pb-4 last:border-b-0">
                   <div className="flex justify-between items-start">
                     <div className="flex-1 pr-4">
-                      <p className="text-sm text-gray-900 dark:text-white line-clamp-2 mb-2">{item.content}</p>
+                      <p className="text-sm text-gray-900 dark:text-white line-clamp-2 mb-2">
+                        {typeof item.content === 'string' 
+                          ? item.content 
+                          : getQuestionContent(item.content, language) || ''}
+                      </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{item.date}</p>
                     </div>
                     <div className="flex flex-col items-end space-y-1 flex-shrink-0">

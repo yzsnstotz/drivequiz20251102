@@ -5,6 +5,7 @@ import { ChevronLeft, Trash2, BookOpen, Car, Shield, CheckSquare, XSquare, Bot }
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import QuestionImage from '@/components/common/QuestionImage';
 import { getContentText } from '@/lib/questionContentUtils';
+import { getQuestionContent } from '@/lib/questionUtils';
 import { useLanguage } from '@/lib/i18n';
 
 interface Question {
@@ -24,7 +25,7 @@ interface Question {
 }
 
 function MistakeBookPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [mistakeQuestions, setMistakeQuestions] = useState<Question[]>([]);
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
   const [showAIDialog, setShowAIDialog] = useState(false);
@@ -55,7 +56,7 @@ function MistakeBookPage() {
 
   const getQuestionIcon = (question: Question) => {
     // 处理多语言content字段
-    const contentText = getContentText(question.content, 'zh') || '';
+    const contentText = getQuestionContent(question.content, language) || getContentText(question.content, 'zh') || '';
     
     if (question.fromExam) {
       return <CheckSquare className="h-5 w-5 text-purple-600" />;
@@ -119,7 +120,7 @@ function MistakeBookPage() {
               </div>
             </div>
             
-            <p className="text-gray-900 text-lg mb-4">{getContentText(selectedQuestion.content, 'zh')}</p>
+            <p className="text-gray-900 text-lg mb-4">{getQuestionContent(selectedQuestion.content, language) || getContentText(selectedQuestion.content, 'zh') || ''}</p>
             {selectedQuestion.image && (
               <QuestionImage
                 src={selectedQuestion.image}
@@ -184,7 +185,11 @@ function MistakeBookPage() {
           {selectedQuestion.explanation && (
             <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <h3 className="font-medium text-blue-900 mb-2">{t('mistakes.explanation')}</h3>
-              <p className="text-blue-800">{selectedQuestion.explanation}</p>
+              <p className="text-blue-800">
+                {typeof selectedQuestion.explanation === 'string' 
+                  ? selectedQuestion.explanation 
+                  : getQuestionContent(selectedQuestion.explanation, language) || ''}
+              </p>
             </div>
           )}
         </div>
@@ -238,7 +243,7 @@ function MistakeBookPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-medium text-gray-900 line-clamp-2">
-                      {index + 1}. {getContentText(question.content, 'zh')}
+                      {index + 1}. {getQuestionContent(question.content, language) || getContentText(question.content, 'zh') || ''}
                     </h3>
                     <button
                       onClick={(e) => {
