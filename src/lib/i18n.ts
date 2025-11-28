@@ -712,6 +712,9 @@ export const userTranslations: Translations = {
     // AI助手
     'ai.assistant': 'AI 助手',
     'ai.clearHistory': '清空历史',
+    'ai.input.placeholder': '输入问题...',
+    'ai.send.button': '发送',
+    'ai.send.sending': '发送中…',
     
     // 学习页面
     'study.reset': '从头开始',
@@ -969,6 +972,9 @@ export const userTranslations: Translations = {
     // AI助手
     'ai.assistant': 'AI Assistant',
     'ai.clearHistory': 'Clear History',
+    'ai.input.placeholder': 'Enter your question...',
+    'ai.send.button': 'Send',
+    'ai.send.sending': 'Sending...',
     
     // 学习页面
     'study.reset': 'Start Over',
@@ -1226,6 +1232,9 @@ export const userTranslations: Translations = {
     // AI助手
     'ai.assistant': 'AIアシスタント',
     'ai.clearHistory': '履歴をクリア',
+    'ai.input.placeholder': '質問を入力...',
+    'ai.send.button': '送信',
+    'ai.send.sending': '送信中...',
     
     // 学习页面
     'study.reset': '最初から',

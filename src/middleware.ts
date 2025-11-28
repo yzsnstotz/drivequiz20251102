@@ -11,6 +11,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/admin/") ||
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/static/") ||
+    pathname === "/favicon.png" ||
+    pathname === "/favicon.ico" ||
+    pathname === "/icon.png" ||
     pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js|woff|woff2|ttf|eot)$/)
   ) {
     return NextResponse.next();
@@ -38,9 +41,9 @@ export const config = {
      * - api路由
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * - favicon files (favicon.ico, favicon.png, icon.png)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|favicon.png|icon.png).*)",
   ],
 };
 

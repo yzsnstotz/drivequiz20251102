@@ -110,7 +110,7 @@ function getWelcomeMessage(lang: Language): string {
 
 const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
   const { isActivated, showActivationModal } = useAIActivation();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   
   // 初始化消息历史：使用固定的默认值，避免hydration错误
   // 在SSR和客户端都使用相同的默认值（中文），避免hydration不匹配
@@ -668,8 +668,8 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
                   void handleSend();
                 }
               }}
-              placeholder="输入问题..."
-              className="w-full h-11 rounded-lg border px-3 pr-20 outline-none transition-[border-color] focus:border-blue-500 text-base"
+              placeholder={t('ai.input.placeholder')}
+              className="w-full h-11 rounded-lg border px-3 pr-20 outline-none transition-[border-color] focus:border-blue-500 text-base dark:bg-ios-dark-bg-secondary dark:border-ios-dark-border dark:text-ios-dark-text"
               spellCheck={false}
               type="text"
               style={{ fontSize: '16px' }} // iOS Safari 需要至少16px才能避免自动缩放
@@ -693,7 +693,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             aria-busy={loading}
           >
             <Send className="h-4 w-4" />
-            {loading ? "发送中…" : "发送"}
+            {loading ? t('ai.send.sending') : t('ai.send.button')}
           </button>
         </div>
 

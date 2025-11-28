@@ -3,19 +3,18 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import BottomNavigation from "./BottomNavigation";
 
-// 获取 basePath，确保 favicon 路径正确
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
-
 export const metadata: Metadata = {
   title: "ZALEM - 驾照考试学习平台",
   description: "一个帮助您准备驾照考试的学习平台",
+  // Next.js 13+ App Router 会自动识别 src/app/icon.png 并生成 favicon
+  // 这里添加备用配置以确保兼容性
   icons: {
     icon: [
-      { url: `${basePath}/favicon.png`, sizes: 'any' },
-      { url: `${basePath}/icon.png`, sizes: 'any' },
+      { url: '/favicon.png', sizes: 'any' },
+      { url: '/icon.png', sizes: 'any' },
     ],
-    shortcut: `${basePath}/favicon.png`,
-    apple: `${basePath}/favicon.png`,
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
   },
 };
 
