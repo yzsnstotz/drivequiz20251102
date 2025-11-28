@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-28 00:00:00（修复 buildPoolConfigFromConnectionString：清理 DATABASE_URL 前缀）
-const BUILD_TIME = "2025-11-28 00:00:00";
+// 最后更新：2025-11-28 23:22:08（添加清除缓存功能）
+const BUILD_TIME = "2025-11-28 23:22:08";
 
 /**
  * 获取版本号（构建时间）

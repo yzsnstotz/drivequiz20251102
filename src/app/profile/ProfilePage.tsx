@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star, Info } from 'lucide-react';
+import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star, Info, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/lib/i18n';
 import ActivationStatusCard from '@/components/ActivationStatusCard';
+import { clearAllCache } from '@/lib/clearCache';
 
 function ProfilePage() {
   const { t } = useLanguage();
@@ -52,6 +53,19 @@ function ProfilePage() {
     }
   };
 
+  const handleClearCache = () => {
+    if (confirm(t('profile.clearCacheConfirm'))) {
+      try {
+        clearAllCache();
+        alert(t('profile.clearCacheSuccess'));
+        window.location.reload();
+      } catch (error) {
+        console.error('[ProfilePage] 清除缓存失败:', error);
+        alert('清除缓存失败，请查看控制台');
+      }
+    }
+  };
+
   const menuItems = [
     {
       id: 'mistakes',
@@ -87,6 +101,14 @@ function ProfilePage() {
       title: t('profile.clearActivation'),
       description: t('profile.clearActivationDesc'),
       onClick: handleClearActivation,
+      isDanger: true
+    },
+    {
+      id: 'clear-cache',
+      icon: <Trash2 className="h-6 w-6 text-orange-600" />,
+      title: t('profile.clearCache'),
+      description: t('profile.clearCacheDesc'),
+      onClick: handleClearCache,
       isDanger: true
     },
     {
