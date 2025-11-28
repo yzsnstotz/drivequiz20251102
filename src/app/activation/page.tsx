@@ -58,7 +58,7 @@ export default function ActivationPage() {
   const copyToClipboard = (text: string) => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text).then(() => {
-        alert("已复制到剪贴板");
+        alert(t('activation.copySuccess'));
       });
     } else {
       // 兼容旧浏览器
@@ -68,7 +68,7 @@ export default function ActivationPage() {
       textArea.select();
       document.execCommand("copy");
       document.body.removeChild(textArea);
-      alert("已复制到剪贴板");
+      alert(t('activation.copySuccess'));
     }
   };
 
@@ -78,7 +78,7 @@ export default function ActivationPage() {
     setError("");
 
     if (!email || !activationCode) {
-      setError("请填写邮箱和激活码");
+      setError(t('activation.error.fillFields'));
       setLoading(false);
       return;
     }
@@ -127,25 +127,25 @@ export default function ActivationPage() {
         // 不再自动返回，让用户手动关闭
       } else {
         const errorCode = result.errorCode;
-        let errorMessage = result.message || "激活失败";
+        let errorMessage = result.message || t('activation.error.failed');
 
         if (errorCode === "DUPLICATE_ACTIVATION") {
-          errorMessage = "该激活码已被使用，请使用其他激活码";
+          errorMessage = t('activation.error.duplicate');
         } else if (errorCode === "CODE_USAGE_EXCEEDED") {
-          errorMessage = "该激活码已达到使用上限，请使用其他激活码";
+          errorMessage = t('activation.error.usageExceeded');
         } else if (errorCode === "CODE_EXPIRED") {
-          errorMessage = "该激活码已过期，请使用其他激活码";
+          errorMessage = t('activation.error.expired');
         } else if (errorCode === "CODE_STATUS_INVALID") {
-          errorMessage = "该激活码状态不可用，请使用其他激活码";
+          errorMessage = t('activation.error.statusInvalid');
         } else if (errorCode === "INVALID_CODE") {
-          errorMessage = "无效的激活码，请检查后重试";
+          errorMessage = t('activation.error.invalidCode');
         }
 
         setError(errorMessage);
       }
     } catch (error: any) {
       console.error("[ActivationPage] Activation error:", error);
-      setError(error.message || "网络错误，请稍后重试");
+      setError(error.message || t('activation.error.network'));
     } finally {
       setLoading(false);
     }
@@ -160,8 +160,8 @@ export default function ActivationPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-black">
       <div className="container mx-auto px-4 py-6 pb-20 max-w-2xl">
         <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm">
-          <h2 className="text-2xl font-bold text-center mb-2 dark:text-ios-dark-text">AI服务激活</h2>
-          <p className="text-gray-600 dark:text-ios-dark-text-secondary text-center mb-6">请输入您的邮箱和激活码以激活AI服务</p>
+          <h2 className="text-2xl font-bold text-center mb-2 dark:text-ios-dark-text">{t('activation.title')}</h2>
+          <p className="text-gray-600 dark:text-ios-dark-text-secondary text-center mb-6">{t('activation.subtitle')}</p>
 
           {error && (
             <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4">{error}</div>
@@ -169,32 +169,32 @@ export default function ActivationPage() {
 
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                邮箱地址
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1 dark:text-ios-dark-text">
+                {t('activation.email')}
               </label>
               <input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl ios-input focus:border-blue-500 focus:shadow-ios-sm"
-                placeholder="your@email.com"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl ios-input focus:border-blue-500 focus:shadow-ios-sm dark:bg-ios-dark-bg-tertiary dark:border-ios-dark-border dark:text-ios-dark-text"
+                placeholder={t('activation.emailPlaceholder')}
                 disabled={loading}
                 required
               />
             </div>
 
             <div className="mb-6">
-              <label htmlFor="activationCode" className="block text-sm font-medium text-gray-700 mb-1">
-                激活码
+              <label htmlFor="activationCode" className="block text-sm font-medium text-gray-700 mb-1 dark:text-ios-dark-text">
+                {t('activation.code')}
               </label>
               <input
                 id="activationCode"
                 type="text"
                 value={activationCode}
                 onChange={(e) => setActivationCode(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-200 rounded-xl ios-input focus:border-blue-500 focus:shadow-ios-sm"
-                placeholder="XXXX-XXXX-XXXX-XXXX"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl ios-input focus:border-blue-500 focus:shadow-ios-sm dark:bg-ios-dark-bg-tertiary dark:border-ios-dark-border dark:text-ios-dark-text"
+                placeholder={t('activation.codePlaceholder')}
                 disabled={loading}
                 required
               />
@@ -214,9 +214,9 @@ export default function ActivationPage() {
             <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">
               {businessInfo && (businessInfo.wechat || businessInfo.email) && (
                 <div className="text-sm">
-                  <div className="font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <div className="font-medium text-gray-700 mb-2 flex items-center gap-2 dark:text-ios-dark-text">
                     <Handshake className="h-4 w-4 text-blue-600" />
-                    商务合作请联系：
+                    {t('activation.businessContact')}
                   </div>
                   {businessInfo.wechat && (
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -231,7 +231,7 @@ export default function ActivationPage() {
                       >
                         {businessInfo.wechat}
                       </span>
-                      <span className="text-xs text-gray-500">（长按复制）</span>
+                      <span className="text-xs text-gray-500 dark:text-ios-dark-text-secondary">{t('activation.longPressCopy')}</span>
                     </div>
                   )}
                   {businessInfo.email && (
@@ -247,7 +247,7 @@ export default function ActivationPage() {
                       >
                         {businessInfo.email}
                       </span>
-                      <span className="text-xs text-gray-500">（长按复制）</span>
+                      <span className="text-xs text-gray-500 dark:text-ios-dark-text-secondary">{t('activation.longPressCopy')}</span>
                     </div>
                   )}
                 </div>
@@ -255,9 +255,9 @@ export default function ActivationPage() {
 
               {purchaseInfo && (purchaseInfo.wechat || purchaseInfo.email) && (
                 <div className="text-sm">
-                  <div className="font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <div className="font-medium text-gray-700 mb-2 flex items-center gap-2 dark:text-ios-dark-text">
                     <ShoppingCart className="h-4 w-4 text-green-600" />
-                    激活码购买请联系：
+                    {t('activation.purchaseContact')}
                   </div>
                   {purchaseInfo.wechat && (
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -272,7 +272,7 @@ export default function ActivationPage() {
                       >
                         {purchaseInfo.wechat}
                       </span>
-                      <span className="text-xs text-gray-500">（长按复制）</span>
+                      <span className="text-xs text-gray-500 dark:text-ios-dark-text-secondary">{t('activation.longPressCopy')}</span>
                     </div>
                   )}
                   {purchaseInfo.email && (
@@ -288,7 +288,7 @@ export default function ActivationPage() {
                       >
                         {purchaseInfo.email}
                       </span>
-                      <span className="text-xs text-gray-500">（长按复制）</span>
+                      <span className="text-xs text-gray-500 dark:text-ios-dark-text-secondary">{t('activation.longPressCopy')}</span>
                     </div>
                   )}
                 </div>
@@ -301,7 +301,7 @@ export default function ActivationPage() {
                     className="flex items-center gap-2 text-blue-600 ios-button active:text-blue-800 active:opacity-80"
                   >
                     <FileText className="h-4 w-4" />
-                    服务条款
+                    {t('activation.termsOfService')}
                   </button>
                 </div>
               )}
@@ -309,27 +309,27 @@ export default function ActivationPage() {
           )}
 
           {/* 管理员登录入口 */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-ios-dark-border">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-gray-600">管理员登录：</span>
+              <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">{t('activation.adminLogin')}</span>
               <input
                 type="text"
                 value={adminCode}
                 onChange={(e) => setAdminCode(e.target.value)}
-                className="flex-1 min-w-[120px] px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="输入管理员代码"
+                className="flex-1 min-w-[120px] px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-ios-dark-bg-tertiary dark:border-ios-dark-border dark:text-ios-dark-text"
+                placeholder={t('activation.adminCodePlaceholder')}
               />
               <button
                 onClick={() => {
                   if (adminCode.toLowerCase() === "zalem") {
                     router.push("/admin/login");
                   } else {
-                    alert("管理员代码错误");
+                    alert(t('activation.adminCodeError'));
                   }
                 }}
                 className="px-4 py-1.5 text-sm bg-gray-600 text-white rounded-xl shadow-ios-sm ios-button active:shadow-ios whitespace-nowrap"
               >
-                登录
+                {t('activation.adminLoginButton')}
               </button>
             </div>
           </div>
@@ -354,14 +354,14 @@ export default function ActivationPage() {
             </div>
             {termsOfService.version && (
               <div className="mt-4 text-xs text-gray-500">
-                版本：{termsOfService.version}
+                {t('activation.version')}{termsOfService.version}
               </div>
             )}
             <button
               onClick={() => setShowTerms(false)}
               className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-xl shadow-ios-sm ios-button active:shadow-ios"
             >
-              关闭
+              {t('activation.close')}
             </button>
           </div>
         </div>
