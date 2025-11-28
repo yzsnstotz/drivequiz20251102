@@ -330,8 +330,8 @@ export default function HomePage() {
                 priority
               />
             </div>
-            <div className="flex flex-col items-start">
-              <span className="text-xl font-bold text-gray-900 dark:text-white leading-tight">
+            <div className="flex items-center">
+              <span className="text-xl font-bold text-gray-900 dark:text-white leading-tight whitespace-nowrap">
                 {language === 'ja' ? 'ザレム.アプリ' : 'ZALEM.APP'}
               </span>
             </div>

@@ -194,14 +194,14 @@ function RoyalBattlePage() {
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={handleBack}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.title')}</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('royalbattle.title')}</h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">{t('royalbattle.loading')}</p>
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6 flex justify-center items-center">
+          <p className="text-gray-600 dark:text-gray-400">{t('royalbattle.loading')}</p>
         </div>
       </div>
     );
@@ -213,20 +213,20 @@ function RoyalBattlePage() {
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={handleBack}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.gameOver')}</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('royalbattle.gameOver')}</h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
           <div className="text-center">
-            <Trophy className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('royalbattle.finalScore')}: {score}</h2>
-            <p className="text-gray-600 mb-6">{t('royalbattle.correctCount')}: {Math.floor(score / 10)}</p>
+            <Trophy className="h-16 w-16 text-yellow-500 dark:text-yellow-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{t('royalbattle.finalScore')}: {score}</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">{t('royalbattle.correctCount')}: {Math.floor(score / 10)}</p>
             <button
               onClick={handleBack}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+              className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600"
             >
               {t('royalbattle.backHome')}
             </button>
@@ -241,20 +241,20 @@ function RoyalBattlePage() {
       <div className="flex items-center space-x-4 mb-6">
         <button
           onClick={handleBack}
-          className="text-gray-600 hover:text-gray-900"
+          className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">{t('royalbattle.title')}</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('royalbattle.title')}</h1>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
         
         <div className="flex justify-center items-center">
             <div className="w-full">
-              <div className="w-full bg-gray-200 h-2 overflow-hidden rounded-full">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 overflow-hidden rounded-full">
                 <div
-                  className={`h-full transition-all duration-100 rounded-full ${timeLeft <= 5 ? 'bg-red-600' : 'bg-blue-600'}`}
+                  className={`h-full transition-all duration-100 rounded-full ${timeLeft <= 5 ? 'bg-red-600 dark:bg-red-500' : 'bg-blue-600 dark:bg-blue-500'}`}
                   style={{ width: `${(timeLeft / calculateTimeLimit(score)) * 100}%` }}
                 />
               </div>
@@ -262,23 +262,23 @@ function RoyalBattlePage() {
           </div>
         <div className="relative mb-12">
           <div className="absolute left-0 top-0 flex items-center space-x-4">
-            <div className="bg-gray-50 p-2 rounded-xl flex items-center">
+            <div className="bg-gray-50 dark:bg-ios-dark-bg-tertiary p-2 rounded-xl flex items-center">
               <div className="flex items-center space-x-0.5">
                 {Array.from({ length: 5 }).map((_, index) => (
                   <Heart
                     key={index}
-                    className={`h-5 w-5 transition-all duration-500 transform ${index < lives ? 'text-red-500 fill-current scale-105 animate-pulse' : 'text-gray-300 scale-95 opacity-50'}`}
+                    className={`h-5 w-5 transition-all duration-500 transform ${index < lives ? 'text-red-500 dark:text-red-400 fill-current scale-105 animate-pulse' : 'text-gray-300 dark:text-gray-600 scale-95 opacity-50'}`}
                   />
                 ))}
               </div>
             </div>
-            <div className="bg-gray-50 p-2 rounded-xl flex items-center">
-              <Trophy className="h-5 w-5 text-yellow-500 mr-2" />
-              <span className="text-xl font-bold text-gray-900 font-mono text-green-600">{score}</span>
+            <div className="bg-gray-50 dark:bg-ios-dark-bg-tertiary p-2 rounded-xl flex items-center">
+              <Trophy className="h-5 w-5 text-yellow-500 dark:text-yellow-400 mr-2" />
+              <span className="text-xl font-bold font-mono text-green-600 dark:text-green-400">{score}</span>
             </div>
-            <div className="bg-gray-50 p-2 rounded-xl flex items-center">
-              <Timer className="h-5 w-5 text-blue-500 mr-2" />
-              <span className={`text-xl font-bold font-mono ${timeLeft <= 5 ? 'text-red-600' : 'text-gray-900'}`}>
+            <div className="bg-gray-50 dark:bg-ios-dark-bg-tertiary p-2 rounded-xl flex items-center">
+              <Timer className="h-5 w-5 text-blue-500 dark:text-blue-400 mr-2" />
+              <span className={`text-xl font-bold font-mono ${timeLeft <= 5 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
                 {timeLeft.toFixed(2)}
               </span>
             </div>
@@ -286,10 +286,10 @@ function RoyalBattlePage() {
         </div>
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-gray-900 text-lg">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
+            <p className="text-gray-900 dark:text-gray-100 text-lg">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             <button
               onClick={() => setShowAIDialog(true)}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
               aria-label={t('royalbattle.openAI')}
             >
               <Bot className="h-4 w-4" />
@@ -314,8 +314,8 @@ function RoyalBattlePage() {
                   disabled={showAnswer}
                   className={`w-full p-4 rounded-xl text-left ${showAnswer ? 'cursor-not-allowed' : ''} ${
                     selectedAnswer === option
-                      ? 'bg-blue-50 border-2 border-blue-600'
-                      : 'bg-gray-50 border-2 border-transparent'
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-gray-100'
+                      : 'bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent text-gray-900 dark:text-gray-100'
                   }`}
                 >
                   {option === 'true' ? t('royalbattle.true') : t('royalbattle.false')}
@@ -337,8 +337,8 @@ function RoyalBattlePage() {
                     disabled={showAnswer}
                     className={`w-full p-4 rounded-xl text-left ${showAnswer ? 'cursor-not-allowed' : ''} ${
                       isSelected
-                        ? 'bg-blue-50 border-2 border-blue-600'
-                        : 'bg-gray-50 border-2 border-transparent'
+                        ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-gray-100'
+                        : 'bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent text-gray-900 dark:text-gray-100'
                     }`}
                   >
                     <span className="font-medium">{optionLabel}: </span>
@@ -351,12 +351,12 @@ function RoyalBattlePage() {
         </div>
 
         {showAnswer && (
-          <div className="mt-6 p-4 rounded-lg border bg-blue-50 border-blue-200 animate-fadeIn">
-            <h3 className="text-gray-800 font-medium mb-2">
+          <div className="mt-6 p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-500/30 animate-fadeIn">
+            <h3 className="text-gray-800 dark:text-gray-200 font-medium mb-2">
               {isCorrect(selectedAnswer) ? t('question.correctAnswer') : t('question.wrongAnswer')}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
+              <p className="text-gray-700 dark:text-gray-300">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             )}
           </div>
         )}
