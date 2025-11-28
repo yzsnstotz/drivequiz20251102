@@ -405,9 +405,10 @@ export default function QuestionAIDialog({
       
       // 3. 直接调用 ai-service（首次提问：如果缓存中没有；追问：直接请求）
       // 确保 provider 已初始化（如果还未获取到配置，重新获取一次）
+      // 注意：由于已有缓存机制，这里只在 provider 未初始化时才重新获取
       let providerToUse = currentProvider;
-      if (!providerToUse || providerToUse === "render") {
-        // 如果 provider 未初始化或为默认值，尝试重新获取配置
+      if (!providerToUse) {
+        // 如果 provider 未初始化，尝试重新获取配置（使用缓存机制）
         try {
           const config = await getCurrentAiProvider();
           providerToUse = config.provider;
@@ -418,8 +419,15 @@ export default function QuestionAIDialog({
             model: config.model,
           });
         } catch (err) {
-          console.warn("[QuestionAIDialog] 重新获取 provider 配置失败，使用默认值:", err);
-          providerToUse = "render";
+          console.warn("[QuestionAIDialog] 重新获取 provider 配置失败，使用当前值:", {
+            error: err,
+            currentProvider: providerToUse,
+          });
+          // 如果获取失败，使用当前值（可能是 "render" 或 "local"），不要强制回退到 "render"
+          // 因为缓存机制应该已经提供了有效的配置
+          if (!providerToUse) {
+            providerToUse = "render"; // 只有在完全没有值时才使用默认值
+          }
         }
       }
       

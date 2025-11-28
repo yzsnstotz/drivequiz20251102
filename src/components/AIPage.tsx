@@ -213,11 +213,11 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
     return () => clearTimeout(timer);
   }, []);
 
-  // 获取当前配置的 provider（组件挂载时获取，确保使用最新配置）
+  // 获取当前配置的 provider（组件挂载时获取，使用缓存机制）
   useEffect(() => {
     getCurrentAiProvider()
       .then((config) => {
-        console.log("[AIPage] 获取到 provider 配置:", {
+        console.log("[AIPage] 获取到 provider 配置（使用缓存机制）:", {
           provider: config.provider,
           model: config.model,
           timestamp: new Date().toISOString(),
@@ -233,11 +233,12 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         setCurrentModel(config.model);
       })
       .catch((err) => {
-        console.error("[AIPage] 获取 provider 配置失败，使用默认值:", {
+        console.error("[AIPage] 获取 provider 配置失败（缓存机制应已处理，此错误不应发生）:", {
           error: err instanceof Error ? err.message : String(err),
           stack: err instanceof Error ? err.stack : undefined,
           timestamp: new Date().toISOString(),
         });
+        // 由于缓存机制，这里应该很少会失败，但为了安全起见，使用默认值
         setCurrentProvider("render");
       });
   }, []);
