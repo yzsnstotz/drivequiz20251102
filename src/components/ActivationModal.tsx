@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageCircle, Mail, FileText, Handshake, ShoppingCart } from 'lucide-react';
 import { APP_VERSION } from '@/config/version';
+import { useLanguage } from '@/lib/i18n';
 
 interface ActivationModalProps {
   onSubmit: (email: string, activationCode: string) => void;
@@ -22,6 +23,7 @@ interface TermsOfService {
 
 const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) => {
   const router = useRouter();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [activationCode, setActivationCode] = useState('');
   const [adminCode, setAdminCode] = useState('');
@@ -56,7 +58,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
   const copyToClipboard = (text: string) => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text).then(() => {
-        alert('已复制到剪贴板');
+        alert(t('activation.copySuccess'));
       });
     } else {
       // 兼容旧浏览器
@@ -66,7 +68,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      alert('已复制到剪贴板');
+      alert(t('activation.copySuccess'));
     }
   };
 
@@ -79,7 +81,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
     setError('');
     
     if (!email || !activationCode) {
-      setError('请填写邮箱和激活码');
+      setError(t('activation.error.fillFields'));
       setLoading(false);
       return;
     }
@@ -87,7 +89,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
     try {
       await onSubmit(email, activationCode);
     } catch (err: any) {
-      setError(err.message || '激活失败，请稍后重试');
+      setError(err.message || t('activation.error.failed'));
     } finally {
       setLoading(false);
     }
@@ -95,11 +97,11 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md p-6">
-        <h2 className="text-2xl font-bold text-center mb-2">产品激活</h2>
-        <p className="text-gray-600 text-center mb-6">请输入您的邮箱和激活码以激活产品</p>
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl w-full max-w-md p-6">
+        <h2 className="text-2xl font-bold text-center mb-2 dark:text-ios-dark-text">{t('activation.title')}</h2>
+        <p className="text-gray-600 dark:text-ios-dark-text-secondary text-center mb-6">{t('activation.subtitle')}</p>
         <div className="text-center mb-4">
-          <span className="text-xs text-gray-400">版本号: {APP_VERSION}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{t('activation.version')} {APP_VERSION}</span>
         </div>
         
         {error && (
@@ -110,32 +112,32 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              邮箱地址
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-ios-dark-text mb-1">
+              {t('activation.email')}
             </label>
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="your@email.com"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-ios-dark-border dark:bg-ios-dark-bg-tertiary dark:text-ios-dark-text rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder={t('activation.emailPlaceholder')}
               disabled={loading}
               required
             />
           </div>
 
           <div className="mb-6">
-            <label htmlFor="activationCode" className="block text-sm font-medium text-gray-700 mb-1">
-              激活码
+            <label htmlFor="activationCode" className="block text-sm font-medium text-gray-700 dark:text-ios-dark-text mb-1">
+              {t('activation.code')}
             </label>
             <input
               id="activationCode"
               type="text"
               value={activationCode}
               onChange={(e) => setActivationCode(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="XXXX-XXXX-XXXX-XXXX"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-ios-dark-border dark:bg-ios-dark-bg-tertiary dark:text-ios-dark-text rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder={t('activation.codePlaceholder')}
               disabled={loading}
               required
             />
@@ -148,7 +150,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               disabled={loading}
             >
-              {loading ? '激活中...' : '激活'}
+              {loading ? t('activation.activating') : t('activation.activate')}
             </button>
           </div>
         </form>
@@ -158,9 +160,9 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
           <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">
             {businessInfo && (businessInfo.wechat || businessInfo.email) && (
               <div className="text-sm">
-                <div className="font-medium text-gray-700 mb-2 flex items-center gap-2">
-                  <Handshake className="h-4 w-4 text-blue-600" />
-                  商务合作请联系：
+                <div className="font-medium text-gray-700 dark:text-ios-dark-text mb-2 flex items-center gap-2">
+                  <Handshake className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  {t('activation.businessContact')}
                 </div>
                 {businessInfo.wechat && (
                   <div className="flex items-center gap-2 mb-1">
@@ -175,7 +177,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
                     >
                       {businessInfo.wechat}
                     </span>
-                    <span className="text-xs text-gray-500">（长按复制）</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{t('activation.longPressCopy')}</span>
                   </div>
                 )}
                 {businessInfo.email && (
@@ -191,7 +193,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
                     >
                       {businessInfo.email}
                     </span>
-                    <span className="text-xs text-gray-500">（长按复制）</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{t('activation.longPressCopy')}</span>
                   </div>
                 )}
               </div>
@@ -199,9 +201,9 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
 
             {purchaseInfo && (purchaseInfo.wechat || purchaseInfo.email) && (
               <div className="text-sm">
-                <div className="font-medium text-gray-700 mb-2 flex items-center gap-2">
-                  <ShoppingCart className="h-4 w-4 text-green-600" />
-                  激活码购买请联系：
+                <div className="font-medium text-gray-700 dark:text-ios-dark-text mb-2 flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  {t('activation.purchaseContact')}
                 </div>
                 {purchaseInfo.wechat && (
                   <div className="flex items-center gap-2 mb-1">
@@ -216,7 +218,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
                     >
                       {purchaseInfo.wechat}
                     </span>
-                    <span className="text-xs text-gray-500">（长按复制）</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{t('activation.longPressCopy')}</span>
                   </div>
                 )}
                 {purchaseInfo.email && (
@@ -232,7 +234,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
                     >
                       {purchaseInfo.email}
                     </span>
-                    <span className="text-xs text-gray-500">（长按复制）</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{t('activation.longPressCopy')}</span>
                   </div>
                 )}
               </div>
@@ -242,10 +244,10 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
               <div className="text-sm">
                 <button
                   onClick={() => setShowTerms(true)}
-                  className="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors"
+                  className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                 >
                   <FileText className="h-4 w-4" />
-                  服务条款
+                  {t('activation.termsOfService')}
                 </button>
               </div>
             )}
@@ -253,27 +255,27 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
         )}
 
         {/* 管理员登录入口 */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">管理员登录：</span>
+        <div className="mt-6 pt-6 border-t border-gray-200 dark:border-ios-dark-border">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">{t('activation.adminLogin')}</span>
             <input
               type="text"
               value={adminCode}
               onChange={(e) => setAdminCode(e.target.value)}
-              className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="输入管理员代码"
+              className="flex-1 min-w-[120px] px-3 py-1.5 text-sm border border-gray-300 dark:border-ios-dark-border dark:bg-ios-dark-bg-tertiary dark:text-ios-dark-text rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder={t('activation.adminCodePlaceholder')}
             />
             <button
               onClick={() => {
                 if (adminCode.toLowerCase() === 'zalem') {
                   router.push('/admin/login');
                 } else {
-                  alert('管理员代码错误');
+                  alert(t('activation.adminCodeError'));
                 }
               }}
-              className="px-4 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              className="px-4 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors whitespace-nowrap"
             >
-              登录
+              {t('activation.adminLoginButton')}
             </button>
           </div>
         </div>
@@ -282,29 +284,29 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
       {/* 服务条款弹窗 */}
       {showTerms && termsOfService && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] p-6 overflow-y-auto">
+          <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl w-full max-w-2xl max-h-[80vh] p-6 overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">{termsOfService.title}</h3>
+              <h3 className="text-xl font-bold dark:text-ios-dark-text">{termsOfService.title}</h3>
               <button
                 onClick={() => setShowTerms(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl"
               >
                 ×
               </button>
             </div>
-            <div className="text-sm text-gray-700 whitespace-pre-wrap">
+            <div className="text-sm text-gray-700 dark:text-ios-dark-text-secondary whitespace-pre-wrap">
               {termsOfService.content}
             </div>
             {termsOfService.version && (
-              <div className="mt-4 text-xs text-gray-500">
-                版本：{termsOfService.version}
+              <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                {t('activation.version')} {termsOfService.version}
               </div>
             )}
             <button
               onClick={() => setShowTerms(false)}
               className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              关闭
+              {t('activation.close')}
             </button>
           </div>
         </div>

@@ -81,6 +81,8 @@ function ExamModePageContent() {
 
   // 加载题目
   useEffect(() => {
+    let isMounted = true; // 用于检查组件是否已卸载
+    
     const loadQuestions = async () => {
       if (!licenseType || !stage) {
         router.push("/study");
@@ -90,6 +92,8 @@ function ExamModePageContent() {
       try {
         setIsLoading(true);
         const pkg = await loadUnifiedQuestionsPackage();
+        
+        if (!isMounted) return; // 如果组件已卸载，不再更新状态
         const allQuestions = (pkg?.questions || []) as Question[];
 
         if (!allQuestions || allQuestions.length === 0) {
@@ -214,12 +218,21 @@ function ExamModePageContent() {
         }, 0);
       } catch (error) {
         console.error("加载题目失败:", error);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadQuestions();
+    
+    return () => {
+      isMounted = false; // 组件卸载时标记
+    };
   }, [licenseType, stage, questionCount, router, continueExam, clearTimer]);
 
   const calculateScore = useCallback(() => {

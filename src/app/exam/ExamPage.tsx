@@ -87,6 +87,7 @@ function ExamPage() {
     // Load questions from the same source as study page
     const loadQuestions = async () => {
       try {
+        setIsLoading(true);
         // 通过统一加载器读取题目
         const allQuestions = await loadAllQuestions();
         if (!allQuestions || allQuestions.length === 0) {

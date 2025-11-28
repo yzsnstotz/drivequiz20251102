@@ -61,7 +61,7 @@ function removeFromLocalStorage(key: string): void {
 
 export async function getLatestPackageVersion(): Promise<string | null> {
   try {
-    const res = await apiGet<{ version: string }>(VERSION_ENDPOINT);
+    const res = await apiGet<{ version: string }>(VERSION_ENDPOINT, { timeoutMs: 10000 }); // 10秒超时
     const version = res?.version || null;
     return version;
   } catch (error) {
@@ -72,9 +72,10 @@ export async function getLatestPackageVersion(): Promise<string | null> {
 
 async function fetchUnifiedPackage(): Promise<UnifiedPackage | null> {
   try {
-    const res = await apiGet<UnifiedPackage>(PACKAGE_ENDPOINT);
+    const res = await apiGet<UnifiedPackage>(PACKAGE_ENDPOINT, { timeoutMs: 30000 }); // 30秒超时（题目包较大）
     return res || null;
-  } catch {
+  } catch (error) {
+    console.error(`[fetchUnifiedPackage] 获取题目包失败:`, error);
     return null;
   }
 }
