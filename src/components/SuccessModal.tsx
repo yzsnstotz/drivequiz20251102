@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '@/lib/i18n';
 
 interface SuccessModalProps {
   isOpen: boolean;
@@ -7,13 +8,20 @@ interface SuccessModalProps {
 }
 
 const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, expiresAt, onClose }) => {
+  const { t, language } = useLanguage();
+  
   if (!isOpen) return null;
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '未设置';
+    if (!dateString) return t('activation.success.noExpiry');
     try {
       const date = new Date(dateString);
-      return date.toLocaleString('zh-CN', {
+      const localeMap: Record<string, string> = {
+        'zh': 'zh-CN',
+        'en': 'en-US',
+        'ja': 'ja-JP',
+      };
+      return date.toLocaleString(localeMap[language] || 'zh-CN', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -44,11 +52,11 @@ const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, expiresAt, onClose 
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">激活成功</h2>
-          <p className="text-gray-600 mb-4">您的产品已成功激活！</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('activation.success.title')}</h2>
+          <p className="text-gray-600 mb-4">{t('activation.success.message')}</p>
           {expiresAt && (
             <div className="bg-blue-50 rounded-lg p-4 mb-4">
-              <p className="text-sm text-gray-600 mb-1">有效截止日期：</p>
+              <p className="text-sm text-gray-600 mb-1">{t('activation.success.expiresAt')}</p>
               <p className="text-lg font-semibold text-blue-600">{formatDate(expiresAt)}</p>
             </div>
           )}
@@ -56,7 +64,7 @@ const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, expiresAt, onClose 
             onClick={onClose}
             className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            确定
+            {t('common.confirm')}
           </button>
         </div>
       </div>

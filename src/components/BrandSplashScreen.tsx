@@ -35,7 +35,7 @@ export default function BrandSplashScreen({ onClose }: BrandSplashScreenProps) {
   const getBrandName = () => {
     switch (language) {
       case 'ja':
-        return 'ザレム.アプリ (ZALEM.APP)';
+        return 'ザレム.アプリ';
       default:
         return 'ZALEM.APP';
     }

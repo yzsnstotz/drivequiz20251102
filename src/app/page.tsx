@@ -332,14 +332,7 @@ export default function HomePage() {
             </div>
             <div className="flex flex-col items-start">
               <span className="text-xl font-bold text-gray-900 dark:text-white leading-tight">
-                {language === 'ja' ? (
-                  <>
-                    <span className="block">ザレム.APP</span>
-                    <span className="text-xs font-normal text-gray-500 dark:text-gray-400">ZALEM.APP</span>
-                  </>
-                ) : (
-                  'ZALEM.APP'
-                )}
+                {language === 'ja' ? 'ザレム.アプリ' : 'ZALEM.APP'}
               </span>
             </div>
             <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">

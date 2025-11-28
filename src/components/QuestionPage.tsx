@@ -129,7 +129,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
           <h1 className="text-xl font-bold text-gray-900">{questionSet.title}</h1>
         </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">暂无题目数据</p>
+          <p className="text-gray-600">{t('question.noData')}</p>
         </div>
       </div>
     );
@@ -223,10 +223,10 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
         <h1 className="text-xl font-bold text-gray-900">{questionSet.title}</h1>
         <div className="ml-auto flex items-center space-x-4">
           <span className="text-sm text-gray-600">
-            进度: {calculateProgress()}%
+            {t('question.progress')}: {calculateProgress()}%
           </span>
           <span className="text-sm text-blue-600">
-            正确率: {calculateAccuracy()}%
+            {t('question.accuracy')}: {calculateAccuracy()}%
           </span>
         </div>
       </div>
@@ -234,12 +234,12 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
       <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
         <div className="flex justify-between items-center mb-4">
           <span className="text-sm text-gray-600">
-            题目 {currentQuestionIndex + 1}/{questions.length}
+            {t('question.currentQuestion')} {currentQuestionIndex + 1}/{questions.length}
           </span>
           <div className="flex items-center space-x-3">
             <span className="text-sm font-medium text-blue-600">
-              {currentQuestion.type === 'single' ? '单选题' : 
-               currentQuestion.type === 'multiple' ? '多选题' : '判断题'}
+              {currentQuestion.type === 'single' ? t('question.type.single') : 
+               currentQuestion.type === 'multiple' ? t('question.type.multiple') : t('question.type.truefalse')}
             </span>
             <button
               onClick={() => setShowAIDialog(true)}

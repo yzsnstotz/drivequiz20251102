@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { RefreshCw } from 'lucide-react';
+import { useLanguage } from '@/lib/i18n';
 
 interface QuestionImageProps {
   src: string;
@@ -27,6 +28,7 @@ export default function QuestionImage({
   objectFit = 'contain',
   useNativeImg = false,
 }: QuestionImageProps) {
+  const { t } = useLanguage();
   const [imageError, setImageError] = useState(false);
   const [imageKey, setImageKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,14 +68,14 @@ export default function QuestionImage({
               />
             </svg>
           </div>
-          <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">图片加载失败</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{t('question.imageLoadError')}</p>
           <button
             onClick={handleRefresh}
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            aria-label="刷新图片"
+            aria-label={t('common.refresh')}
           >
             <RefreshCw className="h-4 w-4" />
-            <span>刷新</span>
+            <span>{t('common.refresh')}</span>
           </button>
         </div>
       </div>
