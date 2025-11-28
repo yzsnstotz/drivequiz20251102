@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Bot } from "lucide-react";
+import { ChevronLeft, ChevronRight, Bot, RotateCcw } from "lucide-react";
 import { loadUnifiedQuestionsPackage, Question } from "@/lib/questionsLoader";
 import { filterQuestions } from "@/lib/questionFilter";
 import { useLanguage } from "@/lib/i18n";
@@ -53,6 +53,7 @@ function StudyModePageContent() {
   const [favoriteState, setFavoriteState] = useState<Record<string, boolean>>(
     {}
   );
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // 加载题目
   useEffect(() => {
@@ -438,6 +439,25 @@ function StudyModePageContent() {
     }
   };
 
+  const handleResetProgress = () => {
+    if (!licenseType || !stage) return;
+    
+    // 清除进度
+    const progressKey = `study_progress_${licenseType}_${stage}`;
+    localStorage.removeItem(progressKey);
+    
+    // 重置状态
+    setCurrentIndex(0);
+    setSelectedAnswer("");
+    setShowAnswer(false);
+    setAnsweredQuestions(new Set());
+    setCorrectAnswers(0);
+    setQuestionCorrectness({});
+    
+    // 关闭确认弹窗
+    setShowResetConfirm(false);
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-6">
@@ -510,6 +530,14 @@ function StudyModePageContent() {
           {t("study.mode.study")}
         </h1>
         <div className="ml-auto flex items-center space-x-4">
+          <button
+            onClick={() => setShowResetConfirm(true)}
+            className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text rounded-lg hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary transition-colors"
+            title="从头开始"
+          >
+            <RotateCcw className="h-4 w-4" />
+            <span>从头开始</span>
+          </button>
           <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">
             {t("study.progress")}: {calculateProgress()}%
           </span>
@@ -675,6 +703,42 @@ function StudyModePageContent() {
           isOpen={showAIDialog}
           onClose={() => setShowAIDialog(false)}
         />
+      )}
+
+      {/* 从头开始确认弹窗 */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl w-full max-w-md p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-ios-dark-text mb-4">
+              确认从头开始
+            </h3>
+            <p className="text-sm text-gray-700 dark:text-ios-dark-text-secondary mb-6">
+              确定要清除当前学习进度吗？此操作将：
+            </p>
+            <ul className="text-sm text-gray-600 dark:text-ios-dark-text-secondary mb-6 space-y-2 list-disc list-inside">
+              <li>清除所有答题记录</li>
+              <li>重置进度为0%</li>
+              <li>从第一题重新开始</li>
+            </ul>
+            <p className="text-sm text-gray-600 dark:text-ios-dark-text-secondary mb-6">
+              此操作无法撤销，确定要继续吗？
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 px-4 py-2 text-gray-700 dark:text-ios-dark-text-secondary bg-gray-100 dark:bg-ios-dark-bg-tertiary rounded-lg hover:bg-gray-200 dark:hover:bg-ios-dark-bg-tertiary/80 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleResetProgress}
+                className="flex-1 px-4 py-2 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors"
+              >
+                确认清除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

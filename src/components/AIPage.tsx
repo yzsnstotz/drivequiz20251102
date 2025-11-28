@@ -582,8 +582,8 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             disabled={loading || input.trim().length === 0}
             className={`inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2.5 h-11 transition-colors flex-shrink-0 ${
               loading || input.trim().length === 0
-                ? "cursor-not-allowed bg-gray-200 text-gray-500"
-                : "bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700"
+                ? "cursor-not-allowed bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                : "bg-blue-500 dark:bg-blue-500 text-white dark:text-white hover:bg-blue-600 dark:hover:bg-blue-600 active:bg-blue-700 dark:active:bg-blue-700"
             }`}
             aria-busy={loading}
           >
