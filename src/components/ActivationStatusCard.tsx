@@ -8,7 +8,8 @@ import Link from "next/link";
 
 interface ActivationStatus {
   valid: boolean;
-  reason?: string;
+  reason?: string; // 兼容旧版本
+  reasonCode?: string; // 新的reason code
   activationCode?: string;
   activatedAt?: string;
   expiresAt?: string | null;
@@ -156,8 +157,10 @@ export default function ActivationStatusCard() {
         <div className="flex-grow">
           <h3 className="font-medium text-gray-900 dark:text-white">{t('activation.status')}</h3>
           <p className="text-red-600 dark:text-red-400 text-sm font-medium">{t('activation.status.notActivated')}</p>
-          {status.reason && (
-            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{status.reason}</p>
+          {(status.reasonCode || status.reason) && (
+            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
+              {status.reasonCode ? t(`activation.error.${status.reasonCode}`) : status.reason}
+            </p>
           )}
         </div>
       </div>

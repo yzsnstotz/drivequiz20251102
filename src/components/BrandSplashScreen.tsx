@@ -9,7 +9,7 @@ interface BrandSplashScreenProps {
 }
 
 export default function BrandSplashScreen({ onClose }: BrandSplashScreenProps) {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -24,16 +24,7 @@ export default function BrandSplashScreen({ onClose }: BrandSplashScreenProps) {
 
   // 获取文案（根据语言）
   const getSplashText = () => {
-    switch (language) {
-      case 'zh':
-        return '开启你的学车之旅';
-      case 'en':
-        return 'Start your driving journey';
-      case 'ja':
-        return 'あなたの運転学習の旅を始めましょう';
-      default:
-        return '开启你的学车之旅';
-    }
+    return t('home.subtitle');
   };
 
   if (!mounted) {

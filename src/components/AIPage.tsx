@@ -97,6 +97,8 @@ function cleanModelName(model: string | undefined): string | undefined {
 
 /** ---- 组件 ---- */
 // Get welcome message based on language
+// 注意：这个函数现在不再使用，改为使用翻译键
+// 保留用于向后兼容
 function getWelcomeMessage(lang: Language): string {
   switch (lang) {
     case "zh":
@@ -160,6 +162,8 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
     
     // 如果没有缓存或缓存无效，根据实际语言创建并保存欢迎消息
     const lang = detectLanguage();
+    // 使用翻译键获取欢迎消息（需要从useLanguage获取t函数，但这里在useEffect中，需要从外部获取）
+    // 暂时使用getWelcomeMessage，后续可以优化
     const welcomeMessage: ChatMessage = {
       id: uid(),
       role: "ai",
@@ -386,36 +390,36 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       });
 
       if (!payload.ok) {
-        const message = payload.message || "服务开小差了，请稍后再试";
+        const message = payload.message || t('ai.error.serviceUnavailable');
         
         // 根据不同的错误类型提供友好的提示
         if (payload.errorCode === "AUTH_REQUIRED" || payload.errorCode === "INVALID_TOKEN") {
-          const authMessage = "认证失败，请重新激活或刷新页面";
+          const authMessage = t('ai.error.authFailed');
           setErrorTip(authMessage);
           pushMessage({
             id: uid(),
             role: "ai",
-            content: `【认证错误】${authMessage}。如果您刚刚激活，请刷新页面重试。`,
+            content: `【${t('ai.error.unknown')}】${authMessage}。${t('ai.error.authFailedDetail')}`,
             createdAt: Date.now(),
           });
         } else if (payload.errorCode === "CONFIG_ERROR") {
           // 配置错误：环境变量未配置
-          const configMessage = "AI 服务配置错误。请检查环境变量配置或联系管理员。";
+          const configMessage = t('ai.error.configError');
           setErrorTip(configMessage);
           pushMessage({
             id: uid(),
             role: "ai",
-            content: `【配置错误】${message}。如果问题持续，请联系支持。`,
+            content: `【${t('ai.error.unknown')}】${message}。${t('ai.error.contactSupport')}`,
             createdAt: Date.now(),
           });
         } else if (payload.errorCode === "AI_SERVICE_ERROR" && message.includes("local")) {
           // 配置不匹配：数据库配置为 local 但调用了远程服务
-          const mismatchMessage = "配置不匹配：数据库配置与调用端点不一致。请刷新页面重试。";
+          const mismatchMessage = t('ai.error.configMismatch');
           setErrorTip(mismatchMessage);
           pushMessage({
             id: uid(),
             role: "ai",
-            content: `【配置错误】${mismatchMessage} 如果问题持续，请联系支持。`,
+            content: `【${t('ai.error.unknown')}】${mismatchMessage} ${t('ai.error.contactSupport')}`,
             createdAt: Date.now(),
           });
         } else {
@@ -424,7 +428,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
           pushMessage({
             id: uid(),
             role: "ai",
-            content: `【出错】${message}${payload.errorCode ? `（${payload.errorCode}）` : ""}`,
+            content: `【${t('ai.error.unknown')}】${message}${payload.errorCode ? `（${payload.errorCode}）` : ""}`,
             createdAt: Date.now(),
           });
         }
@@ -441,7 +445,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       const actualProvider = aiProvider || currentProvider;
       
       // 构建回复内容（不再在内容中附加来源，而是在metadata中保存）
-      const content = answer || "（空响应）";
+      const content = answer || t('ai.error.emptyResponse');
       
       pushMessage({
         id: uid(),
@@ -455,12 +459,12 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         },
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : `网络异常：${formatErrorMessage(err)}`;
+      const msg = err instanceof Error ? err.message : `${t('ai.error.networkError')}：${formatErrorMessage(err)}`;
       setErrorTip(msg);
       pushMessage({
         id: uid(),
         role: "ai",
-        content: `【出错】${msg}`,
+        content: `【${t('ai.error.unknown')}】${msg}`,
         createdAt: Date.now(),
       });
     } finally {

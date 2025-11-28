@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!email) {
-      return ok({ valid: false, reason: "未登录或无法获取用户信息" });
+      return ok({ valid: false, reasonCode: "NOT_LOGGED_IN" });
     }
 
     // 查找用户最新的激活记录
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
       .executeTakeFirst();
 
     if (!latestActivation) {
-      return ok({ valid: false, reason: "未找到激活记录" });
+      return ok({ valid: false, reasonCode: "NO_ACTIVATION_RECORD" });
     }
 
     // 查找对应的激活码信息
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       .executeTakeFirst();
 
     if (!activationCode) {
-      return ok({ valid: false, reason: "激活码不存在" });
+      return ok({ valid: false, reasonCode: "ACTIVATION_CODE_NOT_FOUND" });
     }
 
     // 检查激活码状态
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     if (status === "suspended" || status === "expired" || status === "disabled") {
       return ok({
         valid: false,
-        reason: `激活码状态不可用: ${status}`,
+        reasonCode: "ACTIVATION_CODE_STATUS_INVALID",
         status,
       });
     }
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
     if (usageLimit > 0 && usedCount >= usageLimit) {
       return ok({
         valid: false,
-        reason: "激活码已达到使用上限",
+        reasonCode: "ACTIVATION_CODE_USAGE_EXCEEDED",
       });
     }
 
@@ -179,7 +179,7 @@ export async function GET(request: NextRequest) {
 
         return ok({
           valid: false,
-          reason: "激活码已过期",
+          reasonCode: "ACTIVATION_CODE_EXPIRED",
           expiresAt: calculatedExpiresAt.toISOString(),
         });
       }
