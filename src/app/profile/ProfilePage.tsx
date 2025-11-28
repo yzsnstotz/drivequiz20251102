@@ -6,6 +6,16 @@ import Link from 'next/link';
 import { useLanguage } from '@/lib/i18n';
 import ActivationStatusCard from '@/components/ActivationStatusCard';
 
+type MenuItem = {
+  id: string;
+  icon: React.ReactElement;
+  title: string;
+  description: string;
+  href?: string;
+  onClick?: () => void;
+  isDanger?: boolean;
+};
+
 function ProfilePage() {
   const { t } = useLanguage();
   const [nickname, setNickname] = useState('User');
@@ -34,7 +44,7 @@ function ProfilePage() {
   };
 
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     {
       id: 'mistakes',
       icon: <XSquare className="h-6 w-6 text-red-60" />,
