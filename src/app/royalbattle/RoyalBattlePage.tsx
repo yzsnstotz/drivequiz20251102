@@ -302,12 +302,15 @@ function RoyalBattlePage() {
             </button>
           </div>
           {currentQuestion.image && (
-            <QuestionImage
-              src={currentQuestion.image}
-              alt={t('royalbattle.image')}
-              width={800}
-              height={600}
-            />
+            <div className="mb-4">
+              <QuestionImage
+                src={currentQuestion.image}
+                alt={t('royalbattle.image')}
+                width={800}
+                height={600}
+                useNativeImg={true}
+              />
+            </div>
           )}
           
           {currentQuestion.type === 'truefalse' ? (
