@@ -1,21 +1,31 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 /**
  * 客户端认证守卫组件
- * 检查用户是否完成驾照选择，如果未完成则重定向到选择页面
+ * 只在初次登录时检查用户是否完成驾照选择，如果未完成则重定向到选择页面
+ * 之后不再自动检查，避免强制用户重复选择
  */
+const LICENSE_PREFERENCE_CHECKED_KEY = 'license_preference_checked';
+const LICENSE_PREFERENCE_SKIPPED_KEY = 'license_preference_skipped';
+
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const pathname = usePathname();
+  const hasCheckedRef = useRef(false);
 
   useEffect(() => {
     // 排除 admin 路由，admin 路由使用独立的认证系统
     if (pathname.startsWith('/admin/')) {
+      return;
+    }
+
+    // 排除选择页面本身
+    if (pathname === "/study/select") {
       return;
     }
 
@@ -29,14 +39,28 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 如果已登录，检查是否完成驾照选择
+    // 如果已登录，只在初次登录时检查一次
     if (status === "authenticated" && session?.user?.id) {
-      // 排除选择页面本身
-      if (pathname === "/study/select") {
+      // 如果已经检查过，不再重复检查
+      if (hasCheckedRef.current) {
         return;
       }
 
-      // 检查用户是否完成驾照选择
+      // 检查 localStorage 标记，如果已经检查过或用户已跳过，不再检查
+      if (typeof window !== 'undefined') {
+        const hasChecked = localStorage.getItem(LICENSE_PREFERENCE_CHECKED_KEY) === 'true';
+        const hasSkipped = localStorage.getItem(LICENSE_PREFERENCE_SKIPPED_KEY) === 'true';
+        
+        if (hasChecked || hasSkipped) {
+          hasCheckedRef.current = true;
+          return;
+        }
+      }
+
+      // 标记为已检查，避免重复检查
+      hasCheckedRef.current = true;
+
+      // 检查用户是否完成驾照选择（只在初次登录时）
       const checkLicensePreference = async () => {
         try {
           const response = await fetch("/api/user/license-preference", {
@@ -48,17 +72,23 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
             const result = await response.json();
             if (result.ok && result.data) {
               const { licenseType, stage } = result.data;
-              // 如果未完成驾照选择，跳转到选择页面
-              if (!licenseType || !stage) {
+              // 如果用户已经有偏好，标记为已检查，不再重复检查
+              if (licenseType && stage) {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem(LICENSE_PREFERENCE_CHECKED_KEY, 'true');
+                }
+                return;
+              }
+            }
+            
+            // 如果没有偏好，且用户未跳过，才进行重定向（只在初次登录时）
+            if (typeof window !== 'undefined') {
+              const hasSkipped = localStorage.getItem(LICENSE_PREFERENCE_SKIPPED_KEY) === 'true';
+              if (!hasSkipped) {
                 const selectUrl = new URL("/study/select", window.location.origin);
                 selectUrl.searchParams.set("callbackUrl", pathname);
                 router.push(selectUrl.toString());
               }
-            } else {
-              // 如果没有数据，说明未完成选择
-              const selectUrl = new URL("/study/select", window.location.origin);
-              selectUrl.searchParams.set("callbackUrl", pathname);
-              router.push(selectUrl.toString());
             }
           }
         } catch (error) {
@@ -69,7 +99,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
       checkLicensePreference();
     }
-  }, [session, status, router, pathname]);
+  }, [session, status, router]); // 移除 pathname 依赖，避免路径变化时重复检查
 
   // 排除 admin 路由，admin 路由使用独立的认证系统
   if (pathname.startsWith('/admin/')) {
@@ -78,4 +108,5 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
+
 

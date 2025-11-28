@@ -110,7 +110,7 @@ export default function StudyPage() {
     // 如果用户已登录，保存选择
     if (session?.user?.id && selectedLicenseType) {
       try {
-        await fetch("/api/user/license-preference", {
+        const response = await fetch("/api/user/license-preference", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -121,13 +121,21 @@ export default function StudyPage() {
             stage,
           }),
         });
-        setSavedLicenseType(selectedLicenseType);
-        setSavedStage(stage);
         
-        // 同时保存到 sessionStorage
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('study_saved_license_type', selectedLicenseType);
-          sessionStorage.setItem('study_saved_stage', stage);
+        const result = await response.json();
+        if (result.ok) {
+          setSavedLicenseType(selectedLicenseType);
+          setSavedStage(stage);
+          
+          // 同时保存到 sessionStorage
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('study_saved_license_type', selectedLicenseType);
+            sessionStorage.setItem('study_saved_stage', stage);
+            // 设置已检查标记，避免再次强制弹出
+            localStorage.setItem('license_preference_checked', 'true');
+            // 清除跳过标记（如果存在）
+            localStorage.removeItem('license_preference_skipped');
+          }
         }
       } catch (error) {
         console.error("[StudyPage] Save preference error:", error);

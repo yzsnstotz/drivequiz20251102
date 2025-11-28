@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 import LicenseTypeSelector from "../components/LicenseTypeSelector";
 import StageSelector from "../components/StageSelector";
 import { useLanguage } from "@/lib/i18n";
 import { useSession } from "next-auth/react";
+
+const LICENSE_PREFERENCE_SKIPPED_KEY = 'license_preference_skipped';
 
 function LicenseSelectContent() {
   const { t } = useLanguage();
@@ -57,7 +59,13 @@ function LicenseSelectContent() {
 
       const result = await response.json();
       if (result.ok) {
-        // 保存成功，跳转到回调URL或首页
+        // 保存成功，设置已检查标记，避免再次强制弹出
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('license_preference_checked', 'true');
+          // 清除跳过标记（如果存在）
+          localStorage.removeItem(LICENSE_PREFERENCE_SKIPPED_KEY);
+        }
+        // 跳转到回调URL或首页
         router.push(callbackUrl);
       } else {
         setError(result.message || "保存失败，请稍后重试");
@@ -84,6 +92,15 @@ function LicenseSelectContent() {
     }
   };
 
+  const handleCancel = () => {
+    // 设置跳过标记，避免再次强制弹出
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LICENSE_PREFERENCE_SKIPPED_KEY, 'true');
+    }
+    // 跳转到回调URL或首页
+    router.push(callbackUrl);
+  };
+
   // 如果未登录，显示提示
   if (!session) {
     return (
@@ -103,24 +120,35 @@ function LicenseSelectContent() {
 
   return (
     <div className="container mx-auto px-4 py-6 pb-20">
-      <div className="mb-6 flex items-center space-x-4">
-        <button
-          onClick={handleBack}
-          className="text-gray-600 hover:text-gray-900"
-          disabled={loading}
-        >
-          <ChevronLeft className="h-6 w-6" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {t("study.title")}
-          </h1>
-          <p className="text-gray-600">
-            {step === 1
-              ? t("study.selectLicenseType")
-              : t("study.selectStage")}
-          </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={handleBack}
+            className="text-gray-600 hover:text-gray-900"
+            disabled={loading}
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {t("study.title")}
+            </h1>
+            <p className="text-gray-600">
+              {step === 1
+                ? t("study.selectLicenseType")
+                : t("study.selectStage")}
+            </p>
+          </div>
         </div>
+        <button
+          onClick={handleCancel}
+          className="flex items-center space-x-1 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          disabled={loading}
+          title={t("common.cancel") || "取消"}
+        >
+          <X className="h-5 w-5" />
+          <span className="text-sm">{t("common.cancel") || "稍后选择"}</span>
+        </button>
       </div>
 
       <div className="bg-white rounded-2xl p-6 shadow-sm">
