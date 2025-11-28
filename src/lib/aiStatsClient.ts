@@ -36,16 +36,28 @@ export async function getAiExpectedTime(
       apiUrl.searchParams.set("model", encodeURIComponent(model));
     }
 
-    const response = await fetch(apiUrl.toString(), {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      cache: "no-store",
-    });
+    let response: Response;
+    try {
+      response = await fetch(apiUrl.toString(), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
+    } catch (fetchError) {
+      // 网络错误，静默处理（不显示在控制台）
+      return 8; // fallback
+    }
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      console.warn(`[getAiExpectedTime] API 调用失败: ${response.status} ${response.statusText} ${text.substring(0, 100)}`);
+      // 静默处理404错误（端点可能不存在），其他错误才在开发环境记录
+      if (response.status !== 404) {
+        // 只在开发环境显示警告
+        if (process.env.NODE_ENV === 'development') {
+          const text = await response.text().catch(() => "");
+          console.warn(`[getAiExpectedTime] API 调用失败: ${response.status} ${response.statusText} ${text.substring(0, 100)}`);
+        }
+      }
       return 8; // fallback
     }
 

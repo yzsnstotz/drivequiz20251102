@@ -200,7 +200,11 @@ export default function QuestionAIDialog({
         hasInitialized.current = false;
       } catch (error) {
         // 如果解析失败，忽略缓存，继续正常流程
-        console.error("[QuestionAIDialog] 解析缓存的对话历史失败:", error);
+        console.error("[QuestionAIDialog] 解析缓存的对话历史失败:", {
+          error: error instanceof Error ? error.message : String(error),
+          questionHash: question.hash,
+          timestamp: new Date().toISOString(),
+        });
         hasInitialized.current = false;
       }
     }
@@ -212,8 +216,19 @@ export default function QuestionAIDialog({
       try {
         const cacheKey = `question_ai_dialog_${question.hash}`;
         localStorage.setItem(cacheKey, JSON.stringify(messages));
+        console.log("[QuestionAIDialog] 保存对话历史到缓存:", {
+          questionHash: question.hash,
+          messageCount: messages.length,
+          timestamp: new Date().toISOString(),
+        });
       } catch (error) {
-        // 如果保存失败，忽略错误
+        // 如果保存失败，记录错误
+        console.error("[QuestionAIDialog] 保存对话历史到缓存失败:", {
+          error: error instanceof Error ? error.message : String(error),
+          questionHash: question.hash,
+          messageCount: messages.length,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
   }, [messages, isOpen, question.hash]);
@@ -700,33 +715,17 @@ export default function QuestionAIDialog({
                       {/* RAG Sources（排除耗时信息） */}
                       {message.metadata.sources && message.metadata.sources.filter((source) => source.title !== "处理耗时").length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
-                          <span className="text-gray-400 text-xs">📚</span>
+                          <span className="text-gray-400 text-xs dark:text-gray-500">📚</span>
                           {message.metadata.sources
                             .filter((source) => source.title !== "处理耗时")
                             .map((source, idx) => {
-                              const displayText = source.title || source.url || `Source ${idx + 1}`;
-                              const hasUrl = source.url && source.url.trim() !== "";
-                              
-                              if (hasUrl) {
-                                return (
-                                  <a
-                                    key={idx}
-                                    href={source.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-500 hover:text-blue-600 underline break-words"
-                                    title={displayText}
-                                  >
-                                    {displayText}
-                                  </a>
-                                );
-                              } else {
-                                return (
-                                  <span key={idx} className="text-gray-500 text-xs break-words">
-                                    {displayText}
-                                  </span>
-                                );
-                              }
+                              const displayText = source.title || source.url || source.snippet || `Source ${idx + 1}`;
+                              // 去除超链接，只显示文本内容
+                              return (
+                                <span key={idx} className="text-gray-500 dark:text-gray-400 text-xs break-words">
+                                  {displayText}
+                                </span>
+                              );
                             })}
                         </div>
                       )}
@@ -761,12 +760,18 @@ export default function QuestionAIDialog({
               onClick={handleSend}
               disabled={!inputValue.trim() || isLoading || isInitialLoading}
               className="px-4 py-3 bg-blue-600 dark:bg-blue-500 text-white dark:text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-              aria-label="发送"
+              aria-label={isLoading ? "发送中" : "发送"}
             >
               {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin text-white dark:text-white" />
+                  <span className="ml-2 text-white dark:text-white">发送中…</span>
+                </>
               ) : (
-                <Send className="h-5 w-5" />
+                <>
+                  <Send className="h-5 w-5 text-white dark:text-white" />
+                  <span className="ml-2 text-white dark:text-white">发送</span>
+                </>
               )}
             </button>
           </div>

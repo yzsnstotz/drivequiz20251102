@@ -111,33 +111,82 @@ function getWelcomeMessage(lang: Language): string {
 const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
   const { isActivated, showActivationModal } = useAIActivation();
   
-  // 初始化消息历史：从 localStorage 读取，如果不存在则使用默认欢迎消息
+  // 初始化消息历史：使用固定的默认值，避免hydration错误
+  // 在SSR和客户端都使用相同的默认值（中文），避免hydration不匹配
+  // 实际的localStorage读取和语言检测将在useEffect中完成
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved) as ChatMessage[];
-          // 确保解析的数据是有效的数组
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
-        }
-      } catch {
-        // 解析失败时忽略，使用默认值
-      }
-    }
-    // 根据用户语言显示欢迎消息
-    const lang = detectLanguage();
-    return [
-      {
-        id: uid(),
-        role: "ai",
-        content: getWelcomeMessage(lang),
-        createdAt: Date.now(),
-      },
-    ];
+    // 使用固定的默认语言（中文），避免SSR和客户端不一致
+    // 在useEffect中会根据实际语言更新
+    const welcomeMessage: ChatMessage = {
+      id: "welcome-message", // 使用固定ID，避免每次渲染都不同
+      role: "ai",
+      content: getWelcomeMessage("zh"), // 使用固定的默认语言，避免hydration错误
+      createdAt: 0, // 使用固定时间戳，避免hydration错误
+    };
+    return [welcomeMessage];
   });
+  
+  // 在客户端挂载后从localStorage加载消息
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as ChatMessage[];
+        // 确保解析的数据是有效的数组
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          console.log("[AIPage] 从缓存加载聊天记录:", {
+            messageCount: parsed.length,
+            timestamp: new Date().toISOString(),
+          });
+          setMessages(parsed);
+          return;
+        } else {
+          console.log("[AIPage] 缓存为空或无效，使用默认欢迎消息");
+        }
+      } else {
+        console.log("[AIPage] 未找到缓存，使用默认欢迎消息");
+      }
+    } catch (error) {
+      // 解析失败时记录错误，使用默认值
+      console.error("[AIPage] 解析缓存失败:", {
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
+    // 如果没有缓存或缓存无效，根据实际语言创建并保存欢迎消息
+    const lang = detectLanguage();
+    const welcomeMessage: ChatMessage = {
+      id: uid(),
+      role: "ai",
+      content: getWelcomeMessage(lang),
+      createdAt: Date.now(),
+    };
+    
+    // 如果当前消息的语言与实际语言不一致，更新消息
+    // 这确保在客户端hydration后，消息语言与用户设置一致
+    setMessages((prevMessages) => {
+      const currentWelcome = prevMessages[0];
+      // 如果当前是默认欢迎消息且语言不匹配，更新它
+      if (currentWelcome?.id === "welcome-message" && currentWelcome.content !== welcomeMessage.content) {
+        return [welcomeMessage];
+      }
+      // 如果已经有其他消息（不是默认欢迎消息），不更新
+      if (prevMessages.length > 1 || (prevMessages[0] && prevMessages[0].id !== "welcome-message")) {
+        return prevMessages;
+      }
+      return [welcomeMessage];
+    });
+    
+    // 保存欢迎消息到缓存
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([welcomeMessage]));
+    } catch (error) {
+      console.warn("[AIPage] 保存欢迎消息到缓存失败:", error);
+    }
+  }, []); // 只在组件挂载时执行一次
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [errorTip, setErrorTip] = useState<string>("");
@@ -171,25 +220,47 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         console.log("[AIPage] 获取到 provider 配置:", {
           provider: config.provider,
           model: config.model,
+          timestamp: new Date().toISOString(),
         });
-        setCurrentProvider(config.provider);
+        
+        // 验证 provider 配置是否有效
+        if (config.provider !== "local" && config.provider !== "render") {
+          console.error("[AIPage] 无效的 provider 配置:", config.provider, "使用默认值 render");
+          setCurrentProvider("render");
+        } else {
+          setCurrentProvider(config.provider);
+        }
         setCurrentModel(config.model);
       })
       .catch((err) => {
-        console.warn("[AIPage] 获取 provider 配置失败，使用默认值:", err);
+        console.error("[AIPage] 获取 provider 配置失败，使用默认值:", {
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+          timestamp: new Date().toISOString(),
+        });
         setCurrentProvider("render");
       });
   }, []);
 
   // 持久化消息历史到 localStorage（限制最大条数）
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && messages.length > 0) {
       try {
         // 限制最大保存条数，只保存最近的 N 条消息
         const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
-      } catch {
-        // 写入失败时忽略（例如 localStorage 已满或不可用）
+        console.log("[AIPage] 保存聊天记录到缓存:", {
+          originalCount: messages.length,
+          savedCount: trimmed.length,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        // 写入失败时记录错误（例如 localStorage 已满或不可用）
+        console.error("[AIPage] 保存聊天记录到缓存失败:", {
+          error: error instanceof Error ? error.message : String(error),
+          messageCount: messages.length,
+          timestamp: new Date().toISOString(),
+        });
       }
     }
   }, [messages]);
@@ -265,6 +336,33 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
           content: msg.content,
         }));
       
+      // 验证当前 provider 配置（在调用前再次确认）
+      if (currentProvider !== "local" && currentProvider !== "render") {
+        const errorMsg = `无效的 provider 配置: ${currentProvider}。请刷新页面重试。`;
+        console.error("[AIPage] Provider 配置验证失败:", {
+          currentProvider,
+          timestamp: new Date().toISOString(),
+        });
+        setErrorTip(errorMsg);
+        pushMessage({
+          id: uid(),
+          role: "ai",
+          content: `【配置错误】${errorMsg}`,
+          createdAt: Date.now(),
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 记录调用前的配置信息
+      console.log("[AIPage] 准备调用 AI 服务:", {
+        provider: currentProvider,
+        model: currentModel,
+        questionLength: q.length,
+        hasHistory: historyMessages.length > 0,
+        timestamp: new Date().toISOString(),
+      });
+
       // 获取预计耗时（使用当前配置的 provider）
       try {
         const expected = await getAiExpectedTime(currentProvider, currentModel);
@@ -287,7 +385,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       if (!payload.ok) {
         const message = payload.message || "服务开小差了，请稍后再试";
         
-        // 如果是认证错误，提供更友好的提示
+        // 根据不同的错误类型提供友好的提示
         if (payload.errorCode === "AUTH_REQUIRED" || payload.errorCode === "INVALID_TOKEN") {
           const authMessage = "认证失败，请重新激活或刷新页面";
           setErrorTip(authMessage);
@@ -297,7 +395,28 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             content: `【认证错误】${authMessage}。如果您刚刚激活，请刷新页面重试。`,
             createdAt: Date.now(),
           });
+        } else if (payload.errorCode === "CONFIG_ERROR") {
+          // 配置错误：环境变量未配置
+          const configMessage = "AI 服务配置错误。请检查环境变量配置或联系管理员。";
+          setErrorTip(configMessage);
+          pushMessage({
+            id: uid(),
+            role: "ai",
+            content: `【配置错误】${message}。如果问题持续，请联系支持。`,
+            createdAt: Date.now(),
+          });
+        } else if (payload.errorCode === "AI_SERVICE_ERROR" && message.includes("local")) {
+          // 配置不匹配：数据库配置为 local 但调用了远程服务
+          const mismatchMessage = "配置不匹配：数据库配置与调用端点不一致。请刷新页面重试。";
+          setErrorTip(mismatchMessage);
+          pushMessage({
+            id: uid(),
+            role: "ai",
+            content: `【配置错误】${mismatchMessage} 如果问题持续，请联系支持。`,
+            createdAt: Date.now(),
+          });
         } else {
+          // 其他错误
           setErrorTip(message);
           pushMessage({
             id: uid(),
@@ -506,33 +625,17 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
                   {/* RAG Sources（排除耗时信息） */}
                   {m.metadata.sources && m.metadata.sources.filter((source) => source.title !== "处理耗时").length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
-                      <span className="text-gray-400 text-xs">📚</span>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">📚</span>
                       {m.metadata.sources
                         .filter((source) => source.title !== "处理耗时")
                         .map((source, idx) => {
-                          const displayText = source.title || source.url || `Source ${idx + 1}`;
-                          const hasUrl = source.url && source.url.trim() !== "";
-                          
-                          if (hasUrl) {
-                            return (
-                              <a
-                                key={idx}
-                                href={source.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-500 hover:text-blue-600 underline break-words"
-                                title={displayText}
-                              >
-                                {displayText}
-                              </a>
-                            );
-                          } else {
-                            return (
-                              <span key={idx} className="text-gray-500 text-xs break-words">
-                                {displayText}
-                              </span>
-                            );
-                          }
+                          const displayText = source.title || source.url || source.snippet || `Source ${idx + 1}`;
+                          // 去除超链接，只显示文本内容
+                          return (
+                            <span key={idx} className="text-gray-500 dark:text-gray-400 text-xs break-words">
+                              {displayText}
+                            </span>
+                          );
                         })}
                     </div>
                   )}

@@ -121,16 +121,22 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     }
   }
 
+  // 增强日志记录，记录完整的请求信息（不暴露敏感信息）
   console.log("[callAiDirect] 调用 AI 服务:", {
     provider,
     baseUrl: url,
     requestUrl,
     hasToken: !!token,
     tokenLength: token?.length || 0,
+    tokenPrefix: token ? `${token.substring(0, 8)}...` : "undefined",
     scene: rest.scene,
     model: rest.model,
     xAiProviderHeader,
     questionLength: rest.question?.length || 0,
+    locale: rest.locale,
+    hasMessages: !!rest.messages,
+    messagesCount: rest.messages?.length || 0,
+    timestamp: new Date().toISOString(),
   });
 
   let response: Response;
@@ -146,20 +152,38 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
       headers["X-AI-Provider"] = xAiProviderHeader;
     }
 
+    // 构建请求体
+    const requestBody = {
+      question: rest.question,
+      lang: rest.locale || "zh",
+      scene: rest.scene,
+      sourceLanguage: rest.sourceLanguage,
+      targetLanguage: rest.targetLanguage,
+      messages: rest.messages,
+      maxHistory: rest.maxHistory,
+      seedUrl: rest.seedUrl,
+      model: rest.model,
+    };
+    
+    // 记录请求详情（脱敏）
+    console.log("[callAiDirect] 发送请求:", {
+      method: "POST",
+      url: requestUrl,
+      headers: {
+        "Content-Type": headers["Content-Type"],
+        "Authorization": headers["Authorization"] ? "Bearer ***" : undefined,
+        "X-AI-Provider": headers["X-AI-Provider"] || undefined,
+      },
+      bodySize: JSON.stringify(requestBody).length,
+      questionLength: rest.question?.length || 0,
+      scene: rest.scene,
+      model: rest.model,
+    });
+    
     response = await fetch(requestUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        question: rest.question,
-        lang: rest.locale || "zh",
-        scene: rest.scene,
-        sourceLanguage: rest.sourceLanguage,
-        targetLanguage: rest.targetLanguage,
-        messages: rest.messages,
-        maxHistory: rest.maxHistory,
-        seedUrl: rest.seedUrl,
-        model: rest.model,
-      }),
+      body: JSON.stringify(requestBody),
     });
   } catch (fetchError: any) {
     // 网络错误（如 CORS、连接失败等）
@@ -248,14 +272,66 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
-    const errorMessage = `AI service error: ${response.status} ${errorText.substring(0, 200)}`;
+    
+    // 尝试解析 JSON 错误响应，提取详细错误信息
+    let parsedError: any = null;
+    let detailedMessage = errorText.substring(0, 200);
+    try {
+      parsedError = JSON.parse(errorText);
+      if (parsedError && typeof parsedError === "object") {
+        // 提取错误信息
+        if (parsedError.message) {
+          detailedMessage = parsedError.message;
+        } else if (parsedError.error) {
+          detailedMessage = typeof parsedError.error === "string" 
+            ? parsedError.error 
+            : JSON.stringify(parsedError.error);
+        }
+        
+        // 如果是 INTERNAL_ERROR，尝试提取更详细的信息
+        if (parsedError.errorCode === "INTERNAL_ERROR" && parsedError.details) {
+          const details = parsedError.details;
+          if (details.errorMessage) {
+            detailedMessage = details.errorMessage;
+          } else if (details.error) {
+            detailedMessage = typeof details.error === "string"
+              ? details.error
+              : JSON.stringify(details.error);
+          }
+        }
+      }
+    } catch {
+      // 如果解析失败，使用原始错误文本
+    }
+    
+    const errorMessage = `AI service error: ${response.status} ${detailedMessage}`;
+    
+    // 增强错误日志
     console.error("[callAiDirect] AI service 调用失败:", {
       provider,
       status: response.status,
       statusText: response.statusText,
       url: requestUrl,
-      error: errorText.substring(0, 200),
+      baseUrl: url,
+      errorCode: parsedError?.errorCode || "UNKNOWN",
+      errorMessage: detailedMessage,
+      rawError: errorText.substring(0, 500),
+      hasParsedError: !!parsedError,
+      timestamp: new Date().toISOString(),
     });
+    
+    // 针对配置不匹配的情况提供更友好的错误提示
+    let userFriendlyMessage = errorMessage;
+    if (parsedError?.errorCode === "INTERNAL_ERROR" && detailedMessage.includes("local")) {
+      userFriendlyMessage = `配置错误：数据库配置为 "local"，但调用了远程服务。请检查环境变量配置或刷新页面重试。`;
+    } else if (parsedError?.errorCode === "INTERNAL_ERROR") {
+      // 在生产环境显示友好提示，开发环境显示详细错误
+      const isDev = process.env.NODE_ENV === "development";
+      userFriendlyMessage = isDev 
+        ? errorMessage
+        : `AI 服务暂时不可用，请稍后重试。如果问题持续，请联系支持。`;
+    }
+    
     return {
       ok: false,
       errorCode:
@@ -263,8 +339,8 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
           ? "AUTH_REQUIRED"
           : response.status === 403
           ? "FORBIDDEN"
-          : "AI_SERVICE_ERROR",
-      message: errorMessage,
+          : parsedError?.errorCode || "AI_SERVICE_ERROR",
+      message: userFriendlyMessage,
     };
   }
 

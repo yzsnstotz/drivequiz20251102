@@ -37,25 +37,39 @@ export function resolveAiEndpoint(provider: AiProviderKey): { url: string; token
   });
 
   if (!ep?.url) {
+    const envVarName = `NEXT_PUBLIC_${provider.toUpperCase()}_AI_SERVICE_URL`;
     const error = new Error(
-      `AI endpoint URL not configured for provider: ${provider}. Please configure NEXT_PUBLIC_${provider.toUpperCase()}_AI_SERVICE_URL in Vercel.`
+      `AI endpoint URL not configured for provider: ${provider}. ` +
+      `Please configure ${envVarName} in Vercel environment variables. ` +
+      `For local development, add it to .env.local file.`
     );
     console.error("[resolveAiEndpoint] 环境变量未配置:", {
       provider,
-      envVar: `NEXT_PUBLIC_${provider.toUpperCase()}_AI_SERVICE_URL`,
+      envVar: envVarName,
       error: error.message,
+      suggestion: provider === "local" 
+        ? "If you're using local AI service, make sure NEXT_PUBLIC_LOCAL_AI_SERVICE_URL is set."
+        : "If you're using remote AI service, make sure NEXT_PUBLIC_RENDER_AI_SERVICE_URL is set.",
+      timestamp: new Date().toISOString(),
     });
     throw error;
   }
 
   if (!ep?.token) {
+    const envVarName = `NEXT_PUBLIC_${provider.toUpperCase()}_AI_SERVICE_TOKEN`;
     const error = new Error(
-      `AI endpoint token not configured for provider: ${provider}. Please configure NEXT_PUBLIC_${provider.toUpperCase()}_AI_SERVICE_TOKEN in Vercel.`
+      `AI endpoint token not configured for provider: ${provider}. ` +
+      `Please configure ${envVarName} in Vercel environment variables. ` +
+      `For local development, add it to .env.local file.`
     );
     console.error("[resolveAiEndpoint] 环境变量未配置:", {
       provider,
-      envVar: `NEXT_PUBLIC_${provider.toUpperCase()}_AI_SERVICE_TOKEN`,
+      envVar: envVarName,
       error: error.message,
+      suggestion: provider === "local"
+        ? "If you're using local AI service, make sure NEXT_PUBLIC_LOCAL_AI_SERVICE_TOKEN is set."
+        : "If you're using remote AI service, make sure NEXT_PUBLIC_RENDER_AI_SERVICE_TOKEN is set.",
+      timestamp: new Date().toISOString(),
     });
     throw error;
   }

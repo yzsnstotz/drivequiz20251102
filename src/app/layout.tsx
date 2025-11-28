@@ -6,6 +6,11 @@ import BottomNavigation from "./BottomNavigation";
 export const metadata: Metadata = {
   title: "ZALEM - 驾照考试学习平台",
   description: "一个帮助您准备驾照考试的学习平台",
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
+  },
 };
 
 export const viewport: Viewport = {
