@@ -720,7 +720,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         {/* 预计耗时显示 */}
         {loading && expectedTime && (
           <p className="mt-2 text-xs text-gray-500" role="status">
-            {t('ai.expectedTime', { seconds: expectedTime })}
+            {t('ai.expectedTime').replace('{seconds}', String(expectedTime))}
           </p>
         )}
 
