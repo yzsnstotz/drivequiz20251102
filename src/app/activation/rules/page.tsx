@@ -4,24 +4,26 @@ import React from "react";
 import { ChevronLeft, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/common/Header";
+import { useLanguage } from "@/lib/i18n";
 
 export default function ActivationRulesPage() {
   const router = useRouter();
+  const { t } = useLanguage();
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header title="激活码使用规则" />
+      <Header title={t('activation.rules.pageTitle')} />
       
       <div className="container mx-auto px-4 py-6 pb-20">
         <div className="bg-white rounded-2xl p-6 shadow-sm">
           <div className="flex items-center space-x-3 mb-6">
             <FileText className="h-6 w-6 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900">激活码使用规则</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t('activation.rules.pageTitle')}</h1>
           </div>
 
           <div className="prose prose-sm max-w-none">
             <section className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">1. 激活码有效期</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">1. {t('activation.rules.validity')}</h2>
               <ul className="list-disc list-inside space-y-2 text-gray-700">
                 <li>激活码自首次激活之日起开始计算有效期</li>
                 <li>有效期根据激活码类型而定，可能为按天、按月或按年计算</li>
@@ -31,7 +33,7 @@ export default function ActivationRulesPage() {
             </section>
 
             <section className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">2. 使用限制</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">2. {t('activation.rules.limitations')}</h2>
               <ul className="list-disc list-inside space-y-2 text-gray-700">
                 <li>每个激活码可能有使用次数限制，达到上限后将无法继续使用</li>
                 <li>激活码仅限本人使用，不得转让或分享给他人</li>
@@ -41,18 +43,18 @@ export default function ActivationRulesPage() {
             </section>
 
             <section className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">3. 激活码状态</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">3. {t('activation.rules.status')}</h2>
               <ul className="list-disc list-inside space-y-2 text-gray-700">
-                <li><strong>已激活</strong>：激活码正常使用中，可以享受AI功能服务</li>
-                <li><strong>未激活</strong>：尚未激活或激活失败，需要输入有效的激活码</li>
-                <li><strong>已过期</strong>：激活码有效期已到期，需要重新激活</li>
-                <li><strong>已暂停</strong>：激活码因违规使用等原因被暂停，请联系客服</li>
-                <li><strong>已禁用</strong>：激活码已被禁用，无法继续使用</li>
+                <li><strong>{t('activation.status.activated')}</strong>：激活码正常使用中，可以享受AI功能服务</li>
+                <li><strong>{t('activation.status.notActivated')}</strong>：尚未激活或激活失败，需要输入有效的激活码</li>
+                <li><strong>{t('activation.status.expired')}</strong>：激活码有效期已到期，需要重新激活</li>
+                <li><strong>{t('activation.status.suspended')}</strong>：激活码因违规使用等原因被暂停，请联系客服</li>
+                <li><strong>{t('activation.status.disabled')}</strong>：激活码已被禁用，无法继续使用</li>
               </ul>
             </section>
 
             <section className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">4. 激活码适用范围</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">4. {t('activation.rules.scope')}</h2>
               <ul className="list-disc list-inside space-y-2 text-gray-700">
                 <li>激活码仅用于解锁AI助手功能</li>
                 <li>激活后，您可以使用以下AI功能：
@@ -67,7 +69,7 @@ export default function ActivationRulesPage() {
             </section>
 
             <section className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">5. 注意事项</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">5. {t('activation.rules.notes')}</h2>
               <ul className="list-disc list-inside space-y-2 text-gray-700">
                 <li>请妥善保管您的激活码，避免泄露给他人</li>
                 <li>激活码一旦使用，将无法退款或撤销</li>
@@ -78,7 +80,7 @@ export default function ActivationRulesPage() {
             </section>
 
             <section className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">6. 激活流程</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">6. {t('activation.rules.process')}</h2>
               <ol className="list-decimal list-inside space-y-2 text-gray-700">
                 <li>在需要使用AI功能时，系统会提示您输入激活码</li>
                 <li>输入您的邮箱和激活码</li>
@@ -89,7 +91,7 @@ export default function ActivationRulesPage() {
             </section>
 
             <section className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">7. 常见问题</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">7. {t('activation.rules.faq')}</h2>
               <div className="space-y-4">
                 <div>
                   <h3 className="font-medium text-gray-900 mb-1">Q: 激活码过期后怎么办？</h3>
@@ -118,7 +120,7 @@ export default function ActivationRulesPage() {
               onClick={() => router.back()}
               className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
             >
-              返回
+              {t('common.back')}
             </button>
           </div>
         </div>

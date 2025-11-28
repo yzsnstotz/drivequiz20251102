@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, CheckSquare, XSquare, Bot } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import QuestionImage from '@/components/common/QuestionImage';
 import { loadAllQuestions, Question } from '@/lib/questionsLoader';
@@ -242,18 +242,6 @@ function ExamPage() {
     }
   };
 
-  const isCorrect = () => {
-    const currentQuestion = questions[currentQuestionIndex];
-    if (Array.isArray(currentQuestion.correctAnswer)) {
-      const selectedArray = Array.isArray(selectedAnswer) ? selectedAnswer : [];
-      return (
-        selectedArray.length === currentQuestion.correctAnswer.length &&
-        selectedArray.every(answer => currentQuestion.correctAnswer.includes(answer))
-      );
-    }
-    return selectedAnswer === currentQuestion.correctAnswer;
-  };
-
   const calculateProgress = () => {
     if (questions.length === 0) return 0;
     return Math.round((answeredQuestions.size / questions.length) * 100);
@@ -457,30 +445,6 @@ function ExamPage() {
           </button>
         </div>
 
-        {showAnswer && (
-          <div className={`mt-6 p-4 rounded-lg border animate-fadeIn ${
-            isCorrect() 
-              ? 'bg-green-50 border-green-200 text-green-800' 
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
-            <h3 className="font-medium mb-2">
-              {isCorrect() ? (
-                <div className="flex items-center">
-                  <CheckSquare className="h-5 w-5 mr-2" />
-                  {t('question.correctAnswer')}
-                </div>
-              ) : (
-                <div className="flex items-center">
-                  <XSquare className="h-5 w-5 mr-2" />
-                  {t('question.wrongAnswer')}
-                </div>
-              )}
-            </h3>
-            {currentQuestion.explanation && (
-              <p className="text-sm">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* AI助手对话框 */}

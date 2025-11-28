@@ -17,7 +17,7 @@ interface ActivationStatus {
 
 export default function ActivationStatusCard() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [status, setStatus] = useState<ActivationStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -34,14 +34,14 @@ export default function ActivationStatusCard() {
           if (result.ok && result.data) {
             setStatus(result.data);
           } else {
-            setStatus({ valid: false, reason: "无法获取激活状态" });
+            setStatus({ valid: false, reason: t('activation.error.fetchStatus') });
           }
         } else {
-          setStatus({ valid: false, reason: "无法获取激活状态" });
+          setStatus({ valid: false, reason: t('activation.error.fetchStatus') });
         }
       } catch (error) {
         console.error("[ActivationStatusCard] Check status error:", error);
-        setStatus({ valid: false, reason: "检查激活状态失败" });
+        setStatus({ valid: false, reason: t('activation.error.checkStatus') });
       } finally {
         setLoading(false);
       }
@@ -51,16 +51,21 @@ export default function ActivationStatusCard() {
   }, []);
 
   const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return "未知";
+    if (!dateString) return t('activation.rules.unknown');
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString("zh-CN", {
+      const localeMap: Record<string, string> = {
+        'zh': 'zh-CN',
+        'en': 'en-US',
+        'ja': 'ja-JP',
+      };
+      return date.toLocaleDateString(localeMap[language] || 'zh-CN', {
         year: "numeric",
         month: "long",
         day: "numeric",
       });
     } catch {
-      return "未知";
+      return t('activation.rules.unknown');
     }
   };
 
@@ -76,8 +81,8 @@ export default function ActivationStatusCard() {
           <Key className="h-6 w-6 text-gray-400 dark:text-gray-500 animate-pulse" />
         </div>
         <div className="flex-grow">
-          <h3 className="font-medium text-gray-900 dark:text-white">激活码状态</h3>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">加载中...</p>
+          <h3 className="font-medium text-gray-900 dark:text-white">{t('activation.status')}</h3>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">{t('activation.status.loading')}</p>
         </div>
       </div>
     );
@@ -95,8 +100,8 @@ export default function ActivationStatusCard() {
             <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
           </div>
           <div className="flex-grow">
-            <h3 className="font-medium text-gray-900 dark:text-white">激活码状态</h3>
-            <p className="text-green-600 dark:text-green-400 text-sm font-medium">已激活</p>
+            <h3 className="font-medium text-gray-900 dark:text-white">{t('activation.status')}</h3>
+            <p className="text-green-600 dark:text-green-400 text-sm font-medium">{t('activation.status.activated')}</p>
           </div>
         </div>
 
@@ -105,7 +110,7 @@ export default function ActivationStatusCard() {
             <div className="flex items-start space-x-3">
               <Calendar className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
               <div className="flex-grow">
-                <p className="text-sm text-gray-600 dark:text-gray-400">激活时间</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">{t('activation.activatedAt')}</p>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">
                   {formatDate(status.activatedAt)}
                 </p>
@@ -117,7 +122,7 @@ export default function ActivationStatusCard() {
             <div className="flex items-start space-x-3">
               <Clock className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
               <div className="flex-grow">
-                <p className="text-sm text-gray-600 dark:text-gray-400">到期时间</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">{t('activation.expiresAt')}</p>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">
                   {formatDate(status.expiresAt)}
                 </p>
@@ -128,12 +133,12 @@ export default function ActivationStatusCard() {
           <div className="flex items-start space-x-3">
             <ExternalLink className="h-5 w-5 text-gray-400 dark:text-gray-500 mt-0.5" />
             <div className="flex-grow">
-              <p className="text-sm text-gray-600 dark:text-gray-400">使用规则</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{t('activation.rules')}</p>
               <Link
                 href="/activation/rules"
                 className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
               >
-                查看激活码使用规则
+                {t('activation.rules.title')}
               </Link>
             </div>
           </div>
@@ -149,8 +154,8 @@ export default function ActivationStatusCard() {
           <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
         </div>
         <div className="flex-grow">
-          <h3 className="font-medium text-gray-900 dark:text-white">激活码状态</h3>
-          <p className="text-red-600 dark:text-red-400 text-sm font-medium">未激活</p>
+          <h3 className="font-medium text-gray-900 dark:text-white">{t('activation.status')}</h3>
+          <p className="text-red-600 dark:text-red-400 text-sm font-medium">{t('activation.status.notActivated')}</p>
           {status.reason && (
             <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{status.reason}</p>
           )}

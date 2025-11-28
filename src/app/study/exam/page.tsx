@@ -295,6 +295,54 @@ function ExamModePageContent() {
     // 清除未完成考试状态
     clearIncompleteExam();
 
+    // 收集错题信息
+    const wrongQuestions: Array<{
+      question: Question;
+      userAnswer: string | string[];
+      correctAnswer: string | string[] | boolean;
+      questionIndex: number;
+    }> = [];
+
+    questions.forEach((question, index) => {
+      const answer = answers[index];
+      if (!answer) {
+        // 未答题也算错题
+        wrongQuestions.push({
+          question,
+          userAnswer: '',
+          correctAnswer: question.correctAnswer,
+          questionIndex: index,
+        });
+        return;
+      }
+
+      let isCorrect: boolean;
+      if (Array.isArray(question.correctAnswer)) {
+        isCorrect =
+          Array.isArray(answer) &&
+          answer.length === question.correctAnswer.length &&
+          answer.every((a) => question.correctAnswer.includes(a));
+      } else if (question.type === "truefalse") {
+        const correctAnswerValue =
+          typeof question.correctAnswer === "boolean"
+            ? String(question.correctAnswer)
+            : question.correctAnswer;
+        const answerValue = typeof answer === "string" ? answer : String(answer);
+        isCorrect = correctAnswerValue === answerValue;
+      } else {
+        isCorrect = answer === question.correctAnswer;
+      }
+
+      if (!isCorrect) {
+        wrongQuestions.push({
+          question,
+          userAnswer: answer,
+          correctAnswer: question.correctAnswer,
+          questionIndex: index,
+        });
+      }
+    });
+
     // 保存考试历史
     const examHistory = JSON.parse(
       localStorage.getItem("examHistory") || "[]"
@@ -308,6 +356,12 @@ function ExamModePageContent() {
       passed,
       date: new Date().toLocaleString(),
       timeSpent: questionCount * 60 - timeLeft,
+      wrongQuestions: wrongQuestions.map(wq => ({
+        question: wq.question,
+        userAnswer: wq.userAnswer,
+        correctAnswer: wq.correctAnswer,
+        questionIndex: wq.questionIndex,
+      })),
     };
     examHistory.push(examItem);
     localStorage.setItem("examHistory", JSON.stringify(examHistory));
@@ -673,28 +727,10 @@ function ExamModePageContent() {
     currentQuestion.content as any,
     currentLang
   );
-  const explanationText = currentQuestion.explanation
-    ? getQuestionContent(currentQuestion.explanation as any, currentLang)
-    : null;
   const options = getQuestionOptions(
     currentQuestion.options as any,
     currentLang
   );
-
-  const isCorrect = () => {
-    if (Array.isArray(currentQuestion.correctAnswer)) {
-      const selectedArray = Array.isArray(selectedAnswer)
-        ? selectedAnswer
-        : [];
-      return (
-        selectedArray.length === currentQuestion.correctAnswer.length &&
-        selectedArray.every((answer) =>
-          currentQuestion.correctAnswer.includes(answer)
-        )
-      );
-    }
-    return selectedAnswer === currentQuestion.correctAnswer;
-  };
 
   return (
     <div className="container mx-auto px-4 py-6 pb-24">
@@ -763,11 +799,6 @@ function ExamModePageContent() {
             <div className="space-y-3">
               {["true", "false"].map((option) => {
                 const isSelected = selectedAnswer === option;
-                const isCorrectOption =
-                  (currentQuestion.correctAnswer === "true" &&
-                    option === "true") ||
-                  (currentQuestion.correctAnswer === "false" &&
-                    option === "false");
 
                 return (
                   <button
@@ -775,13 +806,7 @@ function ExamModePageContent() {
                     onClick={() => !showAnswer && handleAnswer(option)}
                     disabled={showAnswer}
                     className={`w-full p-4 rounded-xl text-left transition-colors ${
-                      showAnswer
-                        ? isCorrectOption
-                          ? "bg-green-50 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-400 text-gray-900 dark:text-ios-dark-text"
-                          : isSelected
-                          ? "bg-red-50 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-400 text-gray-900 dark:text-ios-dark-text"
-                          : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent text-gray-900 dark:text-ios-dark-text"
-                        : isSelected
+                      isSelected
                         ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-ios-dark-text"
                         : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary/80 text-gray-900 dark:text-ios-dark-text"
                     }`}
@@ -798,11 +823,6 @@ function ExamModePageContent() {
                 const isSelected = Array.isArray(selectedAnswer)
                   ? selectedAnswer.includes(optionLabel)
                   : selectedAnswer === optionLabel;
-                const isCorrectOption = Array.isArray(
-                  currentQuestion.correctAnswer
-                )
-                  ? currentQuestion.correctAnswer.includes(optionLabel)
-                  : currentQuestion.correctAnswer === optionLabel;
 
                 return (
                   <button
@@ -810,13 +830,7 @@ function ExamModePageContent() {
                     onClick={() => !showAnswer && handleAnswer(optionLabel)}
                     disabled={showAnswer}
                     className={`w-full p-4 rounded-xl text-left transition-colors ${
-                      showAnswer
-                        ? isCorrectOption
-                          ? "bg-green-50 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-400 text-gray-900 dark:text-ios-dark-text"
-                          : isSelected
-                          ? "bg-red-50 dark:bg-red-900/30 border-2 border-red-500 dark:border-red-400 text-gray-900 dark:text-ios-dark-text"
-                          : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent text-gray-900 dark:text-ios-dark-text"
-                        : isSelected
+                      isSelected
                         ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-ios-dark-text"
                         : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary/80 text-gray-900 dark:text-ios-dark-text"
                     }`}
@@ -858,18 +872,6 @@ function ExamModePageContent() {
           </button>
         </div>
 
-        {showAnswer && (
-          <div className="mt-6 p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 animate-fadeIn">
-            <h3 className="text-gray-800 dark:text-ios-dark-text font-medium mb-2">
-              {isCorrect()
-                ? t("question.correctAnswer")
-                : t("question.wrongAnswer")}
-            </h3>
-            {explanationText && (
-              <p className="text-gray-700 dark:text-ios-dark-text-secondary">{explanationText}</p>
-            )}
-          </div>
-        )}
       </div>
 
       {currentQuestion && (

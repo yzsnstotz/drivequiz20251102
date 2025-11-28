@@ -274,16 +274,16 @@ export default function SettingsPage() {
         <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl shadow-ios-sm dark:shadow-ios-dark-sm p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
             <Globe className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-ios-dark-text">语言设置</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-ios-dark-text">{t('settings.language')}</h2>
           </div>
           
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">选择语言</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('settings.language.select')}</label>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { value: "ja", label: "日本語", flag: "🇯🇵" },
-                { value: "zh", label: "中文", flag: "🇨🇳" },
-                { value: "en", label: "English", flag: "🇺🇸" },
+                { value: "ja", label: t('settings.language.japanese'), flag: "🇯🇵" },
+                { value: "zh", label: t('settings.language.chinese'), flag: "🇨🇳" },
+                { value: "en", label: t('settings.language.english'), flag: "🇺🇸" },
               ].map((lang) => (
                 <button
                   key={lang.value}

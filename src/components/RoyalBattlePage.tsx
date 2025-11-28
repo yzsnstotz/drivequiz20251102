@@ -178,14 +178,14 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={onBack}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">大乱斗</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">大乱斗</h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">加载题目中...</p>
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6 flex justify-center items-center">
+          <p className="text-gray-600 dark:text-ios-dark-text-secondary">加载题目中...</p>
         </div>
       </div>
     );
@@ -197,20 +197,20 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={onBack}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">游戏结束</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">游戏结束</h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
           <div className="text-center">
             <Trophy className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">最终得分: {score}</h2>
-            <p className="text-gray-600 mb-6">答对题目数: {Math.floor(score / 10)}</p>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-ios-dark-text mb-2">最终得分: {score}</h2>
+            <p className="text-gray-600 dark:text-ios-dark-text-secondary mb-6">答对题目数: {Math.floor(score / 10)}</p>
             <button
               onClick={onBack}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+              className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600"
             >
               返回首页
             </button>
@@ -225,18 +225,18 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
       <div className="flex items-center space-x-4 mb-6">
         <button
           onClick={onBack}
-          className="text-gray-600 hover:text-gray-900"
+          className="text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">大乱斗</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">大乱斗</h1>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
         
         <div className="flex justify-center items-center">
             <div className="w-full">
-              <div className="w-full bg-gray-200 h-2 overflow-hidden rounded-full">
+              <div className="w-full bg-gray-200 dark:bg-ios-dark-bg-tertiary h-2 overflow-hidden rounded-full">
                 <div
                   className={`h-full transition-all duration-100 rounded-full ${timeLeft <= 5 ? 'bg-red-600' : 'bg-blue-600'}`}
                   style={{ width: `${(timeLeft / calculateTimeLimit(score)) * 100}%` }}
@@ -246,30 +246,30 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
           </div>
         <div className="relative mb-12">
           <div className="absolute left-0 top-0 flex items-center space-x-4">
-            <div className="bg-gray-50 p-2 rounded-xl flex items-center">
+            <div className="bg-gray-50 dark:bg-ios-dark-bg-tertiary p-2 rounded-xl flex items-center">
               <div className="flex items-center space-x-0.5">
                 {Array.from({ length: 5 }).map((_, index) => (
                   <Heart
                     key={index}
-                    className={`h-5 w-5 transition-all duration-500 transform ${index < lives ? 'text-red-500 fill-current scale-105 animate-pulse' : 'text-gray-300 scale-95 opacity-50'}`}
+                    className={`h-5 w-5 transition-all duration-500 transform ${index < lives ? 'text-red-500 fill-current scale-105 animate-pulse' : 'text-gray-300 dark:text-ios-dark-text-tertiary scale-95 opacity-50'}`}
                   />
                 ))}
               </div>
             </div>
-            <div className="bg-gray-50 p-2 rounded-xl flex items-center">
+            <div className="bg-gray-50 dark:bg-ios-dark-bg-tertiary p-2 rounded-xl flex items-center">
               <Trophy className="h-5 w-5 text-yellow-500 mr-2" />
-              <span className="text-xl font-bold text-gray-900 font-mono text-green-600">{score}</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-ios-dark-text font-mono text-green-600 dark:text-green-400">{score}</span>
             </div>
-            <div className="bg-gray-50 p-2 rounded-xl flex items-center">
+            <div className="bg-gray-50 dark:bg-ios-dark-bg-tertiary p-2 rounded-xl flex items-center">
               <Timer className="h-5 w-5 text-blue-500 mr-2" />
-              <span className={`text-xl font-bold font-mono ${timeLeft <= 5 ? 'text-red-600' : 'text-gray-900'}`}>
+              <span className={`text-xl font-bold font-mono ${timeLeft <= 5 ? 'text-red-600' : 'text-gray-900 dark:text-ios-dark-text'}`}>
                 {timeLeft.toFixed(2)}
               </span>
             </div>
           </div>
         </div>
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
+          <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
           {currentQuestion.image && (
             <QuestionImage
               src={currentQuestion.image}
@@ -288,9 +288,9 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
                   disabled={showAnswer}
                   className={`w-full p-4 rounded-xl text-left ${showAnswer ? 'cursor-not-allowed' : ''} ${
                     selectedAnswer === option
-                      ? 'bg-blue-50 border-2 border-blue-600'
-                      : 'bg-gray-50 border-2 border-transparent'
-                  }`}
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-500'
+                      : 'bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent'
+                  } text-gray-900 dark:text-ios-dark-text`}
                 >
                   {option === 'true' ? '正确' : '错误'}
                 </button>
@@ -311,9 +311,9 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
                     disabled={showAnswer}
                     className={`w-full p-4 rounded-xl text-left ${showAnswer ? 'cursor-not-allowed' : ''} ${
                       isSelected
-                        ? 'bg-blue-50 border-2 border-blue-600'
-                        : 'bg-gray-50 border-2 border-transparent'
-                    }`}
+                        ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-500'
+                        : 'bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent'
+                    } text-gray-900 dark:text-ios-dark-text`}
                   >
                     <span className="font-medium">{optionLabel}: </span>
                     {option}
@@ -325,12 +325,12 @@ function RoyalBattlePage({ onBack }: RoyalBattlePageProps) {
         </div>
 
         {showAnswer && (
-          <div className="mt-6 p-4 rounded-lg border bg-blue-50 border-blue-200 animate-fadeIn">
-            <h3 className="text-gray-800 font-medium mb-2">
+          <div className="mt-6 p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 animate-fadeIn">
+            <h3 className="text-gray-800 dark:text-ios-dark-text font-medium mb-2">
               {isCorrect(selectedAnswer) ? '答对了！' : '答错了...'}
             </h3>
             {currentQuestion.explanation && (
-              <p className="text-gray-700">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
+              <p className="text-gray-700 dark:text-ios-dark-text-secondary">{getQuestionContent(currentQuestion.explanation as any, language as 'zh' | 'en' | 'ja') || ''}</p>
             )}
           </div>
         )}

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Send } from "lucide-react";
-import { detectLanguage, type Language } from "@/lib/i18n";
+import { detectLanguage, type Language, useLanguage } from "@/lib/i18n";
 import { callAiDirect, type AiProviderKey } from "@/lib/aiClient.front";
 import { getAiExpectedTime } from "@/lib/aiStatsClient";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
@@ -110,6 +110,7 @@ function getWelcomeMessage(lang: Language): string {
 
 const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
   const { isActivated, showActivationModal } = useAIActivation();
+  const { t } = useLanguage();
   
   // 初始化消息历史：使用固定的默认值，避免hydration错误
   // 在SSR和客户端都使用相同的默认值（中文），避免hydration不匹配
@@ -488,7 +489,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI 助手</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('ai.assistant')}</h1>
           <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">by Zalem</span>
         </div>
         <button
@@ -508,9 +509,9 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             ]);
           }}
           className="rounded-lg px-3 py-1 text-sm text-gray-600 dark:text-gray-300 transition-colors hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary hover:text-gray-900 dark:hover:text-white"
-          aria-label="清空历史"
+          aria-label={t('ai.clearHistory')}
         >
-          清空历史
+          {t('ai.clearHistory')}
         </button>
       </div>
 

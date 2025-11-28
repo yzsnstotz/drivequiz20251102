@@ -533,10 +533,10 @@ function StudyModePageContent() {
           <button
             onClick={() => setShowResetConfirm(true)}
             className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text rounded-lg hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary transition-colors"
-            title="从头开始"
+            title={t('study.reset')}
           >
             <RotateCcw className="h-4 w-4" />
-            <span>从头开始</span>
+            <span>{t('study.reset')}</span>
           </button>
           <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">
             {t("study.progress")}: {calculateProgress()}%

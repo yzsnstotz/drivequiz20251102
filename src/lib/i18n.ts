@@ -495,6 +495,28 @@ export const userTranslations: Translations = {
     'home.aiAssistant': 'AI 智能助手',
     'activation.activate': '激活',
     'activation.activating': '激活中...',
+    'activation.status': '激活码状态',
+    'activation.status.loading': '加载中...',
+    'activation.status.activated': '已激活',
+    'activation.status.notActivated': '未激活',
+    'activation.status.expired': '已过期',
+    'activation.status.suspended': '已暂停',
+    'activation.status.disabled': '已禁用',
+    'activation.activatedAt': '激活时间',
+    'activation.expiresAt': '到期时间',
+    'activation.rules': '使用规则',
+    'activation.rules.title': '查看激活码使用规则',
+    'activation.rules.pageTitle': '激活码使用规则',
+    'activation.rules.validity': '激活码有效期',
+    'activation.rules.limitations': '使用限制',
+    'activation.rules.status': '激活码状态',
+    'activation.rules.scope': '激活码适用范围',
+    'activation.rules.notes': '注意事项',
+    'activation.rules.process': '激活流程',
+    'activation.rules.faq': '常见问题',
+    'activation.rules.unknown': '未知',
+    'activation.error.fetchStatus': '无法获取激活状态',
+    'activation.error.checkStatus': '检查激活状态失败',
     'profile.goToActivate': '前往激活',
     'home.aiDescription': '随时解答你的驾考问题',
     'home.changeLanguage': '切换语言',
@@ -512,6 +534,7 @@ export const userTranslations: Translations = {
     'question.loadError': '加载题目失败',
     'question.image': '题目图片',
     'question.current': '当前题目：',
+    'question.yourAnswer': '您的答案',
     
     // 通用
     'common.loading': '加载中...',
@@ -603,6 +626,9 @@ export const userTranslations: Translations = {
     'exam.timeLeft': '剩余时间',
     'exam.continue': '继续考试',
     'exam.newExam': '开始新考试',
+    'exam.passed': '通过',
+    'exam.failed': '未通过',
+    'exam.score': '得分',
     'study.answered': '已答题',
     'study.accuracy': '正确率',
     
@@ -675,6 +701,21 @@ export const userTranslations: Translations = {
     'profile.favorites': '我的收藏',
     'profile.favoritesDesc': '查看收藏的题目',
     
+    // 设置页面
+    'settings.title': '设置',
+    'settings.language': '语言设置',
+    'settings.language.select': '选择语言',
+    'settings.language.chinese': '中文',
+    'settings.language.english': 'English',
+    'settings.language.japanese': '日本語',
+    
+    // AI助手
+    'ai.assistant': 'AI 助手',
+    'ai.clearHistory': '清空历史',
+    
+    // 学习页面
+    'study.reset': '从头开始',
+    
     // 食宿页面
     'nearby.title': '附近的店铺',
     'nearby.subtitle': '发现周边美食与便利',
@@ -709,6 +750,28 @@ export const userTranslations: Translations = {
     'home.aiAssistant': 'AI Assistant',
     'activation.activate': 'Activate',
     'activation.activating': 'Activating...',
+    'activation.status': 'Activation Status',
+    'activation.status.loading': 'Loading...',
+    'activation.status.activated': 'Activated',
+    'activation.status.notActivated': 'Not Activated',
+    'activation.status.expired': 'Expired',
+    'activation.status.suspended': 'Suspended',
+    'activation.status.disabled': 'Disabled',
+    'activation.activatedAt': 'Activated At',
+    'activation.expiresAt': 'Expires At',
+    'activation.rules': 'Usage Rules',
+    'activation.rules.title': 'View Activation Code Usage Rules',
+    'activation.rules.pageTitle': 'Activation Code Usage Rules',
+    'activation.rules.validity': 'Activation Code Validity',
+    'activation.rules.limitations': 'Usage Limitations',
+    'activation.rules.status': 'Activation Code Status',
+    'activation.rules.scope': 'Activation Code Scope',
+    'activation.rules.notes': 'Notes',
+    'activation.rules.process': 'Activation Process',
+    'activation.rules.faq': 'FAQ',
+    'activation.rules.unknown': 'Unknown',
+    'activation.error.fetchStatus': 'Unable to fetch activation status',
+    'activation.error.checkStatus': 'Failed to check activation status',
     'profile.goToActivate': 'Go to Activate',
     'home.aiDescription': 'Answer your driving test questions anytime',
     'home.changeLanguage': 'Change Language',
@@ -744,6 +807,7 @@ export const userTranslations: Translations = {
     'language.english': 'English',
     'language.japanese': 'Japanese',
     'language.save': 'Save',
+    'question.yourAnswer': 'Your Answer',
     
     // 学习页面
     'study.title': 'Study',
@@ -894,6 +958,21 @@ export const userTranslations: Translations = {
     'profile.favorites': 'My Favorites',
     'profile.favoritesDesc': 'View favorited questions',
     
+    // 设置页面
+    'settings.title': 'Settings',
+    'settings.language': 'Language Settings',
+    'settings.language.select': 'Select Language',
+    'settings.language.chinese': 'Chinese',
+    'settings.language.english': 'English',
+    'settings.language.japanese': 'Japanese',
+    
+    // AI助手
+    'ai.assistant': 'AI Assistant',
+    'ai.clearHistory': 'Clear History',
+    
+    // 学习页面
+    'study.reset': 'Start Over',
+    
     // 食宿页面
     'nearby.title': 'Nearby Shops',
     'nearby.subtitle': 'Discover nearby food and convenience',
@@ -929,6 +1008,28 @@ export const userTranslations: Translations = {
     'home.aiDescription': '運転免許試験の質問にいつでも答えます',
     'activation.activate': 'アクティベート',
     'activation.activating': 'アクティベート中...',
+    'activation.status': 'アクティベーションコードの状態',
+    'activation.status.loading': '読み込み中...',
+    'activation.status.activated': 'アクティベート済み',
+    'activation.status.notActivated': '未アクティベート',
+    'activation.status.expired': '期限切れ',
+    'activation.status.suspended': '一時停止',
+    'activation.status.disabled': '無効',
+    'activation.activatedAt': 'アクティベート日時',
+    'activation.expiresAt': '有効期限',
+    'activation.rules': '使用規則',
+    'activation.rules.title': 'アクティベーションコードの使用規則を表示',
+    'activation.rules.pageTitle': 'アクティベーションコードの使用規則',
+    'activation.rules.validity': 'アクティベーションコードの有効期限',
+    'activation.rules.limitations': '使用制限',
+    'activation.rules.status': 'アクティベーションコードの状態',
+    'activation.rules.scope': 'アクティベーションコードの適用範囲',
+    'activation.rules.notes': '注意事項',
+    'activation.rules.process': 'アクティベーションプロセス',
+    'activation.rules.faq': 'よくある質問',
+    'activation.rules.unknown': '不明',
+    'activation.error.fetchStatus': 'アクティベーション状態を取得できません',
+    'activation.error.checkStatus': 'アクティベーション状態の確認に失敗しました',
     'profile.goToActivate': 'アクティベートへ',
     'home.changeLanguage': '言語を変更',
     'home.subtitle': 'あなたの運転学習の旅を始めましょう',
@@ -963,6 +1064,7 @@ export const userTranslations: Translations = {
     'language.english': '英語',
     'language.japanese': '日本語',
     'language.save': '保存',
+    'question.yourAnswer': 'あなたの答え',
     
     // 学习页面
     'study.title': '学習',
@@ -1112,6 +1214,21 @@ export const userTranslations: Translations = {
     'profile.appVersionUnknown': '不明',
     'profile.favorites': 'お気に入り',
     'profile.favoritesDesc': 'お気に入りの問題を表示',
+    
+    // 设置页面
+    'settings.title': '設定',
+    'settings.language': '言語設定',
+    'settings.language.select': '言語を選択',
+    'settings.language.chinese': '中国語',
+    'settings.language.english': '英語',
+    'settings.language.japanese': '日本語',
+    
+    // AI助手
+    'ai.assistant': 'AIアシスタント',
+    'ai.clearHistory': '履歴をクリア',
+    
+    // 学习页面
+    'study.reset': '最初から',
     
     // 食宿页面
     'nearby.title': '近くの店舗',
