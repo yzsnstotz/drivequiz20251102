@@ -1,17 +1,77 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useLanguage } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
+import { Mail, MessageCircle, FileText, Handshake, ShoppingCart } from "lucide-react";
 import OAuthButton from "./components/OAuthButton";
 import QRCodeLogin from "./components/QRCodeLogin";
+
+interface ContactInfo {
+  type: 'business' | 'purchase';
+  wechat: string | null;
+  email: string | null;
+}
+
+interface TermsOfService {
+  title: string;
+  content: string;
+  version?: string;
+}
 
 export default function LoginPage() {
   const { t } = useLanguage();
   const router = useRouter();
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [loginMethod, setLoginMethod] = useState<"redirect" | "qrcode" | null>(null);
+  const [contactInfo, setContactInfo] = useState<ContactInfo[]>([]);
+  const [termsOfService, setTermsOfService] = useState<TermsOfService | null>(null);
+  const [showTerms, setShowTerms] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    // 加载联系信息
+    fetch("/api/contact-info")
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.ok && result.data?.items) {
+          setContactInfo(result.data.items);
+        }
+      })
+      .catch((err) => console.error("Failed to load contact info:", err));
+
+    // 加载服务条款
+    fetch("/api/terms-of-service")
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.ok && result.data) {
+          setTermsOfService(result.data);
+        }
+      })
+      .catch((err) => console.error("Failed to load terms of service:", err));
+  }, []);
+
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert("已复制到剪贴板");
+      });
+    } else {
+      // 兼容旧浏览器
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      alert("已复制到剪贴板");
+    }
+  };
+
+  const businessInfo = contactInfo.find(item => item.type === 'business');
+  const purchaseInfo = contactInfo.find(item => item.type === 'purchase');
 
   const providers = [
     // { id: "wechat", name: t("auth.login.withWeChat") }, // 暂时隐藏
@@ -59,15 +119,38 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              {t("auth.login.title")}
-            </h1>
-            <p className="text-gray-600">{t("auth.login.subtitle")}</p>
-          </div>
+    <div className="min-h-screen bg-gray-50 flex flex-col p-4">
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
+            {/* Logo */}
+            <div className="text-center">
+              <div className="relative w-24 h-24 mx-auto mb-4">
+                {!logoError ? (
+                  <Image
+                    src="/logo.png"
+                    alt="ZALEM Logo"
+                    fill
+                    sizes="96px"
+                    className="object-contain"
+                    priority
+                    onError={() => {
+                      setLogoError(true);
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center">
+                      <span className="text-white text-2xl font-bold">Z</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                {t("auth.login.title")}
+              </h1>
+              <p className="text-gray-600">{t("auth.login.subtitle")}</p>
+            </div>
 
           {!selectedProvider ? (
             // 选择提供商
@@ -124,8 +207,145 @@ export default function LoginPage() {
               )}
             </div>
           ) : null}
+          </div>
         </div>
       </div>
+
+      {/* 底栏 - 联系信息和服务条款 */}
+      <div className="w-full max-w-md mx-auto mt-6 pb-4">
+        <div className="bg-white rounded-2xl shadow-md p-6 space-y-4 text-sm">
+          {/* 联系信息 */}
+          {(businessInfo || purchaseInfo) && (
+            <div className="space-y-4">
+              {businessInfo && (businessInfo.wechat || businessInfo.email) && (
+                <div>
+                  <div className="font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <Handshake className="h-4 w-4 text-blue-600" />
+                    商务合作请联系：
+                  </div>
+                  {businessInfo.wechat && (
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <MessageCircle className="h-4 w-4 text-gray-500" />
+                      <span
+                        className="text-blue-600 underline cursor-pointer select-all"
+                        onClick={() => copyToClipboard(businessInfo.wechat!)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          copyToClipboard(businessInfo.wechat!);
+                        }}
+                      >
+                        {businessInfo.wechat}
+                      </span>
+                      <span className="text-xs text-gray-500">（点击复制）</span>
+                    </div>
+                  )}
+                  {businessInfo.email && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Mail className="h-4 w-4 text-gray-500" />
+                      <span
+                        className="text-blue-600 underline cursor-pointer select-all"
+                        onClick={() => copyToClipboard(businessInfo.email!)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          copyToClipboard(businessInfo.email!);
+                        }}
+                      >
+                        {businessInfo.email}
+                      </span>
+                      <span className="text-xs text-gray-500">（点击复制）</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {purchaseInfo && (purchaseInfo.wechat || purchaseInfo.email) && (
+                <div>
+                  <div className="font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4 text-green-600" />
+                    激活码购买请联系：
+                  </div>
+                  {purchaseInfo.wechat && (
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <MessageCircle className="h-4 w-4 text-gray-500" />
+                      <span
+                        className="text-blue-600 underline cursor-pointer select-all"
+                        onClick={() => copyToClipboard(purchaseInfo.wechat!)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          copyToClipboard(purchaseInfo.wechat!);
+                        }}
+                      >
+                        {purchaseInfo.wechat}
+                      </span>
+                      <span className="text-xs text-gray-500">（点击复制）</span>
+                    </div>
+                  )}
+                  {purchaseInfo.email && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Mail className="h-4 w-4 text-gray-500" />
+                      <span
+                        className="text-blue-600 underline cursor-pointer select-all"
+                        onClick={() => copyToClipboard(purchaseInfo.email!)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          copyToClipboard(purchaseInfo.email!);
+                        }}
+                      >
+                        {purchaseInfo.email}
+                      </span>
+                      <span className="text-xs text-gray-500">（点击复制）</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 服务条款 */}
+          {termsOfService && termsOfService.title && (
+            <div className="pt-4 border-t border-gray-200">
+              <button
+                onClick={() => setShowTerms(true)}
+                className="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                <FileText className="h-4 w-4" />
+                服务条款
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 服务条款弹窗 */}
+      {showTerms && termsOfService && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] p-6 overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">{termsOfService.title}</h3>
+              <button
+                onClick={() => setShowTerms(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="text-sm text-gray-700 whitespace-pre-wrap">
+              {termsOfService.content}
+            </div>
+            {termsOfService.version && (
+              <div className="mt-4 text-xs text-gray-500">
+                版本：{termsOfService.version}
+              </div>
+            )}
+            <button
+              onClick={() => setShowTerms(false)}
+              className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
