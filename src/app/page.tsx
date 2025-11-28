@@ -90,6 +90,52 @@ export default function HomePage() {
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
 
   useEffect(() => {
+    // 加载用户驾考偏好
+    const loadLicensePreference = async () => {
+      if (!session?.user?.id) {
+        // 未登录时，尝试从 sessionStorage 获取
+        if (typeof window !== 'undefined') {
+          const savedLicenseType = sessionStorage.getItem('study_saved_license_type');
+          const savedStage = sessionStorage.getItem('study_saved_stage');
+          if (savedLicenseType && savedStage) {
+            setSavedLicensePreference({
+              licenseType: savedLicenseType,
+              stage: savedStage,
+            });
+          }
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/user/license-preference", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.ok && result.data) {
+            const { licenseType, stage } = result.data;
+            if (licenseType && stage) {
+              setSavedLicensePreference({ licenseType, stage });
+              // 同时保存到 sessionStorage
+              if (typeof window !== 'undefined') {
+                sessionStorage.setItem('study_saved_license_type', licenseType);
+                sessionStorage.setItem('study_saved_stage', stage);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[HomePage] Load license preference error:", error);
+      }
+    };
+
+    loadLicensePreference();
+  }, [session]);
+
+  useEffect(() => {
     // 加载广告栏配置
     const loadAdSlots = async () => {
       try {
@@ -480,8 +526,20 @@ export default function HomePage() {
             </div>
           </button>
 
-          <a
-            href="/exam"
+          <button
+            onClick={() => {
+              if (savedLicensePreference) {
+                // 如果有保存的选择，直接跳转到考试页面
+                const params = new URLSearchParams({
+                  licenseType: savedLicensePreference.licenseType,
+                  stage: savedLicensePreference.stage,
+                });
+                window.location.href = `/study/exam?${params.toString()}`;
+              } else {
+                // 如果没有保存的选择，跳转到选择页面
+                window.location.href = '/study';
+              }
+            }}
             className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 text-center shadow-ios-sm dark:shadow-ios-dark-sm cursor-pointer ios-button active:shadow-ios dark:active:shadow-ios-dark active:scale-[0.98]"
           >
             <div className="w-12 h-12 bg-orange-50 dark:bg-orange-500/20 rounded-xl flex items-center justify-center mx-auto mb-2">
@@ -492,7 +550,7 @@ export default function HomePage() {
                 {t('home.exam')}
               </span>
             </div>
-          </a>
+          </button>
 
           <a
             href="/mistakes"
