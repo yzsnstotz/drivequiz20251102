@@ -3,13 +3,19 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import BottomNavigation from "./BottomNavigation";
 
+// 获取 basePath，确保 favicon 路径正确
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 export const metadata: Metadata = {
   title: "ZALEM - 驾照考试学习平台",
   description: "一个帮助您准备驾照考试的学习平台",
   icons: {
-    icon: '/favicon.png',
-    shortcut: '/favicon.png',
-    apple: '/favicon.png',
+    icon: [
+      { url: `${basePath}/favicon.png`, sizes: 'any' },
+      { url: `${basePath}/icon.png`, sizes: 'any' },
+    ],
+    shortcut: `${basePath}/favicon.png`,
+    apple: `${basePath}/favicon.png`,
   },
 };
 
