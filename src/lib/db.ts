@@ -895,14 +895,7 @@ function createDbInstance(): Kysely<Database> {
     if (process.env.NODE_ENV === 'development') {
       console.log('[DB Pool] Client removed from pool');
     }
-    // 确保客户端已完全关闭
-    if (client && !client.ended) {
-      try {
-        client.end();
-      } catch (e) {
-        // 忽略已关闭的连接错误
-      }
-    }
+    // 客户端在 remove 事件中已经被移除，无需额外处理
   });
 
   // 添加连接错误监听，捕获未处理的连接错误
