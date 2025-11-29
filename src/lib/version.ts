@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-11-29 14:32:54（收藏页暗色模式适配）
-const BUILD_TIME = "2025-11-29 14:32:54";
+// 最后更新：2025-11-29 14:50:41（修复类型错误：MistakeBookPage、ActivationStatusCard、AuthProvider、db.ts）
+const BUILD_TIME = "2025-11-29 14:50:41";
 
 /**
  * 获取版本号（构建时间）
