@@ -11,6 +11,31 @@ import { joinUrl } from "./urlJoin";
 export type ServerAiProviderKey = "local" | "render";
 
 /**
+ * 将BCP-47格式的locale转换为简短格式的lang
+ * @param locale BCP-47格式的locale（如 "en-US", "zh-CN", "ja-JP"）
+ * @returns 简短格式的lang（"zh", "ja", "en"）
+ */
+function localeToLang(locale: string | undefined): "zh" | "ja" | "en" {
+  if (!locale) return "zh";
+  
+  const normalized = locale.toLowerCase().trim();
+  
+  // 支持BCP-47格式和简短格式
+  if (normalized.startsWith("ja") || normalized === "japanese" || normalized === "jp") {
+    return "ja";
+  }
+  if (normalized.startsWith("en") || normalized === "english") {
+    return "en";
+  }
+  if (normalized.startsWith("zh") || normalized === "chinese" || normalized === "cn") {
+    return "zh";
+  }
+  
+  // 默认返回中文
+  return "zh";
+}
+
+/**
  * 获取数据库中的原始 aiProvider 配置值
  * 用于发送 X-AI-Provider 请求头
  */
@@ -162,9 +187,12 @@ export async function callAiServer<T = any>(
     }
 
     // 构建请求体，确保所有参数都被传递
+    // 将locale转换为lang（BCP-47格式 -> 简短格式）
+    const lang = localeToLang(rest.locale);
+    
     const requestBody: any = {
       question: rest.question,
-      lang: rest.locale || "zh",
+      lang: lang,
       scene: rest.scene,
       sourceLanguage: rest.sourceLanguage,
       targetLanguage: rest.targetLanguage,
@@ -183,6 +211,8 @@ export async function callAiServer<T = any>(
 
     console.log("[callAiServer] 请求体参数:", {
       scene: requestBody.scene,
+      lang: requestBody.lang,
+      locale: rest.locale,
       sourceLanguage: requestBody.sourceLanguage,
       targetLanguage: requestBody.targetLanguage,
       hasSourceLanguage: requestBody.sourceLanguage !== undefined,

@@ -106,30 +106,58 @@ export default function AIActivationProvider({
       if (result.ok && result.data) {
         const status: ActivationStatus = result.data;
         const isValid = status.valid === true;
-        setIsActivated(isValid);
-        lastActivatedStateRef.current = isValid;
         
-        // 如果激活有效，保存到localStorage
+        // 检查reasonCode，区分临时错误和真正的无效状态
+        const reasonCode = (result.data as any)?.reasonCode;
+        const isTemporaryError = reasonCode === "DATABASE_ERROR" || reasonCode === "NOT_LOGGED_IN";
+        
         if (isValid) {
+          // 激活有效，更新状态
+          setIsActivated(true);
+          lastActivatedStateRef.current = true;
           localStorage.setItem("drive-quiz-activated", "true");
           if (session?.user?.email) {
             localStorage.setItem("drive-quiz-email", session.user.email);
           }
+          if (status.expiresAt) {
+            setSuccessExpiresAt(status.expiresAt);
+          }
+          console.log("[AIActivationProvider] Activation status validated successfully", {
+            email: session?.user?.email,
+            reasonCode,
+          });
+        } else if (isTemporaryError) {
+          // 临时错误（数据库错误、未登录等），不清除localStorage，保持当前状态
+          const finalState = localActivated || previousState;
+          setIsActivated(finalState);
+          lastActivatedStateRef.current = finalState;
+          console.warn("[AIActivationProvider] Temporary error from API, keeping cached state", {
+            reasonCode,
+            localActivated,
+            previousState,
+            email: session?.user?.email,
+          });
         } else {
-          // 如果API明确返回无效，清除localStorage
+          // 真正的无效状态（过期、状态无效等），清除localStorage
+          setIsActivated(false);
+          lastActivatedStateRef.current = false;
           localStorage.removeItem("drive-quiz-activated");
           localStorage.removeItem("drive-quiz-email");
-        }
-        
-        if (status.valid && status.expiresAt) {
-          setSuccessExpiresAt(status.expiresAt);
+          console.warn("[AIActivationProvider] Activation invalid from API, clearing activation state", {
+            reasonCode,
+            email: session?.user?.email,
+          });
         }
       } else {
         // API返回错误，但不清除状态，使用localStorage作为fallback
         const finalState = localActivated || previousState;
         setIsActivated(finalState);
         lastActivatedStateRef.current = finalState;
-        console.warn("[AIActivationProvider] API returned error, using cached state");
+        console.warn("[AIActivationProvider] API returned error, using cached state", {
+          localActivated,
+          previousState,
+          email: session?.user?.email,
+        });
       }
     } catch (error) {
       console.error("[AIActivationProvider] Check activation status error:", error);
@@ -151,12 +179,31 @@ export default function AIActivationProvider({
   useEffect(() => {
     // 首先从localStorage读取初始状态
     const localActivated = getInitialActivationState();
+    const storedEmail = typeof window !== "undefined" ? localStorage.getItem("drive-quiz-email") : null;
+    
+    // 优先使用localStorage状态，确保用户不会看到闪烁
     setIsActivated(localActivated);
     lastActivatedStateRef.current = localActivated;
     
+    // 检查email匹配
+    if (session?.user?.email && storedEmail) {
+      if (session.user.email !== storedEmail) {
+        console.warn("[AIActivationProvider] Email mismatch between session and localStorage", {
+          sessionEmail: session.user.email,
+          storedEmail,
+        });
+        // email不匹配时，使用localStorage中的email（如果存在）或session的email
+        // 这里保持激活状态，让API检查来决定
+      }
+    }
+    
     if (session?.user?.email) {
-      // 如果有session，异步检查服务器状态
-      checkActivationStatus();
+      // 如果有session，异步检查服务器状态（不阻塞UI）
+      // 只有在localStorage有激活状态且API明确返回无效时，才清除状态
+      checkActivationStatus().catch((error) => {
+        console.error("[AIActivationProvider] Initial activation check failed:", error);
+        // 检查失败时保持localStorage状态
+      });
     } else if (!localActivated) {
       // 如果没有session且localStorage也没有激活状态，设置为false
       setIsActivated(false);

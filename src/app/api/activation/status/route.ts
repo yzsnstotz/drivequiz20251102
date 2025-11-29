@@ -99,7 +99,8 @@ export async function GET(request: NextRequest) {
 
     if (!email) {
       const response = ok({ valid: false, reasonCode: "NOT_LOGGED_IN" });
-      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      // 不使用CDN缓存，因为这是用户特定的数据
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
       return response;
     }
 
@@ -118,7 +119,8 @@ export async function GET(request: NextRequest) {
 
     if (!latestActivation) {
       const response = ok({ valid: false, reasonCode: "NO_ACTIVATION_RECORD" });
-      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      // 不使用CDN缓存，因为这是用户特定的数据
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
       return response;
     }
 
@@ -145,7 +147,8 @@ export async function GET(request: NextRequest) {
 
     if (!activationCode) {
       const response = ok({ valid: false, reasonCode: "ACTIVATION_CODE_NOT_FOUND" });
-      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      // 不使用CDN缓存，因为这是用户特定的数据
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
       return response;
     }
 
@@ -157,7 +160,8 @@ export async function GET(request: NextRequest) {
         reasonCode: "ACTIVATION_CODE_STATUS_INVALID",
         status,
       });
-      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      // 不使用CDN缓存，因为这是用户特定的数据
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
       return response;
     }
 
@@ -169,7 +173,8 @@ export async function GET(request: NextRequest) {
         valid: false,
         reasonCode: "ACTIVATION_CODE_USAGE_EXCEEDED",
       });
-      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      // 不使用CDN缓存，因为这是用户特定的数据
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
       return response;
     }
 
@@ -236,7 +241,8 @@ export async function GET(request: NextRequest) {
           reasonCode: "ACTIVATION_CODE_EXPIRED",
           expiresAt: calculatedExpiresAt.toISOString(),
         });
-        response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+        // 不使用CDN缓存，因为这是用户特定的数据
+        response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
         return response;
       }
     }
@@ -248,10 +254,8 @@ export async function GET(request: NextRequest) {
       activatedAt: latestActivation.activated_at.toISOString(),
       expiresAt: calculatedExpiresAt ? calculatedExpiresAt.toISOString() : null,
     });
-    // 添加 HTTP 缓存头：激活状态缓存 5 分钟
-    // s-maxage=300: CDN 缓存 5 分钟
-    // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
-    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    // 不使用CDN缓存，因为这是用户特定的数据，需要实时获取最新状态
+    response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
     return response;
   } catch (error: unknown) {
     // 记录错误
@@ -268,7 +272,8 @@ export async function GET(request: NextRequest) {
         valid: false,
         reasonCode: "DATABASE_ERROR",
       });
-      response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+      // 数据库错误时也不使用缓存，确保下次请求能获取最新状态
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
       return response;
     }
 
