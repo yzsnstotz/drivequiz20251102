@@ -13,7 +13,6 @@ export default function AuthProvider({ children }: AuthProviderProps) {
       // 关闭定时轮询与窗口聚焦刷新，避免重复调用 /api/auth/session
       refetchInterval={0}
       refetchOnWindowFocus={false}
-      refetchOnMount={false}
     >
       {children}
     </SessionProvider>
