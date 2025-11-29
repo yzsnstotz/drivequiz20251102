@@ -16,8 +16,10 @@ import QuestionImage from "@/components/common/QuestionImage";
 import { isValidImageUrl } from "@/lib/imageUtils";
 import FavoriteButton from "../components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
+import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 
 function ExamModePageFallback() {
+  console.log('[ExamMode] ExamModePageFallback rendering (Suspense fallback)');
   const { t } = useLanguage();
   return (
     <div className="container mx-auto px-4 py-6">
@@ -35,6 +37,11 @@ function ExamModePageFallback() {
 }
 
 function ExamModePageContent() {
+  // 在组件函数体最开始（在hooks之前）添加日志
+  console.log("[StudyPage] rendering", { page: "exam", timestamp: new Date().toISOString() });
+  
+  console.log('[ExamMode] ====== Component rendering ======', { timestamp: new Date().toISOString() });
+  
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -82,10 +89,19 @@ function ExamModePageContent() {
 
   // 加载题目
   useEffect(() => {
+    console.log('[ExamMode] ====== useEffect triggered ======', { 
+      licenseType, 
+      stage, 
+      timestamp: new Date().toISOString(),
+      hasSearchParams: !!searchParams,
+      hasRouter: !!router,
+      pathname,
+    });
+    
     let isMounted = true; // 用于检查组件是否已卸载
     
     const loadQuestions = async () => {
-      console.log('[ExamMode] Starting to load questions', { licenseType, stage, timestamp: new Date().toISOString() });
+      console.log('[ExamMode] loadQuestions function called', { licenseType, stage, timestamp: new Date().toISOString() });
       
       if (!licenseType || !stage) {
         console.warn('[ExamMode] Missing licenseType or stage, redirecting to /study', { licenseType, stage });
@@ -261,10 +277,39 @@ function ExamModePageContent() {
       }
     };
 
-    loadQuestions();
+    // 添加全局错误监听器
+    const handleError = (event: ErrorEvent) => {
+      console.error('[ExamMode] Global error caught:', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error,
+      });
+    };
+    
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('[ExamMode] Unhandled promise rejection:', {
+        reason: event.reason,
+        promise: event.promise,
+      });
+    };
+    
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    // 调用加载函数
+    loadQuestions().catch((error) => {
+      console.error('[ExamMode] loadQuestions promise rejected:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    });
     
     return () => {
       isMounted = false; // 组件卸载时标记
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
   }, [licenseType, stage, questionCount, router, continueExam, clearTimer]);
 
@@ -779,7 +824,8 @@ function ExamModePageContent() {
   );
 
   return (
-    <div className="container mx-auto px-4 py-6 pb-24">
+    <StudyErrorBoundary>
+      <div className="container mx-auto px-4 py-6 pb-24">
       <div className="flex items-center space-x-4 mb-6">
         <button
           onClick={handleBack}
@@ -952,11 +998,14 @@ function ExamModePageContent() {
           onClose={() => setShowAIDialog(false)}
         />
       )}
-    </div>
+      </div>
+    </StudyErrorBoundary>
   );
 }
 
 export default function ExamModePage() {
+  console.log('[ExamMode] ExamModePage wrapper component rendering');
+  
   return (
     <Suspense fallback={<ExamModePageFallback />}>
       <ExamModePageContent />

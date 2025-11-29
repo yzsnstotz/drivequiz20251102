@@ -51,6 +51,7 @@ function ProfilePage() {
   const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [loginEmail, setLoginEmail] = useState<string | null>(null);
   
   // 表单状态
   const [formData, setFormData] = useState<ProfileData>({
@@ -82,9 +83,18 @@ function ProfilePage() {
       document.documentElement.classList.add('dark');
     }
     
+    // 获取登录邮箱（只在客户端执行，避免 SSR/CSR 不匹配）
+    const getEmail = () => {
+      if (session?.user?.email) {
+        return session.user.email;
+      }
+      return localStorage.getItem('drive-quiz-email');
+    };
+    setLoginEmail(getEmail());
+    
     // 加载设置
     loadProfile();
-  }, []);
+  }, [session]);
   
   // 加载设置
   const loadProfile = useCallback(async () => {
@@ -315,18 +325,6 @@ function ProfilePage() {
     }
   ];
 
-  // 获取登录邮箱（优先使用session，其次使用localStorage）
-  const getLoginEmail = () => {
-    if (session?.user?.email) {
-      return session.user.email;
-    }
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('drive-quiz-email');
-    }
-    return null;
-  };
-
-  const loginEmail = getLoginEmail();
 
   return (
     <div className="container mx-auto px-4 py-6 pb-20">

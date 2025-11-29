@@ -272,28 +272,48 @@ async function loadFromServer(): Promise<UnifiedPackage | null> {
  * 4. 网络失败时使用本地缓存作为降级方案
  */
 export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | null> {
-  // 1) 先读取本地版本号和缓存（同步操作，立即返回）
-  const localVersion = getLocalPackageVersion();
+  // 函数开头打印日志
+  console.log("[loadUnifiedQuestionsPackage] start", { timestamp: new Date().toISOString() });
   
-  // 如果有本地缓存，立即返回（不等待网络请求）
-  if (localVersion) {
-    const cached = getCachedPackage(localVersion);
-    if (cached?.questions && cached.questions.length > 0) {
-      console.log(`[loadUnifiedQuestionsPackage] 使用本地缓存（版本: ${localVersion}）`);
-      
-      // 在后台异步检查更新（不阻塞主流程）
-      checkForUpdatesInBackground(localVersion).catch(err => {
-        // 静默处理错误，不影响主流程
-        console.warn(`[loadUnifiedQuestionsPackage] 后台检查更新失败:`, err);
-      });
-      
-      return cached;
+  try {
+    // 1) 先读取本地版本号和缓存（同步操作，立即返回）
+    const localVersion = getLocalPackageVersion();
+    
+    // 如果有本地缓存，立即返回（不等待网络请求）
+    if (localVersion) {
+      const cached = getCachedPackage(localVersion);
+      if (cached?.questions && cached.questions.length > 0) {
+        console.log("[loadUnifiedQuestionsPackage] 使用本地缓存", {
+          version: localVersion,
+          questionCount: cached.questions.length,
+        });
+        
+        // 在后台异步检查更新（不阻塞主流程）
+        checkForUpdatesInBackground(localVersion).catch(err => {
+          // 静默处理错误，不影响主流程
+          console.warn(`[loadUnifiedQuestionsPackage] 后台检查更新失败:`, err);
+        });
+        
+        return cached;
+      }
     }
+    
+    // 如果没有缓存，才需要从服务器加载
+    console.log("[loadUnifiedQuestionsPackage] no cache, loadFromServer()");
+    const result = await loadFromServer();
+    
+    if (result) {
+      console.log("[loadUnifiedQuestionsPackage] loaded from server", {
+        questionCount: result.questions?.length || 0,
+      });
+    }
+    
+    return result;
+  } catch (error) {
+    // 捕获异常时打印错误日志，但不要吞掉错误，交给 Error Boundary 捕获
+    console.error("[loadUnifiedQuestionsPackage] error", error);
+    throw error; // 重新抛出错误，让 Error Boundary 处理
   }
-  
-  // 如果没有缓存，才需要从服务器加载
-  console.log(`[loadUnifiedQuestionsPackage] 没有本地缓存，从服务器加载`);
-  return await loadFromServer();
 }
 
 

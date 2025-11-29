@@ -219,6 +219,15 @@ export async function callAiServer<T = any>(
       hasTargetLanguage: requestBody.targetLanguage !== undefined,
     });
 
+    // 发送前日志（结构化）
+    console.log("[aiClient.server] send", {
+      locale: rest.locale,
+      lang: lang,
+      scene: rest.scene,
+      model: rest.model,
+      provider: provider,
+    });
+
     const res = await fetch(requestUrl, {
       method: "POST",
       headers,
@@ -234,6 +243,15 @@ export async function callAiServer<T = any>(
     } catch {
       // ignore JSON parse error
     }
+
+    // 响应后日志
+    const responseText = json?.data?.answer || json?.answer || "";
+    const responsePreview = responseText.substring(0, 80);
+    console.log("[aiClient.server] response", {
+      status: res.status,
+      lang: lang,
+      responsePreview: responsePreview,
+    });
 
     if (!res.ok) {
       const errorMessage =

@@ -8,6 +8,7 @@ import { callAiDirect, type AiProviderKey } from "@/lib/aiClient.front";
 import { getAiExpectedTime } from "@/lib/aiStatsClient";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 import AIActivationProvider, { useAIActivation } from "@/components/AIActivationProvider";
+import { detectLangFromText } from "@/lib/languageDetector";
 
 /** ---- 协议与类型 ---- */
 type Role = "user" | "ai";
@@ -142,6 +143,16 @@ function languageToLocale(lang: "zh" | "ja" | "en"): string {
   }
 }
 
+// 将locale格式转换为语言代码
+function localeToLang(locale: string | undefined): "zh" | "ja" | "en" {
+  if (!locale) return "zh";
+  const normalized = locale.toLowerCase().trim();
+  if (normalized.startsWith("ja")) return "ja";
+  if (normalized.startsWith("en")) return "en";
+  if (normalized.startsWith("zh")) return "zh";
+  return "zh";
+}
+
 /** ---- 组件 ---- */
 // Get welcome message based on language
 // 注意：这个函数现在不再使用，改为使用翻译键
@@ -273,6 +284,10 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
   const [expectedTime, setExpectedTime] = useState<number | null>(null);
   const [currentProvider, setCurrentProvider] = useState<AiProviderKey>("render");
   const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
+  const [languageMismatch, setLanguageMismatch] = useState<{
+    detected: string;
+    expected: string;
+  } | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -531,6 +546,39 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       // 构建回复内容（不再在内容中附加来源，而是在metadata中保存）
       const content = answer || t('ai.error.emptyResponse');
       
+      // 记录语言参数日志（在收到AI回复后）
+      const requestLang = localeToLang(userLocale);
+      const replyPreview = content.substring(0, 80);
+      console.log("[AIPage] AI回复语言参数日志:", {
+        userLanguage: language,
+        userLocale: userLocale,
+        requestLang: requestLang,
+        replyPreview: replyPreview,
+        timestamp: new Date().toISOString(),
+      });
+      
+      // 语言验证机制：检测回复语言是否与用户设置一致
+      const detectedLang = detectLangFromText(content);
+      const isMismatch = 
+        (language === "en" && detectedLang !== "en") ||
+        (language === "zh" && detectedLang !== "zh") ||
+        (language === "ja" && detectedLang !== "ja");
+      
+      if (isMismatch) {
+        console.warn("[AIPage] language mismatch", {
+          userLanguage: language,
+          detectedLang: detectedLang,
+          replyPreview: replyPreview,
+          timestamp: new Date().toISOString(),
+        });
+        setLanguageMismatch({
+          detected: detectedLang,
+          expected: language,
+        });
+      } else {
+        setLanguageMismatch(null);
+      }
+      
       pushMessage({
         id: uid(),
         role: "ai",
@@ -602,6 +650,28 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
           {t('ai.clearHistory')}
         </button>
       </div>
+
+      {/* 语言不匹配警告栏 */}
+      {languageMismatch && (
+        <div className="flex items-center justify-between bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800 px-4 py-2 text-sm">
+          <span className="text-yellow-800 dark:text-yellow-200">
+            AI 回复的语言（检测为: {languageMismatch.detected}）可能与当前设置的语言（{languageMismatch.expected}）不一致，这可能是外部 AI 服务的行为所致。
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              console.log("[AIPage] 用户点击语言不匹配反馈按钮", {
+                detected: languageMismatch.detected,
+                expected: languageMismatch.expected,
+                timestamp: new Date().toISOString(),
+              });
+            }}
+            className="ml-2 px-2 py-1 text-xs bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/60 transition-colors"
+          >
+            反馈
+          </button>
+        </div>
+      )}
 
       {/* 消息区 */}
       <div

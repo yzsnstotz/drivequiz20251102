@@ -12,8 +12,10 @@ import QuestionImage from "@/components/common/QuestionImage";
 import { isValidImageUrl } from "@/lib/imageUtils";
 import FavoriteButton from "../components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
+import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 
 function StudyModePageFallback() {
+  console.log('[StudyMode] StudyModePageFallback rendering (Suspense fallback)');
   const { t } = useLanguage();
   return (
     <div className="container mx-auto px-4 py-6">
@@ -31,12 +33,19 @@ function StudyModePageFallback() {
 }
 
 function StudyModePageContent() {
+  // 在组件函数体最开始（在hooks之前）添加日志
+  console.log("[StudyPage] rendering", { page: "learn", timestamp: new Date().toISOString() });
+  
+  console.log('[StudyMode] ====== Component rendering ======', { timestamp: new Date().toISOString() });
+  
   const searchParams = useSearchParams();
   const router = useRouter();
   const { language, t } = useLanguage();
 
   const licenseType = searchParams.get("licenseType");
   const stage = searchParams.get("stage") as "provisional" | "regular" | null;
+  
+  console.log('[StudyMode] Component initialized with params:', { licenseType, stage, language });
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [questionHashes, setQuestionHashes] = useState<string[]>([]);
@@ -58,10 +67,18 @@ function StudyModePageContent() {
 
   // 加载题目
   useEffect(() => {
+    console.log('[StudyMode] ====== useEffect triggered ======', { 
+      licenseType, 
+      stage, 
+      timestamp: new Date().toISOString(),
+      hasSearchParams: !!searchParams,
+      hasRouter: !!router,
+    });
+    
     let isMounted = true; // 用于检查组件是否已卸载
     
     const loadQuestions = async () => {
-      console.log('[StudyMode] Starting to load questions', { licenseType, stage, timestamp: new Date().toISOString() });
+      console.log('[StudyMode] loadQuestions function called', { licenseType, stage, timestamp: new Date().toISOString() });
       
       if (!licenseType || !stage) {
         console.warn('[StudyMode] Missing licenseType or stage, redirecting to /study', { licenseType, stage });
@@ -273,10 +290,39 @@ function StudyModePageContent() {
       }
     };
 
-    loadQuestions();
+    // 添加全局错误监听器
+    const handleError = (event: ErrorEvent) => {
+      console.error('[StudyMode] Global error caught:', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error,
+      });
+    };
+    
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('[StudyMode] Unhandled promise rejection:', {
+        reason: event.reason,
+        promise: event.promise,
+      });
+    };
+    
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    // 调用加载函数
+    loadQuestions().catch((error) => {
+      console.error('[StudyMode] loadQuestions promise rejected:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    });
     
     return () => {
       isMounted = false; // 组件卸载时标记
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
   }, [licenseType, stage, router]);
 
@@ -609,7 +655,8 @@ function StudyModePageContent() {
   );
 
   return (
-    <div className="container mx-auto px-4 py-6 pb-24">
+    <StudyErrorBoundary>
+      <div className="container mx-auto px-4 py-6 pb-24">
       <div className="flex items-center space-x-4 mb-6">
         <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">
           {t("study.mode.study")}
@@ -850,7 +897,8 @@ function StudyModePageContent() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </StudyErrorBoundary>
   );
 }
 

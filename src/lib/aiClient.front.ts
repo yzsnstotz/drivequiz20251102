@@ -236,6 +236,15 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
       lang: lang,
     });
     
+    // 发送前日志（结构化）
+    console.log("[aiClient.front] send", {
+      locale: rest.locale,
+      lang: lang,
+      scene: rest.scene,
+      model: rest.model,
+      provider: provider,
+    });
+    
     response = await fetch(requestUrl, {
       method: "POST",
       headers,
@@ -401,5 +410,15 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
   }
 
   const data = (await response.json()) as AiClientResponse;
+  
+  // 响应后日志
+  const responseText = data?.data?.answer || "";
+  const responsePreview = responseText.substring(0, 80);
+  console.log("[aiClient.front] response", {
+    status: response.status,
+    lang: lang,
+    responsePreview: responsePreview,
+  });
+  
   return data;
 }
