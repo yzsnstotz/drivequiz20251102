@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { MapPin, Star } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { getMultilangContent } from "@/lib/multilangUtils";
 
 export interface Service {
   id: number;
@@ -49,13 +50,37 @@ export interface ServiceCardProps {
 export default function ServiceCard({ service, className = "" }: ServiceCardProps) {
   const { language } = useLanguage();
 
-  const displayName = service.name.zh || service.name.ja || service.name.default || "服务";
-  const displayCategory = service.category
-    ? service.category.name_zh ??
-      service.category.name_ja ??
-      service.category.name_en ??
-      service.category.name
-    : null;
+  // API 返回的格式是 { default, ja, zh, en }，需要转换为 { zh?, en?, ja? } 格式
+  const getServiceName = () => {
+    if (typeof service.name === "string") return service.name;
+    if (service.name.default) {
+      // 转换格式：{ default, ja, zh, en } -> { zh?, en?, ja? }
+      const converted = {
+        zh: service.name.zh || service.name.default,
+        en: service.name.en,
+        ja: service.name.ja,
+      };
+      return getMultilangContent(converted, language, service.name.default);
+    }
+    return getMultilangContent(service.name, language, "服务");
+  };
+  
+  const displayName = getServiceName();
+  
+  const getCategoryName = () => {
+    if (!service.category) return null;
+    if (service.category.name_zh || service.category.name_ja || service.category.name_en) {
+      const converted = {
+        zh: service.category.name_zh,
+        en: service.category.name_en,
+        ja: service.category.name_ja,
+      };
+      return getMultilangContent(converted, language, service.category.name);
+    }
+    return service.category.name;
+  };
+  
+  const displayCategory = getCategoryName();
 
   const formatPrice = (amount: number) => {
     return new Intl.NumberFormat(language === "ja" ? "ja-JP" : language === "zh" ? "zh-CN" : "en-US", {

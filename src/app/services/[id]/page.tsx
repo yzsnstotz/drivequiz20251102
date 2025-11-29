@@ -7,6 +7,8 @@ import Header from "@/components/common/Header";
 import AdSlot from "@/components/common/AdSlot";
 import AIButton from "@/components/common/AIButton";
 import { ArrowLeft, MapPin, Phone, Mail, Globe, Star, Clock } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
+import { getMultilangContent } from "@/lib/multilangUtils";
 
 interface ServiceDetail {
   id: number;
@@ -65,6 +67,7 @@ interface ServiceDetail {
 export default function ServiceDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const { language } = useLanguage();
   const serviceId = params?.id as string;
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -141,7 +144,17 @@ export default function ServiceDetailPage() {
             // eslint-disable-next-line @next/next/no-img-element -- 服务图片可能来自动态第三方域名，未知尺寸
             <img
               src={service.image_url}
-              alt={service.name.zh || service.name.ja || service.name.default || "服务"}
+              alt={(() => {
+                if (service.name.default) {
+                  const converted = {
+                    zh: service.name.zh || service.name.default,
+                    en: service.name.en,
+                    ja: service.name.ja,
+                  };
+                  return getMultilangContent(converted, language, service.name.default);
+                }
+                return getMultilangContent(service.name, language, "服务");
+              })()}
               className="w-full h-64 md:h-96 object-cover"
             />
           )}
@@ -150,11 +163,31 @@ export default function ServiceDetailPage() {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  {service.name.zh || service.name.ja || service.name.default || "服务"}
+                  {(() => {
+                    if (service.name.default) {
+                      const converted = {
+                        zh: service.name.zh || service.name.default,
+                        en: service.name.en,
+                        ja: service.name.ja,
+                      };
+                      return getMultilangContent(converted, language, service.name.default);
+                    }
+                    return getMultilangContent(service.name, language, "服务");
+                  })()}
                 </h1>
                 {service.category && (
                   <p className="text-blue-600 font-medium">
-                    {service.category.name_zh || service.category.name_ja || service.category.name}
+                    {(() => {
+                      if (service.category.name_zh || service.category.name_ja || service.category.name_en) {
+                        const converted = {
+                          zh: service.category.name_zh,
+                          en: service.category.name_en,
+                          ja: service.category.name_ja,
+                        };
+                        return getMultilangContent(converted, language, service.category.name);
+                      }
+                      return service.category.name;
+                    })()}
                   </p>
                 )}
               </div>
@@ -169,9 +202,19 @@ export default function ServiceDetailPage() {
               )}
             </div>
 
-            {service.description && (service.description.zh || service.description.ja) && (
+            {service.description && (service.description.zh || service.description.ja || service.description.default) && (
               <p className="text-gray-700 mb-6">
-                {service.description.zh || service.description.ja || service.description.default}
+                {(() => {
+                  if (service.description.default) {
+                    const converted = {
+                      zh: service.description.zh || service.description.default,
+                      en: service.description.en,
+                      ja: service.description.ja,
+                    };
+                    return getMultilangContent(converted, language, service.description.default);
+                  }
+                  return getMultilangContent(service.description, language, "");
+                })()}
               </p>
             )}
 
