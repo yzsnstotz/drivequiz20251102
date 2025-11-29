@@ -805,6 +805,13 @@ export const userTranslations: Translations = {
     'profile.clearCacheSuccess': '所有缓存已清除，页面将刷新',
     'profile.testingFeatures': '测试用功能（慎用）',
     'profile.testingFeaturesDesc': '以下功能仅用于测试，使用后可能导致数据丢失，请谨慎操作！',
+    'profile.accountInfo': '账号信息',
+    'profile.accountInfoDesc': '查看登录信息和激活状态',
+    'profile.study': '学习',
+    'profile.studyDesc': '学习相关功能',
+    'profile.loginInfo': '登录信息',
+    'profile.email': '邮箱',
+    'profile.notLoggedIn': '未登录',
     
     // 设置页面
     'settings.title': '设置',
@@ -1162,6 +1169,13 @@ export const userTranslations: Translations = {
     'profile.clearCacheSuccess': 'All cache has been cleared, page will refresh',
     'profile.testingFeatures': 'Testing Features (Use with Caution)',
     'profile.testingFeaturesDesc': 'The following features are for testing only. Using them may result in data loss. Please use with caution!',
+    'profile.accountInfo': 'Account Info',
+    'profile.accountInfoDesc': 'View login information and activation status',
+    'profile.study': 'Study',
+    'profile.studyDesc': 'Study-related features',
+    'profile.loginInfo': 'Login Info',
+    'profile.email': 'Email',
+    'profile.notLoggedIn': 'Not logged in',
     
     // 设置页面
     'settings.title': 'Settings',
@@ -1519,6 +1533,13 @@ export const userTranslations: Translations = {
     'profile.clearCacheSuccess': 'すべてのキャッシュがクリアされました。ページが更新されます',
     'profile.testingFeatures': 'テスト用機能（注意して使用）',
     'profile.testingFeaturesDesc': '以下の機能はテスト用のみです。使用するとデータが失われる可能性があります。注意して使用してください！',
+    'profile.accountInfo': 'アカウント情報',
+    'profile.accountInfoDesc': 'ログイン情報と有効化状態を表示',
+    'profile.study': '学習',
+    'profile.studyDesc': '学習関連機能',
+    'profile.loginInfo': 'ログイン情報',
+    'profile.email': 'メールアドレス',
+    'profile.notLoggedIn': 'ログインしていません',
     
     // 设置页面
     'settings.title': '設定',
