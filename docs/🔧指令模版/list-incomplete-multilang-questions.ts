@@ -22,7 +22,7 @@ if (process.env.DATABASE_URL?.includes('supabase.com') || process.env.POSTGRES_U
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
-import { db } from "../src/lib/db";
+import { db } from "../../src/lib/db";
 import { sql } from "kysely";
 import fs from "fs/promises";
 import path from "path";
