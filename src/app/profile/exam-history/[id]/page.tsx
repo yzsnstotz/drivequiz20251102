@@ -6,6 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useLanguage } from '@/lib/i18n';
 import Header from '@/components/common/Header';
 import QuestionImage from '@/components/common/QuestionImage';
+import { isValidImageUrl } from '@/lib/imageUtils';
 import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 import { Question } from '@/lib/questionsLoader';
 
@@ -192,9 +193,9 @@ export default function ExamDetailPage() {
                     <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">
                       {contentText}
                     </p>
-                    {question.image && (
+                    {isValidImageUrl(question.image) && (
                       <QuestionImage
-                        src={question.image}
+                        src={question.image!}
                         alt={t('question.image')}
                         width={800}
                         height={600}

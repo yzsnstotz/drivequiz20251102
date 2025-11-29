@@ -10,6 +10,7 @@ import { getQuestionOptions, getQuestionContent } from "@/lib/questionUtils";
 import { callAiDirect } from "@/lib/aiClient.front";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 import { useAIActivation } from "@/components/AIActivationProvider";
+import { isValidImageUrl } from "@/lib/imageUtils";
 
 // 前端内存缓存（按题目hash存储）
 // 格式：Map<questionHash, answer>
@@ -592,10 +593,10 @@ export default function QuestionAIDialog({
               ? question.content 
               : (question.content?.zh || '')}
           </div>
-          {question.image && (
+          {isValidImageUrl(question.image) && (
             <div className="mt-2 relative w-full h-32">
               <Image
-                src={question.image.trim()}
+                src={question.image!.trim()}
                 alt="题目图片"
                 fill
                 sizes="(max-width: 768px) 100vw, 400px"

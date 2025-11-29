@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Trash2, BookOpen, Car, Shield, CheckSquare, XSquare, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import QuestionImage from '@/components/common/QuestionImage';
+import { isValidImageUrl } from '@/lib/imageUtils';
 import { getContentText } from '@/lib/questionContentUtils';
 import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
 import { useLanguage } from '@/lib/i18n';
@@ -277,9 +278,9 @@ function MistakeBookPage() {
             <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">
               {getQuestionContent(selectedQuestion.content, language) || getContentText(selectedQuestion.content, 'zh') || ''}
             </p>
-            {selectedQuestion.image && (
+            {isValidImageUrl(selectedQuestion.image) && (
               <QuestionImage
-                src={selectedQuestion.image}
+                src={selectedQuestion.image!}
                 alt={t('mistakes.image')}
                 fill
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"

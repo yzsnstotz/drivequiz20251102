@@ -452,14 +452,13 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         // 忽略错误，继续执行
       }
 
-      // 根据用户输入的问题自动检测语言
-      const detectedLang = detectLanguageFromQuestion(q);
-      const detectedLocale = languageToLocale(detectedLang);
+      // 使用用户设置的语言（而不是自动检测）
+      const userLocale = languageToLocale(language);
       
-      console.log("[AIPage] 语言检测:", {
+      console.log("[AIPage] 使用用户设置的语言:", {
         question: q.substring(0, 50),
-        detectedLang,
-        detectedLocale,
+        userLanguage: language,
+        userLocale,
         timestamp: new Date().toISOString(),
       });
 
@@ -467,7 +466,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       const payload = await callAiDirect({
         provider: currentProvider,
         question: q,
-        locale: detectedLocale,
+        locale: userLocale,
         scene: "chat",
         messages: historyMessages.length > 0 ? historyMessages : undefined,
         maxHistory: 10,

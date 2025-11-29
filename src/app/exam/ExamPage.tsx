@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Clock, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import QuestionImage from '@/components/common/QuestionImage';
+import { isValidImageUrl } from '@/lib/imageUtils';
 import { loadAllQuestions, Question } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
 import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
@@ -365,9 +366,9 @@ function ExamPage() {
 
         <div className="mb-6">
           <p className="text-gray-900 text-lg mb-4">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
-          {currentQuestion.image && (
+          {isValidImageUrl(currentQuestion.image) && (
             <QuestionImage
-              src={currentQuestion.image}
+              src={currentQuestion.image!}
               alt={t('exam.image')}
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"

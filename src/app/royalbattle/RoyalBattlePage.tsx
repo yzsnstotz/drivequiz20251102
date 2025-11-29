@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
 import QuestionAIDialog from '@/components/QuestionAIDialog';
 import QuestionImage from '@/components/common/QuestionImage';
+import { isValidImageUrl } from '@/lib/imageUtils';
 import { loadAllQuestions, Question } from '@/lib/questionsLoader';
 import { useLanguage } from '@/lib/i18n';
 import { getQuestionContent, getQuestionOptions } from '@/lib/questionUtils';
@@ -301,10 +302,10 @@ function RoyalBattlePage() {
               <span>{t('royalbattle.aiAssistant')}</span>
             </button>
           </div>
-          {currentQuestion.image && (
+          {isValidImageUrl(currentQuestion.image) && (
             <div className="mb-4">
               <QuestionImage
-                src={currentQuestion.image}
+                src={currentQuestion.image!}
                 alt={t('royalbattle.image')}
                 width={800}
                 height={600}

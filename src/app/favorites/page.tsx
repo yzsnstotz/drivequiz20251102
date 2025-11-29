@@ -9,6 +9,7 @@ import { useLanguage } from "@/lib/i18n";
 import { getQuestionContent, getQuestionOptions } from "@/lib/questionUtils";
 import QuestionAIDialog from "@/components/QuestionAIDialog";
 import QuestionImage from "@/components/common/QuestionImage";
+import { isValidImageUrl } from "@/lib/imageUtils";
 import FavoriteButton from "@/app/study/components/FavoriteButton";
 
 interface Question {
@@ -363,9 +364,9 @@ export default function FavoritesPage() {
 
         <div className="mb-6">
           <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">{contentText || ""}</p>
-          {currentQuestion.image && (
+          {isValidImageUrl(currentQuestion.image) && (
             <QuestionImage
-              src={currentQuestion.image}
+              src={currentQuestion.image!}
               alt={t("question.image")}
               width={800}
               height={600}

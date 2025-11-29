@@ -6,6 +6,7 @@ import Header from "@/components/common/Header";
 import AdSlot from "@/components/common/AdSlot";
 import QuestionAIDialog from "@/components/QuestionAIDialog";
 import QuestionImage from "@/components/common/QuestionImage";
+import { isValidImageUrl } from "@/lib/imageUtils";
 import { ArrowLeft, Clock, Bot } from "lucide-react";
 
 interface Question {
@@ -274,9 +275,9 @@ export default function LicenseExamPage() {
             </button>
           </div>
 
-          {currentQuestion.image && (
+          {isValidImageUrl(currentQuestion.image) && (
             <QuestionImage
-              src={currentQuestion.image}
+              src={currentQuestion.image!}
               alt="题目图片"
               useNativeImg={true}
             />
