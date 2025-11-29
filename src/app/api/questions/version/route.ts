@@ -21,24 +21,20 @@ export async function GET() {
   try {
     console.log(`[GET /api/questions/version] 开始获取版本号`);
     
-    // 优先从数据库读取最新版本号（更可靠）
-    try {
-      const dbVersion = await getLatestUnifiedVersion();
-      if (dbVersion) {
-        console.log(`[GET /api/questions/version] 从数据库读取版本号: ${dbVersion}`);
-        const response = success({ version: dbVersion });
-        // 添加 HTTP 缓存头：题目版本号缓存 5 分钟
-        // s-maxage=300: CDN 缓存 5 分钟
-        // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
-        response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
-        return response;
-      }
-    } catch (dbError) {
-      console.warn(`[GET /api/questions/version] 从数据库读取版本号失败:`, dbError);
+    // 优先从数据库读取最新版本号（更可靠，内部已带缓存与降级）
+    const dbVersion = await getLatestUnifiedVersion();
+    if (dbVersion) {
+      console.log(`[GET /api/questions/version] 从数据库读取版本号: ${dbVersion}`);
+      const response = success({ version: dbVersion });
+      // 添加 HTTP 缓存头：题目版本号缓存 5 分钟
+      // s-maxage=300: CDN 缓存 5 分钟
+      // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
+      response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+      return response;
     }
 
-    // 如果数据库没有版本号，尝试从文件读取（兼容旧逻辑）
-    console.log(`[GET /api/questions/version] 数据库没有版本号，尝试从文件读取: ${UNIFIED_FILE}`);
+    // 如果数据库没有版本号（包括超时降级场景），尝试从文件读取（兼容旧逻辑）
+    console.log(`[DB Timeout][route=/api/questions/version] fallback to file: ${UNIFIED_FILE}`);
     
     try {
       await fs.access(UNIFIED_FILE);

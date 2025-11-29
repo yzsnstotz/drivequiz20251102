@@ -47,8 +47,20 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
       return userInfo;
     }
   } catch (e) {
-    // NextAuth session获取失败，继续尝试其他方式
-    console.error("[UserAuth] NextAuth session error", (e as Error).message);
+    const message = (e as Error)?.message || String(e);
+    // 如果是数据库连接相关错误，直接短路为未登录，避免继续放大 DB 压力
+    if (
+      message.includes("Connection terminated") ||
+      message.includes("ECONNRESET") ||
+      message.includes("ETIMEDOUT") ||
+      message.includes("timeout")
+    ) {
+      console.error("[UserAuth] NextAuth session DB error, treat as anonymous user:", message);
+      userInfoCache.set(req, null);
+      return null;
+    }
+    // 其他错误仅记录日志，继续尝试 JWT / Cookie 等方式
+    console.error("[UserAuth] NextAuth session error", message);
   }
 
   const USER_JWT_SECRET = process.env.USER_JWT_SECRET;

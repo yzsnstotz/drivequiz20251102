@@ -5,6 +5,7 @@
 // ============================================================
 
 import { db } from "@/lib/db";
+import { executeSafely } from "@/lib/dbUtils";
 import { calculateQuestionHash, generateVersion, generateUnifiedVersion, calculateContentHash, calculateFullContentHash, calculateAiAnswersHash, Question } from "@/lib/questionHash";
 import { sql } from "kysely";
 import fs from "fs/promises";
@@ -1080,20 +1081,41 @@ export async function getAIAnswerFromJson(
  * 获取最新统一版本号
  */
 export async function getLatestUnifiedVersion(): Promise<string | null> {
-  try {
-    const result = await db
-      .selectFrom("question_package_versions")
-      .select(["version"])
-      .where("package_name", "=", "__unified__") // 使用特殊标识表示统一版本
-      .orderBy("created_at", "desc")
-      .limit(1)
-      .executeTakeFirst();
-
-    return result?.version || null;
-  } catch (error) {
-    console.error("[getLatestUnifiedVersion] Error:", error);
-    return null;
+  // 内存缓存，避免高频场景反复访问数据库
+  const CACHE_TTL = 5 * 60 * 1000; // 5 分钟
+  const g = globalThis as any;
+  if (!g.__LATEST_UNIFIED_VERSION_CACHE__) {
+    g.__LATEST_UNIFIED_VERSION_CACHE__ = { version: null as string | null, timestamp: 0 };
   }
+  const cache = g.__LATEST_UNIFIED_VERSION_CACHE__ as { version: string | null; timestamp: number };
+
+  const now = Date.now();
+  if (cache.version && now - cache.timestamp < CACHE_TTL) {
+    return cache.version;
+  }
+
+  // 使用安全执行包装 DB 查询，连接异常时直接返回 null
+  const version = await executeSafely(
+    async () => {
+      const result = await db
+        .selectFrom("question_package_versions")
+        .select(["version"])
+        .where("package_name", "=", "__unified__") // 使用特殊标识表示统一版本
+        .orderBy("created_at", "desc")
+        .limit(1)
+        .executeTakeFirst();
+
+      return result?.version || null;
+    },
+    null as string | null
+  );
+
+  if (version) {
+    cache.version = version;
+    cache.timestamp = now;
+  }
+
+  return version;
 }
 
 /**

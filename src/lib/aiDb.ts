@@ -223,13 +223,13 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
-    // 连接池配置（与主数据库保持一致，但针对批量处理场景优化）
-    max: 20, // 最大连接数（适合大多数应用）
-    min: 2, // 最小连接数（保持一些连接活跃）
-    idleTimeoutMillis: 30000, // 空闲连接30秒后关闭
-    connectionTimeoutMillis: 30000, // 连接超时30秒（批量处理需要更长时间）
-    statement_timeout: 60000, // 语句超时60秒（批量处理可能需要更长时间）
-    query_timeout: 60000, // 查询超时60秒（批量处理可能需要更长时间）
+    // 连接池配置：相对主库更“克制”，避免争抢过多连接资源
+    max: 10, // 降低 AI DB 最大连接数，减少对主库的压力
+    min: 1, // 保持最小连接数较低
+    idleTimeoutMillis: 20000, // 空闲连接 20 秒后关闭
+    connectionTimeoutMillis: 15000, // 更短的连接超时，快速失败
+    statement_timeout: 40000, // 语句超时 40 秒
+    query_timeout: 40000, // 查询超时 40 秒
   };
 
   // 创建 Pool 实例并传递给 PostgresDialect
@@ -240,7 +240,7 @@ function createAiDbInstance(): Kysely<AiDatabase> {
   pool.on('error', (err) => {
     const errorMessage = err?.message || String(err);
     const errorCode = (err as any)?.code || '';
-    
+
     console.error('[AI DB Pool] Unexpected error on idle client:', {
       message: errorMessage,
       code: errorCode,

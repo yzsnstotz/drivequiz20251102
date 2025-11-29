@@ -5,10 +5,22 @@
 // ============================================================
 
 /**
- * 初始化全局错误处理
+ * 初始化全局错误处理（保证只注册一次）
  * 应该在应用启动时调用
  */
 export function setupGlobalErrorHandlers() {
+  // 避免在开发环境 / 热重载 / 多次导入时重复注册监听器
+  const g = globalThis as any;
+  if (g.__GLOBAL_ERROR_HANDLER_INITIALIZED__) {
+    return;
+  }
+  g.__GLOBAL_ERROR_HANDLER_INITIALIZED__ = true;
+
+  // 可选：放宽监听上限，避免开发环境下的 MaxListeners 警告
+  if (typeof process.setMaxListeners === "function") {
+    process.setMaxListeners(50);
+  }
+
   // 处理未捕获的异常
   process.on('uncaughtException', (error: Error) => {
     const errorMessage = error?.message || String(error);

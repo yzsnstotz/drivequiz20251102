@@ -14,12 +14,16 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(_req: NextRequest): Promise<NextResponse> {
   try {
-    // 从数据库读取 aiProvider 和 model 配置
-    const configRows = await (aiDb as any)
-      .selectFrom("ai_config")
-      .select(["key", "value"])
-      .where("key", "in", ["aiProvider", "model"])
-      .execute() as Array<{ key: string; value: string }>;
+    // 从 AI 数据库安全读取 aiProvider 和 model 配置（连接异常时返回空数组）
+    const configRows = await executeSafely(
+      async () =>
+        (await (aiDb as any)
+          .selectFrom("ai_config")
+          .select(["key", "value"])
+          .where("key", "in", ["aiProvider", "model"])
+          .execute()) as Array<{ key: string; value: string }>,
+      [] as Array<{ key: string; value: string }>
+    );
 
     let aiProvider: string | null = null;
     let model: string | null = null;
