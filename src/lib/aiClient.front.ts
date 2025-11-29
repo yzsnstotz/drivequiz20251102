@@ -190,6 +190,10 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     timestamp: new Date().toISOString(),
   });
 
+  // 将locale转换为lang（BCP-47格式 -> 简短格式）
+  // 在 try 块外定义，以便在后续日志中使用
+  const lang = localeToLang(rest.locale);
+  
   let response: Response;
   try {
     // 构建请求头
@@ -204,8 +208,6 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     }
 
     // 构建请求体
-    // 将locale转换为lang（BCP-47格式 -> 简短格式）
-    const lang = localeToLang(rest.locale);
     
     const requestBody = {
       question: rest.question,
