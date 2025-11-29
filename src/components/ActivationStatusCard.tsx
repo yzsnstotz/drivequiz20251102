@@ -118,9 +118,9 @@ export default function ActivationStatusCard() {
         <div className="flex-grow">
           <h3 className="font-medium text-gray-900 dark:text-white">{t('activation.status')}</h3>
           <p className="text-red-600 dark:text-red-400 text-sm font-medium">{t('activation.status.notActivated')}</p>
-          {(status.reasonCode || status.reason) && (
+          {status.reasonCode && (
             <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
-              {status.reasonCode ? t(`activation.error.${status.reasonCode}`) : status.reason}
+              {t(`activation.error.${status.reasonCode}`)}
             </p>
           )}
         </div>
