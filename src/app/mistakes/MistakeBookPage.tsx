@@ -101,7 +101,7 @@ function MistakeBookPage() {
           content: canonical.content as any,
           image: (canonical as any).image,
           options: (canonical as any).options,
-          correctAnswer: (canonical as any).correct_answer ?? canonical.correct_answer ?? (canonical as any).correctAnswer,
+          correctAnswer: canonical.correctAnswer ?? (canonical as any).correct_answer ?? (canonical as any).correctAnswer,
           explanation: (canonical as any).explanation,
           hash: (canonical as any).hash,
 
