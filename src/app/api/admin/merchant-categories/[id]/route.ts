@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, notFound, internalError } from "@/app/api/_lib/errors";
 import { logUpdate, logDelete } from "@/app/api/_lib/operationLog";
+import { isValidMultilangContent } from "@/lib/multilangUtils";
 
 function toISO(v: Date | string | null | undefined): string | null {
   if (!v) return null;
@@ -41,10 +42,14 @@ export const PUT = withAdminAuth(
       };
 
       if (name !== undefined) {
-        if (typeof name !== "string" || name.trim().length === 0) {
-          return badRequest("name cannot be empty");
+        if (!isValidMultilangContent(name)) {
+          return badRequest("name must have at least one language");
         }
-        updateData.name = name.trim();
+        // 确保 name 是对象格式
+        const nameObj = typeof name === "string" 
+          ? { zh: name, en: "", ja: "" } 
+          : name;
+        updateData.name = sql`${JSON.stringify(nameObj)}::jsonb`;
       }
       if (displayOrder !== undefined) {
         updateData.display_order = Number(displayOrder) || 0;
@@ -59,7 +64,12 @@ export const PUT = withAdminAuth(
         return internalError("Failed to update merchant category");
       }
 
-      await logUpdate(req, "merchant_categories", id, category, updated, `更新商户类型: ${updated.name}`);
+      // 获取分类名称用于日志（优先使用中文）
+      const updatedName = typeof updated.name === "object" && updated.name !== null
+        ? (updated.name as any).zh || (updated.name as any).en || (updated.name as any).ja || "未知"
+        : String(updated.name || "未知");
+      
+      await logUpdate(req, "merchant_categories", id, category, updated, `更新商户类型: ${updatedName}`);
 
       return success({
         id: updated.id,
@@ -93,7 +103,12 @@ export const DELETE = withAdminAuth(
 
       await db.deleteFrom("merchant_categories").where("id", "=", id).execute();
 
-      await logDelete(req, "merchant_categories", id, category, `删除商户类型: ${category.name}`);
+      // 获取分类名称用于日志（优先使用中文）
+      const categoryName = typeof category.name === "object" && category.name !== null
+        ? (category.name as any).zh || (category.name as any).en || (category.name as any).ja || "未知"
+        : String(category.name || "未知");
+      
+      await logDelete(req, "merchant_categories", id, category, `删除商户类型: ${categoryName}`);
 
       return success({ deleted: 1 });
     } catch (err: any) {

@@ -3,12 +3,15 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "@/lib/apiClient";
 import { useLanguage } from "@/contexts/LanguageContext";
+import MultilangInput from "@/components/admin/MultilangInput";
+import { getMultilangContent } from "@/lib/multilangUtils";
+import type { MultilangContent } from "@/types/multilang";
 
 type AdSlot = {
   id: number;
   slotKey: string;
-  title: string;
-  description: string | null;
+  title: MultilangContent;
+  description: MultilangContent | null;
   splashDuration: number;
   isEnabled: boolean;
   createdAt: string;
@@ -19,13 +22,13 @@ type ApiOk<T> = { ok: true; data: T };
 type ApiErr = { ok: false; errorCode?: string; message?: string };
 
 export default function AdSlotsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<AdSlot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdSlot | null>(null);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState<{ zh?: string; en?: string; ja?: string }>({});
+  const [description, setDescription] = useState<{ zh?: string; en?: string; ja?: string }>({});
   const [splashDuration, setSplashDuration] = useState(3);
   const [isEnabled, setIsEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,16 +59,21 @@ export default function AdSlotsPage() {
 
   const handleEdit = (item: AdSlot) => {
     setEditing(item);
-    setTitle(item.title);
-    setDescription(item.description || "");
+    // 处理多语言内容：如果是字符串，转换为对象；如果是对象，直接使用
+    setTitle(typeof item.title === "string" ? { zh: item.title, en: "", ja: "" } : (item.title || {}));
+    setDescription(
+      item.description 
+        ? (typeof item.description === "string" ? { zh: item.description, en: "", ja: "" } : item.description)
+        : {}
+    );
     setSplashDuration(item.splashDuration || 3);
     setIsEnabled(item.isEnabled);
   };
 
   const handleCancel = () => {
     setEditing(null);
-    setTitle("");
-    setDescription("");
+    setTitle({});
+    setDescription({});
     setSplashDuration(3);
     setIsEnabled(true);
   };
@@ -172,8 +180,8 @@ export default function AdSlotsPage() {
                 <td className="px-4 py-2">
                   <span className="text-sm font-mono text-gray-600">{item.slotKey}</span>
                 </td>
-                <td className="px-4 py-2">{item.title}</td>
-                <td className="px-4 py-2">{item.description || "—"}</td>
+                <td className="px-4 py-2">{getMultilangContent(item.title, language)}</td>
+                <td className="px-4 py-2">{item.description ? getMultilangContent(item.description, language) : "—"}</td>
                 <td className="px-4 py-2">
                   {item.slotKey === "splash_screen" ? (
                     <span className="text-sm text-gray-700">{item.splashDuration || 3}</span>
@@ -213,22 +221,19 @@ export default function AdSlotsPage() {
         <form onSubmit={handleSubmit} className="bg-white p-4 rounded-lg shadow-sm space-y-4">
           <h3 className="text-lg font-semibold">编辑广告栏：{editing.slotKey}</h3>
           <div>
-            <label className="block text-sm font-medium mb-1">标题 *</label>
-            <input
-              type="text"
+            <MultilangInput
+              label="标题"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
+              onChange={setTitle}
+              placeholder="请输入广告栏标题"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">描述（小文案）</label>
-            <input
-              type="text"
+            <MultilangInput
+              label="描述（小文案）"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
+              onChange={setDescription}
               placeholder="例如：精选商家推荐"
             />
           </div>

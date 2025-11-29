@@ -13,6 +13,7 @@ import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { parsePagination, getPaginationMeta } from "@/app/api/_lib/pagination";
 import { logCreate, logUpdate, logDelete } from "@/app/api/_lib/operationLog";
+import { isValidMultilangContent } from "@/lib/multilangUtils";
 
 type MerchantSortKey = "createdAt" | "name" | "status";
 
@@ -67,7 +68,8 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     let countQ = db.selectFrom("merchants").select((eb) => eb.fn.countAll<number>().as("count"));
 
     if (name) {
-      countQ = countQ.where("name", "like", `%${name}%`);
+      // JSONB 字段搜索：在 zh 字段中搜索
+      countQ = countQ.where(sql`name->>'zh'`, "like", `%${name}%`);
     }
     if (status && (status === "active" || status === "inactive")) {
       countQ = countQ.where("status", "=", status);
@@ -82,7 +84,8 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       .selectAll();
 
     if (name) {
-      q = q.where("name", "like", `%${name}%`);
+      // JSONB 字段搜索：在 zh 字段中搜索
+      q = q.where(sql`name->>'zh'`, "like", `%${name}%`);
     }
     if (status && (status === "active" || status === "inactive")) {
       q = q.where("status", "=", status);
@@ -135,9 +138,24 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     const body = await req.json().catch(() => ({}));
     const { name, description, address, phone, email, imageUrl, category, status, adStartDate, adEndDate, adSlot } = body;
 
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      return badRequest("name is required");
+    // 验证多语言字段
+    if (!name || !isValidMultilangContent(name)) {
+      return badRequest("name is required and must have at least one language");
     }
+    
+    // 确保 name 是对象格式
+    const nameObj = typeof name === "string" 
+      ? { zh: name, en: "", ja: "" } 
+      : name;
+    
+    // 验证 description 和 address（可选）
+    const descriptionObj = description 
+      ? (typeof description === "string" ? { zh: description, en: "", ja: "" } : description)
+      : null;
+    
+    const addressObj = address 
+      ? (typeof address === "string" ? { zh: address, en: "", ja: "" } : address)
+      : null;
 
     // 验证广告位：如果设置了广告时间，则必须选择广告位
     if ((adStartDate || adEndDate) && !adSlot) {
@@ -158,9 +176,9 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     const inserted = await db
       .insertInto("merchants")
       .values({
-        name: name.trim(),
-        description: description?.trim() || null,
-        address: address?.trim() || null,
+        name: sql`${JSON.stringify(nameObj)}::jsonb`,
+        description: descriptionObj ? sql`${JSON.stringify(descriptionObj)}::jsonb` : null,
+        address: addressObj ? sql`${JSON.stringify(addressObj)}::jsonb` : null,
         phone: phone?.trim() || null,
         email: email?.trim() || null,
         image_url: imageUrl?.trim() || null,
@@ -179,7 +197,12 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       return internalError("Failed to create merchant");
     }
 
-    await logCreate(req, "merchants", inserted.id, inserted, `创建商户: ${inserted.name}`);
+    // 获取商户名称用于日志（优先使用中文）
+    const merchantName = typeof inserted.name === "object" && inserted.name !== null
+      ? (inserted.name as any).zh || (inserted.name as any).en || (inserted.name as any).ja || "未知"
+      : String(inserted.name || "未知");
+    
+    await logCreate(req, "merchants", inserted.id, inserted, `创建商户: ${merchantName}`);
 
     return success({
       id: inserted.id,

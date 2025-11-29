@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 import { NextRequest, NextResponse } from "next/server";
+import { sql } from "kysely";
 import { db } from "@/lib/db";
 
 function ok<T>(data: T, status = 200) {
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
       .selectAll()
       .where("status", "=", "active")
       .orderBy("display_order", "asc")
-      .orderBy("name", "asc")
+      .orderBy(sql`name->>'zh'`, "asc")
       .execute();
 
     const items = rows.map((row) => ({

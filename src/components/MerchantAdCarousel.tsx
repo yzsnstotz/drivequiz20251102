@@ -4,12 +4,14 @@ import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { getMultilangContent } from "@/lib/multilangUtils";
+import type { MultilangContent } from "@/types/multilang";
 
 interface MerchantAd {
   id: number;
-  name: string;
-  description: string | null;
-  address: string | null;
+  name: MultilangContent;
+  description: MultilangContent | null;
+  address: MultilangContent | null;
   phone: string | null;
   email: string | null;
   imageUrl: string | null;
@@ -22,12 +24,12 @@ interface MerchantAd {
 interface MerchantAdCarouselProps {
   adSlot?: string; // 广告位（优先使用）
   category?: string; // 商家分类（已废弃，保留以兼容旧代码）
-  title: string;
-  description?: string;
+  title: MultilangContent;
+  description?: MultilangContent;
 }
 
 function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAdCarouselProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [merchants, setMerchants] = useState<MerchantAd[]>([]);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -149,9 +151,9 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
   return (
     <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-4 mb-6 shadow-ios-sm dark:shadow-ios-dark-sm">
       <div className="mb-4">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white">{getMultilangContent(title, language)}</h2>
         {description && (
-          <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">{description}</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">{getMultilangContent(description, language)}</p>
         )}
       </div>
       <div className="relative">
@@ -173,7 +175,7 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
                 {merchant.imageUrl ? (
                   <Image
                     src={merchant.imageUrl}
-                    alt={merchant.name}
+                    alt={getMultilangContent(merchant.name, language)}
                     fill
                     sizes="(max-width: 768px) 100vw, 300px"
                     className="object-cover"
@@ -181,20 +183,20 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
                     <div className="text-white text-center">
-                      <h3 className="text-2xl font-bold mb-2">{merchant.name}</h3>
+                      <h3 className="text-2xl font-bold mb-2">{getMultilangContent(merchant.name, language)}</h3>
                       {merchant.description && (
-                        <p className="text-sm opacity-90">{merchant.description}</p>
+                        <p className="text-sm opacity-90">{getMultilangContent(merchant.description, language)}</p>
                       )}
                     </div>
                   </div>
                 )}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
-                  <h3 className="text-white font-bold mb-1">{merchant.name}</h3>
+                  <h3 className="text-white font-bold mb-1">{getMultilangContent(merchant.name, language)}</h3>
                   {merchant.description && (
-                    <p className="text-white/90 text-sm">{merchant.description}</p>
+                    <p className="text-white/90 text-sm">{getMultilangContent(merchant.description, language)}</p>
                   )}
                   {merchant.address && (
-                    <p className="text-white/90 text-xs mt-1">📍 {merchant.address}</p>
+                    <p className="text-white/90 text-xs mt-1">📍 {getMultilangContent(merchant.address, language)}</p>
                   )}
                 </div>
               </div>

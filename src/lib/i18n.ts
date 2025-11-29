@@ -149,6 +149,18 @@ export const adminTranslations: Translations = {
     'merchants.active': '启用',
     'merchants.inactive': '禁用',
     
+    // 联系信息
+    'contact.title': '联系信息',
+    'contact.business': '商务合作',
+    'contact.purchase': '激活码购买',
+    'contact.type': '类型',
+    'contact.wechat': '微信账号',
+    'contact.email': '邮箱地址',
+    'contact.status': '状态',
+    'contact.notSet': '未设置',
+    'contact.wechatLabel': '微信',
+    'contact.emailLabel': '邮箱',
+    
     // 视频管理
     'videos.title': '视频管理',
     'videos.list': '视频列表',
@@ -305,6 +317,18 @@ export const adminTranslations: Translations = {
     'merchants.active': 'Active',
     'merchants.inactive': 'Inactive',
     
+    // 联系信息
+    'contact.title': 'Contact Information',
+    'contact.business': 'Business Cooperation',
+    'contact.purchase': 'Activation Code Purchase',
+    'contact.type': 'Type',
+    'contact.wechat': 'WeChat Account',
+    'contact.email': 'Email Address',
+    'contact.status': 'Status',
+    'contact.notSet': 'Not Set',
+    'contact.wechatLabel': 'WeChat',
+    'contact.emailLabel': 'Email',
+    
     // 视频管理
     'videos.title': 'Videos',
     'videos.list': 'Videos List',
@@ -459,6 +483,18 @@ export const adminTranslations: Translations = {
     'merchants.status': 'ステータス',
     'merchants.active': '有効',
     'merchants.inactive': '無効',
+    
+    // 联系信息
+    'contact.title': '連絡先情報',
+    'contact.business': 'ビジネス提携',
+    'contact.purchase': 'アクティベーションコード購入',
+    'contact.type': 'タイプ',
+    'contact.wechat': 'WeChatアカウント',
+    'contact.email': 'メールアドレス',
+    'contact.status': 'ステータス',
+    'contact.notSet': '未設定',
+    'contact.wechatLabel': 'WeChat',
+    'contact.emailLabel': 'メール',
     
     // 视频管理
     'videos.title': '動画管理',

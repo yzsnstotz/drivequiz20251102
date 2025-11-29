@@ -31,6 +31,7 @@ import Link from "next/link";
 import { getFormattedVersion } from "@/lib/version";
 import { useAIActivation } from "@/components/AIActivationProvider";
 import { useRouter } from "next/navigation";
+import { getMultilangContent } from "@/lib/multilangUtils";
 
 const welcomeData = [
   {
@@ -69,8 +70,8 @@ const welcomeData = [
 
 type AdSlotConfig = {
   slotKey: string;
-  title: string;
-  description: string | null;
+  title: any; // JSONB: MultilangContent
+  description: any | null; // JSONB: MultilangContent
 };
 
 export default function HomePage() {

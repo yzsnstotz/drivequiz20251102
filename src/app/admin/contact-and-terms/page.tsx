@@ -3,6 +3,9 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "@/lib/apiClient";
 import { useLanguage } from "@/contexts/LanguageContext";
+import MultilangInput from "@/components/admin/MultilangInput";
+import { getMultilangContent } from "@/lib/multilangUtils";
+import type { MultilangContent } from "@/types/multilang";
 
 type ContactInfo = {
   id: number;
@@ -16,8 +19,8 @@ type ContactInfo = {
 
 type TermsOfService = {
   id: number;
-  title: string;
-  content: string;
+  title: MultilangContent;
+  content: MultilangContent;
   version: string;
   status: "active" | "inactive";
   createdAt: string;
@@ -28,7 +31,7 @@ type ApiOk<T> = { ok: true; data: T };
 type ApiErr = { ok: false; errorCode?: string; message?: string };
 
 export default function ContactAndTermsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [contactItems, setContactItems] = useState<ContactInfo[]>([]);
   const [terms, setTerms] = useState<TermsOfService | null>(null);
@@ -45,8 +48,8 @@ export default function ContactAndTermsPage() {
   
   // 服务条款表单
   const [showTermsForm, setShowTermsForm] = useState(false);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
+  const [title, setTitle] = useState<{ zh?: string; en?: string; ja?: string }>({});
+  const [content, setContent] = useState<{ zh?: string; en?: string; ja?: string }>({});
   const [version, setVersion] = useState("1.0");
   const [termsStatus, setTermsStatus] = useState<"active" | "inactive">("active");
   const [savingTerms, setSavingTerms] = useState(false);
@@ -185,16 +188,17 @@ export default function ContactAndTermsPage() {
   };
 
   const resetTermsForm = () => {
-    setTitle("");
-    setContent("");
+    setTitle({});
+    setContent({});
     setVersion("1.0");
     setTermsStatus("active");
   };
 
   const handleTermsEdit = () => {
     if (terms) {
-      setTitle(terms.title);
-      setContent(terms.content);
+      // 处理多语言内容：如果是字符串，转换为对象；如果是对象，直接使用
+      setTitle(typeof terms.title === "string" ? { zh: terms.title, en: "", ja: "" } : (terms.title || {}));
+      setContent(typeof terms.content === "string" ? { zh: terms.content, en: "", ja: "" } : (terms.content || {}));
       setVersion(terms.version || "1.0");
       setTermsStatus(terms.status);
       setShowTermsForm(true);
@@ -241,7 +245,7 @@ export default function ContactAndTermsPage() {
         {showContactForm && (
           <form onSubmit={handleContactSubmit} className="mb-4 space-y-4 p-4 bg-gray-50 rounded-lg">
             <div>
-              <label className="block text-sm font-medium mb-1">类型 *</label>
+              <label className="block text-sm font-medium mb-1">{t("contact.type")} *</label>
               <select
                 value={contactType}
                 onChange={(e) => setContactType(e.target.value as "business" | "purchase")}
@@ -249,12 +253,12 @@ export default function ContactAndTermsPage() {
                 disabled={!!editingContact}
                 required
               >
-                <option value="business">商务合作</option>
-                <option value="purchase">激活码购买</option>
+                <option value="business">{t("contact.business")}</option>
+                <option value="purchase">{t("contact.purchase")}</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">微信账号</label>
+              <label className="block text-sm font-medium mb-1">{t("contact.wechat")}</label>
               <input
                 type="text"
                 value={wechat}
@@ -263,7 +267,7 @@ export default function ContactAndTermsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">邮箱地址</label>
+              <label className="block text-sm font-medium mb-1">{t("contact.email")}</label>
               <input
                 type="email"
                 value={email}
@@ -272,14 +276,14 @@ export default function ContactAndTermsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">状态</label>
+              <label className="block text-sm font-medium mb-1">{t("contact.status")}</label>
               <select
                 value={contactStatus}
                 onChange={(e) => setContactStatus(e.target.value as "active" | "inactive")}
                 className="w-full px-3 py-2 border rounded-lg"
               >
-                <option value="active">启用</option>
-                <option value="inactive">禁用</option>
+                <option value="active">{t("merchants.active")}</option>
+                <option value="inactive">{t("merchants.inactive")}</option>
               </select>
             </div>
             <div className="flex gap-2">
@@ -306,9 +310,9 @@ export default function ContactAndTermsPage() {
         )}
 
         <div className="space-y-4">
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <h4 className="font-medium">商务合作</h4>
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="font-medium">{t("contact.business")}</h4>
               {!businessInfo && !showContactForm && (
                 <button
                   onClick={() => {
@@ -327,8 +331,8 @@ export default function ContactAndTermsPage() {
             </div>
             {businessInfo ? (
               <div className="space-y-2 p-3 bg-gray-50 rounded">
-                <div>微信：{businessInfo.wechat || "未设置"}</div>
-                <div>邮箱：{businessInfo.email || "未设置"}</div>
+                <div>{t("contact.wechatLabel")}：{businessInfo.wechat || t("contact.notSet")}</div>
+                <div>{t("contact.emailLabel")}：{businessInfo.email || t("contact.notSet")}</div>
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={() => handleContactEdit(businessInfo)}
@@ -345,12 +349,12 @@ export default function ContactAndTermsPage() {
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500">未设置</div>
+              <div className="text-gray-500">{t("contact.notSet")}</div>
             )}
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
-              <h4 className="font-medium">激活码购买</h4>
+              <h4 className="font-medium">{t("contact.purchase")}</h4>
               {!purchaseInfo && !showContactForm && (
                 <button
                   onClick={() => {
@@ -369,8 +373,8 @@ export default function ContactAndTermsPage() {
             </div>
             {purchaseInfo ? (
               <div className="space-y-2 p-3 bg-gray-50 rounded">
-                <div>微信：{purchaseInfo.wechat || "未设置"}</div>
-                <div>邮箱：{purchaseInfo.email || "未设置"}</div>
+                <div>{t("contact.wechatLabel")}：{purchaseInfo.wechat || t("contact.notSet")}</div>
+                <div>{t("contact.emailLabel")}：{purchaseInfo.email || t("contact.notSet")}</div>
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={() => handleContactEdit(purchaseInfo)}
@@ -387,7 +391,7 @@ export default function ContactAndTermsPage() {
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500">未设置</div>
+              <div className="text-gray-500">{t("contact.notSet")}</div>
             )}
           </div>
         </div>
@@ -417,21 +421,21 @@ export default function ContactAndTermsPage() {
         {showTermsForm && (
           <form onSubmit={handleTermsSubmit} className="mb-4 space-y-4 p-4 bg-gray-50 rounded-lg">
             <div>
-              <label className="block text-sm font-medium mb-1">标题 *</label>
-              <input
-                type="text"
+              <MultilangInput
+                label="标题"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                onChange={setTitle}
+                placeholder="请输入服务条款标题"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">内容 *</label>
-              <textarea
+              <MultilangInput
+                label="内容"
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                onChange={setContent}
+                placeholder="请输入服务条款内容"
+                multiline
                 rows={10}
                 required
               />
@@ -480,8 +484,8 @@ export default function ContactAndTermsPage() {
 
         {terms && !showTermsForm && (
           <div className="p-3 bg-gray-50 rounded">
-            <h4 className="font-medium mb-2">{terms.title}</h4>
-            <div className="text-sm text-gray-700 whitespace-pre-wrap mb-2">{terms.content}</div>
+            <h4 className="font-medium mb-2">{getMultilangContent(terms.title, language)}</h4>
+            <div className="text-sm text-gray-700 whitespace-pre-wrap mb-2">{getMultilangContent(terms.content, language)}</div>
             <div className="text-xs text-gray-500">版本：{terms.version}</div>
           </div>
         )}

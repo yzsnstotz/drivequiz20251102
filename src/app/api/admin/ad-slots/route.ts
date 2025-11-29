@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { logUpdate } from "@/app/api/_lib/operationLog";
+import { isValidMultilangContent } from "@/lib/multilangUtils";
 
 function toISO(v: Date | string | null | undefined): string | null {
   if (!v) return null;
@@ -60,29 +61,29 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     const defaultSlots = [
       {
         slot_key: "home_first_column",
-        title: "首页第一栏",
-        description: "精选商家推荐",
+        title: { zh: "首页第一栏", en: "", ja: "" },
+        description: { zh: "精选商家推荐", en: "", ja: "" },
         splash_duration: 3,
         is_enabled: true,
       },
       {
         slot_key: "home_second_column",
-        title: "首页第二栏",
-        description: "优质商家推荐",
+        title: { zh: "首页第二栏", en: "", ja: "" },
+        description: { zh: "优质商家推荐", en: "", ja: "" },
         splash_duration: 3,
         is_enabled: true,
       },
       {
         slot_key: "splash_screen",
-        title: "启动页广告",
-        description: "应用启动时显示的广告",
+        title: { zh: "启动页广告", en: "", ja: "" },
+        description: { zh: "应用启动时显示的广告", en: "", ja: "" },
         splash_duration: 3,
         is_enabled: true,
       },
       {
         slot_key: "popup_ad",
-        title: "启动弹窗广告",
-        description: "首次启动首页后显示的弹窗广告",
+        title: { zh: "启动弹窗广告", en: "", ja: "" },
+        description: { zh: "首次启动首页后显示的弹窗广告", en: "", ja: "" },
         splash_duration: 3,
         is_enabled: true,
       },
@@ -102,8 +103,8 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
             .insertInto("ad_slots_config")
             .values({
               slot_key: slot.slot_key,
-              title: slot.title,
-              description: slot.description,
+              title: sql`${JSON.stringify(slot.title)}::jsonb`,
+              description: sql`${JSON.stringify(slot.description)}::jsonb`,
               splash_duration: slot.splash_duration,
               is_enabled: slot.is_enabled,
               created_at: sql`NOW()`,
@@ -153,9 +154,20 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       return badRequest("slotKey is required");
     }
 
-    if (!title || typeof title !== "string" || title.trim().length === 0) {
-      return badRequest("title is required");
+    // 验证多语言字段
+    if (!title || !isValidMultilangContent(title)) {
+      return badRequest("title is required and must have at least one language");
     }
+    
+    // 确保 title 是对象格式
+    const titleObj = typeof title === "string" 
+      ? { zh: title, en: "", ja: "" } 
+      : title;
+    
+    // 验证 description（可选）
+    const descriptionObj = description 
+      ? (typeof description === "string" ? { zh: description, en: "", ja: "" } : description)
+      : null;
 
     const existing = await db
       .selectFrom("ad_slots_config")
@@ -168,8 +180,8 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
     }
 
     const updateData: Record<string, any> = {
-      title: title.trim(),
-      description: description?.trim() || null,
+      title: sql`${JSON.stringify(titleObj)}::jsonb`,
+      description: descriptionObj ? sql`${JSON.stringify(descriptionObj)}::jsonb` : null,
       is_enabled: isEnabled === false ? false : true,
       updated_at: sql`NOW()`,
     };
@@ -193,7 +205,12 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       return internalError("Failed to update ad slot");
     }
 
-    await logUpdate(req, "ad_slots_config", updated.id, existing, updated, `更新广告栏: ${updated.title}`);
+    // 获取广告栏标题用于日志（优先使用中文）
+    const adSlotTitle = typeof updated.title === "object" && updated.title !== null
+      ? (updated.title as any).zh || (updated.title as any).en || (updated.title as any).ja || "未知"
+      : String(updated.title || "未知");
+    
+    await logUpdate(req, "ad_slots_config", updated.id, existing, updated, `更新广告栏: ${adSlotTitle}`);
 
     return success({
       id: updated.id,

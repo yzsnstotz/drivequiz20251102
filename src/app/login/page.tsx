@@ -9,6 +9,7 @@ import { Mail, MessageCircle, FileText, Handshake, ShoppingCart, User, X } from 
 import OAuthButton from "./components/OAuthButton";
 import QRCodeLogin from "./components/QRCodeLogin";
 import { getLoginMemory, saveLoginMemory, clearLoginMemory } from "@/lib/loginMemory";
+import { getMultilangContent } from "@/lib/multilangUtils";
 
 interface ContactInfo {
   type: 'business' | 'purchase';
@@ -17,8 +18,8 @@ interface ContactInfo {
 }
 
 interface TermsOfService {
-  title: string;
-  content: string;
+  title: any; // MultilangContent
+  content: any; // MultilangContent
   version?: string;
 }
 
@@ -391,7 +392,7 @@ export default function LoginPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] p-6 overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">{termsOfService.title}</h3>
+              <h3 className="text-xl font-bold">{getMultilangContent(termsOfService.title, language)}</h3>
               <button
                 onClick={() => setShowTerms(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -400,7 +401,7 @@ export default function LoginPage() {
               </button>
             </div>
             <div className="text-sm text-gray-700 whitespace-pre-wrap">
-              {termsOfService.content}
+              {getMultilangContent(termsOfService.content, language)}
             </div>
             {termsOfService.version && (
               <div className="mt-4 text-xs text-gray-500">

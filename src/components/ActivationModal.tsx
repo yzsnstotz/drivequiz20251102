@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import { MessageCircle, Mail, FileText, Handshake, ShoppingCart } from 'lucide-react';
 import { APP_VERSION } from '@/config/version';
 import { useLanguage } from '@/lib/i18n';
+import { getMultilangContent } from '@/lib/multilangUtils';
 
 interface ActivationModalProps {
   onSubmit: (email: string, activationCode: string) => void;
@@ -16,14 +17,14 @@ interface ContactInfo {
 }
 
 interface TermsOfService {
-  title: string;
-  content: string;
+  title: any; // MultilangContent
+  content: any; // MultilangContent
   version: string;
 }
 
 const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) => {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [email, setEmail] = useState('');
   const [activationCode, setActivationCode] = useState('');
   const [adminCode, setAdminCode] = useState('');
@@ -286,7 +287,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl w-full max-w-2xl max-h-[80vh] p-6 overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold dark:text-ios-dark-text">{termsOfService.title}</h3>
+              <h3 className="text-xl font-bold dark:text-ios-dark-text">{getMultilangContent(termsOfService.title, language)}</h3>
               <button
                 onClick={() => setShowTerms(false)}
                 className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl"
@@ -295,7 +296,7 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
               </button>
             </div>
             <div className="text-sm text-gray-700 dark:text-ios-dark-text-secondary whitespace-pre-wrap">
-              {termsOfService.content}
+              {getMultilangContent(termsOfService.content, language)}
             </div>
             {termsOfService.version && (
               <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">

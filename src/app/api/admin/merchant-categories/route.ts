@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { logCreate, logUpdate, logDelete } from "@/app/api/_lib/operationLog";
+import { isValidMultilangContent } from "@/lib/multilangUtils";
 
 function toISO(v: Date | string | null | undefined): string | null {
   if (!v) return null;
@@ -33,7 +34,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       q = q.where("status", "=", status);
     }
 
-    q = q.orderBy("display_order", "asc").orderBy("name", "asc");
+    q = q.orderBy("display_order", "asc").orderBy(sql`name->>'zh'`, "asc");
 
     const rows = await q.execute();
 
@@ -64,15 +65,21 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     const body = await req.json().catch(() => ({}));
     const { name, displayOrder, status } = body;
 
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      return badRequest("name is required");
+    // 验证多语言字段
+    if (!name || !isValidMultilangContent(name)) {
+      return badRequest("name is required and must have at least one language");
     }
+    
+    // 确保 name 是对象格式
+    const nameObj = typeof name === "string" 
+      ? { zh: name, en: "", ja: "" } 
+      : name;
 
     const now = new Date().toISOString();
     const inserted = await db
       .insertInto("merchant_categories")
       .values({
-        name: name.trim(),
+        name: sql`${JSON.stringify(nameObj)}::jsonb`,
         display_order: Number(displayOrder) || 0,
         status: status === "inactive" ? "inactive" : "active",
         created_at: sql`${now}::timestamp`,
@@ -85,7 +92,12 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       return internalError("Failed to create merchant category");
     }
 
-    await logCreate(req, "merchant_categories", inserted.id, inserted, `创建商户类型: ${inserted.name}`);
+    // 获取分类名称用于日志（优先使用中文）
+    const categoryName = typeof inserted.name === "object" && inserted.name !== null
+      ? (inserted.name as any).zh || (inserted.name as any).en || (inserted.name as any).ja || "未知"
+      : String(inserted.name || "未知");
+    
+    await logCreate(req, "merchant_categories", inserted.id, inserted, `创建商户类型: ${categoryName}`);
 
     return success({
       id: inserted.id,

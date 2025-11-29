@@ -3,10 +3,13 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "@/lib/apiClient";
 import { useLanguage } from "@/contexts/LanguageContext";
+import MultilangInput from "@/components/admin/MultilangInput";
+import { getMultilangContent } from "@/lib/multilangUtils";
+import type { MultilangContent } from "@/types/multilang";
 
 type MerchantCategory = {
   id: number;
-  name: string;
+  name: MultilangContent;
   displayOrder: number;
   status: "active" | "inactive";
   createdAt: string;
@@ -17,13 +20,13 @@ type ApiOk<T> = { ok: true; data: T };
 type ApiErr = { ok: false; errorCode?: string; message?: string };
 
 export default function MerchantCategoriesPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<MerchantCategory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<MerchantCategory | null>(null);
-  const [name, setName] = useState("");
+  const [name, setName] = useState<{ zh?: string; en?: string; ja?: string }>({});
   const [displayOrder, setDisplayOrder] = useState(0);
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
@@ -88,14 +91,15 @@ export default function MerchantCategoriesPage() {
   };
 
   const resetForm = () => {
-    setName("");
+    setName({});
     setDisplayOrder(0);
     setStatus("active");
   };
 
   const handleEdit = (item: MerchantCategory) => {
     setEditing(item);
-    setName(item.name);
+    // 处理多语言内容：如果是字符串，转换为对象；如果是对象，直接使用
+    setName(typeof item.name === "string" ? { zh: item.name, en: "", ja: "" } : (item.name || {}));
     setDisplayOrder(item.displayOrder);
     setStatus(item.status);
     setShowForm(true);
@@ -148,12 +152,11 @@ export default function MerchantCategoriesPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-4 rounded-lg shadow-sm space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">类型名称 *</label>
-            <input
-              type="text"
+            <MultilangInput
+              label="类型名称"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
+              onChange={setName}
+              placeholder="请输入类型名称"
               required
             />
           </div>
@@ -214,7 +217,7 @@ export default function MerchantCategoriesPage() {
           <tbody className="divide-y">
             {items.map((item) => (
               <tr key={item.id}>
-                <td className="px-4 py-2">{item.name}</td>
+                <td className="px-4 py-2">{getMultilangContent(item.name, language)}</td>
                 <td className="px-4 py-2">{item.displayOrder}</td>
                 <td className="px-4 py-2">
                   <span

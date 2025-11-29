@@ -77,7 +77,7 @@ interface OperationLogTable {
 // ------------------------------------------------------------
 interface MerchantCategoryTable {
   id: Generated<number>;
-  name: string;
+  name: any; // JSONB: { zh?: string; en?: string; ja?: string; }
   display_order: number;
   status: "active" | "inactive";
   created_at: Generated<Date>;
@@ -89,9 +89,9 @@ interface MerchantCategoryTable {
 // ------------------------------------------------------------
 interface MerchantTable {
   id: Generated<number>;
-  name: string;
-  description: string | null;
-  address: string | null;
+  name: any; // JSONB: { zh?: string; en?: string; ja?: string; }
+  description: any | null; // JSONB: { zh?: string; en?: string; ja?: string; }
+  address: any | null; // JSONB: { zh?: string; en?: string; ja?: string; }
   phone: string | null;
   email: string | null;
   image_url: string | null;
@@ -241,8 +241,8 @@ interface VideoTable {
 interface AdSlotsConfigTable {
   id: Generated<number>;
   slot_key: string;
-  title: string;
-  description: string | null;
+  title: any; // JSONB: { zh?: string; en?: string; ja?: string; }
+  description: any | null; // JSONB: { zh?: string; en?: string; ja?: string; }
   splash_duration: number;
   is_enabled: boolean;
   created_at: Generated<Date>;
@@ -330,8 +330,8 @@ interface ContactInfoTable {
 // ------------------------------------------------------------
 interface TermsOfServiceTable {
   id: Generated<number>;
-  title: string;
-  content: string;
+  title: any; // JSONB: { zh?: string; en?: string; ja?: string; }
+  content: any; // JSONB: { zh?: string; en?: string; ja?: string; }
   version: string;
   status: "active" | "inactive";
   created_at: Generated<Date>;

@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, notFound, internalError } from "@/app/api/_lib/errors";
 import { logUpdate, logDelete } from "@/app/api/_lib/operationLog";
+import { isValidMultilangContent } from "@/lib/multilangUtils";
 
 function toISO(v: Date | string | null | undefined): string | null {
   if (!v) return null;
@@ -79,16 +80,34 @@ export const PUT = withAdminAuth(
       };
 
       if (name !== undefined) {
-        if (typeof name !== "string" || name.trim().length === 0) {
-          return badRequest("name cannot be empty");
+        if (!isValidMultilangContent(name)) {
+          return badRequest("name must have at least one language");
         }
-        updateData.name = name.trim();
+        // 确保 name 是对象格式
+        const nameObj = typeof name === "string" 
+          ? { zh: name, en: "", ja: "" } 
+          : name;
+        updateData.name = sql`${JSON.stringify(nameObj)}::jsonb`;
       }
       if (description !== undefined) {
-        updateData.description = description?.trim() || null;
+        if (description === null || description === "") {
+          updateData.description = null;
+        } else {
+          const descriptionObj = typeof description === "string" 
+            ? { zh: description, en: "", ja: "" } 
+            : description;
+          updateData.description = sql`${JSON.stringify(descriptionObj)}::jsonb`;
+        }
       }
       if (address !== undefined) {
-        updateData.address = address?.trim() || null;
+        if (address === null || address === "") {
+          updateData.address = null;
+        } else {
+          const addressObj = typeof address === "string" 
+            ? { zh: address, en: "", ja: "" } 
+            : address;
+          updateData.address = sql`${JSON.stringify(addressObj)}::jsonb`;
+        }
       }
       if (phone !== undefined) {
         updateData.phone = phone?.trim() || null;
@@ -144,7 +163,12 @@ export const PUT = withAdminAuth(
         return internalError("Failed to update merchant");
       }
 
-      await logUpdate(req, "merchants", id, merchant, updated, `更新商户: ${updated.name}`);
+      // 获取商户名称用于日志（优先使用中文）
+      const updatedName = typeof updated.name === "object" && updated.name !== null
+        ? (updated.name as any).zh || (updated.name as any).en || (updated.name as any).ja || "未知"
+        : String(updated.name || "未知");
+      
+      await logUpdate(req, "merchants", id, merchant, updated, `更新商户: ${updatedName}`);
 
       return success({
         id: updated.id,
@@ -186,7 +210,12 @@ export const DELETE = withAdminAuth(
 
       await db.deleteFrom("merchants").where("id", "=", id).execute();
 
-      await logDelete(req, "merchants", id, merchant, `删除商户: ${merchant.name}`);
+      // 获取商户名称用于日志（优先使用中文）
+      const merchantName = typeof merchant.name === "object" && merchant.name !== null
+        ? (merchant.name as any).zh || (merchant.name as any).en || (merchant.name as any).ja || "未知"
+        : String(merchant.name || "未知");
+      
+      await logDelete(req, "merchants", id, merchant, `删除商户: ${merchantName}`);
 
       return success({ deleted: 1 });
     } catch (err: any) {

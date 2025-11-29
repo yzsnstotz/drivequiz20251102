@@ -4,12 +4,15 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import apiClient from "@/lib/apiClient";
 import { useLanguage } from "@/contexts/LanguageContext";
+import MultilangInput from "@/components/admin/MultilangInput";
+import { getMultilangContent } from "@/lib/multilangUtils";
+import type { MultilangContent } from "@/types/multilang";
 
 type Merchant = {
   id: number;
-  name: string;
-  description: string | null;
-  address: string | null;
+  name: MultilangContent;
+  description: MultilangContent | null;
+  address: MultilangContent | null;
   phone: string | null;
   email: string | null;
   imageUrl: string | null;
@@ -24,7 +27,7 @@ type Merchant = {
 
 type MerchantCategory = {
   id: number;
-  name: string;
+  name: MultilangContent;
   displayOrder: number;
   status: "active" | "inactive";
 };
@@ -45,7 +48,7 @@ type ApiOk<T> = { ok: true; data: T };
 type ApiErr = { ok: false; errorCode?: string; message?: string };
 
 export default function MerchantsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Merchant[]>([]);
@@ -54,9 +57,9 @@ export default function MerchantsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState<Merchant | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [address, setAddress] = useState("");
+  const [name, setName] = useState<{ zh?: string; en?: string; ja?: string }>({});
+  const [description, setDescription] = useState<{ zh?: string; en?: string; ja?: string }>({});
+  const [address, setAddress] = useState<{ zh?: string; en?: string; ja?: string }>({});
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -186,9 +189,9 @@ export default function MerchantsPage() {
   };
 
   const resetForm = () => {
-    setName("");
-    setDescription("");
-    setAddress("");
+    setName({});
+    setDescription({});
+    setAddress({});
     setPhone("");
     setEmail("");
     setImageUrl("");
@@ -201,9 +204,18 @@ export default function MerchantsPage() {
 
   const handleEdit = (merchant: Merchant) => {
     setEditingMerchant(merchant);
-    setName(merchant.name);
-    setDescription(merchant.description || "");
-    setAddress(merchant.address || "");
+    // 处理多语言内容：如果是字符串，转换为对象；如果是对象，直接使用
+    setName(typeof merchant.name === "string" ? { zh: merchant.name, en: "", ja: "" } : (merchant.name || {}));
+    setDescription(
+      merchant.description 
+        ? (typeof merchant.description === "string" ? { zh: merchant.description, en: "", ja: "" } : merchant.description)
+        : {}
+    );
+    setAddress(
+      merchant.address 
+        ? (typeof merchant.address === "string" ? { zh: merchant.address, en: "", ja: "" } : merchant.address)
+        : {}
+    );
     setPhone(merchant.phone || "");
     setEmail(merchant.email || "");
     setImageUrl(merchant.imageUrl || "");
@@ -261,31 +273,30 @@ export default function MerchantsPage() {
       {showCreateForm && (
         <form onSubmit={handleSubmit} className="bg-white p-4 rounded-lg shadow-sm space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">{t("merchants.name")} *</label>
-            <input
-              type="text"
+            <MultilangInput
+              label={t("merchants.name")}
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
+              onChange={setName}
+              placeholder="请输入商户名称"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">{t("merchants.description")}</label>
-            <textarea
+            <MultilangInput
+              label={t("merchants.description")}
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
+              onChange={setDescription}
+              placeholder="请输入商户描述"
+              multiline
               rows={3}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">{t("merchants.address")}</label>
-            <input
-              type="text"
+            <MultilangInput
+              label={t("merchants.address")}
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
+              onChange={setAddress}
+              placeholder="请输入商户地址"
             />
           </div>
           <div>
@@ -324,11 +335,17 @@ export default function MerchantsPage() {
               className="w-full px-3 py-2 border rounded-lg"
             >
               <option value="">无类型</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.name}
-                </option>
-              ))}
+              {categories.map((cat) => {
+                // 显示当前语言的内容
+                const categoryDisplayName = getMultilangContent(cat.name, language);
+                // value 使用中文名称（因为后端期望字符串，且 category 字段存储的是中文名称）
+                const categoryValue = getMultilangContent(cat.name, 'zh');
+                return (
+                  <option key={cat.id} value={categoryValue}>
+                    {categoryDisplayName}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div>
@@ -430,12 +447,12 @@ export default function MerchantsPage() {
               <tr key={item.id}>
                 <td className="px-4 py-2">
                   {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} className="w-12 h-12 object-cover rounded" />
+                    <img src={item.imageUrl} alt={getMultilangContent(item.name, language)} className="w-12 h-12 object-cover rounded" />
                   ) : (
                     <div className="w-12 h-12 bg-gray-200 rounded"></div>
                   )}
                 </td>
-                <td className="px-4 py-2">{item.name}</td>
+                <td className="px-4 py-2">{getMultilangContent(item.name, language)}</td>
                 <td className="px-4 py-2">{item.category || "—"}</td>
                 <td className="px-4 py-2">{item.phone || "—"}</td>
                 <td className="px-4 py-2">{item.email || "—"}</td>
