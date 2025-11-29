@@ -238,16 +238,16 @@ export default function FavoritesPage() {
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={() => router.back()}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 hover:text-gray-900 dark:text-ios-dark-text-secondary dark:hover:text-ios-dark-text"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">
             {t("favorites.title")}
           </h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">{t("common.loading")}</p>
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6 flex justify-center items-center">
+          <p className="text-gray-600 dark:text-ios-dark-text-secondary">{t("common.loading")}</p>
         </div>
       </div>
     );
@@ -259,19 +259,19 @@ export default function FavoritesPage() {
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={() => router.back()}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 hover:text-gray-900 dark:text-ios-dark-text-secondary dark:hover:text-ios-dark-text"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">
             {t("favorites.title")}
           </h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
           <div className="text-center py-12">
-            <Star className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg mb-2">{t("favorites.empty")}</p>
-            <p className="text-gray-500 text-sm">{t("favorites.emptyDesc")}</p>
+            <Star className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-ios-dark-text-secondary text-lg mb-2">{t("favorites.empty")}</p>
+            <p className="text-gray-500 dark:text-ios-dark-text-secondary text-sm">{t("favorites.emptyDesc")}</p>
           </div>
         </div>
       </div>
@@ -284,16 +284,16 @@ export default function FavoritesPage() {
         <div className="flex items-center space-x-4 mb-6">
           <button
             onClick={() => router.back()}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 hover:text-gray-900 dark:text-ios-dark-text-secondary dark:hover:text-ios-dark-text"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">
             {t("favorites.title")}
           </h1>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex justify-center items-center">
-          <p className="text-gray-600">{t("question.loadError")}</p>
+        <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6 flex justify-center items-center">
+          <p className="text-gray-600 dark:text-ios-dark-text-secondary">{t("question.loadError")}</p>
         </div>
       </div>
     );
@@ -316,27 +316,27 @@ export default function FavoritesPage() {
       <div className="flex items-center space-x-4 mb-6">
         <button
           onClick={() => router.back()}
-          className="text-gray-600 hover:text-gray-900"
+          className="text-gray-600 hover:text-gray-900 dark:text-ios-dark-text-secondary dark:hover:text-ios-dark-text"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">
           {t("favorites.title")}
         </h1>
         <div className="ml-auto flex items-center space-x-2">
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">
             {currentIndex + 1}/{questions.length}
           </span>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+      <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
         <div className="flex justify-between items-center mb-4">
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">
             {t("question.current")} {currentIndex + 1}/{questions.length}
           </span>
           <div className="flex items-center space-x-3">
-            <span className="text-sm font-medium text-blue-600">
+            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
               {currentQuestion.type === "single"
                 ? t("exam.type.single")
                 : currentQuestion.type === "multiple"
@@ -353,7 +353,7 @@ export default function FavoritesPage() {
             />
             <button
               onClick={() => setShowAIDialog(true)}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
             >
               <Bot className="h-4 w-4" />
               <span>{t("exam.aiAssistant")}</span>
@@ -362,7 +362,7 @@ export default function FavoritesPage() {
         </div>
 
         <div className="mb-6">
-          <p className="text-gray-900 text-lg mb-4">{contentText || ""}</p>
+          <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">{contentText || ""}</p>
           {currentQuestion.image && (
             <QuestionImage
               src={currentQuestion.image}
@@ -390,16 +390,18 @@ export default function FavoritesPage() {
                     className={`w-full p-4 rounded-xl text-left transition-colors ${
                       showAnswer
                         ? isCorrectOption
-                          ? "bg-green-50 border-2 border-green-500"
+                          ? "bg-green-50 dark:bg-green-900/30 border-2 border-green-500"
                           : isSelected
-                          ? "bg-red-50 border-2 border-red-500"
-                          : "bg-gray-50 border-2 border-transparent"
+                          ? "bg-red-50 dark:bg-red-900/30 border-2 border-red-500"
+                          : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent dark:border-ios-dark-border"
                         : isSelected
-                        ? "bg-blue-50 border-2 border-blue-600"
-                        : "bg-gray-50 border-2 border-transparent hover:bg-gray-100"
+                        ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600"
+                        : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent dark:border-ios-dark-border hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary/80"
                     }`}
                   >
-                    {option === "true" ? t("exam.true") : t("exam.false")}
+                    <span className="text-gray-900 dark:text-ios-dark-text">
+                      {option === "true" ? t("exam.true") : t("exam.false")}
+                    </span>
                   </button>
                 );
               })}
@@ -425,17 +427,17 @@ export default function FavoritesPage() {
                     className={`w-full p-4 rounded-xl text-left transition-colors ${
                       showAnswer
                         ? isCorrectOption
-                          ? "bg-green-50 border-2 border-green-500"
+                          ? "bg-green-50 dark:bg-green-900/30 border-2 border-green-500"
                           : isSelected
-                          ? "bg-red-50 border-2 border-red-500"
-                          : "bg-gray-50 border-2 border-transparent"
+                          ? "bg-red-50 dark:bg-red-900/30 border-2 border-red-500"
+                          : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent dark:border-ios-dark-border"
                         : isSelected
-                        ? "bg-blue-50 border-2 border-blue-600"
-                        : "bg-gray-50 border-2 border-transparent hover:bg-gray-100"
+                        ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600"
+                        : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent dark:border-ios-dark-border hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary/80"
                     }`}
                   >
-                    <span className="font-medium">{optionLabel}: </span>
-                    {option}
+                    <span className="font-medium text-gray-900 dark:text-ios-dark-text">{optionLabel}: </span>
+                    <span className="text-gray-900 dark:text-ios-dark-text">{option}</span>
                   </button>
                 );
               })}
@@ -443,14 +445,14 @@ export default function FavoritesPage() {
           )}
         </div>
 
-        <div className="bg-white border-t py-4 flex justify-between items-center">
+        <div className="bg-white dark:bg-ios-dark-bg-secondary border-t dark:border-ios-dark-border py-4 flex justify-between items-center">
           <button
             onClick={handlePrevious}
             disabled={currentIndex === 0}
             className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
               currentIndex === 0
-                ? "text-gray-400 cursor-not-allowed"
-                : "text-gray-600 hover:text-gray-900"
+                ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                : "text-gray-600 hover:text-gray-900 dark:text-ios-dark-text-secondary dark:hover:text-ios-dark-text"
             }`}
           >
             <ChevronLeft className="h-5 w-5" />
@@ -462,8 +464,8 @@ export default function FavoritesPage() {
             disabled={currentIndex === questions.length - 1}
             className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
               currentIndex === questions.length - 1
-                ? "text-gray-400 cursor-not-allowed"
-                : "text-gray-600 hover:text-gray-900"
+                ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                : "text-gray-600 hover:text-gray-900 dark:text-ios-dark-text-secondary dark:hover:text-ios-dark-text"
             }`}
           >
             <span>{t("question.next")}</span>
@@ -472,14 +474,14 @@ export default function FavoritesPage() {
         </div>
 
         {showAnswer && (
-          <div className="mt-6 p-4 rounded-lg border bg-blue-50 border-blue-200 animate-fadeIn">
-            <h3 className="text-gray-800 font-medium mb-2">
+          <div className="mt-6 p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 animate-fadeIn">
+            <h3 className="text-gray-800 dark:text-ios-dark-text font-medium mb-2">
               {isCorrect()
                 ? t("question.correctAnswer")
                 : t("question.wrongAnswer")}
             </h3>
             {explanationText && (
-              <p className="text-gray-700">{explanationText}</p>
+              <p className="text-gray-700 dark:text-blue-200">{explanationText}</p>
             )}
           </div>
         )}
