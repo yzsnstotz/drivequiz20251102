@@ -382,7 +382,7 @@ function MistakeBookPage() {
               <p className="text-blue-800 dark:text-blue-200">
                 {typeof selectedQuestion.explanation === 'string' 
                   ? selectedQuestion.explanation 
-                  : getQuestionContent(selectedQuestion.explanation, language) || ''}
+                  : getQuestionContent(selectedQuestion.explanation as any, language) || ''}
               </p>
             </div>
           )}
