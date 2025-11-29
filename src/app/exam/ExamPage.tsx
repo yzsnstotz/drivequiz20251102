@@ -372,6 +372,7 @@ function ExamPage() {
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 800px"
               className="relative w-full aspect-video"
+              useNativeImg
             />
           )}
           

@@ -79,7 +79,7 @@ export default function QuestionAIDialog({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
   const [localAiAnswers, setLocalAiAnswers] = useState<Record<string, string> | null>(null);
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const [currentProvider, setCurrentProvider] = useState<"local" | "render">("render");
   const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
   const { isActivated, showActivationModal } = useAIActivation();
@@ -254,15 +254,19 @@ export default function QuestionAIDialog({
 
   const formatQuestionForAI = () => {
     // 处理多语言content字段
-    const contentText = typeof question.content === 'string' 
-      ? question.content 
-      : (question.content?.zh || '');
-    let questionText = `题目：${contentText}\n\n`;
-    
+    const contentText =
+      typeof question.content === "string"
+        ? question.content
+        : question.content?.[language] ||
+          question.content?.zh ||
+          "";
+
+    let questionText = `${t("ai.question.label")}${contentText}\n\n`;
+
     // 处理多语言options字段
     const options = getQuestionOptions(question.options, language);
     if (options && options.length > 0) {
-      questionText += "选项：\n";
+      questionText += `${t("ai.options.label")}\n`;
       options.forEach((option, index) => {
         const label = String.fromCharCode(65 + index);
         questionText += `${label}. ${option}\n`;
@@ -275,23 +279,32 @@ export default function QuestionAIDialog({
     if (Array.isArray(question.correctAnswer)) {
       correctAnswerText = question.correctAnswer.join("、");
     } else {
-      // 对于判断题，将true/false转换为中文
+      // 对于判断题，将true/false转换为当前语言
       if (question.type === "truefalse") {
-        correctAnswerText = question.correctAnswer === "true" ? "正确" : "错误";
+        if (question.correctAnswer === "true") {
+          correctAnswerText = language === "en" ? "True" : language === "ja" ? "正しい" : "正确";
+        } else if (question.correctAnswer === "false") {
+          correctAnswerText = language === "en" ? "False" : language === "ja" ? "誤り" : "错误";
+        } else {
+          correctAnswerText = question.correctAnswer;
+        }
       } else {
         correctAnswerText = question.correctAnswer;
       }
     }
-    questionText += `正确答案：${correctAnswerText}\n\n`;
+    questionText += `${t("ai.correctAnswer.label")}${correctAnswerText}\n\n`;
 
     if (question.explanation) {
-      const explanationText = getQuestionContent(question.explanation as any, language) || "";
+      const explanationText = getQuestionContent(
+        question.explanation as any,
+        language
+      ) || "";
       if (explanationText) {
-        questionText += `解析：${explanationText}\n\n`;
+        questionText += `${t("ai.explanation.label")}${explanationText}\n\n`;
       }
     }
 
-    questionText += "请进一步解析这道题目。";
+    questionText += t("ai.prompt");
 
     return questionText;
   };
@@ -620,7 +633,9 @@ export default function QuestionAIDialog({
           {isInitialLoading && messages.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" />
-              <span className="ml-2 text-gray-600 dark:text-gray-400">AI正在思考中...</span>
+              <span className="ml-2 text-gray-600 dark:text-gray-400">
+                {t("ai.thinking")}
+              </span>
             </div>
           ) : (
             <>

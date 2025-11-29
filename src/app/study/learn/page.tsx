@@ -750,31 +750,31 @@ function StudyModePageContent() {
         <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl w-full max-w-md p-6 shadow-lg">
             <h3 className="text-lg font-bold text-gray-900 dark:text-ios-dark-text mb-4">
-              确认从头开始
+              {t('study.resetConfirm.title')}
             </h3>
             <p className="text-sm text-gray-700 dark:text-ios-dark-text-secondary mb-6">
-              确定要清除当前学习进度吗？此操作将：
+              {t('study.resetConfirm.message')}
             </p>
             <ul className="text-sm text-gray-600 dark:text-ios-dark-text-secondary mb-6 space-y-2 list-disc list-inside">
-              <li>清除所有答题记录</li>
-              <li>重置进度为0%</li>
-              <li>从第一题重新开始</li>
+              <li>{t('study.resetConfirm.clearRecords')}</li>
+              <li>{t('study.resetConfirm.resetProgress')}</li>
+              <li>{t('study.resetConfirm.restartFromFirst')}</li>
             </ul>
             <p className="text-sm text-gray-600 dark:text-ios-dark-text-secondary mb-6">
-              此操作无法撤销，确定要继续吗？
+              {t('study.resetConfirm.warning')}
             </p>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowResetConfirm(false)}
                 className="flex-1 px-4 py-2 text-gray-700 dark:text-ios-dark-text-secondary bg-gray-100 dark:bg-ios-dark-bg-tertiary rounded-lg hover:bg-gray-200 dark:hover:bg-ios-dark-bg-tertiary/80 transition-colors"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleResetProgress}
                 className="flex-1 px-4 py-2 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors"
               >
-                确认清除
+                {t('study.resetConfirm.confirmClear')}
               </button>
             </div>
           </div>

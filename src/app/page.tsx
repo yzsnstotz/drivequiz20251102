@@ -28,6 +28,7 @@ import SplashScreenAd from "@/components/SplashScreenAd";
 import PopupAd from "@/components/PopupAd";
 import { useLanguage, type Language } from "@/lib/i18n";
 import Link from "next/link";
+import { fetchMerchantAds } from "@/lib/merchantAdsCache";
 import { getFormattedVersion } from "@/lib/version";
 import { useAIActivation } from "@/components/AIActivationProvider";
 import { useRouter } from "next/navigation";
@@ -191,22 +192,13 @@ export default function HomePage() {
               const popupConfig = items.find((item: AdSlotConfig) => item.slotKey === "popup_ad");
               if (popupConfig) {
                 try {
-                  const res = await fetch("/api/merchant-ads?adSlot=popup_ad", {
-                    method: "GET",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                  });
-                  if (res.ok) {
-                    const data = await res.json();
-                    if (data.ok && data.data.items && data.data.items.length > 0) {
-                      // 延迟显示弹窗
-                      setTimeout(() => {
-                        setShowPopup(true);
-                      }, 500);
-                    }
-                  } else {
-                    console.error("[广告加载] 弹窗广告请求失败:", res.status, res.statusText);
+                  // 使用缓存和去重机制获取数据
+                  const ads = await fetchMerchantAds("popup_ad");
+                  if (ads && ads.length > 0) {
+                    // 延迟显示弹窗
+                    setTimeout(() => {
+                      setShowPopup(true);
+                    }, 500);
                   }
                 } catch (error) {
                   // 静默处理错误，不显示给用户

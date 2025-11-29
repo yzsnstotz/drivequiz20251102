@@ -10,6 +10,32 @@ import Pagination, { PaginationMeta } from "@/components/common/Pagination";
 import FilterBar, { ServiceFilters } from "@/components/common/FilterBar";
 import ServiceCard, { Service } from "@/components/service/ServiceCard";
 
+// 缓存和请求去重机制（组件外部定义，避免每次渲染重新创建）
+const serviceCache = new Map<string, { data: Service[]; pagination: PaginationMeta | null; timestamp: number }>();
+const SERVICE_CACHE_TTL = 60 * 1000; // 1 分钟
+
+const pendingServiceRequests = new Map<string, Promise<any>>();
+
+// 请求去重函数
+const fetchServicesWithDedup = async (url: string) => {
+  // 如果已有相同请求在进行，等待它完成
+  if (pendingServiceRequests.has(url)) {
+    return pendingServiceRequests.get(url);
+  }
+  
+  const promise = apiFetch<Service[]>(url)
+    .then(response => response)
+    .catch(err => {
+      throw err;
+    })
+    .finally(() => {
+      pendingServiceRequests.delete(url);
+    });
+  
+  pendingServiceRequests.set(url, promise);
+  return promise;
+};
+
 export default function ServicesPage() {
   const router = useRouter();
   const [services, setServices] = useState<Service[]>([]);
@@ -48,23 +74,39 @@ export default function ServicesPage() {
       ).toString();
 
       const fullUrl = queryString ? `/api/services?${queryString}` : "/api/services";
-      const response = await apiFetch<Service[]>(fullUrl);
+      
+      // 检查缓存
+      const now = Date.now();
+      const cached = serviceCache.get(fullUrl);
+      
+      if (cached && (now - cached.timestamp < SERVICE_CACHE_TTL)) {
+        // 使用缓存
+        setServices(cached.data);
+        setPagination(cached.pagination);
+        setLoading(false);
+        return;
+      }
+      
+      // 缓存失效，请求 API（使用请求去重）
+      const response = await fetchServicesWithDedup(fullUrl);
 
       if (!response.ok) {
         throw new Error(response.message || "加载服务列表失败");
       }
 
-      setServices(response.data ?? []);
-      if (response.pagination) {
-        setPagination({
-          page: response.pagination.page,
-          limit: response.pagination.limit,
-          total: response.pagination.total,
-          totalPages: response.pagination.totalPages,
-        });
-      } else {
-        setPagination(null);
-      }
+      const servicesData = response.data ?? [];
+      const paginationData = response.pagination ? {
+        page: response.pagination.page,
+        limit: response.pagination.limit,
+        total: response.pagination.total,
+        totalPages: response.pagination.totalPages,
+      } : null;
+      
+      // 更新缓存
+      serviceCache.set(fullUrl, { data: servicesData, pagination: paginationData, timestamp: now });
+      
+      setServices(servicesData);
+      setPagination(paginationData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载服务列表失败");
       setServices([]);
@@ -89,7 +131,7 @@ export default function ServicesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-black">
       <Header title="服务信息" showAIButton={true} aiContext="service" />
       
       {/* 广告位 */}
@@ -113,22 +155,22 @@ export default function ServicesPage() {
         {/* 服务列表 */}
         {loading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">加载中...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mx-auto"></div>
+            <p className="mt-4 text-gray-600 dark:text-ios-dark-text-secondary">加载中...</p>
           </div>
         ) : error ? (
           <div className="text-center py-12">
-            <p className="text-red-600">{error}</p>
+            <p className="text-red-600 dark:text-red-400">{error}</p>
             <button
               onClick={loadServices}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
               重试
             </button>
           </div>
         ) : services.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-600">暂无服务信息</p>
+            <p className="text-gray-600 dark:text-ios-dark-text-secondary">暂无服务信息</p>
           </div>
         ) : (
           <>

@@ -28,13 +28,14 @@ export function getMultilangContent(
   }
 
   // 如果内容是对象，根据 locale 返回对应语言
-  if (typeof content === "object") {
+  if (typeof content === "object" && content !== null) {
     // 标准化 locale（支持 zh-CN, zh_CN 等变体）
     const normalizedLocale = normalizeLocale(locale);
     
     // 优先返回目标语言
-    if (content[normalizedLocale as keyof typeof content]) {
-      return content[normalizedLocale as keyof typeof content] || "";
+    const targetValue = content[normalizedLocale as keyof typeof content];
+    if (targetValue && typeof targetValue === "string") {
+      return targetValue;
     }
 
     // 按优先级回退：zh > en > ja > 第一个可用语言
@@ -42,20 +43,23 @@ export function getMultilangContent(
     
     // 先尝试按优先级回退
     for (const lang of fallbackOrder) {
-      if (content[lang as keyof typeof content]) {
-        return content[lang as keyof typeof content] || "";
+      const langValue = content[lang as keyof typeof content];
+      if (langValue && typeof langValue === "string") {
+        return langValue;
       }
     }
 
     // 如果都没有，返回第一个可用语言
     const firstAvailable = Object.values(content).find((v) => v && typeof v === "string" && v.trim() !== "");
-    if (firstAvailable) {
+    if (firstAvailable && typeof firstAvailable === "string") {
       return firstAvailable;
     }
   }
 
   // 如果都不匹配，返回回退值或空字符串
-  return fallback || "";
+  // 确保返回的是字符串类型
+  const finalFallback = fallback || "";
+  return typeof finalFallback === "string" ? finalFallback : String(finalFallback);
 }
 
 /**

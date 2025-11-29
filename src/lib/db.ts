@@ -1,12 +1,14 @@
 // ============================================================
 // 文件路径: src/lib/db.ts
 // 功能: 数据库连接配置 (PostgreSQL + Kysely)
-// 更新日期: 2025-11-01
-// 更新内容: 为 activation_codes 表增加后台管理字段
+// 更新日期: 2025-11-29
+// 更新内容: 优化连接池配置，添加错误处理和重试机制
 // ============================================================
 
 import { Kysely, PostgresDialect, Generated } from "kysely";
 import { Pool, PoolConfig } from "pg";
+// 导入全局错误处理（确保在数据库初始化前设置）
+import "./errorHandler";
 
 // ------------------------------------------------------------
 // 1️⃣ activation_codes 表结构定义
@@ -800,13 +802,16 @@ function buildPoolConfigFromConnectionString(connectionString: string): PoolConf
       ? { rejectUnauthorized: false }
       : undefined;
 
-  console.log("[DB][Config] Parsed DATABASE_URL:", {
-    host,
-    port,
-    database,
-    sslMode,
-    sslEnabled: !!ssl,
-  });
+  // 仅在开发环境记录配置日志
+  if (process.env.NODE_ENV === "development") {
+    console.log("[DB][Config] Parsed DATABASE_URL:", {
+      host,
+      port,
+      database,
+      sslMode,
+      sslEnabled: !!ssl,
+    });
+  }
 
   const config: PoolConfig = {
     host,
@@ -816,10 +821,13 @@ function buildPoolConfigFromConnectionString(connectionString: string): PoolConf
     password,
     ssl,
     max: 20,
+    min: 2, // 保持最小连接数，减少连接创建开销
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 20_000, // 减少连接超时时间，更快失败重试
     statement_timeout: 60_000,
     query_timeout: 60_000,
+    // 添加连接重试配置
+    allowExitOnIdle: true,
   };
 
   return config;
@@ -842,10 +850,13 @@ function createDbInstance(): Kysely<Database> {
     throw new Error("[DB][Config] DATABASE_URL is not set");
   }
 
-  console.log(
-    "[DB][Config] Using raw DATABASE_URL (first 80 chars):",
-    connectionString.substring(0, 80) + "...",
-  );
+  // 仅在开发环境记录配置日志
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      "[DB][Config] Using raw DATABASE_URL (first 80 chars):",
+      connectionString.substring(0, 80) + "...",
+    );
+  }
 
   // 从连接字符串显式解析配置，彻底无视任何 PGHOST 等环境变量
   const poolConfig = buildPoolConfigFromConnectionString(connectionString);
@@ -856,7 +867,54 @@ function createDbInstance(): Kysely<Database> {
 
   // 添加连接池错误处理
   pool.on('error', (err) => {
-    console.error('[DB Pool] Unexpected error on idle client:', err);
+    const errorMessage = err?.message || String(err);
+    const errorCode = (err as any)?.code || '';
+    
+    // 记录错误但不中断应用，连接池会自动处理
+    console.error('[DB Pool] Unexpected error on idle client:', {
+      message: errorMessage,
+      code: errorCode,
+      stack: process.env.NODE_ENV === 'development' ? (err as Error)?.stack : undefined,
+    });
+    
+    // 如果是连接终止错误，尝试重新连接
+    if (
+      errorMessage.includes('Connection terminated') ||
+      errorMessage.includes('ECONNRESET') ||
+      errorCode === 'ECONNRESET'
+    ) {
+      // 连接池会自动处理重连，这里只记录
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[DB Pool] Connection terminated, pool will handle reconnection');
+      }
+    }
+  });
+
+  // 添加连接终止监听，确保连接正确释放
+  pool.on('remove', (client) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[DB Pool] Client removed from pool');
+    }
+    // 确保客户端已完全关闭
+    if (client && !client.ended) {
+      try {
+        client.end();
+      } catch (e) {
+        // 忽略已关闭的连接错误
+      }
+    }
+  });
+
+  // 添加连接错误监听，捕获未处理的连接错误
+  pool.on('connect', (client) => {
+    client.on('error', (err) => {
+      const errorMessage = err?.message || String(err);
+      console.error('[DB Pool] Client connection error:', {
+        message: errorMessage,
+        code: (err as any)?.code,
+      });
+      // 不抛出错误，让连接池处理
+    });
   });
 
   // 添加连接池连接事件监听（开发环境）

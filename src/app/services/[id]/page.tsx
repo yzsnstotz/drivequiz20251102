@@ -40,7 +40,7 @@ interface ServiceDetail {
   price: {
     min?: number;
     max?: number;
-    unit?: string;
+    unit?: string | { zh?: string; en?: string; ja?: string; default?: string };
   };
   rating: {
     avg?: number;
@@ -59,7 +59,7 @@ interface ServiceDetail {
   reviews?: Array<{
     id: number;
     rating: number;
-    comment?: string;
+    comment?: string | { zh?: string; en?: string; ja?: string; default?: string };
     created_at: string;
   }>;
 }
@@ -145,15 +145,19 @@ export default function ServiceDetailPage() {
             <img
               src={service.image_url}
               alt={(() => {
+                if (typeof service.name === "string") return service.name;
+                if (!service.name) return "服务";
                 if (service.name.default) {
                   const converted = {
                     zh: service.name.zh || service.name.default,
                     en: service.name.en,
                     ja: service.name.ja,
                   };
-                  return getMultilangContent(converted, language, service.name.default);
+                  const result = getMultilangContent(converted, language, service.name.default);
+                  return typeof result === "string" ? result : String(result || service.name.default || "服务");
                 }
-                return getMultilangContent(service.name, language, "服务");
+                const result = getMultilangContent(service.name, language, "服务");
+                return typeof result === "string" ? result : String(result || "服务");
               })()}
               className="w-full h-64 md:h-96 object-cover"
             />
@@ -164,15 +168,19 @@ export default function ServiceDetailPage() {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
                   {(() => {
+                    if (typeof service.name === "string") return service.name;
+                    if (!service.name) return "服务";
                     if (service.name.default) {
                       const converted = {
                         zh: service.name.zh || service.name.default,
                         en: service.name.en,
                         ja: service.name.ja,
                       };
-                      return getMultilangContent(converted, language, service.name.default);
+                      const result = getMultilangContent(converted, language, service.name.default);
+                      return typeof result === "string" ? result : String(result || service.name.default || "服务");
                     }
-                    return getMultilangContent(service.name, language, "服务");
+                    const result = getMultilangContent(service.name, language, "服务");
+                    return typeof result === "string" ? result : String(result || "服务");
                   })()}
                 </h1>
                 {service.category && (
@@ -184,9 +192,19 @@ export default function ServiceDetailPage() {
                           en: service.category.name_en,
                           ja: service.category.name_ja,
                         };
-                        return getMultilangContent(converted, language, service.category.name);
+                        const result = getMultilangContent(converted, language, service.category.name);
+                        return typeof result === "string" ? result : String(result || service.category.name || "");
                       }
-                      return service.category.name;
+                      // 如果 category.name 是字符串，直接返回
+                      if (typeof service.category.name === "string") {
+                        return service.category.name;
+                      }
+                      // 如果 category.name 是对象，使用 getMultilangContent
+                      if (typeof service.category.name === "object" && service.category.name !== null) {
+                        const result = getMultilangContent(service.category.name, language, "");
+                        return typeof result === "string" ? result : String(result || "");
+                      }
+                      return "";
                     })()}
                   </p>
                 )}
@@ -205,15 +223,19 @@ export default function ServiceDetailPage() {
             {service.description && (service.description.zh || service.description.ja || service.description.default) && (
               <p className="text-gray-700 mb-6">
                 {(() => {
+                  if (typeof service.description === "string") return service.description;
+                  if (!service.description) return "";
                   if (service.description.default) {
                     const converted = {
                       zh: service.description.zh || service.description.default,
                       en: service.description.en,
                       ja: service.description.ja,
                     };
-                    return getMultilangContent(converted, language, service.description.default);
+                    const result = getMultilangContent(converted, language, service.description.default);
+                    return typeof result === "string" ? result : String(result || service.description.default || "");
                   }
-                  return getMultilangContent(service.description, language, "");
+                  const result = getMultilangContent(service.description, language, "");
+                  return typeof result === "string" ? result : String(result || "");
                 })()}
               </p>
             )}
@@ -302,7 +324,11 @@ export default function ServiceDetailPage() {
                 <h2 className="text-lg font-semibold text-gray-900 mb-3">价格信息</h2>
                 <p className="text-2xl font-bold text-gray-900">
                   ¥{service.price.min.toLocaleString()} - ¥{service.price.max.toLocaleString()}
-                  {service.price.unit && ` ${service.price.unit}`}
+                  {service.price.unit && (
+                    typeof service.price.unit === "string" 
+                      ? ` ${service.price.unit}`
+                      : ` ${getMultilangContent(service.price.unit, language, "")}`
+                  )}
                 </p>
               </div>
             )}
@@ -347,7 +373,11 @@ export default function ServiceDetailPage() {
                         </span>
                       </div>
                       {review.comment && (
-                        <p className="text-gray-700">{review.comment}</p>
+                        <p className="text-gray-700">
+                          {typeof review.comment === "string" 
+                            ? review.comment 
+                            : getMultilangContent(review.comment, language, "")}
+                        </p>
                       )}
                     </div>
                   ))}

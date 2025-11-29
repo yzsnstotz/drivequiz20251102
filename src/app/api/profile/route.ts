@@ -47,16 +47,22 @@ export async function GET(request: NextRequest) {
 
     if (!profile) {
       // 如果不存在，返回默认值
-      return ok({
+      const response = ok({
         language: "ja",
         goals: [],
         level: "beginner",
         metadata: {},
         userid: userInfo.userId ?? null,
       });
+      // 添加 HTTP 缓存头：用户资料缓存 60 秒（private，避免CDN缓存用户敏感信息）
+      // private: 仅客户端缓存，CDN不缓存
+      // s-maxage=60: 客户端缓存 60 秒
+      // stale-while-revalidate=120: 过期后 2 分钟内仍可使用旧数据，后台更新
+      response.headers.set('Cache-Control', 'private, s-maxage=60, stale-while-revalidate=120');
+      return response;
     }
 
-    return ok({
+    const response = ok({
       language: profile.language || "ja",
       goals: profile.goals || [],
       level: profile.level || "beginner",
@@ -65,6 +71,12 @@ export async function GET(request: NextRequest) {
       updated_at: profile.updated_at,
       userid: userInfo.userId ?? null,
     });
+    // 添加 HTTP 缓存头：用户资料缓存 60 秒（private，避免CDN缓存用户敏感信息）
+    // private: 仅客户端缓存，CDN不缓存
+    // s-maxage=60: 客户端缓存 60 秒
+    // stale-while-revalidate=120: 过期后 2 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'private, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (error) {
     console.error("[Profile API] GET error:", error);
     return err("INTERNAL_ERROR", "服务器内部错误", 500);

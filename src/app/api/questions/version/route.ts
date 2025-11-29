@@ -26,7 +26,12 @@ export async function GET() {
       const dbVersion = await getLatestUnifiedVersion();
       if (dbVersion) {
         console.log(`[GET /api/questions/version] 从数据库读取版本号: ${dbVersion}`);
-        return success({ version: dbVersion });
+        const response = success({ version: dbVersion });
+        // 添加 HTTP 缓存头：题目版本号缓存 5 分钟
+        // s-maxage=300: CDN 缓存 5 分钟
+        // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
+        response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+        return response;
       }
     } catch (dbError) {
       console.warn(`[GET /api/questions/version] 从数据库读取版本号失败:`, dbError);
@@ -55,7 +60,12 @@ export async function GET() {
       return internalError("Version not found in questions.json");
     }
     console.log(`[GET /api/questions/version] 从文件读取版本号: ${version}`);
-    return success({ version });
+    const response = success({ version });
+    // 添加 HTTP 缓存头：题目版本号缓存 5 分钟
+    // s-maxage=300: CDN 缓存 5 分钟
+    // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    return response;
   } catch (err: any) {
     console.error("[GET /api/questions/version] Error:", err);
     return internalError(`Failed to read questions version: ${err.message || String(err)}`);

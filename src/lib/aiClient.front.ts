@@ -12,27 +12,53 @@ import { joinUrl } from "./urlJoin";
 
 export type { AiProviderKey };
 
+// 缓存配置
+const AI_CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 分钟
+let aiConfigCache: { dbProvider: string | null; timestamp: number } | null = null;
+
 /**
- * 获取当前的 aiProvider 配置（通过 API）
+ * 获取当前的 aiProvider 配置（通过 API，带缓存）
  */
 async function getCurrentAiProvider(): Promise<string | null> {
+  // 检查缓存
+  const now = Date.now();
+  if (aiConfigCache && now - aiConfigCache.timestamp < AI_CONFIG_CACHE_TTL) {
+    return aiConfigCache.dbProvider;
+  }
+
   try {
-    const response = await fetch("/api/ai/config");
+    const response = await fetch("/api/ai/config", {
+      cache: "force-cache", // 利用浏览器缓存
+    });
     if (!response.ok) {
-      console.warn("[getCurrentAiProvider] API 响应失败:", response.status, response.statusText);
+      // 如果请求失败，尝试使用缓存（即使过期）
+      if (aiConfigCache) {
+        return aiConfigCache.dbProvider;
+      }
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[getCurrentAiProvider] API 响应失败:", response.status, response.statusText);
+      }
       return null;
     }
     const data = await response.json();
     const dbProvider = data?.data?.dbProvider;
-    console.log("[getCurrentAiProvider] 获取配置:", {
-      dbProvider,
-      provider: data?.data?.provider,
-      hasDbProvider: dbProvider !== undefined && dbProvider !== null,
-    });
+    
+    // 更新缓存
+    aiConfigCache = {
+      dbProvider: dbProvider || null,
+      timestamp: Date.now(),
+    };
+    
     // 返回数据库中的原始值
     return dbProvider || null;
   } catch (error) {
-    console.warn("[getCurrentAiProvider] 获取配置失败:", error);
+    // 如果请求失败，尝试使用缓存（即使过期）
+    if (aiConfigCache) {
+      return aiConfigCache.dbProvider;
+    }
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[getCurrentAiProvider] 获取配置失败:", error);
+    }
     return null;
   }
 }

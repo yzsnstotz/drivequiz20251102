@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
       .offset(offset)
       .execute();
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       data: services.map((s) => ({
         id: s.id,
@@ -180,6 +180,11 @@ export async function GET(request: NextRequest) {
         totalPages: Math.ceil(total / limit),
       },
     });
+    // 添加 HTTP 缓存头：服务列表缓存 60 秒
+    // s-maxage=60: CDN 缓存 60 秒
+    // stale-while-revalidate=120: 过期后 2 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (error) {
     console.error("[Services API] GET error:", error);
     return err("INTERNAL_ERROR", "服务器内部错误", 500);

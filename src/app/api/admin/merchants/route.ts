@@ -158,17 +158,17 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       : null;
 
     // 验证广告位：如果设置了广告时间，则必须选择广告位
-    if ((adStartDate || adEndDate) && !adSlot) {
+    if ((adStartDate || adEndDate) && (!adSlot || adSlot.trim() === "")) {
       return badRequest("设置广告时间后，请选择广告位");
     }
 
     // 验证广告位：如果选择了广告位，则必须设置广告时间
-    if (adSlot && (!adStartDate || !adEndDate)) {
+    if (adSlot && adSlot.trim() !== "" && (!adStartDate || !adEndDate)) {
       return badRequest("选择广告位后，必须设置广告开始时间和结束时间");
     }
 
-    // 验证广告位值是否有效
-    if (adSlot && !["home_first_column", "home_second_column", "splash_screen", "popup_ad"].includes(adSlot)) {
+    // 验证广告位值是否有效（如果提供了广告位）
+    if (adSlot && adSlot.trim() !== "" && !["home_first_column", "home_second_column", "splash_screen", "popup_ad"].includes(adSlot)) {
       return badRequest("无效的广告位");
     }
 
@@ -179,14 +179,14 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
         name: sql`${JSON.stringify(nameObj)}::jsonb`,
         description: descriptionObj ? sql`${JSON.stringify(descriptionObj)}::jsonb` : null,
         address: addressObj ? sql`${JSON.stringify(addressObj)}::jsonb` : null,
-        phone: phone?.trim() || null,
-        email: email?.trim() || null,
-        image_url: imageUrl?.trim() || null,
-        category: category?.trim() || null,
+        phone: phone || null,
+        email: email || null,
+        image_url: imageUrl || null,
+        category: category || null,
         status: status === "inactive" ? "inactive" : "active",
         ad_start_date: adStartDate ? sql`${adStartDate}::timestamp` : null,
         ad_end_date: adEndDate ? sql`${adEndDate}::timestamp` : null,
-        ad_slot: adSlot?.trim() || null,
+        ad_slot: (adSlot && adSlot.trim() !== "") ? adSlot : null,
         created_at: sql`${now}::timestamp`,
         updated_at: sql`${now}::timestamp`,
       })

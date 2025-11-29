@@ -193,6 +193,33 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       console.warn("[AIPage] 保存欢迎消息到缓存失败:", error);
     }
   }, []); // 只在组件挂载时执行一次
+
+  // 语言切换时，如果当前只有欢迎语（且无用户对话），自动切换到对应语言的欢迎语并同步到缓存
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const hasUserMessages = messages.some((m) => m.role === "user");
+    if (hasUserMessages) return;
+
+    const first = messages[0];
+    const isOnlyWelcome = messages.length === 1 && first.role === "ai";
+    if (!isOnlyWelcome) return;
+
+    const newContent = getWelcomeMessage(language);
+    if (first.content === newContent) return;
+
+    const updated: ChatMessage[] = [
+      { ...first, content: newContent },
+    ];
+    setMessages(updated);
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+    }
+  }, [language, messages]);
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [errorTip, setErrorTip] = useState<string>("");
@@ -503,12 +530,11 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             if (typeof window !== "undefined") {
               localStorage.removeItem(LOCAL_STORAGE_KEY);
             }
-            const lang = detectLanguage();
             setMessages([
               {
                 id: uid(),
                 role: "ai",
-                content: getWelcomeMessage(lang),
+                content: getWelcomeMessage(language),
                 createdAt: Date.now(),
               },
             ]);

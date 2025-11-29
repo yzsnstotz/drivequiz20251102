@@ -31,6 +31,7 @@ import AIActivationProvider from "../components/AIActivationProvider";
 import DarkModeProvider from "../components/DarkModeProvider";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import SplashScreenManager from "../components/SplashScreenManager";
+import { ActivationProvider } from "@/contexts/ActivationContext";
 
 export default function RootLayout({
   children,
@@ -44,12 +45,14 @@ export default function RootLayout({
           <LanguageProvider>
             <SplashScreenManager />
             <AuthProvider>
-              <AIActivationProvider>
-                <AuthGuard>
-                  {children}
-                  <BottomNavigation />
-                </AuthGuard>
-              </AIActivationProvider>
+              <ActivationProvider>
+                <AIActivationProvider>
+                  <AuthGuard>
+                    {children}
+                    <BottomNavigation />
+                  </AuthGuard>
+                </AIActivationProvider>
+              </ActivationProvider>
             </AuthProvider>
           </LanguageProvider>
         </DarkModeProvider>

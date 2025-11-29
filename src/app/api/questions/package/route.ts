@@ -31,7 +31,12 @@ export async function GET() {
           aiAnswers: latestVersionContent.aiAnswers || {},
         };
         console.log(`[GET /api/questions/package] 从数据库最新版本读取成功，版本: ${latestVersionContent.version}，题目数量: ${latestVersionContent.questions.length}`);
-        return success(packageData);
+        const response = success(packageData);
+        // 添加 HTTP 缓存头：题目包缓存 1 小时（数据量大，但变化不频繁）
+        // s-maxage=3600: CDN 缓存 1 小时
+        // stale-while-revalidate=7200: 过期后 2 小时内仍可使用旧数据，后台更新
+        response.headers.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=7200');
+        return response;
       } else {
         console.log(`[GET /api/questions/package] 数据库中没有找到最新版本的JSON包内容`);
       }
@@ -57,7 +62,12 @@ export async function GET() {
     
     const data = JSON.parse(content);
     console.log(`[GET /api/questions/package] 从文件系统读取成功，题目数量: ${Array.isArray(data) ? data.length : (data.questions?.length || 0)}`);
-    return success(data);
+    const response = success(data);
+    // 添加 HTTP 缓存头：题目包缓存 1 小时（数据量大，但变化不频繁）
+    // s-maxage=3600: CDN 缓存 1 小时
+    // stale-while-revalidate=7200: 过期后 2 小时内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=7200');
+    return response;
   } catch (err: any) {
     console.error("[GET /api/questions/package] Error:", err);
     return internalError(`Failed to read questions package: ${err.message || String(err)}`);

@@ -10,6 +10,32 @@ import Pagination, { PaginationMeta } from "@/components/common/Pagination";
 import FilterBar, { VehicleFilters } from "@/components/common/FilterBar";
 import VehicleCard, { Vehicle } from "@/components/vehicle/VehicleCard";
 
+// 缓存和请求去重机制（组件外部定义，避免每次渲染重新创建）
+const vehicleCache = new Map<string, { data: Vehicle[]; pagination: PaginationMeta | null; timestamp: number }>();
+const VEHICLE_CACHE_TTL = 60 * 1000; // 1 分钟
+
+const pendingVehicleRequests = new Map<string, Promise<any>>();
+
+// 请求去重函数
+const fetchVehiclesWithDedup = async (url: string) => {
+  // 如果已有相同请求在进行，等待它完成
+  if (pendingVehicleRequests.has(url)) {
+    return pendingVehicleRequests.get(url);
+  }
+  
+  const promise = apiFetch<Vehicle[]>(url)
+    .then(response => response)
+    .catch(err => {
+      throw err;
+    })
+    .finally(() => {
+      pendingVehicleRequests.delete(url);
+    });
+  
+  pendingVehicleRequests.set(url, promise);
+  return promise;
+};
+
 export default function VehiclesPage() {
   const router = useRouter();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -48,23 +74,39 @@ export default function VehiclesPage() {
       ).toString();
 
       const fullUrl = queryString ? `/api/vehicles?${queryString}` : "/api/vehicles";
-      const response = await apiFetch<Vehicle[]>(fullUrl);
+      
+      // 检查缓存
+      const now = Date.now();
+      const cached = vehicleCache.get(fullUrl);
+      
+      if (cached && (now - cached.timestamp < VEHICLE_CACHE_TTL)) {
+        // 使用缓存
+        setVehicles(cached.data);
+        setPagination(cached.pagination);
+        setLoading(false);
+        return;
+      }
+      
+      // 缓存失效，请求 API（使用请求去重）
+      const response = await fetchVehiclesWithDedup(fullUrl);
 
       if (!response.ok) {
         throw new Error(response.message || "加载车辆列表失败");
       }
 
-      setVehicles(response.data ?? []);
-      if (response.pagination) {
-        setPagination({
-          page: response.pagination.page,
-          limit: response.pagination.limit,
-          total: response.pagination.total,
-          totalPages: response.pagination.totalPages,
-        });
-      } else {
-        setPagination(null);
-      }
+      const vehiclesData = response.data ?? [];
+      const paginationData = response.pagination ? {
+        page: response.pagination.page,
+        limit: response.pagination.limit,
+        total: response.pagination.total,
+        totalPages: response.pagination.totalPages,
+      } : null;
+      
+      // 更新缓存
+      vehicleCache.set(fullUrl, { data: vehiclesData, pagination: paginationData, timestamp: now });
+      
+      setVehicles(vehiclesData);
+      setPagination(paginationData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载车辆列表失败");
       setVehicles([]);

@@ -110,16 +110,16 @@ export const PUT = withAdminAuth(
         }
       }
       if (phone !== undefined) {
-        updateData.phone = phone?.trim() || null;
+        updateData.phone = phone || null;
       }
       if (email !== undefined) {
-        updateData.email = email?.trim() || null;
+        updateData.email = email || null;
       }
       if (imageUrl !== undefined) {
-        updateData.image_url = imageUrl?.trim() || null;
+        updateData.image_url = imageUrl || null;
       }
       if (category !== undefined) {
-        updateData.category = category?.trim() || null;
+        updateData.category = category || null;
       }
       if (status !== undefined && (status === "active" || status === "inactive")) {
         updateData.status = status;
@@ -135,26 +135,26 @@ export const PUT = withAdminAuth(
         // 获取最终的广告时间值（可能是新设置的，也可能是原有的）
         const finalAdStartDate = adStartDate !== undefined ? adStartDate : (merchant.ad_start_date ? merchant.ad_start_date.toISOString() : null);
         const finalAdEndDate = adEndDate !== undefined ? adEndDate : (merchant.ad_end_date ? merchant.ad_end_date.toISOString() : null);
-        const finalAdSlot = adSlot !== undefined ? adSlot : (merchant.ad_slot || null);
+        const finalAdSlot = adSlot !== undefined ? (adSlot && adSlot.trim() !== "" ? adSlot : null) : (merchant.ad_slot || null);
 
         // 如果设置了广告时间，则必须选择广告位
-        if ((finalAdStartDate || finalAdEndDate) && !finalAdSlot) {
+        if ((finalAdStartDate || finalAdEndDate) && (!finalAdSlot || finalAdSlot.trim() === "")) {
           return badRequest("设置广告时间后，请选择广告位");
         }
 
         // 如果选择了广告位，则必须设置广告时间
-        if (finalAdSlot && (!finalAdStartDate || !finalAdEndDate)) {
+        if (finalAdSlot && finalAdSlot.trim() !== "" && (!finalAdStartDate || !finalAdEndDate)) {
           return badRequest("选择广告位后，必须设置广告开始时间和结束时间");
         }
 
-        // 验证广告位值是否有效
-        if (finalAdSlot && !["home_first_column", "home_second_column", "splash_screen", "popup_ad"].includes(finalAdSlot)) {
+        // 验证广告位值是否有效（如果提供了广告位）
+        if (finalAdSlot && finalAdSlot.trim() !== "" && !["home_first_column", "home_second_column", "splash_screen", "popup_ad"].includes(finalAdSlot)) {
           return badRequest("无效的广告位");
         }
       }
 
       if (adSlot !== undefined) {
-        updateData.ad_slot = adSlot?.trim() || null;
+        updateData.ad_slot = (adSlot && adSlot.trim() !== "") ? adSlot : null;
       }
 
       const updated = await db.updateTable("merchants").set(updateData).where("id", "=", id).returningAll().executeTakeFirst();

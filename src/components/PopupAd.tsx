@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { X } from "lucide-react";
+import { fetchMerchantAds } from "@/lib/merchantAdsCache";
 
 interface MerchantAd {
   id: number;
@@ -40,24 +41,20 @@ export default function PopupAd({ onClose }: PopupAdProps) {
   const loadAd = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/merchant-ads?adSlot=popup_ad");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ok && data.data.items && data.data.items.length > 0) {
-          // 随机选择一个广告
-          const items = data.data.items;
-          const randomItem = items[Math.floor(Math.random() * items.length)];
-          setMerchant(randomItem);
-        } else {
-          // 没有广告，直接关闭
-          onClose();
-        }
+      // 使用缓存和去重机制获取数据
+      const items = await fetchMerchantAds("popup_ad");
+      if (items && items.length > 0) {
+        // 随机选择一个广告
+        const randomItem = items[Math.floor(Math.random() * items.length)];
+        setMerchant(randomItem);
       } else {
-        // 请求失败，直接关闭
+        // 没有广告，直接关闭
         onClose();
       }
     } catch (error) {
-      console.error("加载弹窗广告失败:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("加载弹窗广告失败:", error);
+      }
       onClose();
     } finally {
       setLoading(false);

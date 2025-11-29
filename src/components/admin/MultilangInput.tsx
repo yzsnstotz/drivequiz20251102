@@ -69,14 +69,12 @@ export default function MultilangInput({
     setValues(newValues);
     
     // 过滤空值，只传递有内容的语言
-    // 注意：只移除首尾空格，保留中间空格（英语必须要有空格）
-    // trim() 只会移除首尾空格，不会移除中间空格，所以可以安全使用
+    // 注意：保留所有空格（包括首尾空格），只在检查是否为空时使用 trim
     const filtered: { zh?: string; en?: string; ja?: string } = {};
-    // 只 trim 用于检查是否为空，保存时保留原始值（包括中间空格）
-    // trim() 不会移除中间空格，所以 "Hello World" 仍然是 "Hello World"
-    if (newValues.zh.trim()) filtered.zh = newValues.zh.trim();
-    if (newValues.en.trim()) filtered.en = newValues.en.trim();
-    if (newValues.ja.trim()) filtered.ja = newValues.ja.trim();
+    // 只 trim 用于检查是否为空，保存时保留原始值（包括所有空格）
+    if (newValues.zh.trim()) filtered.zh = newValues.zh; // 保留原始值，包括首尾空格
+    if (newValues.en.trim()) filtered.en = newValues.en; // 保留原始值，包括首尾空格
+    if (newValues.ja.trim()) filtered.ja = newValues.ja; // 保留原始值，包括首尾空格
     
     onChange(filtered);
   };

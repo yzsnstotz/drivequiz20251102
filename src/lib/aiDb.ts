@@ -205,9 +205,12 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     throw new Error("[AI DB][Config] AI_DATABASE_URL is not set");
   }
 
-  console.log("[AI DB][Config] Using DATABASE_URL (first 80 chars):",
-    connectionString.substring(0, 80) + "...",
-  );
+  // 仅在开发环境记录配置日志
+  if (process.env.NODE_ENV === "development") {
+    console.log("[AI DB][Config] Using DATABASE_URL (first 80 chars):",
+      connectionString.substring(0, 80) + "...",
+    );
+  }
 
   // 创建 Pool 配置对象（只保留必需字段，所有连接参数由 connectionString 自动解析）
   const poolConfig: {
@@ -232,6 +235,29 @@ function createAiDbInstance(): Kysely<AiDatabase> {
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
   aiDbPool = pool; // 保存 Pool 实例以便后续获取统计信息
+
+  // 添加连接池错误处理
+  pool.on('error', (err) => {
+    const errorMessage = err?.message || String(err);
+    const errorCode = (err as any)?.code || '';
+    
+    console.error('[AI DB Pool] Unexpected error on idle client:', {
+      message: errorMessage,
+      code: errorCode,
+      stack: process.env.NODE_ENV === 'development' ? (err as Error)?.stack : undefined,
+    });
+  });
+
+  // 添加连接错误监听
+  pool.on('connect', (client) => {
+    client.on('error', (err) => {
+      const errorMessage = err?.message || String(err);
+      console.error('[AI DB Pool] Client connection error:', {
+        message: errorMessage,
+        code: (err as any)?.code,
+      });
+    });
+  });
 
   const dialect = new PostgresDialect({
     pool,

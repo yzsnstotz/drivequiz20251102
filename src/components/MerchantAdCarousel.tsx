@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { getMultilangContent } from "@/lib/multilangUtils";
 import type { MultilangContent } from "@/types/multilang";
+import { fetchMerchantAds } from "@/lib/merchantAdsCache";
 
 interface MerchantAd {
   id: number;
@@ -44,41 +45,16 @@ function MerchantAdCarousel({ adSlot, category, title, description }: MerchantAd
   const loadMerchants = async () => {
     try {
       setLoading(true);
-      // 优先使用广告位，如果没有则使用分类（兼容旧代码）
-      const params = adSlot 
-        ? `adSlot=${encodeURIComponent(adSlot)}`
-        : category 
-        ? `category=${encodeURIComponent(category)}`
-        : "";
       
-      if (!params) {
-        // 如果没有参数，不发送请求
+      // 如果没有参数，不发送请求
+      if (!adSlot && !category) {
         setMerchants([]);
         return;
       }
       
-      const res = await fetch(`/api/merchant-ads?${params}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ok) {
-          setMerchants(data.data.items || []);
-        } else {
-          // API 返回错误，设置空数组
-          setMerchants([]);
-        }
-      } else {
-        // HTTP 错误，设置空数组
-        if (process.env.NODE_ENV === "development") {
-          console.error("[商家广告] 请求失败:", res.status, res.statusText);
-        }
-        setMerchants([]);
-      }
+      // 使用缓存和去重机制获取数据
+      const items = await fetchMerchantAds(adSlot, category);
+      setMerchants(items);
     } catch (error) {
       // 网络错误或其他错误，静默处理
       if (process.env.NODE_ENV === "development") {

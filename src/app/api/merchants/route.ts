@@ -34,16 +34,21 @@ export async function GET(request: NextRequest) {
 
     const items = rows.map((row) => ({
       id: row.id,
-      name: row.name,
-      description: row.description || null,
-      address: row.address || null,
+      name: row.name, // 保持多语言对象格式
+      description: row.description || null, // 保持多语言对象格式
+      address: row.address || null, // 保持多语言对象格式
       phone: row.phone || null,
       email: row.email || null,
       imageUrl: row.image_url || null,
       category: row.category || null,
     }));
 
-    return ok({ items });
+    const response = ok({ items });
+    // 添加 HTTP 缓存头：商户列表缓存 60 秒
+    // s-maxage=60: CDN 缓存 60 秒
+    // stale-while-revalidate=120: 过期后 2 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (err: any) {
     console.error("[GET /api/merchants] Error:", err);
     if (err.message && err.message.includes("does not exist")) {

@@ -72,6 +72,7 @@ export default function MerchantsPage() {
 
   // 广告位选项
   const adSlotOptions = [
+    { value: "", label: "无广告" },
     { value: "home_first_column", label: "首页第一栏" },
     { value: "home_second_column", label: "首页第二栏" },
     { value: "splash_screen", label: "启动页广告" },
@@ -126,17 +127,25 @@ export default function MerchantsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // 处理广告位：空字符串表示"无广告"，转换为 null
+    const normalizedAdSlot = (adSlot && adSlot.trim() !== "") ? adSlot : null;
+    
     // 验证广告位：如果设置了广告时间，则必须选择广告位
-    if ((adStartDate || adEndDate) && !adSlot) {
+    if ((adStartDate || adEndDate) && !normalizedAdSlot) {
       alert("设置广告时间后，请选择广告位");
       return;
     }
     
     // 验证广告位：如果选择了广告位，则必须设置广告时间
-    if (adSlot && (!adStartDate || !adEndDate)) {
+    if (normalizedAdSlot && (!adStartDate || !adEndDate)) {
       alert("选择广告位后，必须设置广告开始时间和结束时间");
       return;
     }
+    
+    // 如果选择"无广告"，确保清空广告相关字段
+    const finalAdSlot = normalizedAdSlot;
+    const finalAdStartDate = finalAdSlot ? (adStartDate || null) : null;
+    const finalAdEndDate = finalAdSlot ? (adEndDate || null) : null;
     
     setSaving(true);
     try {
@@ -150,9 +159,9 @@ export default function MerchantsPage() {
           imageUrl,
           category,
           status,
-          adStartDate: adStartDate || null,
-          adEndDate: adEndDate || null,
-          adSlot: adSlot || null,
+          adStartDate: finalAdStartDate,
+          adEndDate: finalAdEndDate,
+          adSlot: finalAdSlot,
         });
         if (!res.ok) {
           const err = res as ApiErr;
@@ -168,9 +177,9 @@ export default function MerchantsPage() {
           imageUrl,
           category,
           status,
-          adStartDate: adStartDate || null,
-          adEndDate: adEndDate || null,
-          adSlot: adSlot || null,
+          adStartDate: finalAdStartDate,
+          adEndDate: finalAdEndDate,
+          adSlot: finalAdSlot,
         });
         if (!res.ok) {
           const err = res as ApiErr;
@@ -366,44 +375,53 @@ export default function MerchantsPage() {
             </h3>
             <p className="text-xs text-gray-600 mb-3">设置广告时间后，商家将出现在首页对应的广告位中</p>
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-1 text-gray-700">广告位 *</label>
+              <label className="block text-sm font-medium mb-1 text-gray-700">广告位</label>
               <select
                 value={adSlot}
-                onChange={(e) => setAdSlot(e.target.value)}
+                onChange={(e) => {
+                  setAdSlot(e.target.value);
+                  // 如果选择"无广告"，清空广告时间
+                  if (!e.target.value) {
+                    setAdStartDate("");
+                    setAdEndDate("");
+                  }
+                }}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
               >
-                <option value="">请选择广告位</option>
                 {adSlotOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">选择广告在首页显示的位置</p>
+              <p className="text-xs text-gray-500 mt-1">选择广告在首页显示的位置，选择"无广告"则不显示广告</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700">广告开始时间 *</label>
-                <input
-                  type="datetime-local"
-                  value={adStartDate}
-                  onChange={(e) => setAdStartDate(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">广告开始显示的时间</p>
+            {adSlot && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-gray-700">广告开始时间 *</label>
+                  <input
+                    type="datetime-local"
+                    value={adStartDate}
+                    onChange={(e) => setAdStartDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required={!!adSlot}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">广告开始显示的时间</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-gray-700">广告结束时间 *</label>
+                  <input
+                    type="datetime-local"
+                    value={adEndDate}
+                    onChange={(e) => setAdEndDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required={!!adSlot}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">广告停止显示的时间</p>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700">广告结束时间 *</label>
-                <input
-                  type="datetime-local"
-                  value={adEndDate}
-                  onChange={(e) => setAdEndDate(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">广告停止显示的时间</p>
-              </div>
-            </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button
@@ -482,6 +500,7 @@ export default function MerchantsPage() {
                       </div>
                       {/* 广告进度条 */}
                       {(() => {
+                        if (!item.adStartDate || !item.adEndDate) return null;
                         const now = new Date().getTime();
                         const start = new Date(item.adStartDate).getTime();
                         const end = new Date(item.adEndDate).getTime();
@@ -515,8 +534,8 @@ export default function MerchantsPage() {
                         );
                       })()}
                       <div className="text-xs text-gray-500">
-                        <div>开始: {new Date(item.adStartDate).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-                        <div>结束: {new Date(item.adEndDate).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                        <div>开始: {item.adStartDate ? new Date(item.adStartDate).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                        <div>结束: {item.adEndDate ? new Date(item.adEndDate).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</div>
                       </div>
                     </div>
                   ) : (

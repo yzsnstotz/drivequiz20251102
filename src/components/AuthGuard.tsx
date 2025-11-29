@@ -17,6 +17,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const hasCheckedRef = useRef(false);
+  const lastCheckTimeRef = useRef<number>(0);
+  const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5 分钟
 
   useEffect(() => {
     // 排除 admin 路由，admin 路由使用独立的认证系统
@@ -56,6 +58,15 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           return;
         }
       }
+
+      // 检查最小间隔，避免频繁检查
+      const now = Date.now();
+      if (now - lastCheckTimeRef.current < MIN_CHECK_INTERVAL) {
+        // 距离上次检查不足 5 分钟，跳过
+        hasCheckedRef.current = true;
+        return;
+      }
+      lastCheckTimeRef.current = now;
 
       // 标记为已检查，避免重复检查
       hasCheckedRef.current = true;
@@ -99,7 +110,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
       checkLicensePreference();
     }
-  }, [session, status, router]); // 移除 pathname 依赖，避免路径变化时重复检查
+  }, [session, status]); // 移除 router 和 pathname 依赖，避免路径变化时重复检查
 
   // 排除 admin 路由，admin 路由使用独立的认证系统
   if (pathname.startsWith('/admin/')) {

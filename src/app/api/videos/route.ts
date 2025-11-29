@@ -42,7 +42,12 @@ export async function GET(request: NextRequest) {
       displayOrder: row.display_order,
     }));
 
-    return ok({ items });
+    const response = ok({ items });
+    // 添加 HTTP 缓存头：视频列表缓存 5 分钟
+    // s-maxage=300: CDN 缓存 5 分钟
+    // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    return response;
   } catch (err: any) {
     console.error("[GET /api/videos] Error:", err);
     if (err.message && err.message.includes("does not exist")) {

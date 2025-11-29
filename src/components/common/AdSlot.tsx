@@ -4,6 +4,34 @@ import { useEffect, useState, useRef } from "react";
 import { apiGet } from "@/lib/apiClient.front";
 import { getCachedImage, cacheImage } from "@/lib/imageCache";
 
+// 缓存和请求去重机制（组件外部定义，避免每次渲染重新创建）
+const adCache = new Map<string, { data: AdContent | null; timestamp: number }>();
+const AD_CACHE_TTL = 2 * 60 * 1000; // 2 分钟
+
+const pendingAdRequests = new Map<string, Promise<AdContent | null>>();
+
+// 请求去重函数
+const fetchAdWithDedup = async (position: string): Promise<AdContent | null> => {
+  const cacheKey = `position:${position}`;
+  
+  // 如果已有相同请求在进行，等待它完成
+  if (pendingAdRequests.has(cacheKey)) {
+    return pendingAdRequests.get(cacheKey)!;
+  }
+  
+  const promise = apiGet<AdContent>(`/api/ads`, {
+    query: { position },
+  })
+    .then(adContent => adContent || null)
+    .catch(() => null)
+    .finally(() => {
+      pendingAdRequests.delete(cacheKey);
+    });
+  
+  pendingAdRequests.set(cacheKey, promise);
+  return promise;
+};
+
 interface AdContent {
   id: number;
   title: {
@@ -49,12 +77,49 @@ export default function AdSlot({ position, className = "", onAdClick }: AdSlotPr
       try {
         setLoading(true);
         setError(null);
-        const adContent = await apiGet<AdContent>(`/api/ads`, {
-          query: { position },
-        });
+        
+        // 检查缓存
+        const cacheKey = `position:${position}`;
+        const now = Date.now();
+        const cached = adCache.get(cacheKey);
+        
+        if (cached && (now - cached.timestamp < AD_CACHE_TTL)) {
+          // 使用缓存
+          if (cancelled) return;
+          setAd(cached.data);
+          setLoading(false);
+          
+          // 如果有图片，预加载并缓存
+          if (cached.data?.image_url) {
+            try {
+              const cachedUrl = await getCachedImage(cached.data.image_url);
+              if (cachedUrl && !cancelled) {
+                setCachedImageUrl(cachedUrl);
+                blobUrlRef.current = cachedUrl;
+              } else if (!cancelled) {
+                await cacheImage(cached.data.image_url);
+                const newCachedUrl = await getCachedImage(cached.data.image_url);
+                if (newCachedUrl && !cancelled) {
+                  setCachedImageUrl(newCachedUrl);
+                  blobUrlRef.current = newCachedUrl;
+                }
+              }
+            } catch (err) {
+              console.warn("[AdSlot] Failed to cache image:", err);
+              setCachedImageUrl(null);
+            }
+          }
+          return;
+        }
+        
+        // 缓存失效，请求 API（使用请求去重）
+        const adContent = await fetchAdWithDedup(position);
         
         // 检查是否已取消
         if (cancelled) return;
+        
+        // 更新缓存
+        adCache.set(cacheKey, { data: adContent, timestamp: now });
         
         setAd(adContent);
         

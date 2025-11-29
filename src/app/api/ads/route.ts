@@ -54,7 +54,9 @@ export async function GET(request: NextRequest) {
       .executeTakeFirst();
 
     if (!slot) {
-      return ok(null); // 广告位不存在，返回 null
+      const response = ok(null); // 广告位不存在，返回 null
+      response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+      return response;
     }
 
     // 查询该广告位下的有效广告内容
@@ -100,7 +102,9 @@ export async function GET(request: NextRequest) {
       .execute();
 
     if (ads.length === 0) {
-      return ok(null); // 没有可用广告，返回 null
+      const response = ok(null); // 没有可用广告，返回 null
+      response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+      return response;
     }
 
     // 根据权重随机选择广告（权重越大，被选中的概率越高）
@@ -143,7 +147,7 @@ export async function GET(request: NextRequest) {
       })();
     }
 
-    return ok({
+    const response = ok({
       id: selectedAd.id,
       title: {
         default: selectedAd.title,
@@ -163,6 +167,11 @@ export async function GET(request: NextRequest) {
       impression_count: selectedAd.impression_count,
       click_count: selectedAd.click_count,
     });
+    // 添加 HTTP 缓存头：广告内容缓存 60 秒
+    // s-maxage=60: CDN 缓存 60 秒
+    // stale-while-revalidate=120: 过期后 2 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (error) {
     console.error("[Ads API] GET error:", error);
     return err("INTERNAL_ERROR", "服务器内部错误", 500);

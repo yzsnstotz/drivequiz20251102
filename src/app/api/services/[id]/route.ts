@@ -99,7 +99,7 @@ export async function GET(
       .limit(10)
       .execute();
 
-    return ok({
+    const response = ok({
       id: service.id,
       name: {
         default: service.name,
@@ -158,6 +158,11 @@ export async function GET(
       created_at: service.created_at,
       updated_at: service.updated_at,
     });
+    // 添加 HTTP 缓存头：服务详情缓存 5 分钟
+    // s-maxage=300: CDN 缓存 5 分钟
+    // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    return response;
   } catch (error) {
     console.error("[Services API] GET [id] error:", error);
     return err("INTERNAL_ERROR", "服务器内部错误", 500);

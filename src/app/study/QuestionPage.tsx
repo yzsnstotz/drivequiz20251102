@@ -305,6 +305,7 @@ function QuestionPage({ questionSet, onBack }: QuestionPageProps) {
               alt="题目图片"
               width={800}
               height={600}
+              useNativeImg
             />
           )}
           

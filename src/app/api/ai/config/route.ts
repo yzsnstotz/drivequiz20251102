@@ -35,14 +35,16 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     // 映射 provider 到前端使用的格式
     const provider = mapDbProviderToClientProvider(aiProvider);
 
-    // 添加调试日志
-    console.log("[GET /api/ai/config] 读取配置:", {
-      dbProvider: aiProvider,
-      mappedProvider: provider,
-      model: model || undefined,
-    });
+    // 添加调试日志（仅开发环境）
+    if (process.env.NODE_ENV === "development") {
+      console.log("[GET /api/ai/config] 读取配置:", {
+        dbProvider: aiProvider,
+        mappedProvider: provider,
+        model: model || undefined,
+      });
+    }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       data: {
         provider,
@@ -50,6 +52,13 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
         model: model || undefined,
       },
     });
+    
+    // 添加 HTTP 缓存头：配置数据变化不频繁，缓存 5 分钟
+    // s-maxage=300: CDN 缓存 5 分钟
+    // stale-while-revalidate=600: 过期后 10 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    
+    return response;
   } catch (error) {
     console.error("[GET /api/ai/config] Error:", error);
     // 返回默认值，确保前台可以正常工作

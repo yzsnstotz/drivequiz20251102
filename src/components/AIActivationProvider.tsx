@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import ActivationModal from "./ActivationModal";
 import SuccessModal from "./SuccessModal";
 
@@ -42,6 +43,7 @@ export default function AIActivationProvider({
   children,
 }: AIActivationProviderProps) {
   const { data: session } = useSession();
+  const pathname = usePathname();
   const [isActivated, setIsActivated] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -49,6 +51,13 @@ export default function AIActivationProvider({
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isCheckingRef = useRef<boolean>(false);
   const lastActivatedStateRef = useRef<boolean>(false); // 保存上次的激活状态
+
+  // 检测互动页面（在这些页面禁用定期检查，避免中断用户操作）
+  const isInteractivePage = useCallback((path: string | null): boolean => {
+    if (!path) return false;
+    const interactivePages = ['/nearby', '/study', '/exam', '/mistakes', '/royalbattle', '/cars'];
+    return interactivePages.some(page => path.startsWith(page));
+  }, []);
 
   // 从localStorage读取初始激活状态（作为fallback）
   const getInitialActivationState = useCallback(() => {
@@ -205,19 +214,29 @@ export default function AIActivationProvider({
     }
   }, [session, checkActivationStatus, getInitialActivationState]);
 
-  // 设置定期检查（每30分钟）
+  // 设置定期检查（延长到60分钟，并在互动页面禁用）
   useEffect(() => {
     if (!session?.user?.email) {
       return;
     }
 
-    // 立即检查一次
+    // 如果是互动页面，禁用定期检查
+    if (isInteractivePage(pathname)) {
+      // 清除可能存在的定期检查
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // 立即检查一次（仅在非互动页面）
     checkActivationStatus();
 
-    // 设置定期检查
+    // 设置定期检查（延长到60分钟）
     checkIntervalRef.current = setInterval(() => {
       checkActivationStatus();
-    }, 30 * 60 * 1000); // 30分钟
+    }, 60 * 60 * 1000); // 60分钟
 
     return () => {
       if (checkIntervalRef.current) {
@@ -225,7 +244,7 @@ export default function AIActivationProvider({
         checkIntervalRef.current = null;
       }
     };
-  }, [session, checkActivationStatus]);
+  }, [session, pathname, checkActivationStatus, isInteractivePage]);
 
   const contextValue: AIActivationContextType = {
     isActivated,

@@ -49,14 +49,17 @@ async function getHandler(
       | null
       | undefined;
 
-    if (metadata?.licenseType && metadata?.stage) {
-      return ok({
-        licenseType: metadata.licenseType,
-        stage: metadata.stage,
-      });
-    } else {
-      return ok({ licenseType: null, stage: null });
-    }
+    const response = metadata?.licenseType && metadata?.stage
+      ? ok({
+          licenseType: metadata.licenseType,
+          stage: metadata.stage,
+        })
+      : ok({ licenseType: null, stage: null });
+    // 添加 HTTP 缓存头：用户偏好缓存 10 分钟
+    // s-maxage=600: CDN 缓存 10 分钟
+    // stale-while-revalidate=1200: 过期后 20 分钟内仍可使用旧数据，后台更新
+    response.headers.set('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=1200');
+    return response;
   } catch (error: unknown) {
     console.error("[GET /api/user/license-preference] Error:", error);
     return err(

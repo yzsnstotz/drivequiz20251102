@@ -1,55 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Key, CheckCircle, XCircle, ExternalLink, Calendar, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/i18n";
 import Link from "next/link";
-
-interface ActivationStatus {
-  valid: boolean;
-  reason?: string; // 兼容旧版本
-  reasonCode?: string; // 新的reason code
-  activationCode?: string;
-  activatedAt?: string;
-  expiresAt?: string | null;
-  status?: string;
-}
+import { useActivation } from "@/contexts/ActivationContext";
 
 export default function ActivationStatusCard() {
   const router = useRouter();
   const { t, language } = useLanguage();
-  const [status, setStatus] = useState<ActivationStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const response = await fetch("/api/activation/status", {
-          method: "GET",
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.ok && result.data) {
-            setStatus(result.data);
-          } else {
-            setStatus({ valid: false, reason: t('activation.error.fetchStatus') });
-          }
-        } else {
-          setStatus({ valid: false, reason: t('activation.error.fetchStatus') });
-        }
-      } catch (error) {
-        console.error("[ActivationStatusCard] Check status error:", error);
-        setStatus({ valid: false, reason: t('activation.error.checkStatus') });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkStatus();
-  }, []);
+  const { status, loading } = useActivation();
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return t('activation.rules.unknown');
