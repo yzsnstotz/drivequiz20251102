@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Key, MessageCircle, FileText, Handshake, ShoppingCart } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { getMultilangContent } from "@/lib/multilangUtils";
 import SuccessModal from "@/components/SuccessModal";
 import { useAIActivation } from "@/components/AIActivationProvider";
 
