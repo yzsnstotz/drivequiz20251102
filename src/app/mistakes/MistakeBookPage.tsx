@@ -16,7 +16,7 @@ interface Question {
   image?: string;
   options?: string[];
   correctAnswer: string | string[];
-  explanation?: string | { zh?: string; en?: string; ja?: string; [key: string]: string | undefined };
+  explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
   hash?: string;
   fromExam?: boolean;
   fromStudy?: boolean;
