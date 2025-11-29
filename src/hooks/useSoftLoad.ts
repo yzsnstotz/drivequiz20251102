@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   softLoadingManager,
   LoadPriority,
@@ -34,6 +34,12 @@ export function useSoftLoad<T>(
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(immediate);
   const [error, setError] = useState<Error | null>(null);
+  
+  // 使用 useRef 存储最新的 loadFn，避免依赖变化导致重复执行
+  const loadFnRef = useRef(loadFn);
+  useEffect(() => {
+    loadFnRef.current = loadFn;
+  }, [loadFn]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,12 +49,15 @@ export function useSoftLoad<T>(
         setLoading(true);
         setError(null);
 
+        // 使用 ref 中的最新 loadFn
+        const currentLoadFn = loadFnRef.current;
+
         if (immediate || priority === LoadPriority.CRITICAL) {
           // 立即执行关键任务
           const result = await softLoadingManager.executeCritical({
             id: taskId,
             priority,
-            loadFn,
+            loadFn: currentLoadFn,
             cacheKey,
             cacheTTL,
           });
@@ -61,7 +70,7 @@ export function useSoftLoad<T>(
             id: taskId,
             priority,
             loadFn: async () => {
-              const result = await loadFn();
+              const result = await currentLoadFn();
               if (!cancelled) {
                 setData(result);
               }

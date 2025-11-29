@@ -394,7 +394,7 @@ export default function MerchantsPage() {
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">选择广告在首页显示的位置，选择"无广告"则不显示广告</p>
+              <p className="text-xs text-gray-500 mt-1">选择广告在首页显示的位置，选择&quot;无广告&quot;则不显示广告</p>
             </div>
             {adSlot && (
               <div className="grid grid-cols-2 gap-4">
