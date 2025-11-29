@@ -95,6 +95,53 @@ function cleanModelName(model: string | undefined): string | undefined {
   return model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
 }
 
+// 根据用户输入的问题自动检测语言
+function detectLanguageFromQuestion(question: string): "zh" | "ja" | "en" {
+  const text = question.trim();
+  if (!text) return "zh";
+
+  // 检测日文（平假名、片假名、汉字混合）
+  const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
+  if (japaneseRegex.test(text)) {
+    const japaneseChars = text.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g) || [];
+    if (japaneseChars.length > text.length * 0.3) {
+      return "ja";
+    }
+  }
+
+  // 检测英文（主要是英文字母）
+  const englishRegex = /^[a-zA-Z\s.,!?'"-]+$/;
+  if (englishRegex.test(text) && text.length > 0) {
+    const englishChars = text.match(/[a-zA-Z]/g) || [];
+    if (englishChars.length > text.length * 0.5) {
+      return "en";
+    }
+  }
+
+  // 检测中文（中文字符）
+  const chineseRegex = /[\u4E00-\u9FAF]/;
+  if (chineseRegex.test(text)) {
+    return "zh";
+  }
+
+  // 默认返回中文
+  return "zh";
+}
+
+// 将语言代码转换为locale格式
+function languageToLocale(lang: "zh" | "ja" | "en"): string {
+  switch (lang) {
+    case "zh":
+      return "zh-CN";
+    case "ja":
+      return "ja-JP";
+    case "en":
+      return "en-US";
+    default:
+      return "zh-CN";
+  }
+}
+
 /** ---- 组件 ---- */
 // Get welcome message based on language
 // 注意：这个函数现在不再使用，改为使用翻译键
@@ -405,11 +452,22 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         // 忽略错误，继续执行
       }
 
+      // 根据用户输入的问题自动检测语言
+      const detectedLang = detectLanguageFromQuestion(q);
+      const detectedLocale = languageToLocale(detectedLang);
+      
+      console.log("[AIPage] 语言检测:", {
+        question: q.substring(0, 50),
+        detectedLang,
+        detectedLocale,
+        timestamp: new Date().toISOString(),
+      });
+
       // 直接调用 ai-service（使用当前配置的 provider）
       const payload = await callAiDirect({
         provider: currentProvider,
         question: q,
-        locale: (typeof navigator !== "undefined" && navigator.language) || "zh-CN",
+        locale: detectedLocale,
         scene: "chat",
         messages: historyMessages.length > 0 ? historyMessages : undefined,
         maxHistory: 10,
@@ -505,11 +563,11 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
 
   return (
     <div className="flex flex-col bg-gray-100 dark:bg-black fixed inset-0 z-[100]" style={{
-      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-      height: '100dvh', // 使用动态视口高度，适配移动端浏览器
-      maxHeight: '100dvh',
-      overflow: 'hidden'
-    }}>
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        height: '100dvh', // 使用动态视口高度，适配移动端浏览器
+        maxHeight: '100dvh',
+        overflow: 'hidden'
+      }}>
       {/* 顶栏 */}
       <div className="flex items-center justify-between border-b dark:border-ios-dark-border bg-white dark:bg-ios-dark-bg-secondary p-4 flex-shrink-0">
         <div className="flex items-center space-x-3">
@@ -549,7 +607,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       {/* 消息区 */}
       <div
         ref={listRef}
-        className="flex-1 space-y-4 overflow-y-auto p-4 pb-6 min-h-0 relative"
+        className="flex-1 space-y-3 overflow-y-auto p-4 pb-6 min-h-0 relative"
         aria-live="polite"
       >
         {/* Logo水印背景 */}
@@ -571,7 +629,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
           return (
             <div
               key={m.id}
-              className={`flex flex-col ${isUser ? "items-end" : "items-start"} space-y-1`}
+              className={`flex flex-col ${isUser ? "items-end" : "items-start"} space-y-1 mb-2`}
             >
               <div
                 className={`max-w-[78%] rounded-lg p-3 text-sm leading-relaxed ${
@@ -691,14 +749,27 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             </div>
           );
         })}
+        {/* 思考动画 */}
+        {loading && (
+          <div className="flex flex-col items-start space-y-1 mb-2">
+            <div className="max-w-[78%] rounded-lg p-3 text-sm leading-relaxed bg-white dark:bg-ios-dark-bg-secondary text-gray-900 dark:text-white shadow-md dark:shadow-ios-dark-sm">
+              <span className="inline-flex items-center gap-1">
+                <span className="thinking-dots">
+                  <span className="dot">.</span>
+                  <span className="dot">.</span>
+                  <span className="dot">.</span>
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
         </div>
       </div>
 
       {/* 底部输入区 - 移动端优化：确保不被浏览器导航栏遮挡 */}
       <div className="border-t dark:border-ios-dark-border bg-white dark:bg-ios-dark-bg-secondary p-3 flex-shrink-0" style={{ 
-        paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom) + 1.5rem + 80px))',
+        paddingBottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.75rem))',
         paddingTop: '0.75rem',
-        marginBottom: 'max(0px, calc(env(safe-area-inset-bottom) - 10px))',
         position: 'relative',
         zIndex: 10
       }}>
