@@ -85,20 +85,43 @@ function ExamModePageContent() {
     let isMounted = true; // 用于检查组件是否已卸载
     
     const loadQuestions = async () => {
+      console.log('[ExamMode] Starting to load questions', { licenseType, stage, timestamp: new Date().toISOString() });
+      
       if (!licenseType || !stage) {
+        console.warn('[ExamMode] Missing licenseType or stage, redirecting to /study', { licenseType, stage });
         router.push("/study");
         return;
       }
 
       try {
+        console.log('[ExamMode] Setting loading state to true');
         setIsLoading(true);
-        const pkg = await loadUnifiedQuestionsPackage();
         
-        if (!isMounted) return; // 如果组件已卸载，不再更新状态
+        console.log('[ExamMode] Calling loadUnifiedQuestionsPackage...');
+        const pkg = await loadUnifiedQuestionsPackage();
+        console.log('[ExamMode] Package loaded:', { 
+          hasPackage: !!pkg, 
+          hasQuestions: !!(pkg?.questions), 
+          questionCount: pkg?.questions?.length || 0,
+        });
+        
+        if (!isMounted) {
+          console.log('[ExamMode] Component unmounted, aborting');
+          return; // 如果组件已卸载，不再更新状态
+        }
+        
         const allQuestions = (pkg?.questions || []) as Question[];
+        console.log('[ExamMode] Extracted questions:', { 
+          count: allQuestions.length,
+          firstQuestionId: allQuestions[0]?.id,
+          firstQuestionHasImage: !!allQuestions[0]?.image,
+        });
 
         if (!allQuestions || allQuestions.length === 0) {
-          console.error("Failed to load questions: no questions in package");
+          console.error("[ExamMode] Failed to load questions: no questions in package", {
+            hasPackage: !!pkg,
+            packageKeys: pkg ? Object.keys(pkg) : [],
+          });
           setIsLoading(false);
           return;
         }
@@ -217,13 +240,22 @@ function ExamModePageContent() {
         setTimeout(() => {
           setTimeLeft(totalTime);
         }, 0);
+        
+        console.log('[ExamMode] Questions loaded successfully, setting loading to false');
       } catch (error) {
-        console.error("加载题目失败:", error);
+        console.error("[ExamMode] Failed to load questions:", {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          licenseType,
+          stage,
+          timestamp: new Date().toISOString(),
+        });
         if (isMounted) {
           setIsLoading(false);
         }
       } finally {
         if (isMounted) {
+          console.log('[ExamMode] Finally block: setting loading to false');
           setIsLoading(false);
         }
       }
@@ -800,14 +832,39 @@ function ExamModePageContent() {
 
         <div className="mb-6">
           <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">{contentText || ""}</p>
-          {isValidImageUrl(currentQuestion.image) && (
-            <QuestionImage
-              src={currentQuestion.image!}
-              alt={t("question.image")}
-              width={800}
-              height={600}
-            />
-          )}
+          {(() => {
+            try {
+              const imageUrl = currentQuestion.image;
+              console.log('[ExamMode] Rendering question image:', {
+                questionId: currentQuestion.id,
+                hasImage: !!imageUrl,
+                imageType: typeof imageUrl,
+                imageValue: imageUrl ? String(imageUrl).substring(0, 50) : null,
+              });
+              
+              if (isValidImageUrl(imageUrl)) {
+                console.log('[ExamMode] Image URL is valid, rendering QuestionImage');
+                return (
+                  <QuestionImage
+                    src={imageUrl!}
+                    alt={t("question.image")}
+                    width={800}
+                    height={600}
+                  />
+                );
+              } else {
+                console.log('[ExamMode] Image URL is invalid, skipping image render');
+                return null;
+              }
+            } catch (error) {
+              console.error('[ExamMode] Error rendering question image:', {
+                error: error instanceof Error ? error.message : String(error),
+                questionId: currentQuestion.id,
+                stack: error instanceof Error ? error.stack : undefined,
+              });
+              return null;
+            }
+          })()}
 
           {currentQuestion.type === "truefalse" ? (
             <div className="space-y-3">

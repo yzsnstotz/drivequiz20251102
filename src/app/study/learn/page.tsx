@@ -61,20 +61,44 @@ function StudyModePageContent() {
     let isMounted = true; // 用于检查组件是否已卸载
     
     const loadQuestions = async () => {
+      console.log('[StudyMode] Starting to load questions', { licenseType, stage, timestamp: new Date().toISOString() });
+      
       if (!licenseType || !stage) {
+        console.warn('[StudyMode] Missing licenseType or stage, redirecting to /study', { licenseType, stage });
         router.push("/study");
         return;
       }
 
       try {
+        console.log('[StudyMode] Setting loading state to true');
         setIsLoading(true);
-        const pkg = await loadUnifiedQuestionsPackage();
         
-        if (!isMounted) return; // 如果组件已卸载，不再更新状态
+        console.log('[StudyMode] Calling loadUnifiedQuestionsPackage...');
+        const pkg = await loadUnifiedQuestionsPackage();
+        console.log('[StudyMode] Package loaded:', { 
+          hasPackage: !!pkg, 
+          hasQuestions: !!(pkg?.questions), 
+          questionCount: pkg?.questions?.length || 0,
+          hasQuestionsByLocale: !!(pkg?.questionsByLocale),
+        });
+        
+        if (!isMounted) {
+          console.log('[StudyMode] Component unmounted, aborting');
+          return; // 如果组件已卸载，不再更新状态
+        }
+        
         const allQuestions = (pkg?.questions || []) as Question[];
+        console.log('[StudyMode] Extracted questions:', { 
+          count: allQuestions.length,
+          firstQuestionId: allQuestions[0]?.id,
+          firstQuestionHasImage: !!allQuestions[0]?.image,
+        });
 
         if (!allQuestions || allQuestions.length === 0) {
-          console.error("Failed to load questions: no questions in package");
+          console.error("[StudyMode] Failed to load questions: no questions in package", {
+            hasPackage: !!pkg,
+            packageKeys: pkg ? Object.keys(pkg) : [],
+          });
           setIsLoading(false);
           return;
         }
@@ -163,20 +187,30 @@ function StudyModePageContent() {
                 )
                 .filter((q): q is Question => q !== undefined);
 
+              console.log('[StudyMode] Using saved progress:', { 
+                questionCount: orderedQuestions.length,
+                startIndex,
+                hashesCount: hashes.length,
+              });
               setQuestions(orderedQuestions);
               setQuestionHashes(hashes);
               setCurrentIndex(startIndex);
             } else {
               // 顺序无效，重新随机化
+              console.warn('[StudyMode] Saved progress invalid, hashes mismatch:', {
+                savedHashesCount: hashes.length,
+                filteredCount: filtered.length,
+              });
               throw new Error("Invalid saved progress");
             }
           } catch (error) {
             // 进度无效，重新随机化
-            console.warn("Invalid saved progress, reshuffling:", error);
+            console.warn("[StudyMode] Invalid saved progress, reshuffling:", error);
             const shuffled = [...filtered].sort(() => Math.random() - 0.5);
             hashes = shuffled.map(
               (q) => q.hash || q.id?.toString() || `q_${q.id}`
             );
+            console.log('[StudyMode] Setting shuffled questions:', { count: shuffled.length });
             setQuestions(shuffled);
             setQuestionHashes(hashes);
             localStorage.setItem(
@@ -192,10 +226,12 @@ function StudyModePageContent() {
           }
         } else {
           // 没有保存的进度，随机化并保存
+          console.log('[StudyMode] No saved progress, shuffling questions');
           const shuffled = [...filtered].sort(() => Math.random() - 0.5);
           hashes = shuffled.map(
             (q) => q.hash || q.id?.toString() || `q_${q.id}`
           );
+          console.log('[StudyMode] Setting shuffled questions (no saved progress):', { count: shuffled.length });
           setQuestions(shuffled);
           setQuestionHashes(hashes);
           localStorage.setItem(
@@ -217,13 +253,21 @@ function StudyModePageContent() {
           favorites[hash] = isFavorite(hash);
         });
         setFavoriteState(favorites);
+        console.log('[StudyMode] Questions loaded successfully, setting loading to false');
       } catch (error) {
-        console.error("加载题目失败:", error);
+        console.error("[StudyMode] Failed to load questions:", {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          licenseType,
+          stage,
+          timestamp: new Date().toISOString(),
+        });
         if (isMounted) {
           setIsLoading(false);
         }
       } finally {
         if (isMounted) {
+          console.log('[StudyMode] Finally block: setting loading to false');
           setIsLoading(false);
         }
       }
@@ -617,14 +661,39 @@ function StudyModePageContent() {
 
         <div className="mb-6">
           <p className="text-gray-900 dark:text-ios-dark-text text-lg mb-4">{contentText || ""}</p>
-          {isValidImageUrl(currentQuestion.image) && (
-            <QuestionImage
-              src={currentQuestion.image!}
-              alt={t("question.image")}
-              width={800}
-              height={600}
-            />
-          )}
+          {(() => {
+            try {
+              const imageUrl = currentQuestion.image;
+              console.log('[StudyMode] Rendering question image:', {
+                questionId: currentQuestion.id,
+                hasImage: !!imageUrl,
+                imageType: typeof imageUrl,
+                imageValue: imageUrl ? String(imageUrl).substring(0, 50) : null,
+              });
+              
+              if (isValidImageUrl(imageUrl)) {
+                console.log('[StudyMode] Image URL is valid, rendering QuestionImage');
+                return (
+                  <QuestionImage
+                    src={imageUrl!}
+                    alt={t("question.image")}
+                    width={800}
+                    height={600}
+                  />
+                );
+              } else {
+                console.log('[StudyMode] Image URL is invalid, skipping image render');
+                return null;
+              }
+            } catch (error) {
+              console.error('[StudyMode] Error rendering question image:', {
+                error: error instanceof Error ? error.message : String(error),
+                questionId: currentQuestion.id,
+                stack: error instanceof Error ? error.stack : undefined,
+              });
+              return null;
+            }
+          })()}
 
           {currentQuestion.type === "truefalse" ? (
             <div className="space-y-3">
