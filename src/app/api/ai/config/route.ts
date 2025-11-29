@@ -2,6 +2,7 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { aiDb } from "@/lib/aiDb";
 import { mapDbProviderToClientProvider } from "@/lib/aiProviderMapping";
+import { executeSafely } from "@/lib/dbUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
