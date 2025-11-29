@@ -2,8 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { usePathname } from "next/navigation";
-import ActivationModal from "./ActivationModal";
+import { usePathname, useRouter } from "next/navigation";
 import SuccessModal from "./SuccessModal";
 
 interface ActivationStatus {
@@ -44,8 +43,8 @@ export default function AIActivationProvider({
 }: AIActivationProviderProps) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const [isActivated, setIsActivated] = useState(false);
-  const [showModal, setShowModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successExpiresAt, setSuccessExpiresAt] = useState<string | null>(null);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -72,9 +71,12 @@ export default function AIActivationProvider({
   const checkActivationStatus = useCallback(async () => {
     if (isCheckingRef.current) return;
     
-    // 如果没有session，检查localStorage作为fallback
+    // 首先检查localStorage中的激活状态
+    const localActivated = getInitialActivationState();
+    const storedEmail = typeof window !== "undefined" ? localStorage.getItem("drive-quiz-email") : null;
+    
+    // 如果没有session，使用localStorage状态
     if (!session?.user?.email) {
-      const localActivated = getInitialActivationState();
       setIsActivated(localActivated);
       lastActivatedStateRef.current = localActivated;
       return;
@@ -83,7 +85,7 @@ export default function AIActivationProvider({
     isCheckingRef.current = true;
     
     // 在检查前先获取当前状态（从ref或localStorage）
-    const previousState = lastActivatedStateRef.current || getInitialActivationState();
+    const previousState = lastActivatedStateRef.current || localActivated;
     
     try {
       const response = await fetch("/api/activation/status", {
@@ -93,7 +95,6 @@ export default function AIActivationProvider({
 
       if (!response.ok) {
         // 网络错误时，保持之前的状态或使用localStorage状态
-        const localActivated = getInitialActivationState();
         const finalState = localActivated || previousState;
         setIsActivated(finalState);
         lastActivatedStateRef.current = finalState;
@@ -125,7 +126,6 @@ export default function AIActivationProvider({
         }
       } else {
         // API返回错误，但不清除状态，使用localStorage作为fallback
-        const localActivated = getInitialActivationState();
         const finalState = localActivated || previousState;
         setIsActivated(finalState);
         lastActivatedStateRef.current = finalState;
@@ -134,7 +134,6 @@ export default function AIActivationProvider({
     } catch (error) {
       console.error("[AIActivationProvider] Check activation status error:", error);
       // 网络错误时，保持之前的状态或使用localStorage状态
-      const localActivated = getInitialActivationState();
       const finalState = localActivated || previousState;
       setIsActivated(finalState);
       lastActivatedStateRef.current = finalState;
@@ -143,59 +142,10 @@ export default function AIActivationProvider({
     }
   }, [session, getInitialActivationState]);
 
-  // 激活码提交处理
-  const handleActivationSubmit = async (email: string, activationCode: string) => {
-    try {
-      const response = await fetch("/api/activate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          email,
-          activationCode,
-          userAgent: navigator.userAgent,
-        }),
-      });
-
-      const result = await response.json();
-      if (result.ok) {
-        // 保存激活状态到localStorage
-        localStorage.setItem("drive-quiz-activated", "true");
-        localStorage.setItem("drive-quiz-email", email);
-        
-        // 保存USER_TOKEN
-        if (result.data?.userToken) {
-          localStorage.setItem("USER_TOKEN", result.data.userToken);
-          // 同时设置cookie
-          const expires = new Date();
-          expires.setTime(expires.getTime() + 30 * 24 * 60 * 60 * 1000);
-          document.cookie = `USER_TOKEN=${encodeURIComponent(result.data.userToken)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
-        }
-        
-        setShowModal(false);
-        setShowSuccessModal(true);
-        setIsActivated(true); // 立即设置为激活状态
-        lastActivatedStateRef.current = true; // 更新ref状态
-        if (result.data?.expiresAt) {
-          setSuccessExpiresAt(result.data.expiresAt);
-        }
-        // 重新检查激活状态（验证服务器状态）
-        await checkActivationStatus();
-      } else {
-        alert(result.message || "激活失败");
-      }
-    } catch (error) {
-      console.error("[AIActivationProvider] Activation error:", error);
-      alert("激活失败，请稍后重试");
-    }
-  };
-
-  // 显示激活弹窗
+  // 显示激活页面（统一使用路由跳转）
   const showActivationModal = useCallback(() => {
-    setShowModal(true);
-  }, []);
+    router.push("/activation");
+  }, [router]);
 
   // 初始化时检查激活状态
   useEffect(() => {
@@ -255,12 +205,6 @@ export default function AIActivationProvider({
   return (
     <AIActivationContext.Provider value={contextValue}>
       {children}
-      {showModal && (
-        <ActivationModal
-          onSubmit={handleActivationSubmit}
-          onClose={() => setShowModal(false)}
-        />
-      )}
       {showSuccessModal && (
         <SuccessModal
           isOpen={showSuccessModal}

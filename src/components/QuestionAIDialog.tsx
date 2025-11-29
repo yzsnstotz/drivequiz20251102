@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { loadAiAnswersForLocale, loadUnifiedQuestionsPackage } from "@/lib/questionsLoader";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getQuestionOptions, getQuestionContent } from "@/lib/questionUtils";
@@ -82,7 +83,8 @@ export default function QuestionAIDialog({
   const { language, t } = useLanguage();
   const [currentProvider, setCurrentProvider] = useState<"local" | "render">("render");
   const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
-  const { isActivated, showActivationModal } = useAIActivation();
+  const { isActivated } = useAIActivation();
+  const router = useRouter();
 
   // 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
   const cleanModelName = (model: string | undefined): string | undefined => {
@@ -410,7 +412,8 @@ export default function QuestionAIDialog({
       
       // 检查激活状态（只有在需要调用AI服务时才检查）
       if (!isActivated) {
-        showActivationModal();
+        // 使用统一激活页面，跳转到激活路由
+        router.push("/activation");
         setIsLoading(false);
         setIsInitialLoading(false);
         return;

@@ -114,12 +114,15 @@ export default function ActivationPage() {
           document.cookie = `USER_TOKEN=${encodeURIComponent(token)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
         }
         
-        // 更新AIActivationProvider的状态
-        try {
-          await checkActivationStatus();
-        } catch (err) {
-          console.error("[ActivationPage] Failed to update activation status:", err);
+        // 保存userid（如果有）
+        if (result.data?.userid) {
+          localStorage.setItem("USER_ID", result.data.userid);
         }
+        
+        // 更新AIActivationProvider的状态（异步执行，不阻塞UI）
+        checkActivationStatus().catch((err) => {
+          console.error("[ActivationPage] Failed to update activation status:", err);
+        });
         
         setShowSuccessModal(true);
         if (result.data?.expiresAt) {
