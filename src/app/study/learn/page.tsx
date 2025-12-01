@@ -104,11 +104,21 @@ function StudyModePageContent() {
           return; // 如果组件已卸载，不再更新状态
         }
         
-        const allQuestions = (pkg?.questions || []) as Question[];
+        // 优先使用当前语言的多语言包，如果没有则使用默认的questions
+        let allQuestions: any[] = [];
+        if (pkg?.questionsByLocale && pkg.questionsByLocale[language]) {
+          allQuestions = pkg.questionsByLocale[language];
+          console.log(`[StudyMode] Using questionsByLocale for language: ${language}, count: ${allQuestions.length}`);
+        } else {
+          allQuestions = pkg?.questions || [];
+          console.log(`[StudyMode] Using default questions, count: ${allQuestions.length}`);
+        }
+        
         console.log('[StudyMode] Extracted questions:', { 
           count: allQuestions.length,
           firstQuestionId: allQuestions[0]?.id,
           firstQuestionHasImage: !!allQuestions[0]?.image,
+          firstQuestionImageUrl: allQuestions[0]?.image ? String(allQuestions[0].image).substring(0, 100) : null,
         });
 
         if (!allQuestions || allQuestions.length === 0) {
@@ -715,11 +725,22 @@ function StudyModePageContent() {
                 questionId: currentQuestion.id,
                 hasImage: !!imageUrl,
                 imageType: typeof imageUrl,
-                imageValue: imageUrl ? String(imageUrl).substring(0, 50) : null,
+                imageValue: imageUrl ? String(imageUrl) : null,
+                imageValuePreview: imageUrl ? String(imageUrl).substring(0, 100) : null,
               });
               
-              if (isValidImageUrl(imageUrl)) {
-                console.log('[StudyMode] Image URL is valid, rendering QuestionImage');
+              const isValid = isValidImageUrl(imageUrl);
+              console.log('[StudyMode] Image URL validation result:', {
+                questionId: currentQuestion.id,
+                isValid,
+                imageUrl: imageUrl ? String(imageUrl) : null,
+              });
+              
+              if (isValid) {
+                console.log('[StudyMode] Image URL is valid, rendering QuestionImage', {
+                  questionId: currentQuestion.id,
+                  imageUrl: imageUrl ? String(imageUrl) : null,
+                });
                 return (
                   <QuestionImage
                     src={imageUrl!}
@@ -729,13 +750,17 @@ function StudyModePageContent() {
                   />
                 );
               } else {
-                console.log('[StudyMode] Image URL is invalid, skipping image render');
+                console.log('[StudyMode] Image URL is invalid, skipping image render', {
+                  questionId: currentQuestion.id,
+                  imageUrl: imageUrl ? String(imageUrl) : null,
+                });
                 return null;
               }
             } catch (error) {
               console.error('[StudyMode] Error rendering question image:', {
                 error: error instanceof Error ? error.message : String(error),
                 questionId: currentQuestion.id,
+                imageUrl: currentQuestion.image ? String(currentQuestion.image) : null,
                 stack: error instanceof Error ? error.stack : undefined,
               });
               return null;

@@ -33,21 +33,55 @@ export default function QuestionImage({
   const [imageKey, setImageKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  const handleError = useCallback(() => {
+  // 在组件渲染时记录图片URL信息（开发环境）
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[QuestionImage] Component rendered:', {
+        src: src ? src.substring(0, 100) : null,
+        useNativeImg,
+        fill,
+        width,
+        height,
+      });
+    }
+  }, [src, useNativeImg, fill, width, height]);
+
+  const handleError = useCallback((event?: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    console.error('[QuestionImage] Image load error:', {
+      src: src ? src.substring(0, 200) : null,
+      useNativeImg,
+      fill,
+      width,
+      height,
+      error: event?.type || 'unknown',
+      target: event?.target,
+    });
     setImageError(true);
     setIsLoading(false);
-  }, []);
+  }, [src, useNativeImg, fill, width, height]);
 
-  const handleLoad = useCallback(() => {
+  const handleLoad = useCallback((event?: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[QuestionImage] Image loaded successfully:', {
+        src: src ? src.substring(0, 100) : null,
+        useNativeImg,
+        fill,
+        width,
+        height,
+      });
+    }
     setIsLoading(false);
     setImageError(false);
-  }, []);
+  }, [src, useNativeImg, fill, width, height]);
 
   const handleRefresh = useCallback(() => {
+    console.log('[QuestionImage] Refreshing image:', {
+      src: src ? src.substring(0, 100) : null,
+    });
     setImageError(false);
     setIsLoading(true);
     setImageKey(prev => prev + 1);
-  }, []);
+  }, [src]);
 
   if (imageError) {
     return (

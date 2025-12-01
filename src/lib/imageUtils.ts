@@ -12,33 +12,53 @@ export function isValidImageUrl(url: string | null | undefined): boolean {
   try {
     // 首先检查是否为 null 或 undefined
     if (url === null || url === undefined) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[isValidImageUrl] URL is null or undefined');
+      }
       return false;
     }
     
     // 确保是字符串类型
     if (typeof url !== 'string') {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[isValidImageUrl] URL is not a string:', { url, type: typeof url });
+      }
       return false;
     }
     
     // 检查 trim 后是否为空字符串
     const trimmed = url.trim();
     if (trimmed.length === 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[isValidImageUrl] URL is empty after trim');
+      }
       return false;
     }
     
     // 只检查基本格式：以 http://, https://, 或 / 开头
     // 使用简单的字符串检查，避免正则或复杂逻辑
     const lowerTrimmed = trimmed.toLowerCase();
-    if (
+    const isValid = (
       lowerTrimmed.startsWith('http://') ||
       lowerTrimmed.startsWith('https://') ||
       trimmed.startsWith('/')
-    ) {
-      return true;
+    );
+    
+    if (process.env.NODE_ENV === 'development') {
+      if (isValid) {
+        console.log('[isValidImageUrl] URL is valid:', { 
+          url: trimmed.substring(0, 100), 
+          startsWith: trimmed.startsWith('/') ? '/' : (lowerTrimmed.startsWith('http://') ? 'http://' : 'https://')
+        });
+      } else {
+        console.log('[isValidImageUrl] URL is invalid:', { 
+          url: trimmed.substring(0, 100),
+          reason: 'Does not start with http://, https://, or /'
+        });
+      }
     }
     
-    // 所有其他情况返回 false
-    return false;
+    return isValid;
   } catch (error) {
     // 任何错误都被捕获，返回 false，避免阻塞渲染
     // 限流：只在开发环境打印一次警告
