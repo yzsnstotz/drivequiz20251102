@@ -37,20 +37,24 @@ export function fetchWithCache<T>(
   fetcher: () => Promise<T>
 ): Promise<T> {
   const now = Date.now();
+  const isDev = process.env.NODE_ENV !== "production";
   let entry = cache.get(key) as CacheEntry<T> | undefined;
 
   if (entry) {
     // 1) 有在飞的 promise，直接返回（请求去重）
     if (entry.promise) {
+      if (isDev) console.log("[requestCache] reuse pending promise for key:", key);
       return entry.promise;
     }
     // 2) 有未过期数据，直接返回（结果缓存）
     if (entry.data && entry.expiresAt > now) {
+      if (isDev) console.log("[requestCache] hit cache for key:", key);
       return Promise.resolve(entry.data);
     }
   }
 
   // 3) 需要发新请求
+  if (isDev) console.log("[requestCache] miss, fetching key:", key);
   const newEntry: CacheEntry<T> = {
     promise: null,
     data: entry?.data ?? null, // 保留旧数据作为 fallback

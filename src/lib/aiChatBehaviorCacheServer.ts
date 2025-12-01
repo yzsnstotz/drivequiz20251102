@@ -4,7 +4,7 @@
  */
 
 import crypto from 'crypto';
-import { db } from './db';
+import { db } from '@/lib/db';
 
 interface ChatRecord {
   // ⚠️ 注意：userId 现在是字符串类型（UUID），不再使用 number

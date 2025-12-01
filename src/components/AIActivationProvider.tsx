@@ -43,13 +43,13 @@ export default function AIActivationProvider({
   children,
 }: AIActivationProviderProps) {
   const { data: session } = useAppSession();
-  const { status: activationStatus, loading: activationLoading, refreshActivationStatus } = useActivation();
+  const { status: activationStatus, loading: activationLoading, refresh } = useActivation();
   const pathname = usePathname();
   const router = useRouter();
   const [isActivated, setIsActivated] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successExpiresAt, setSuccessExpiresAt] = useState<string | null>(null);
-  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // ✅ 修复：移除 checkIntervalRef，不再需要定时器
   const lastActivatedStateRef = useRef<boolean>(false); // 保存上次的激活状态
 
   // 检测互动页面（在这些页面禁用定期检查，避免中断用户操作）
@@ -121,6 +121,7 @@ export default function AIActivationProvider({
   }, [router]);
 
   // ✅ 修复：初始化时检查激活状态（使用 ActivationContext 的状态）
+  // ✅ 修复：禁止依赖 session 加载状态，只依赖 activationStatus
   useEffect(() => {
     // 首先从localStorage读取初始状态
     const localActivated = getInitialActivationState();
@@ -129,51 +130,15 @@ export default function AIActivationProvider({
     setIsActivated(localActivated);
     lastActivatedStateRef.current = localActivated;
     
-    // ✅ 修复：使用 ActivationContext 的状态，不再直接请求 API
-    if (session?.user?.email && !activationLoading) {
+    // ✅ 修复：不依赖 session 加载状态，只依赖 activationStatus
+    if (!activationLoading && activationStatus) {
       checkActivationStatus();
     } else if (!localActivated) {
-      // 如果没有session且localStorage也没有激活状态，设置为false
+      // 如果没有激活状态且localStorage也没有激活状态，设置为false
       setIsActivated(false);
       lastActivatedStateRef.current = false;
     }
-  }, [session?.user?.email, activationStatus, activationLoading, checkActivationStatus]);
-
-  // ✅ 修复：设置定期检查（使用 ActivationContext 的 refreshActivationStatus，延长到60分钟，并在互动页面禁用）
-  useEffect(() => {
-    if (!session?.user?.email) {
-      return;
-    }
-
-    // 如果是互动页面，禁用定期检查
-    if (isInteractivePage(pathname)) {
-      // 清除可能存在的定期检查
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-        checkIntervalRef.current = null;
-      }
-      return;
-    }
-
-    // ✅ 修复：立即检查一次（仅在非互动页面），使用 ActivationContext 的状态
-    checkActivationStatus();
-
-    // ✅ 修复：设置定期检查（延长到60分钟），通过 ActivationContext 的 refreshActivationStatus 刷新
-    checkIntervalRef.current = setInterval(() => {
-      // 调用 ActivationContext 的 refreshActivationStatus，它会使用 requestCache 去重
-      refreshActivationStatus().then(() => {
-        // 刷新后更新本地状态
-        checkActivationStatus();
-      });
-    }, 60 * 60 * 1000); // 60分钟
-
-    return () => {
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-        checkIntervalRef.current = null;
-      }
-    };
-  }, [session?.user?.email, pathname, checkActivationStatus, isInteractivePage, refreshActivationStatus]);
+  }, [activationStatus, activationLoading, checkActivationStatus]);
 
   const contextValue: AIActivationContextType = {
     isActivated,

@@ -1,68 +1,151 @@
 "use client";
 
-import { createContext, useContext, useMemo, ReactNode, Component, ErrorInfo, ReactElement } from "react";
-import { useSession, SessionContextValue } from "next-auth/react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
+import { GLOBAL_LOCK } from "@/lib/global-lock";
 
-type AppSessionContextValue = SessionContextValue;
+// 新增：避免 Provider 内部多次初始化
+const sessionFetchLock = { current: false };
+const sessionCache: { current: any } = { current: null };
+const sessionFetched = { current: false };
 
-const AppSessionContext = createContext<AppSessionContextValue | null>(null);
+type AppSessionStatus = "loading" | "unauthenticated" | "authenticated";
 
-/**
- * Session Error Boundary
- * 捕获 Session 相关的错误，防止整个应用崩溃
- */
-class SessionErrorBoundary extends Component<
-  { children: ReactNode; fallback?: ReactElement },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: ReactNode; fallback?: ReactElement }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // 记录错误日志
-    console.error("[SessionContext] Error caught by boundary:", {
-      error: error.message,
-      stack: error.stack,
-      componentStack: errorInfo.componentStack,
-    });
-  }
-
-  render() {
-    if (this.state.hasError) {
-      // 如果有自定义 fallback，使用它；否则返回 null（不渲染任何内容）
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
-      // 默认：返回 null，让应用继续运行（session 错误不应该阻止应用）
-      return null;
-    }
-
-    return this.props.children;
-  }
+interface AppSessionContextValue {
+  session: any | null;
+  status: AppSessionStatus;
+  loading: boolean;
+  // 保持向后兼容，保留 data 字段
+  data: any | null;
+  // 保持向后兼容，保留 update 方法
+  update: () => Promise<any | null>;
 }
+
+const AppSessionContext = createContext<AppSessionContextValue | undefined>(
+  undefined
+);
 
 /**
  * App Session Provider
- * 全局只允许这里调用 useSession()，其他地方通过 useAppSession() 复用结果
- * ✅ 新增：添加错误边界，防止 Session 错误导致整个应用崩溃
+ * ✅ 修复：彻底重写，不再使用 NextAuth 的 useSession，直接 fetch("/api/auth/session")
+ * ✅ 修复：只获取一次，后续不再自动刷新
+ * ✅ 修复：切换用户或手动触发才重新获取
+ * ✅ 修复：保证 activation 不依赖 session 的加载状态
  */
 export function AppSessionProvider({ children }: { children: ReactNode }) {
-  const sessionValue = useSession(); // ✅ 只有这里调用 useSession
+  const [session, setSession] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<AppSessionStatus>("loading");
 
-  const value = useMemo(() => sessionValue, [sessionValue.data, sessionValue.status]);
+  useEffect(() => {
+    if (sessionFetched.current) {
+      // 已经加载过，直接使用缓存
+      setSession(sessionCache.current);
+      setStatus(
+        sessionCache.current?.user ? "authenticated" : "unauthenticated"
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (sessionFetchLock.current) return;
+
+    // 全局锁检查
+    if (GLOBAL_LOCK.sessionRequested) {
+      // 如果已经在其他地方请求了，等待一下再检查缓存
+      const checkInterval = setInterval(() => {
+        if (sessionFetched.current) {
+          setSession(sessionCache.current);
+          setStatus(
+            sessionCache.current?.user ? "authenticated" : "unauthenticated"
+          );
+          setLoading(false);
+          clearInterval(checkInterval);
+        }
+      }, 100);
+      return () => clearInterval(checkInterval);
+    }
+
+    sessionFetchLock.current = true;
+    GLOBAL_LOCK.sessionRequested = true;
+
+    // ✅ 修复：添加调试日志，方便确认请求次数
+    if (process.env.NODE_ENV === "development") {
+      console.log("[Diag][SessionContext] fetching /api/auth/session");
+    }
+
+    fetch("/api/auth/session", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        sessionFetched.current = true;
+        sessionCache.current = data;
+        setSession(data);
+        setStatus(data?.user ? "authenticated" : "unauthenticated");
+      })
+      .catch((err) => {
+        console.error("[SessionProvider] fetch session error", err);
+        setSession(null);
+        setStatus("unauthenticated");
+      })
+      .finally(() => {
+        setLoading(false);
+        sessionFetchLock.current = false;
+      });
+  }, []); // ← 必须为空，禁止依赖任何变量
+
+  // 手动刷新方法
+  const update = async () => {
+    sessionFetched.current = false;
+    sessionCache.current = null;
+    sessionFetchLock.current = false;
+    GLOBAL_LOCK.sessionRequested = false;
+
+    setLoading(true);
+    setStatus("loading");
+
+    try {
+      const res = await fetch("/api/auth/session", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = await res.json();
+      sessionFetched.current = true;
+      sessionCache.current = data;
+      setSession(data);
+      setStatus(data?.user ? "authenticated" : "unauthenticated");
+      return data;
+    } catch (err) {
+      console.error("[SessionProvider] update session error", err);
+      setSession(null);
+      setStatus("unauthenticated");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const value: AppSessionContextValue = {
+    session,
+    status,
+    loading,
+    data: session, // 保持向后兼容
+    update,
+  };
 
   return (
-    <SessionErrorBoundary>
-      <AppSessionContext.Provider value={value}>
-        {children}
-      </AppSessionContext.Provider>
-    </SessionErrorBoundary>
+    <AppSessionContext.Provider value={value}>
+      {children}
+    </AppSessionContext.Provider>
   );
 }
 
@@ -70,11 +153,10 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
  * 使用 App Session 的 Hook
  * 替代直接使用 useSession()，确保所有组件共享同一个 session 实例
  */
-export function useAppSession() {
+export const useAppSession = (): AppSessionContextValue => {
   const ctx = useContext(AppSessionContext);
   if (!ctx) {
-    throw new Error("useAppSession must be used within <AppSessionProvider>");
+    throw new Error("useAppSession must be used within AppSessionProvider");
   }
   return ctx;
-}
-
+};

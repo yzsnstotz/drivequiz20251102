@@ -1,6 +1,5 @@
 "use client";
 
-import { SessionProvider } from "next-auth/react";
 import { ReactNode } from "react";
 import { AppSessionProvider } from "@/contexts/SessionContext";
 
@@ -8,15 +7,12 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+/**
+ * AuthProvider
+ * ✅ 修复：彻底移除 NextAuth 的 SessionProvider，只使用我们自己的 AppSessionProvider
+ * ✅ 修复：避免 NextAuth 的 SessionProvider 导致多次请求 /api/auth/session
+ */
 export default function AuthProvider({ children }: AuthProviderProps) {
-  return (
-    <SessionProvider
-      // 关闭定时轮询与窗口聚焦刷新，避免重复调用 /api/auth/session
-      refetchInterval={0}
-      refetchOnWindowFocus={false}
-    >
-      <AppSessionProvider>{children}</AppSessionProvider>
-    </SessionProvider>
-  );
+  return <AppSessionProvider>{children}</AppSessionProvider>;
 }
 

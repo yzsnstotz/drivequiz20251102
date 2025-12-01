@@ -746,11 +746,21 @@ export interface Database {
 
 // ✅ 修复：使用 globalThis 确保连接池在进程级别是单例（避免 dev 模式热更新时反复创建）
 declare global {
+  // ✅ 修复：统一在 globalThis 上挂载，避免多 bundle 重复 new
+  // 使用独特的命名，避免和其他库冲突
   // eslint-disable-next-line no-var
-  var __DB_POOL__: Pool | undefined;
+  var __DRIVEQUIZ_DB_POOL__: Pool | undefined;
   // eslint-disable-next-line no-var
   var __DB_INSTANCE__: Kysely<Database> | undefined;
+  // eslint-disable-next-line no-var
+  var __DRIVEQUIZ_DB_LOGGED__: boolean | undefined;
 }
+
+// 避免 TS 报错
+const globalForDb = globalThis as typeof globalThis & {
+  __DRIVEQUIZ_DB_POOL__?: Pool;
+  __DRIVEQUIZ_DB_LOGGED__?: boolean;
+};
 
 let dbInstance: Kysely<Database> | null = null;
 let dbPool: Pool | null = null;
@@ -769,6 +779,9 @@ function isBuildTime(): boolean {
   return isNextBuild || !hasDbUrl;
 }
 
+// ✅ 修复：统一从 dbConfig 模块导入配置函数，确保配置逻辑只在一个地方
+import { buildPoolConfigFromConnectionString } from "@/lib/dbConfig";
+
 function getConnectionString(): string {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   
@@ -782,73 +795,12 @@ function getConnectionString(): string {
 }
 
 /**
- * 从连接字符串显式解析 host/port/user/password/database/ssl
- * 彻底无视任何 PGHOST 等环境变量
- */
-function buildPoolConfigFromConnectionString(connectionString: string): PoolConfig {
-  // 清理可能的前缀（如 "DATABASE_URL=" 或 "POSTGRES_URL="）
-  let cleanedConnectionString = connectionString.trim();
-  if (cleanedConnectionString.startsWith('DATABASE_URL=')) {
-    cleanedConnectionString = cleanedConnectionString.substring('DATABASE_URL='.length);
-  } else if (cleanedConnectionString.startsWith('POSTGRES_URL=')) {
-    cleanedConnectionString = cleanedConnectionString.substring('POSTGRES_URL='.length);
-  }
-  
-  const url = new URL(cleanedConnectionString);
-
-  const host = url.hostname;
-  const port = url.port ? Number(url.port) : 5432;
-  const database = url.pathname ? url.pathname.slice(1) : undefined;
-  const user = url.username ? decodeURIComponent(url.username) : undefined;
-  const password = url.password ? decodeURIComponent(url.password) : undefined;
-
-  const sslMode = url.searchParams.get("sslmode");
-
-  // 对于 Supabase 的托管 Postgres，官方建议是关闭证书严格校验
-  // 这里不再玩复杂逻辑，统一用 rejectUnauthorized: false
-  const ssl =
-    sslMode && sslMode !== "disable"
-      ? { rejectUnauthorized: false }
-      : undefined;
-
-  // 仅在开发环境记录配置日志
-  if (process.env.NODE_ENV === "development") {
-    console.log("[DB][Config] Parsed DATABASE_URL:", {
-      host,
-      port,
-      database,
-      sslMode,
-      sslEnabled: !!ssl,
-    });
-  }
-
-  const config: PoolConfig = {
-    host,
-    port,
-    database,
-    user,
-    password,
-    ssl,
-    max: 20,
-    min: 2, // 保持最小连接数，减少连接创建开销
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 20_000, // 减少连接超时时间，更快失败重试
-    statement_timeout: 60_000,
-    query_timeout: 60_000,
-    // 添加连接重试配置
-    allowExitOnIdle: true,
-  };
-
-  return config;
-}
-
-/**
  * ✅ 修复：创建连接池（使用 globalThis 单例，避免 dev 模式热更新时反复创建）
  */
 function createPool(): Pool {
-  // 检查是否已有全局连接池
-  if (global.__DB_POOL__) {
-    return global.__DB_POOL__;
+  // ✅ 修复：检查是否已有全局连接池（使用统一的 globalThis 命名）
+  if (globalForDb.__DRIVEQUIZ_DB_POOL__) {
+    return globalForDb.__DRIVEQUIZ_DB_POOL__;
   }
 
   // 获取连接字符串（如果不存在会返回占位符）
@@ -859,26 +811,24 @@ function createPool(): Pool {
     throw new Error("[DB][Config] DATABASE_URL is not set or is placeholder");
   }
 
-  // 仅在开发环境记录配置日志
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      "[DB][Config] Using raw DATABASE_URL (first 80 chars):",
-      connectionString.substring(0, 80) + "...",
-    );
-  }
-
-  // 从连接字符串显式解析配置，彻底无视任何 PGHOST 等环境变量
-  const poolConfig = buildPoolConfigFromConnectionString(connectionString);
+  // ✅ 修复：统一从 dbConfig 模块获取配置，确保配置日志只打印一次
+  const poolConfig = buildPoolConfigFromConnectionString();
 
   // 创建 Pool 实例
   const pool = new Pool(poolConfig);
   
-  // ✅ 修复：保存到 globalThis，确保单例
-  global.__DB_POOL__ = pool;
+  // ✅ 修复：保存到 globalThis，确保单例（使用统一的 globalThis 命名）
+  globalForDb.__DRIVEQUIZ_DB_POOL__ = pool;
   dbPool = pool; // 保存 Pool 实例以便后续获取统计信息
 
-  // ✅ 修复：仅在创建 Pool 时打一条日志，不在每次连接借/还时打日志
-  if (process.env.NODE_ENV === "development") {
+  // ✅ 修复：一次性记录 Pool 创建日志（使用 globalThis 标记）
+  // ✅ 可选增强：默认 dev 环境不打印，只有手动开启 DB_CONFIG_DEBUG=true 时才打印
+  const shouldLogDbConfig =
+    process.env.NODE_ENV === "development" &&
+    process.env.DB_CONFIG_DEBUG === "true";
+
+  if (!globalForDb.__DRIVEQUIZ_DB_LOGGED__ && shouldLogDbConfig) {
+    globalForDb.__DRIVEQUIZ_DB_LOGGED__ = true;
     console.log('[DB Pool] Pool created');
   }
 
@@ -1094,7 +1044,7 @@ export type PoolStats = {
 
 export function getDbPoolStats(): PoolStats | null {
   // ✅ 修复：使用全局单例连接池
-  const pool = global.__DB_POOL__ || dbPool;
+  const pool = globalForDb.__DRIVEQUIZ_DB_POOL__ || dbPool;
   
   if (!pool) {
     // 如果 Pool 还没有创建，尝试初始化数据库实例
@@ -1102,7 +1052,7 @@ export function getDbPoolStats(): PoolStats | null {
       // 触发数据库实例创建（这会创建 Pool）
       const _ = db;
       // 如果还是 null，说明可能是占位符或构建时
-      if (!global.__DB_POOL__ && !dbPool) {
+      if (!globalForDb.__DRIVEQUIZ_DB_POOL__ && !dbPool) {
         return null;
       }
     } catch (err) {
@@ -1111,7 +1061,7 @@ export function getDbPoolStats(): PoolStats | null {
     }
   }
   
-  const poolToUse = global.__DB_POOL__ || dbPool;
+  const poolToUse = globalForDb.__DRIVEQUIZ_DB_POOL__ || dbPool;
   if (!poolToUse) {
     return null;
   }

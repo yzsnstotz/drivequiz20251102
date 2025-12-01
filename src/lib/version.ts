@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-12-02 02:21:49（补充修复：更新文件结构文档、验证AIActivationProvider行为一致性、修复requestCache内存泄漏、改进ActivationContext缓存key、为SessionContext添加错误边界）
-const BUILD_TIME = "2025-12-02 02:21:49";
+// 最后更新：2025-12-02 04:19:37（彻底移除 NextAuth SessionProvider、清理所有直接 API 调用、添加调试日志）
+const BUILD_TIME = "2025-12-02 04:19:37";
 
 /**
  * 获取版本号（构建时间）

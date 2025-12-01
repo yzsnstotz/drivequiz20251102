@@ -35,7 +35,20 @@ function err(errorCode: string, message: string, status = 400) {
  * 检查当前用户的激活状态
  * 支持Session和JWT两种认证方式
  */
+// ✅ 修复：日志节流，每 5 秒最多打一次，避免刷屏
+let lastActivationLogAt: number | null = null;
+function diagActivationLog() {
+  if (process.env.NODE_ENV !== "development") return;
+  const now = Date.now();
+  if (lastActivationLogAt && now - lastActivationLogAt < 5000) return;
+  lastActivationLogAt = now;
+  console.log("[Diag][ACTIVATION_ROUTE_HIT]", new Date().toISOString());
+}
+
 export async function GET(request: NextRequest) {
+  // ✅ 修复：添加计数型日志，便于观察请求频次（节流：每 5 秒最多打一次）
+  diagActivationLog();
+
   try {
     // 优先使用NextAuth Session（带重试机制）
     let email: string | null = null;
@@ -99,8 +112,8 @@ export async function GET(request: NextRequest) {
 
     if (!email) {
       const response = ok({ valid: false, reasonCode: "NOT_LOGGED_IN" });
-      // 不使用CDN缓存，因为这是用户特定的数据
-      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      // ✅ 修复：添加服务器级别缓存（10秒）
+      response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
       return response;
     }
 
@@ -119,8 +132,8 @@ export async function GET(request: NextRequest) {
 
     if (!latestActivation) {
       const response = ok({ valid: false, reasonCode: "NO_ACTIVATION_RECORD" });
-      // 不使用CDN缓存，因为这是用户特定的数据
-      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      // ✅ 修复：添加服务器级别缓存（10秒）
+      response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
       return response;
     }
 
@@ -147,8 +160,8 @@ export async function GET(request: NextRequest) {
 
     if (!activationCode) {
       const response = ok({ valid: false, reasonCode: "ACTIVATION_CODE_NOT_FOUND" });
-      // 不使用CDN缓存，因为这是用户特定的数据
-      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      // ✅ 修复：添加服务器级别缓存（10秒）
+      response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
       return response;
     }
 
@@ -160,8 +173,8 @@ export async function GET(request: NextRequest) {
         reasonCode: "ACTIVATION_CODE_STATUS_INVALID",
         status,
       });
-      // 不使用CDN缓存，因为这是用户特定的数据
-      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      // ✅ 修复：添加服务器级别缓存（10秒）
+      response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
       return response;
     }
 
@@ -173,8 +186,8 @@ export async function GET(request: NextRequest) {
         valid: false,
         reasonCode: "ACTIVATION_CODE_USAGE_EXCEEDED",
       });
-      // 不使用CDN缓存，因为这是用户特定的数据
-      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      // ✅ 修复：添加服务器级别缓存（10秒）
+      response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
       return response;
     }
 
@@ -241,8 +254,8 @@ export async function GET(request: NextRequest) {
           reasonCode: "ACTIVATION_CODE_EXPIRED",
           expiresAt: calculatedExpiresAt.toISOString(),
         });
-        // 不使用CDN缓存，因为这是用户特定的数据
-        response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+        // ✅ 修复：添加服务器级别缓存（10秒）
+        response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
         return response;
       }
     }
@@ -254,8 +267,8 @@ export async function GET(request: NextRequest) {
       activatedAt: latestActivation.activated_at.toISOString(),
       expiresAt: calculatedExpiresAt ? calculatedExpiresAt.toISOString() : null,
     });
-    // 不使用CDN缓存，因为这是用户特定的数据，需要实时获取最新状态
-    response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    // ✅ 修复：添加服务器级别缓存（10秒）
+    response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
     return response;
   } catch (error: unknown) {
     // 记录错误
@@ -272,8 +285,8 @@ export async function GET(request: NextRequest) {
         valid: false,
         reasonCode: "DATABASE_ERROR",
       });
-      // 数据库错误时也不使用缓存，确保下次请求能获取最新状态
-      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      // ✅ 修复：添加服务器级别缓存（10秒）
+      response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
       return response;
     }
 

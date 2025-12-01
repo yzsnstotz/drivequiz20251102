@@ -2,14 +2,24 @@
 // 文件路径: src/contexts/ActivationContext.tsx
 // 功能: 激活状态共享 Context（避免重复请求）
 // 更新日期: 2025-12-02
-// 更新内容: 缓存key从email改为userId，避免email为空或被修改导致的缓存错乱
+// 更新内容: 彻底重写，禁止自动轮询，禁止依赖 session 加载状态，只请求一次
 // ============================================================
 
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
-import { useAppSession } from "@/contexts/SessionContext";
-import { fetchWithCache } from "@/lib/requestCache";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
+import { GLOBAL_LOCK } from "@/lib/global-lock";
+
+// 新增：全局变量，确保 status 只请求一次
+const activationCache: { current: any } = { current: null };
+const activationFetched = { current: false };
+const activationLock = { current: false };
 
 interface ActivationStatus {
   valid: boolean;
@@ -20,174 +30,192 @@ interface ActivationStatus {
   status?: string;
 }
 
-interface ActivationContextType {
-  status: ActivationStatus | null;
+type ActivationState = "unknown" | "loading" | "activated" | "not_activated";
+
+interface ActivationContextValue {
+  state: ActivationState;
+  status: ActivationStatus | null; // 保留原有字段，保持向后兼容
   loading: boolean;
+  error: Error | null;
   refresh: () => Promise<void>;
-  refreshActivationStatus: () => Promise<void>; // ✅ 新增：强制刷新激活状态
 }
 
-const ActivationContext = createContext<ActivationContextType | undefined>(undefined);
-
-// 防抖配置
-const DEBOUNCE_DELAY = 1000; // 1 秒
-let debounceTimer: NodeJS.Timeout | null = null;
-
-/**
- * 获取激活状态（带缓存和去重）
- * ✅ 修复：使用 requestCache 工具实现请求去重和结果缓存
- * ✅ 修复：使用 userId 作为缓存key（而非 email），避免email为空或被修改导致的缓存错乱
- */
-async function fetchActivationStatusCached(userId: string): Promise<ActivationStatus | null> {
-  const key = `activation_status:${userId}`;
-  const TTL_MS = 5 * 60 * 1000; // 5 分钟
-
-  return fetchWithCache(key, TTL_MS, async () => {
-    const res = await fetch("/api/activation/status", {
-      method: "GET",
-      credentials: "include",
-    });
-    
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    
-    const result = await res.json();
-    if (result.ok && result.data) {
-      return result.data as ActivationStatus;
-    }
-    return null;
-  }).catch((error) => {
-    if (process.env.NODE_ENV === "development") {
-      console.error("[ActivationContext] Fetch failed:", error);
-    }
-    return null;
-  });
-}
+const ActivationContext = createContext<ActivationContextValue | undefined>(
+  undefined
+);
 
 /**
  * 激活状态 Provider
+ * ✅ 修复：彻底重写，禁止自动轮询，禁止依赖 session 加载状态，只请求一次
  */
-export function ActivationProvider({ children }: { children: React.ReactNode }) {
-  const { data: session } = useAppSession();
+export function ActivationProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<ActivationState>("unknown");
   const [status, setStatus] = useState<ActivationStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  // ✅ 修复：刷新激活状态（带防抖，使用 requestCache）
-  const refresh = useCallback(async () => {
-    // 清除之前的防抖定时器
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
-
-    // 设置新的防抖定时器
-    return new Promise<void>((resolve) => {
-      debounceTimer = setTimeout(async () => {
-        if (!session?.user?.id) {
-          setStatus({ valid: false, reasonCode: "NOT_LOGGED_IN" });
-          setLoading(false);
-          resolve();
-          return;
-        }
-
-        try {
-          setLoading(true);
-          const newStatus = await fetchActivationStatusCached(session.user.id);
-          setStatus(newStatus);
-        } catch (error) {
-          if (process.env.NODE_ENV === "development") {
-            console.error("[ActivationProvider] Refresh error:", error);
-          }
-        } finally {
-          setLoading(false);
-          resolve();
-        }
-      }, DEBOUNCE_DELAY);
-    });
-  }, [session?.user?.id]);
-
-  // ✅ 修复：强制刷新激活状态（清除缓存后重新请求）
-  const refreshActivationStatus = useCallback(async () => {
-    if (!session?.user?.id) {
-      setStatus({ valid: false, reasonCode: "NOT_LOGGED_IN" });
+  useEffect(() => {
+    if (activationFetched.current) {
+      // 已经加载过，直接使用缓存
+      setStatus(activationCache.current);
+      if (activationCache.current) {
+        setState(
+          activationCache.current.valid === true
+            ? "activated"
+            : "not_activated"
+        );
+      }
       setLoading(false);
       return;
     }
 
-    // 清除缓存
-    const { clearCache } = await import("@/lib/requestCache");
-    clearCache(`activation_status:${session.user.id}`);
+    if (activationLock.current) return;
+
+    // 全局锁检查
+    if (GLOBAL_LOCK.activationRequested) {
+      // 如果已经在其他地方请求了，等待一下再检查缓存
+      const checkInterval = setInterval(() => {
+        if (activationFetched.current) {
+          setStatus(activationCache.current);
+          if (activationCache.current) {
+            setState(
+              activationCache.current.valid === true
+                ? "activated"
+                : "not_activated"
+            );
+          }
+          setLoading(false);
+          clearInterval(checkInterval);
+        }
+      }, 100);
+      return () => clearInterval(checkInterval);
+    }
+
+    activationLock.current = true;
+    GLOBAL_LOCK.activationRequested = true;
+
+    setLoading(true);
+    setState("loading");
+
+    // ✅ 修复：添加调试日志，方便确认请求次数
+    if (process.env.NODE_ENV === "development") {
+      console.log("[Diag][ActivationContext] fetching /api/activation/status");
+    }
+
+    fetch("/api/activation/status", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        activationFetched.current = true;
+        const activationData = data?.ok && data?.data ? data.data : null;
+        activationCache.current = activationData;
+        setStatus(activationData);
+        if (activationData) {
+          setState(
+            activationData.valid === true ? "activated" : "not_activated"
+          );
+        } else {
+          setState("not_activated");
+        }
+      })
+      .catch((err) => {
+        console.error("[ActivationProvider] fetch error", err);
+        setError(err as Error);
+        setState("not_activated");
+      })
+      .finally(() => {
+        setLoading(false);
+        activationLock.current = false;
+      });
+  }, []); // ← 必须为空，禁止依赖 session/用户
+
+  // 手动刷新方法
+  const refresh = async () => {
+    activationFetched.current = false;
+    activationCache.current = null;
+    activationLock.current = false;
+    GLOBAL_LOCK.activationRequested = false;
+
+    setLoading(true);
+    setState("loading");
+    setError(null);
 
     try {
-      setLoading(true);
-      const newStatus = await fetchActivationStatusCached(session.user.id);
-      setStatus(newStatus);
-    } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("[ActivationProvider] Force refresh error:", error);
+      const res = await fetch("/api/activation/status", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Activation status error: ${res.status}`);
       }
+
+      const json = await res.json();
+      const activationData = json?.ok && json?.data ? json.data : null;
+
+      activationFetched.current = true;
+      activationCache.current = activationData;
+      setStatus(activationData);
+
+      if (activationData) {
+        setState(
+          activationData.valid === true ? "activated" : "not_activated"
+        );
+      } else {
+        setState("not_activated");
+      }
+    } catch (err) {
+      console.error("[ActivationProvider] refresh error", err);
+      setError(err as Error);
+      setState("not_activated");
     } finally {
       setLoading(false);
     }
-  }, [session?.user?.id]);
-
-  // 初始加载
-  useEffect(() => {
-    if (!session?.user?.id) {
-      // 没有 session，设置默认状态
-      setStatus({ valid: false, reasonCode: "NOT_LOGGED_IN" });
-      setLoading(false);
-      return;
-    }
-
-    // ✅ 修复：使用 requestCache，如果已有缓存会直接返回，不会发起新请求
-    setLoading(true);
-    fetchActivationStatusCached(session.user.id).then((newStatus) => {
-      setStatus(newStatus);
-      setLoading(false);
-    });
-  }, [session?.user?.id]);
-
-  // 当 session 变化时刷新
-  useEffect(() => {
-    if (session?.user?.id) {
-      refresh();
-    }
-  }, [session?.user?.id, refresh]);
-
-  const value: ActivationContextType = {
-    status,
-    loading,
-    refresh,
-    refreshActivationStatus,
   };
 
-  return <ActivationContext.Provider value={value}>{children}</ActivationContext.Provider>;
+  return (
+    <ActivationContext.Provider
+      value={{
+        state,
+        status,
+        loading,
+        error,
+        refresh,
+      }}
+    >
+      {children}
+    </ActivationContext.Provider>
+  );
 }
 
 /**
  * 使用激活状态的 Hook
  */
-export function useActivation() {
-  const context = useContext(ActivationContext);
-  if (context === undefined) {
-    throw new Error("useActivation must be used within an ActivationProvider");
+export const useActivation = (): ActivationContextValue => {
+  const ctx = useContext(ActivationContext);
+  if (!ctx) {
+    throw new Error("useActivation must be used within ActivationProvider");
   }
-  return context;
-}
+  return ctx;
+};
 
 /**
  * 清除激活状态缓存（用于激活成功后刷新）
- * ✅ 修复：使用 requestCache 的 clearCache
- * ✅ 修复：参数从 userEmail 改为 userId，避免email为空导致的缓存错乱
+ * ✅ 修复：保持向后兼容
  */
 export function clearActivationCache(userId?: string) {
-  if (userId) {
-    const { clearCache } = require("@/lib/requestCache");
-    clearCache(`activation_status:${userId}`);
-  } else {
-    const { clearAllCache } = require("@/lib/requestCache");
-    clearAllCache();
+  // 这个函数现在主要用于向后兼容，实际刷新通过 refresh() 方法
+  if (process.env.NODE_ENV === "development") {
+    console.log("[ActivationContext] clearActivationCache called", { userId });
   }
 }
-

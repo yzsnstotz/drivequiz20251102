@@ -1,6 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import NextAuth from "next-auth";
-import { db } from "./db";
+import { db } from "@/lib/db";
 import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
 import TwitterProvider from "./providers/twitter";
@@ -25,13 +25,31 @@ try {
   authBaseUrl = "http://localhost:3000";
 }
 
-// v4: 精简日志 - 只输出 Google Provider 预期的 redirect_uri（唯一真相来源）
-const googleCallbackUrl = `${authBaseUrl}/api/auth/callback/google`;
-console.log("[NextAuth][Google] expected redirect_uri:", googleCallbackUrl);
+// ✅ 修复：静音 Google redirect_uri 日志，只在明确启用 debug 时打印
+const isDebug =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXTAUTH_DEBUG === "true";
+
+// ✅ 修复：日志节流，每 5 秒最多打一次，避免刷屏
+let lastSessionLogAt: number | null = null;
+function diagSessionLog() {
+  if (process.env.NODE_ENV !== "development") return;
+  const now = Date.now();
+  // 每 5 秒最多打一次
+  if (lastSessionLogAt && now - lastSessionLogAt < 5000) return;
+  lastSessionLogAt = now;
+  console.log("[Diag][SESSION_ROUTE_HIT]", new Date().toISOString());
+}
+
+if (isDebug) {
+  const googleCallbackUrl = `${authBaseUrl}/api/auth/callback/google`;
+  console.log("[NextAuth][Google] expected redirect_uri:", googleCallbackUrl);
+}
 
 export const authOptions: NextAuthConfig = {
   adapter: createPatchedKyselyAdapter(db),
-  debug: process.env.NODE_ENV === "development",
+  // ✅ 修复：收敛 NextAuth 噪音日志，只在明确启用时打印
+  debug: isDebug,
 
   // v4: 显式设置 trustHost，确保 Auth.js 使用 AUTH_URL 而不是请求 Host
   trustHost: true,
@@ -226,6 +244,9 @@ export const authOptions: NextAuthConfig = {
       return true;
     },
     async session({ session, user }) {
+      // ✅ 修复：添加计数型日志，便于观察 session 请求频次（节流：每 5 秒最多打一次）
+      diagSessionLog();
+
       // 将用户ID添加到session（user.id 现在已经是字符串类型）
       if (user?.id) {
         session.user.id = user.id.toString();
@@ -362,43 +383,29 @@ export const authOptions: NextAuthConfig = {
   // ✅ secret 同时兼容 NEXTAUTH_SECRET 与 AUTH_SECRET
   secret: authSecret || undefined,
 
-  // ✅ 打开 Auth.js 内建 logger，捕获真实错误
+  // ✅ 修复：自定义 logger，静音 Google redirect_uri 噪音日志
   logger: {
-    error(error: Error) {
-      console.error("[NextAuth][Error][raw]", error);
-
-      // 针对 AdapterError 展开 cause
-      if ((error as any).type === "AdapterError") {
-        const adapterError = error as any;
-        console.error("[NextAuth][AdapterError][kind]", adapterError.kind);
-        if (adapterError.cause) {
-          console.error(
-            "[NextAuth][AdapterError][cause]",
-            adapterError.cause,
-          );
-          // 如果是 PG 错误，通常会有这些字段
-          const c = adapterError.cause as any;
-          if (c.code || c.detail || c.schema || c.table || c.constraint) {
-            console.error("[NextAuth][AdapterError][pg-details]", {
-              code: c.code,
-              detail: c.detail,
-              schema: c.schema,
-              table: c.table,
-              constraint: c.constraint,
-              message: c.message,
-            });
-          }
-        }
-      }
+    error(code: string, metadata?: any) {
+      console.error("[NextAuth][Error]", code, metadata);
     },
-    warn(message: string) {
-      console.warn("[NextAuth][Warn]", message);
-    },
-    debug(message: string) {
-      // 只在本地和预览环境输出 debug，避免生产过多日志
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[NextAuth][Debug]", message);
+    warn(code: string, metadata?: any) {
+      // ✅ 修复：静音 Google redirect_uri 的噪音日志
+      if (
+        typeof code === "string" &&
+        (code.includes("OAUTH_CALLBACK") ||
+          code.includes("expected redirect_uri") ||
+          (typeof metadata === "string" && metadata.includes("expected redirect_uri")) ||
+          (metadata && typeof metadata === "object" && metadata.providerId === "google"))
+      ) {
+        // 静音 Google OAuth callback 的噪音日志
+        return;
       }
+      // 如果以后还有其它想静音的 code，可以在这里加
+      console.warn("[NextAuth][Warn]", code, metadata);
+    },
+    debug(code: string, metadata?: any) {
+      if (!isDebug) return;
+      console.log("[NextAuth][Debug]", code, metadata);
     },
   } as any,
 
