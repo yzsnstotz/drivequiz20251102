@@ -144,15 +144,6 @@ export async function POST(req: NextRequest) {
   try {
     const input = (await req.json().catch(() => ({}))) as AskBody;
 
-    // 只读日志：记录前端传入的语言参数（不写业务逻辑，遵守A1规范）
-    console.log("[api/ai/chat] incoming", {
-      lang: input.lang,
-      scene: (input as any).scene,
-      model: (input as any).model,
-      sourceLanguage: (input as any).sourceLanguage,
-      targetLanguage: (input as any).targetLanguage,
-    });
-
     // 简单校验
     if (!input.question || typeof input.question !== "string") {
       return badRequest("Missing or invalid 'question'");
@@ -226,9 +217,19 @@ export async function POST(req: NextRequest) {
 
     // 原样返回上游成功体
     return NextResponse.json(upstreamJson, { status: 200 });
-  } catch (e) {
+  } catch (e: any) {
     // eslint-disable-next-line no-console
-    console.error("[web] /api/ai/chat error", e);
-    return internalError();
+    console.error("[web] /api/ai/chat error", {
+      message: e?.message,
+      name: e?.name,
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        errorCode: "INTERNAL_ERROR",
+        message: e?.message ?? "AI 服务调用失败",
+      },
+      { status: 502 }
+    );
   }
 }

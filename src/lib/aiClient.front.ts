@@ -138,10 +138,12 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     url = endpoint.url;
     token = endpoint.token;
   } catch (error: any) {
-    console.error("[callAiDirect] 端点解析失败:", {
-      provider,
-      error: error?.message,
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.error("[callAiDirect] 端点解析失败:", {
+        provider,
+        error: error?.message,
+      });
+    }
     return {
       ok: false,
       errorCode: "CONFIG_ERROR",
@@ -157,49 +159,20 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
   if (provider === "render") {
     try {
       const dbProvider = await getCurrentAiProvider();
-      console.log("[callAiDirect] 读取数据库 provider 配置:", {
-        dbProvider,
-        willSendHeader: dbProvider === "openai" || dbProvider === "openrouter" || dbProvider === "gemini",
-      });
       // 只发送需要发送的 provider（openai, openrouter, gemini）
       if (dbProvider === "openai" || dbProvider === "openrouter" || dbProvider === "gemini") {
         xAiProviderHeader = dbProvider;
-      } else if (dbProvider) {
-        console.warn("[callAiDirect] 数据库 provider 值不支持发送 X-AI-Provider 头:", dbProvider);
       }
     } catch (error) {
-      console.warn("[callAiDirect] 获取数据库 provider 配置失败:", error);
+      // 配置获取失败不影响主流程，静默处理
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[callAiDirect] 获取数据库 provider 配置失败:", error);
+      }
     }
   }
 
-  // 增强日志记录，记录完整的请求信息（不暴露敏感信息）
-  console.log("[callAiDirect] 调用 AI 服务:", {
-    provider,
-    baseUrl: url,
-    requestUrl,
-    hasToken: !!token,
-    tokenLength: token?.length || 0,
-    tokenPrefix: token ? `${token.substring(0, 8)}...` : "undefined",
-    scene: rest.scene,
-    model: rest.model,
-    xAiProviderHeader,
-    questionLength: rest.question?.length || 0,
-    locale: rest.locale,
-    hasMessages: !!rest.messages,
-    messagesCount: rest.messages?.length || 0,
-    timestamp: new Date().toISOString(),
-  });
-
   // 将locale转换为lang（BCP-47格式 -> 简短格式）
-  // 在 try 块外定义，以便在后续日志中使用
   const lang = localeToLang(rest.locale);
-  
-  // ✅ 日志：记录语言转换链路
-  console.log('[lang-trace] callAiDirect', {
-    inputLocale: rest.locale,
-    resolvedLang: lang,
-    scene: rest.scene,
-  });
   
   let response: Response;
   try {
@@ -214,9 +187,8 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
       headers["X-AI-Provider"] = xAiProviderHeader;
     }
 
-    // 构建请求体
-    
-    const requestBody = {
+    // 构建请求体 - 先构建原始对象，然后过滤 undefined/null
+    const rawBody: Record<string, any> = {
       question: rest.question,
       lang: lang,
       scene: rest.scene,
@@ -227,32 +199,39 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
       seedUrl: rest.seedUrl,
       model: rest.model,
     };
+
+    // 过滤掉 undefined 和 null 值，避免序列化问题
+    const requestBody = Object.fromEntries(
+      Object.entries(rawBody).filter(([_, v]) => v !== undefined && v !== null)
+    ) as typeof rawBody;
+
+    // 基本参数校验（防御性校验）
+    if (!requestBody.question || typeof requestBody.question !== "string") {
+      throw new Error("AI 请求缺少有效的 question 字段");
+    }
+
+    if (!requestBody.scene || typeof requestBody.scene !== "string") {
+      throw new Error("AI 请求缺少有效的 scene 标识");
+    }
     
-    // 记录请求详情（脱敏）
-    console.log("[callAiDirect] 发送请求:", {
-      method: "POST",
-      url: requestUrl,
-      headers: {
-        "Content-Type": headers["Content-Type"],
-        "Authorization": headers["Authorization"] ? "Bearer ***" : undefined,
-        "X-AI-Provider": headers["X-AI-Provider"] || undefined,
-      },
-      bodySize: JSON.stringify(requestBody).length,
-      questionLength: rest.question?.length || 0,
-      scene: rest.scene,
-      model: rest.model,
-      locale: rest.locale,
-      lang: lang,
-    });
-    
-    // 发送前日志（结构化）
-    console.log("[aiClient.front] send", {
-      locale: rest.locale,
-      lang: lang,
-      scene: rest.scene,
-      model: rest.model,
-      provider: provider,
-    });
+    // 记录请求详情（仅在开发环境，避免日志污染）
+    if (process.env.NODE_ENV === "development") {
+      console.debug("[aiClient] requestBody to ai-service", {
+        method: "POST",
+        url: requestUrl,
+        headers: {
+          "Content-Type": headers["Content-Type"],
+          "Authorization": headers["Authorization"] ? "Bearer ***" : undefined,
+          "X-AI-Provider": headers["X-AI-Provider"] || undefined,
+        },
+        bodySize: JSON.stringify(requestBody).length,
+        questionLength: rest.question?.length || 0,
+        scene: rest.scene,
+        model: rest.model,
+        locale: rest.locale,
+        lang: lang,
+      });
+    }
     
     response = await fetch(requestUrl, {
       method: "POST",
@@ -263,8 +242,6 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     // 网络错误（如 CORS、连接失败等）
     // 安全地提取错误信息（Error 对象在序列化时可能变成空对象）
     let errorMessage = "Network error";
-    let errorName = "Unknown";
-    let errorStack = "";
     
     if (fetchError) {
       // 优先使用 message 属性
@@ -275,16 +252,6 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
       } else if (fetchError.toString && fetchError.toString() !== "[object Object]") {
         errorMessage = fetchError.toString();
       }
-      
-      // 提取 name
-      if (typeof fetchError.name === "string") {
-        errorName = fetchError.name;
-      }
-      
-      // 提取 stack
-      if (typeof fetchError.stack === "string") {
-        errorStack = fetchError.stack.substring(0, 200);
-      }
     }
     
     // 检查是否是 CORS 错误
@@ -292,8 +259,7 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
       errorMessage.includes("CORS") || 
       errorMessage.includes("cors") || 
       errorMessage.includes("Failed to fetch") ||
-      errorMessage.includes("NetworkError") ||
-      errorName === "TypeError" && errorMessage.includes("fetch");
+      errorMessage.includes("NetworkError");
     
     // 检查是否是连接错误
     const isConnectionError = 
@@ -303,33 +269,17 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
       errorMessage.includes("ERR_CONNECTION_REFUSED") ||
       errorMessage.includes("ERR_NAME_NOT_RESOLVED");
     
-    // 确保所有值都是可序列化的基本类型
-    const errorInfo = {
-      provider: String(provider),
-      baseUrl: String(url || "(未定义)"),
-      requestUrl: String(requestUrl || "(未定义)"),
-      errorMessage: String(errorMessage),
-      errorName: String(errorName),
-      errorStack: String(errorStack || "(无堆栈信息)"),
-      isCorsError: Boolean(isCorsError),
-      isConnectionError: Boolean(isConnectionError),
-      // 原始错误对象（用于调试）
-      rawError: fetchError ? String(fetchError) : "null",
-    };
-    
-    console.error("[callAiDirect] 网络请求失败:", errorInfo);
-    
-    // 同时输出格式化字符串，确保信息可见
-    console.error(
-      `[callAiDirect] 网络请求失败详情:\n` +
-      `  Provider: ${errorInfo.provider}\n` +
-      `  Base URL: ${errorInfo.baseUrl}\n` +
-      `  Request URL: ${errorInfo.requestUrl}\n` +
-      `  错误消息: ${errorInfo.errorMessage}\n` +
-      `  错误类型: ${errorInfo.errorName}\n` +
-      `  CORS 错误: ${errorInfo.isCorsError}\n` +
-      `  连接错误: ${errorInfo.isConnectionError}`
-    );
+    // 在开发环境记录详细错误信息
+    if (process.env.NODE_ENV === "development") {
+      console.error("[aiClient] 网络请求失败", {
+        provider: String(provider),
+        baseUrl: String(url || "(未定义)"),
+        requestUrl: String(requestUrl || "(未定义)"),
+        errorMessage: String(errorMessage),
+        isCorsError: Boolean(isCorsError),
+        isConnectionError: Boolean(isConnectionError),
+      });
+    }
     
     // 提供更详细的错误信息
     let detailedMessage = `网络请求失败: ${errorMessage}`;
@@ -344,14 +294,27 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     };
   }
 
+  // 先读取响应文本，然后根据状态码处理
+  const status = response.status;
+  const statusText = response.statusText;
+  const responseText = await response.text();
+
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
-    
-    // 尝试解析 JSON 错误响应，提取详细错误信息
+    // 在开发环境保留部分原始响应，便于排查
+    if (process.env.NODE_ENV === "development") {
+      console.error("[aiClient] ai-service error response", {
+        status,
+        statusText,
+        bodyPreview: responseText.slice(0, 500),
+      });
+    }
+
+    // 尝试解析 JSON 错误响应
     let parsedError: any = null;
-    let detailedMessage = errorText.substring(0, 200);
+    let detailedMessage = `AI service 返回错误状态：${status} ${statusText || ""}`.trim();
+    
     try {
-      parsedError = JSON.parse(errorText);
+      parsedError = JSON.parse(responseText);
       if (parsedError && typeof parsedError === "object") {
         // 提取错误信息
         if (parsedError.message) {
@@ -375,74 +338,55 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
         }
       }
     } catch {
-      // 如果解析失败，使用原始错误文本
+      // 如果解析失败，使用原始错误文本（但限制长度）
+      if (responseText && responseText.length > 0) {
+        detailedMessage = responseText.slice(0, 200);
+      }
     }
-    
-    const errorMessage = `AI service error: ${response.status} ${detailedMessage}`;
-    
-    // 增强错误日志（确保所有值都是可序列化的基本类型）
-    const errorLogInfo = {
-      provider: String(provider || "(未定义)"),
-      status: response?.status ? Number(response.status) : "(未定义)",
-      statusText: String(response?.statusText || "(未定义)"),
-      url: String(requestUrl || "(未定义)"),
-      baseUrl: String(url || "(未定义)"),
-      errorCode: String(parsedError?.errorCode || "UNKNOWN"),
-      errorMessage: String(detailedMessage || "(无错误消息)"),
-      rawError: String(errorText?.substring(0, 500) || "(无原始错误)"),
-      hasParsedError: Boolean(!!parsedError),
-      timestamp: new Date().toISOString(),
-    };
-    
-    console.error("[callAiDirect] AI service 调用失败:", errorLogInfo);
-    
-    // 同时输出格式化字符串，确保信息可见
-    console.error(
-      `[callAiDirect] AI service 调用失败详情:\n` +
-      `  Provider: ${errorLogInfo.provider}\n` +
-      `  Status: ${errorLogInfo.status}\n` +
-      `  Status Text: ${errorLogInfo.statusText}\n` +
-      `  URL: ${errorLogInfo.url}\n` +
-      `  Base URL: ${errorLogInfo.baseUrl}\n` +
-      `  Error Code: ${errorLogInfo.errorCode}\n` +
-      `  Error Message: ${errorLogInfo.errorMessage}\n` +
-      `  Raw Error: ${errorLogInfo.rawError.substring(0, 200)}`
-    );
-    
+
     // 针对配置不匹配的情况提供更友好的错误提示
-    let userFriendlyMessage = errorMessage;
+    let userFriendlyMessage = detailedMessage;
     if (parsedError?.errorCode === "INTERNAL_ERROR" && detailedMessage.includes("local")) {
       userFriendlyMessage = `配置错误：数据库配置为 "local"，但调用了远程服务。请检查环境变量配置或刷新页面重试。`;
     } else if (parsedError?.errorCode === "INTERNAL_ERROR") {
       // 在生产环境显示友好提示，开发环境显示详细错误
       const isDev = process.env.NODE_ENV === "development";
       userFriendlyMessage = isDev 
-        ? errorMessage
+        ? detailedMessage
         : `AI 服务暂时不可用，请稍后重试。如果问题持续，请联系支持。`;
     }
     
     return {
       ok: false,
       errorCode:
-        response.status === 401
+        status === 401
           ? "AUTH_REQUIRED"
-          : response.status === 403
+          : status === 403
           ? "FORBIDDEN"
           : parsedError?.errorCode || "AI_SERVICE_ERROR",
       message: userFriendlyMessage,
     };
   }
 
-  const data = (await response.json()) as AiClientResponse;
-  
-  // 响应后日志
-  const responseText = data?.data?.answer || "";
-  const responsePreview = responseText.substring(0, 80);
-  console.log("[aiClient.front] response", {
-    status: response.status,
-    lang: lang,
-    responsePreview: responsePreview,
-  });
+  // 解析 JSON 响应（安全模式）
+  let data: AiClientResponse;
+  try {
+    data = JSON.parse(responseText) as AiClientResponse;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[aiClient] 解析 ai-service 响应 JSON 失败", {
+        status,
+        statusText,
+        bodyPreview: responseText.slice(0, 500),
+        error,
+      });
+    }
+    return {
+      ok: false,
+      errorCode: "AI_SERVICE_ERROR",
+      message: "无法解析 AI 服务返回的数据，请稍后重试。",
+    };
+  }
   
   return data;
 }
