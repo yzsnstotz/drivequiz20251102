@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { ensureServiceAuth } from "../middlewares/auth.js";
 import { getRagContext } from "../lib/rag.js";
 import type { LocalAIConfig } from "../lib/config.js";
-import { runScene, type AiServiceConfig } from "../../../ai-service/src/lib/sceneRunner.ts";
+import { runScene, type AiServiceConfig, normalizeRequestedLang, type SupportedLang } from "../../../ai-service/src/lib/sceneRunner.ts";
 import { providerRateLimitMiddleware } from "../lib/rateLimit.js";
 
 // 扩展 FastifyInstance 类型以包含 config
@@ -542,11 +542,19 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
 
         // 5) 使用统一的场景执行模块
         // ⚠️ 注意：所有场景执行逻辑都在 sceneRunner.ts 中，这里只负责调用
-        // ✅ 修复：强制使用 'zh' 作为 locale，因为场景配置只使用中文 prompt
-        const promptLocale = "zh"; // 强制使用中文，避免因缺少其他语言 prompt 导致的错误
-        const userPrefix = lang === "ja" ? "質問：" : lang === "en" ? "Question:" : "问题：";
+        // ✅ 修复：规范化请求语言（基于 lang + 将来可能加的 locale）
+        const requestedLang = normalizeRequestedLang(lang, (request.body as any)?.locale);
+        // promptLocale 等同于最终选择的语言（zh/ja/en）
+        const promptLocale: SupportedLang = requestedLang;
+        // 前缀仍然基于最终语言
+        const userPrefix =
+          promptLocale === "ja" ? "質問：" : promptLocale === "en" ? "Question:" : "问题：";
         const refPrefix =
-          lang === "ja" ? "関連参照：" : lang === "en" ? "Related references:" : "相关参考资料：";
+          promptLocale === "ja"
+            ? "関連参照："
+            : promptLocale === "en"
+            ? "Related references:"
+            : "相关参考资料：";
 
         let sceneResult;
         
@@ -561,6 +569,7 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
             scene,
             locale: promptLocale,
             originalLang: lang,
+            requestedLang,
             sourceLanguage,
             targetLanguage,
             model: config.aiModel,
@@ -576,10 +585,10 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
           };
 
           // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
-          // ✅ 修复：强制使用 'zh' 作为 locale，因为场景配置只使用中文 prompt
+          // ✅ 修复：使用规范化后的语言，不再是写死 "zh"
           sceneResult = await runScene({
             sceneKey: scene,
-            locale: promptLocale, // 强制使用 'zh'
+            locale: promptLocale, // "zh" | "ja" | "en"
             question: normalizedQuestion,
             reference: reference || null,
             userPrefix,

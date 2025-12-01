@@ -265,26 +265,49 @@ async function fetchSceneConfigFromDb(
     }
 
     const sceneConfig = data[0];
-    const lang = locale.toLowerCase().trim();
+    
+    // 规范化请求的语言参数
+    const requestedLang = normalizeRequestedLang(locale, locale);
+    
+    // 根据 requestedLang 和 sceneConfig 选择 prompt
+    let prompt = "";
+    let selectedLang: SupportedLang = "zh";
 
-    // 强制只使用中文 prompt（忽略 locale 参数）
-    // 原因：批量任务处理时，数据库中可能只有中文 prompt，其他语言的 prompt 可能不存在
-    // 为了避免 scene_not_found 错误，统一使用中文 prompt
-    let prompt = sceneConfig.system_prompt_zh;
-    let selectedLang = "zh";
-    
-    // 如果中文 prompt 不存在或为空，记录警告
-    if (!prompt || prompt.trim() === "") {
-      console.warn("[SCENE-RUNNER] 中文 prompt 不存在或为空，使用空字符串:", { sceneKey, locale });
+    // 先尝试用对应语言的 prompt
+    if (requestedLang === "ja" && sceneConfig.system_prompt_ja) {
+      prompt = sceneConfig.system_prompt_ja;
+      selectedLang = "ja";
+    } else if (requestedLang === "en" && sceneConfig.system_prompt_en) {
+      prompt = sceneConfig.system_prompt_en;
+      selectedLang = "en";
+    } else if (sceneConfig.system_prompt_zh) {
+      // 对应语言缺失时降级中文
+      prompt = sceneConfig.system_prompt_zh;
+      selectedLang = "zh";
+      if (requestedLang !== "zh") {
+        console.warn("[SCENE-RUNNER] requested prompt not found, fallback to zh", {
+          sceneKey,
+          requestedLang,
+          hasZhPrompt: !!sceneConfig.system_prompt_zh,
+          hasJaPrompt: !!sceneConfig.system_prompt_ja,
+          hasEnPrompt: !!sceneConfig.system_prompt_en,
+        });
+      }
+    } else {
+      // 所有 prompt 都为空，给出警告但 allow 空 prompt
+      console.warn("[SCENE-RUNNER] all prompts empty, using empty system prompt", {
+        sceneKey,
+        requestedLang,
+      });
       prompt = "";
+      selectedLang = requestedLang;
     }
-    
-    console.log("[SCENE-RUNNER] 使用中文 prompt (locale:", locale, "lang:", lang, ", 强制使用中文)");
 
     const finalPrompt = prompt || "";
-    console.log("[SCENE-RUNNER] 场景配置读取成功:", { 
-      sceneKey, 
-      locale, 
+    console.log("[SCENE-RUNNER] 场景配置读取成功:", {
+      sceneKey,
+      locale,
+      requestedLang,
       selectedLang,
       promptLength: finalPrompt.length,
       promptPreview: finalPrompt.substring(0, 200) + "...",
@@ -338,6 +361,42 @@ async function fetchSceneConfigFromDb(
       throw new Error(errorMsg);
     }
   }
+}
+
+/**
+ * 支持的语言类型
+ */
+export type SupportedLang = "zh" | "ja" | "en";
+
+/**
+ * 规范化请求的语言参数
+ * 将 lang/locale 统一转换为 'zh' | 'ja' | 'en'
+ * 
+ * @param lang 语言参数（如 "zh", "zh-CN", "ja", "ja-JP", "en", "en-US"）
+ * @param locale 区域设置参数（可选，作为 lang 的补充）
+ * @returns 规范化后的语言代码
+ */
+export function normalizeRequestedLang(
+  lang?: string | null,
+  locale?: string | null
+): SupportedLang {
+  const normalize = (v?: string | null): string => (v || "").toLowerCase().trim();
+
+  const l = normalize(lang);
+  const loc = normalize(locale);
+
+  // 1）优先用 lang
+  if (l === "zh" || l === "zh-cn") return "zh";
+  if (l === "ja" || l === "ja-jp") return "ja";
+  if (l === "en" || l === "en-us" || l === "en-gb") return "en";
+
+  // 2）退而用 locale 推断
+  if (loc.startsWith("ja")) return "ja";
+  if (loc.startsWith("en")) return "en";
+  if (loc.startsWith("zh")) return "zh";
+
+  // 3）兜底：中文
+  return "zh";
 }
 
 /**
