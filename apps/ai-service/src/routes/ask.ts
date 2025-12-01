@@ -336,6 +336,9 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           return;
         }
 
+        // ✅ 增强日志：记录语言参数，便于排查语言传递问题
+        app.log.debug({ lang, scene }, "[ask] incoming request lang/scene");
+
         // 记录接收到的参数（注意：不打印完整 question 内容，避免日志爆炸）
         const questionType = typeof question === "string" ? "string" : "object";
         const questionLength = typeof question === "string" 

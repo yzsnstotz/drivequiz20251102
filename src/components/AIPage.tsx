@@ -171,7 +171,7 @@ function getWelcomeMessage(lang: Language): string {
 
 const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
   const { isActivated, showActivationModal } = useAIActivation();
-  const { t, language } = useLanguage();
+  const { t, language, languageReady } = useLanguage();
   
   // 初始化消息历史：使用固定的默认值，避免hydration错误
   // 在SSR和客户端都使用相同的默认值（中文），避免hydration不匹配
@@ -369,6 +369,15 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
     const q = input.trim();
     if (!q || loading) return;
 
+    // ✅ 修复：禁止语言未就绪就发送
+    if (!languageReady) {
+      console.warn('[lang-trace] blocked send: language not ready yet', {
+        language,
+        languageReady,
+      });
+      return;
+    }
+
     // 检查激活状态
     if (!isActivated) {
       showActivationModal();
@@ -469,6 +478,15 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
 
       // 使用用户设置的语言（而不是自动检测）
       const userLocale = languageToLocale(language);
+      
+      // ✅ 日志：记录语言传递链路
+      console.log('[lang-trace] handleSend', {
+        language,
+        languageReady,
+        userLocale,
+        question: q.substring(0, 50),
+        timestamp: new Date().toISOString(),
+      });
       
       console.log("[AIPage] 使用用户设置的语言:", {
         question: q.substring(0, 50),
@@ -605,7 +623,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       // 重新聚焦输入框
       inputRef.current?.focus();
     }
-  }, [input, loading, pushMessage, messages, isActivated, showActivationModal, language, t, currentProvider, currentModel]);
+  }, [input, loading, pushMessage, messages, isActivated, showActivationModal, language, languageReady, t, currentProvider, currentModel]);
 
 
   return (
@@ -870,9 +888,9 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
           <button
             type="button"
             onClick={() => void handleSend()}
-            disabled={loading || input.trim().length === 0}
+            disabled={!languageReady || loading || input.trim().length === 0}
             className={`inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2.5 h-11 transition-colors flex-shrink-0 ${
-              loading || input.trim().length === 0
+              !languageReady || loading || input.trim().length === 0
                 ? "cursor-not-allowed bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                 : "bg-blue-500 dark:bg-blue-500 text-white dark:text-white hover:bg-blue-600 dark:hover:bg-blue-600 active:bg-blue-700 dark:active:bg-blue-700"
             }`}

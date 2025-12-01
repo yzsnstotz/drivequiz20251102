@@ -194,6 +194,13 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
   // 在 try 块外定义，以便在后续日志中使用
   const lang = localeToLang(rest.locale);
   
+  // ✅ 日志：记录语言转换链路
+  console.log('[lang-trace] callAiDirect', {
+    inputLocale: rest.locale,
+    resolvedLang: lang,
+    scene: rest.scene,
+  });
+  
   let response: Response;
   try {
     // 构建请求头
