@@ -55,8 +55,18 @@ type AuthEnvConfig = {
  * @throws Error 生产环境配置不符合要求时抛出错误
  */
 export function getAuthBaseUrl(): string {
+  // 检测是否在构建阶段
+  const IS_BUILD_TIME =
+    typeof process.env.NEXT_PHASE !== "undefined" &&
+    process.env.NEXT_PHASE === "phase-production-build";
+
   const nextAuthUrl = process.env.NEXTAUTH_URL;
   const authUrl = process.env.AUTH_URL ?? nextAuthUrl;
+
+  // 构建阶段：返回默认值，跳过所有校验
+  if (IS_BUILD_TIME) {
+    return authUrl || nextAuthUrl || "http://localhost:3000";
+  }
 
   // v4: 精简日志 - 只在启动时输出一次配置快照
   if (isProduction) {

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 
+// 强制动态渲染，防止构建时收集数据
+export const dynamic = "force-dynamic";
+
 // 检测是否在构建阶段
 const IS_BUILD_TIME =
   typeof process.env.NEXT_PHASE !== "undefined" &&

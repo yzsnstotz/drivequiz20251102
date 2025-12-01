@@ -898,7 +898,8 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 } else if (opt && typeof opt === 'object') {
                   // 多语言对象，使用指定语言或中文
                   const targetLang = locale && locale !== 'zh' ? locale : 'zh';
-                  const optText = (opt[targetLang] || opt.zh || '').toLowerCase();
+                  const optObj = opt as { zh?: string; en?: string; ja?: string; [key: string]: string | undefined };
+                  const optText = (optObj[targetLang] || optObj.zh || '').toLowerCase();
                   return optText.includes(searchLower);
                 }
                 return false;

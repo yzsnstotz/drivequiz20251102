@@ -109,7 +109,8 @@ export function clearAllCache(): void {
 if (typeof window !== "undefined") {
   setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of cache.entries()) {
+    // 使用 Array.from 兼容 ES5 target
+    for (const [key, entry] of Array.from(cache.entries())) {
       // 只清理已过期且无pending请求的缓存项
       if (entry.expiresAt < now && !entry.promise) {
         cache.delete(key);

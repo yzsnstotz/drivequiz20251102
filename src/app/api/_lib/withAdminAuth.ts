@@ -34,7 +34,8 @@ const ADMIN_CACHE_TTL_MS = 10_000; // 10秒
 // 定期清理过期缓存（每30秒清理一次）
 setInterval(() => {
   const now = Date.now();
-  for (const [token, cached] of adminTokenCache.entries()) {
+  // 使用 Array.from 兼容 ES5 target
+  for (const [token, cached] of Array.from(adminTokenCache.entries())) {
     if (cached.expiresAt < now) {
       adminTokenCache.delete(token);
     }

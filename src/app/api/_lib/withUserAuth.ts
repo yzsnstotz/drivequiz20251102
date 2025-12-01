@@ -39,12 +39,13 @@ const ACTIVATION_CACHE_TTL_MS = 60_000; // 60秒
 // 定期清理过期缓存（每30秒清理一次）
 setInterval(() => {
   const now = Date.now();
-  for (const [token, cached] of userTokenCache.entries()) {
+  // 使用 Array.from 兼容 ES5 target
+  for (const [token, cached] of Array.from(userTokenCache.entries())) {
     if (cached.expiresAt < now) {
       userTokenCache.delete(token);
     }
   }
-  for (const [token, cached] of activationTokenCache.entries()) {
+  for (const [token, cached] of Array.from(activationTokenCache.entries())) {
     if (cached.expiresAt < now) {
       activationTokenCache.delete(token);
     }

@@ -35,6 +35,11 @@ function err(errorCode: string, message: string, status = 400) {
  * 检查当前用户的激活状态
  * 支持Session和JWT两种认证方式
  */
+// 检测是否在构建阶段
+const IS_BUILD_TIME =
+  typeof process.env.NEXT_PHASE !== "undefined" &&
+  process.env.NEXT_PHASE === "phase-production-build";
+
 // ✅ 修复：日志节流，每 5 秒最多打一次，避免刷屏
 let lastActivationLogAt: number | null = null;
 function diagActivationLog() {
@@ -46,6 +51,18 @@ function diagActivationLog() {
 }
 
 export async function GET(request: NextRequest) {
+  // 构建阶段不做任何 DB 读写，直接返回一个安全的占位响应
+  if (IS_BUILD_TIME) {
+    return NextResponse.json(
+      {
+        ok: true,
+        data: { valid: false, reasonCode: "BUILD_TIME_STUB" },
+        buildTimeStub: true,
+      },
+      { status: 200 }
+    );
+  }
+
   // ✅ 修复：添加计数型日志，便于观察请求频次（节流：每 5 秒最多打一次）
   diagActivationLog();
 
