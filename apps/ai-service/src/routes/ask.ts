@@ -32,6 +32,9 @@ type AskBody = {
   sourceLanguage?: string;
   // 目标语言（用于翻译场景）
   targetLanguage?: string;
+  // 对话历史（可选）
+  messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  maxHistory?: number;
 };
 
 /** 响应体类型 */
@@ -173,6 +176,38 @@ function parseAndValidateBody(body: unknown): {
   };
 }
 
+/**
+ * 处理对话历史，限制长度并过滤无效消息
+ * 与 local-ai-service 的 processHistory 保持行为一致
+ */
+function sanitizeMessages(
+  raw: any,
+  maxHistory: number = 10
+): Array<{ role: "system" | "user" | "assistant"; content: string }> {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  // 过滤无效消息
+  const valid = raw.filter(
+    (msg) =>
+      msg &&
+      (msg.role === "user" || msg.role === "assistant" || msg.role === "system") &&
+      typeof msg.content === "string" &&
+      msg.content.trim().length > 0
+  );
+
+  // 去掉多余 system（只保留第一个），与 local processHistory 保持设计一致
+  const systemMessages = valid.filter((msg) => msg.role === "system");
+  const nonSystemMessages = valid.filter((msg) => msg.role !== "system");
+
+  const recent = nonSystemMessages.slice(-maxHistory);
+
+  const systemHead = systemMessages.length > 0 ? [systemMessages[0]] : [];
+
+  return [...systemHead, ...recent];
+}
+
 /** 生成缓存 Key（包含语言、模型和场景，避免跨配置命中） */
 export function buildCacheKey(question: string, lang: string, model: string, scene?: string | null, sourceLanguage?: string | null, targetLanguage?: string | null): string {
   const parts = [
@@ -220,6 +255,11 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
           });
           return;
         }
+
+        // 2.5) 处理对话历史
+        const rawBody = request.body as any;
+        const maxHistory = typeof rawBody.maxHistory === "number" && rawBody.maxHistory > 0 ? rawBody.maxHistory : 10;
+        const history = sanitizeMessages(rawBody.messages, maxHistory);
 
         // 记录接收到的参数（注意：不打印完整 question 内容，避免日志爆炸）
         const questionType = typeof question === "string" ? "string" : "object";
@@ -360,6 +400,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             targetLanguage,
             model,
             aiProvider,
+            historyCount: history.length,
           });
           
           // ✅ 修复：使用 normalizedQuestion 传递给 runScene（确保 prompt 构建正确）
@@ -383,6 +424,7 @@ export default async function askRoute(app: FastifyInstance): Promise<void> {
             sourceLanguage: sourceLanguage || null,
             targetLanguage: targetLanguage || null,
             temperature: 0.4,
+            messages: history, // 新增：对话历史
           });
             
           // 从 sceneResult 中获取 tokens 信息（如果可用）

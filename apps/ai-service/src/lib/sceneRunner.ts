@@ -75,6 +75,11 @@ export interface RunSceneOptions {
   temperature?: number;
   // 场景配置读取超时（可选，默认根据 providerKind 决定）
   sceneConfigTimeoutMs?: number;
+  // 对话历史（在路由层做基础过滤，这里假定格式已规范）
+  messages?: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }>;
 }
 
 /**
@@ -451,25 +456,49 @@ export function buildMessages(opts: {
   refPrefix: string;
   reference?: string | null;
   sceneKey?: string; // 场景标识，用于判断是否需要特殊处理
+  // 新增：对话历史（已过滤，role = user/assistant/system）
+  messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
 }): Array<{ role: "system" | "user" | "assistant"; content: string }> {
-  const { sysPrompt, userPrefix, question, refPrefix, reference, sceneKey } = opts;
-  
-  // 对于翻译和润色场景，直接使用 question 作为用户消息，不添加前缀和 RAG 上下文
+  const { sysPrompt, userPrefix, question, refPrefix, reference, sceneKey, messages } = opts;
+
+  // 翻译/润色场景：仍然不使用历史，保持原有逻辑
   if (sceneKey === "question_translation" || sceneKey === "question_polish") {
     return [
       { role: "system", content: sysPrompt },
       { role: "user", content: question },
     ];
   }
-  
-  // 其他场景：使用问答格式，包含 RAG 上下文
-  return [
-    { role: "system", content: sysPrompt },
-    {
-      role: "user",
-      content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
-    },
-  ];
+
+  // 其他场景：system + 历史 + 当前用户问题（含 RAG 引用）
+  const finalMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
+
+  // 1) system prompt：始终使用当前语言的 sysPrompt 覆盖历史中的 system
+  finalMessages.push({ role: "system", content: sysPrompt });
+
+  // 2) 历史对话：只保留 user/assistant 的内容，避免旧 system 混入
+  if (messages && messages.length > 0) {
+    for (const msg of messages) {
+      if (
+        msg &&
+        typeof msg.content === "string" &&
+        msg.content.trim().length > 0 &&
+        (msg.role === "user" || msg.role === "assistant")
+      ) {
+        finalMessages.push({
+          role: msg.role,
+          content: msg.content,
+        });
+      }
+    }
+  }
+
+  // 3) 当前用户问题 + RAG 引用
+  finalMessages.push({
+    role: "user",
+    content: `${userPrefix} ${question}\n\n${refPrefix}\n${reference || "（無/None）"}`,
+  });
+
+  return finalMessages;
 }
 
 /**
@@ -754,6 +783,7 @@ export async function runScene(
     sourceLanguage,
     targetLanguage,
     temperature = 0.4,
+    messages, // 新增：解构对话历史
   } = options;
 
   console.log("[SCENE-RUNNER] 开始执行场景:", {
@@ -793,13 +823,14 @@ export async function runScene(
   const sysPrompt = replacePlaceholders(sceneConfig.prompt, sourceLanguage || undefined, targetLanguage || undefined);
 
   // 3. 构建消息
-  const messages = buildMessages({
+  const messagesForModel = buildMessages({
     sysPrompt,
     userPrefix,
     question,
     refPrefix,
     reference,
     sceneKey, // 传递场景标识，用于判断是否需要特殊处理
+    messages, // 把历史传进去
   });
 
   // 4. 确定 response_format
@@ -811,7 +842,7 @@ export async function runScene(
     model: providerKind === "openai" ? model : ollamaModel,
     hasResponseFormat: !!responseFormat,
     responseFormat,
-    messageCount: messages.length,
+    messageCount: messagesForModel.length,
     sysPromptLength: sysPrompt.length,
     sysPromptPreview: sysPrompt.substring(0, 200) + "...",
   });
@@ -823,7 +854,7 @@ export async function runScene(
     
   const modelResponse = await callModelWithProvider(providerKind, {
     model: actualModel,
-    messages,
+    messages: messagesForModel,
     responseFormat,
     serviceConfig: options.serviceConfig,
     aiProvider,

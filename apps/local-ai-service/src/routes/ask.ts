@@ -574,6 +574,7 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
             targetLanguage,
             model: config.aiModel,
             timeoutMs,
+            historyCount: history.length,
           });
           
           // 构建 AiServiceConfig（最小接口）
@@ -609,7 +610,8 @@ export default async function askRoute(app: FastifyInstance, options: { prefix?:
             sourceLanguage: sourceLanguage || null,
             targetLanguage: targetLanguage || null,
             temperature: 0.4,
-            sceneConfigTimeoutMs: timeoutMs
+            sceneConfigTimeoutMs: timeoutMs,
+            messages: history, // 新增：对话历史
           });
         } catch (e) {
           const error = e as Error & { statusCode?: number; code?: string; status?: number };
