@@ -744,6 +744,14 @@ export interface Database {
 // 延迟初始化以避免构建时检查
 // ------------------------------------------------------------
 
+// ✅ 修复：使用 globalThis 确保连接池在进程级别是单例（避免 dev 模式热更新时反复创建）
+declare global {
+  // eslint-disable-next-line no-var
+  var __DB_POOL__: Pool | undefined;
+  // eslint-disable-next-line no-var
+  var __DB_INSTANCE__: Kysely<Database> | undefined;
+}
+
 let dbInstance: Kysely<Database> | null = null;
 let dbPool: Pool | null = null;
 
@@ -834,21 +842,21 @@ function buildPoolConfigFromConnectionString(connectionString: string): PoolConf
   return config;
 }
 
-function createDbInstance(): Kysely<Database> {
+/**
+ * ✅ 修复：创建连接池（使用 globalThis 单例，避免 dev 模式热更新时反复创建）
+ */
+function createPool(): Pool {
+  // 检查是否已有全局连接池
+  if (global.__DB_POOL__) {
+    return global.__DB_POOL__;
+  }
+
   // 获取连接字符串（如果不存在会返回占位符）
   const connectionString = getConnectionString();
 
-  // 检查是否是占位符连接字符串
-  const isPlaceholder = connectionString === 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
-  
-  // 如果是占位符，返回占位符数据库对象
-  if (isPlaceholder) {
-    return createPlaceholderDb();
-  }
-
   // 验证连接字符串存在
-  if (!connectionString) {
-    throw new Error("[DB][Config] DATABASE_URL is not set");
+  if (!connectionString || connectionString === 'postgresql://placeholder:placeholder@placeholder:5432/placeholder') {
+    throw new Error("[DB][Config] DATABASE_URL is not set or is placeholder");
   }
 
   // 仅在开发环境记录配置日志
@@ -862,9 +870,17 @@ function createDbInstance(): Kysely<Database> {
   // 从连接字符串显式解析配置，彻底无视任何 PGHOST 等环境变量
   const poolConfig = buildPoolConfigFromConnectionString(connectionString);
 
-  // 创建 Pool 实例并传递给 PostgresDialect
+  // 创建 Pool 实例
   const pool = new Pool(poolConfig);
+  
+  // ✅ 修复：保存到 globalThis，确保单例
+  global.__DB_POOL__ = pool;
   dbPool = pool; // 保存 Pool 实例以便后续获取统计信息
+
+  // ✅ 修复：仅在创建 Pool 时打一条日志，不在每次连接借/还时打日志
+  if (process.env.NODE_ENV === "development") {
+    console.log('[DB Pool] Pool created');
+  }
 
   // 添加连接池错误处理
   pool.on('error', (err) => {
@@ -891,14 +907,6 @@ function createDbInstance(): Kysely<Database> {
     }
   });
 
-  // 添加连接终止监听，确保连接正确释放
-  pool.on('remove', (client) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[DB Pool] Client removed from pool');
-    }
-    // 客户端在 remove 事件中已经被移除，无需额外处理
-  });
-
   // 添加连接错误监听，捕获未处理的连接错误
   pool.on('connect', (client) => {
     client.on('error', (err) => {
@@ -911,23 +919,42 @@ function createDbInstance(): Kysely<Database> {
     });
   });
 
-  // 添加连接池连接事件监听（开发环境）
-  if (process.env.NODE_ENV === 'development') {
-    pool.on('connect', () => {
-      console.log('[DB Pool] New client connected');
-    });
-    pool.on('remove', () => {
-      console.log('[DB Pool] Client removed from pool');
-    });
+  return pool;
+}
+
+function createDbInstance(): Kysely<Database> {
+  // ✅ 修复：检查是否已有全局数据库实例
+  if (global.__DB_INSTANCE__) {
+    return global.__DB_INSTANCE__;
   }
+
+  // 获取连接字符串（如果不存在会返回占位符）
+  const connectionString = getConnectionString();
+
+  // 检查是否是占位符连接字符串
+  const isPlaceholder = connectionString === 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
+  
+  // 如果是占位符，返回占位符数据库对象
+  if (isPlaceholder) {
+    return createPlaceholderDb();
+  }
+
+  // ✅ 修复：使用全局单例连接池
+  const pool = createPool();
 
   const dialect = new PostgresDialect({
     pool,
   });
 
-  return new Kysely<Database>({
+  const instance = new Kysely<Database>({
     dialect,
   });
+
+  // ✅ 修复：保存到 globalThis，确保单例
+  global.__DB_INSTANCE__ = instance;
+  dbInstance = instance;
+
+  return instance;
 }
 
 // 创建一个占位符对象，用于构建时
@@ -1022,8 +1049,8 @@ export const db = new Proxy({} as Kysely<Database>, {
       return value;
     }
     
-    // 运行时且环境变量存在时，才真正创建数据库连接
-    if (!dbInstance) {
+    // ✅ 修复：运行时且环境变量存在时，才真正创建数据库连接（使用全局单例）
+    if (!global.__DB_INSTANCE__) {
       try {
         dbInstance = createDbInstance();
       } catch (error) {
@@ -1033,9 +1060,13 @@ export const db = new Proxy({} as Kysely<Database>, {
         return createPlaceholderDb()[prop as keyof Kysely<Database>];
       }
     }
-    const value = dbInstance[prop as keyof Kysely<Database>];
+    const instance = global.__DB_INSTANCE__ || dbInstance;
+    if (!instance) {
+      return createPlaceholderDb()[prop as keyof Kysely<Database>];
+    }
+    const value = instance[prop as keyof Kysely<Database>];
     if (typeof value === 'function') {
-      return value.bind(dbInstance);
+      return value.bind(instance);
     }
     return value;
   }
@@ -1062,13 +1093,16 @@ export type PoolStats = {
 };
 
 export function getDbPoolStats(): PoolStats | null {
-  if (!dbPool) {
+  // ✅ 修复：使用全局单例连接池
+  const pool = global.__DB_POOL__ || dbPool;
+  
+  if (!pool) {
     // 如果 Pool 还没有创建，尝试初始化数据库实例
     try {
       // 触发数据库实例创建（这会创建 Pool）
       const _ = db;
       // 如果还是 null，说明可能是占位符或构建时
-      if (!dbPool) {
+      if (!global.__DB_POOL__ && !dbPool) {
         return null;
       }
     } catch (err) {
@@ -1076,11 +1110,16 @@ export function getDbPoolStats(): PoolStats | null {
       return null;
     }
   }
+  
+  const poolToUse = global.__DB_POOL__ || dbPool;
+  if (!poolToUse) {
+    return null;
+  }
 
   try {
     // pg Pool 对象的属性（使用私有属性或公共属性）
     // 注意：pg Pool 可能使用不同的属性名，这里尝试多种方式
-    const poolAny = dbPool as any;
+    const poolAny = poolToUse as any;
     
     // 尝试获取连接池统计信息
     // pg Pool 可能使用以下属性：

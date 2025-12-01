@@ -22,8 +22,27 @@ export interface AdminInfo {
 // 缓存当前请求的 AdminInfo（避免重复查询）
 const adminInfoCache = new WeakMap<NextRequest, AdminInfo | null>();
 
+// ✅ 修复：模块级缓存（TTL 10秒），避免跨请求重复查询
+interface CachedAdminInfo {
+  admin: AdminInfo;
+  expiresAt: number;
+}
+
+const adminTokenCache = new Map<string, CachedAdminInfo>();
+const ADMIN_CACHE_TTL_MS = 10_000; // 10秒
+
+// 定期清理过期缓存（每30秒清理一次）
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, cached] of adminTokenCache.entries()) {
+    if (cached.expiresAt < now) {
+      adminTokenCache.delete(token);
+    }
+  }
+}, 30_000);
+
 export async function getAdminInfo(req: NextRequest): Promise<AdminInfo | null> {
-  // 检查缓存
+  // 检查请求级别缓存
   if (adminInfoCache.has(req)) {
     return adminInfoCache.get(req) || null;
   }
@@ -38,6 +57,13 @@ export async function getAdminInfo(req: NextRequest): Promise<AdminInfo | null> 
   if (!token) {
     adminInfoCache.set(req, null);
     return null;
+  }
+
+  // ✅ 修复：先检查模块级缓存
+  const cached = adminTokenCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    adminInfoCache.set(req, cached.admin);
+    return cached.admin;
   }
 
   try {
@@ -57,6 +83,20 @@ export async function getAdminInfo(req: NextRequest): Promise<AdminInfo | null> 
         }
       : null;
 
+    // ✅ 修复：缓存结果（包括空结果，避免暴力探测）
+    if (adminInfo) {
+      adminTokenCache.set(token, {
+        admin: adminInfo,
+        expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+      });
+    } else {
+      // 缓存空结果，TTL 稍短（5秒）
+      adminTokenCache.set(token, {
+        admin: null as any, // 类型兼容，实际不会使用
+        expiresAt: Date.now() + 5_000,
+      });
+    }
+
     adminInfoCache.set(req, adminInfo);
     return adminInfo;
   } catch (error) {
@@ -72,64 +112,46 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
   return (async (req: NextRequest, ...rest: any[]) => {
     const requestPath = req.url || req.nextUrl?.pathname || "unknown";
     console.log(`[AdminAuth] Request received: ${req.method} ${requestPath}`);
-    const authHeader = req.headers.get("authorization");
     
-    // 如果没有 Authorization header，返回 401 AUTH_REQUIRED
-    if (!authHeader) {
-      console.warn(`[AdminAuth] Missing Authorization header for ${requestPath}`);
-      return unauthorized("Missing Authorization header");
-    }
+    // ✅ 修复：统一调用 getAdminInfo，不再直接查询数据库
+    const adminInfo = await getAdminInfo(req);
 
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) {
-      console.warn("[AdminAuth] Empty token");
-      return unauthorized("Empty token");
+    if (!adminInfo) {
+      const authHeader = req.headers.get("authorization");
+      if (!authHeader) {
+        console.warn(`[AdminAuth] Missing Authorization header for ${requestPath}`);
+        return unauthorized("Missing Authorization header");
+      }
+      const token = authHeader.replace("Bearer ", "").trim();
+      if (!token) {
+        console.warn("[AdminAuth] Empty token");
+        return unauthorized("Empty token");
+      }
+      console.warn("[AdminAuth] Invalid or inactive admin token");
+      return forbidden("Invalid or inactive admin token");
     }
 
     try {
-      // 从数据库查询管理员信息
-      const admin = await db
-        .selectFrom("admins")
-        .select(["id", "username", "token", "is_active"])
-        .where("token", "=", token)
-        .where("is_active", "=", true)
-        .executeTakeFirst();
-
-      if (!admin) {
-        console.warn("[AdminAuth] Invalid or inactive admin token");
-        return forbidden("Invalid or inactive admin token");
-      }
-
-      // 缓存 AdminInfo 供后续使用
-      const adminInfo: AdminInfo = {
-        id: admin.id,
-        username: admin.username,
-        token: admin.token,
-        is_active: admin.is_active,
-      };
-      adminInfoCache.set(req, adminInfo);
-
-      console.log(`[AdminAuth] Authentication successful for ${requestPath}, admin: ${admin.username}`);
+      console.log(`[AdminAuth] Authentication successful for ${requestPath}, admin: ${adminInfo.username}`);
       return handler(req, ...rest);
     } catch (error) {
-      console.error("[AdminAuth] Database error:", error);
+      console.error("[AdminAuth] Handler error:", error);
       
       // 提供更详细的错误信息
-      let errorCode = "DATABASE_ERROR";
-      let message = "Failed to verify admin token";
+      let errorCode = "HANDLER_ERROR";
+      let message = "Handler execution failed";
       let details: Record<string, unknown> = {};
 
       if (error instanceof Error) {
         const errorMessage = error.message;
         const errorStack = error.stack;
 
-        // 检查是否是表不存在错误
+        // 检查是否是数据库相关错误
         if (errorMessage.includes("relation") && errorMessage.includes("does not exist")) {
           errorCode = "DATABASE_TABLE_NOT_FOUND";
-          message = "admins 表不存在，请运行数据库迁移脚本";
+          message = "数据库表不存在，请运行数据库迁移脚本";
           details = {
             hint: "运行迁移脚本: npm run db:migrate 或 tsx scripts/init-cloud-database.ts",
-            table: "admins",
           };
         }
         // 检查是否是连接错误
@@ -143,31 +165,7 @@ export function withAdminAuth<T extends (...args: any[]) => Promise<Response>>(
             hasPostgresUrl: !!process.env.POSTGRES_URL,
           };
         }
-        // 检查是否是认证错误
-        else if (errorMessage.includes("password") || errorMessage.includes("authentication")) {
-          errorCode = "DATABASE_AUTH_ERROR";
-          message = "数据库认证失败，请检查密码";
-          details = {
-            hint: "检查 DATABASE_URL 中的密码是否正确",
-          };
-        }
-        // 检查是否是SSL错误
-        else if (errorMessage.includes("SSL") || errorMessage.includes("ssl")) {
-          errorCode = "DATABASE_SSL_ERROR";
-          message = "数据库 SSL 连接错误";
-          details = {
-            hint: "Supabase 数据库需要使用 SSL 连接，请检查连接字符串是否包含 sslmode=require",
-          };
-        }
-        // 检查是否是超时错误
-        else if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
-          errorCode = "DATABASE_TIMEOUT";
-          message = "数据库查询超时";
-          details = {
-            hint: "数据库可能负载过高或网络连接不稳定",
-          };
-        }
-        // 其他数据库错误
+        // 其他错误
         else {
           details = {
             errorMessage,

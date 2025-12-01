@@ -22,7 +22,8 @@ import {
   LogIn,
   LogOut,
 } from "lucide-react";
-import { useSession, signOut } from "next-auth/react";
+import { useAppSession } from "@/contexts/SessionContext";
+import { signOut } from "next-auth/react";
 import MerchantAdCarousel from "@/components/MerchantAdCarousel";
 import SplashScreenAd from "@/components/SplashScreenAd";
 import PopupAd from "@/components/PopupAd";
@@ -77,7 +78,7 @@ type AdSlotConfig = {
 
 export default function HomePage() {
   const { language, setLanguage, t } = useLanguage();
-  const { data: session, status } = useSession();
+  const { data: session, status } = useAppSession();
   const { isActivated } = useAIActivation();
   const router = useRouter();
   const [savedLicensePreference, setSavedLicensePreference] = useState<{ licenseType: string; stage: string } | null>(null);

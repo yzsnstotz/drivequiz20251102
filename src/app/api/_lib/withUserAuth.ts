@@ -18,6 +18,39 @@ export interface UserInfo {
  */
 const userInfoCache = new WeakMap<NextRequest, UserInfo | null>();
 
+// ✅ 修复：模块级缓存（TTL 5秒），避免跨请求重复查询
+interface CachedUserInfo {
+  userInfo: UserInfo;
+  expiresAt: number;
+}
+
+const userTokenCache = new Map<string, CachedUserInfo>();
+const USER_CACHE_TTL_MS = 5_000; // 5秒
+
+// ✅ 修复：激活 token 缓存（TTL 60秒）
+interface CachedActivationInfo {
+  userInfo: UserInfo;
+  expiresAt: number;
+}
+
+const activationTokenCache = new Map<string, CachedActivationInfo>();
+const ACTIVATION_CACHE_TTL_MS = 60_000; // 60秒
+
+// 定期清理过期缓存（每30秒清理一次）
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, cached] of userTokenCache.entries()) {
+    if (cached.expiresAt < now) {
+      userTokenCache.delete(token);
+    }
+  }
+  for (const [token, cached] of activationTokenCache.entries()) {
+    if (cached.expiresAt < now) {
+      activationTokenCache.delete(token);
+    }
+  }
+}, 30_000);
+
 /**
  * 获取用户认证信息
  * 支持多种认证方式：
@@ -32,13 +65,14 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
     return userInfoCache.get(req) || null;
   }
 
-  // 优先检查NextAuth session
+  // ✅ 修复：优先检查NextAuth session（最多调用一次 auth()）
   try {
     const session = await auth();
     if (session?.user?.id) {
       const userId = session.user.id.toString();
       // ⚠️ 注意：user.id 现在是字符串类型（UUID），不再使用 parseInt
       // userDbId 现在也是字符串类型，与 userId 相同
+      // ✅ 修复：NextAuth session 已包含用户信息，不需要再查询数据库
       const userInfo: UserInfo = {
         userId,
         userDbId: userId, // ✅ 现在 userDbId 也是字符串类型
@@ -114,9 +148,16 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
       if (parts.length >= 3 && parts[0] === "act") {
         const activationId = parseInt(parts[parts.length - 1], 16);
         if (!isNaN(activationId) && activationId > 0) {
+          // ✅ 修复：先检查激活 token 缓存
+          const cached = activationTokenCache.get(jwt);
+          if (cached && cached.expiresAt > Date.now()) {
+            userInfoCache.set(req, cached.userInfo);
+            return cached.userInfo;
+          }
+
           const userId = `act-${activationId}`;
           
-          // 尝试从数据库获取用户ID
+          // ✅ 修复：尝试从数据库获取用户ID（最多一次查询）
           try {
             const activation = await db
               .selectFrom("activations")
@@ -136,6 +177,11 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
                   userId: user.userid || userId,
                   userDbId: user.id.toString(), // ✅ user.id 现在是字符串类型
                 };
+                // ✅ 修复：缓存激活 token 结果
+                activationTokenCache.set(jwt, {
+                  userInfo,
+                  expiresAt: Date.now() + ACTIVATION_CACHE_TTL_MS,
+                });
                 userInfoCache.set(req, userInfo);
                 return userInfo;
               }
@@ -148,6 +194,11 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
           const userInfo: UserInfo = {
             userId,
           };
+          // ✅ 修复：缓存空结果（避免重复查询）
+          activationTokenCache.set(jwt, {
+            userInfo,
+            expiresAt: Date.now() + ACTIVATION_CACHE_TTL_MS,
+          });
           userInfoCache.set(req, userInfo);
           return userInfo;
         }
@@ -222,7 +273,14 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
       return null;
     }
 
-    // 尝试从数据库获取用户ID
+    // ✅ 修复：先检查 JWT token 缓存
+    const cached = userTokenCache.get(jwt);
+    if (cached && cached.expiresAt > Date.now()) {
+      userInfoCache.set(req, cached.userInfo);
+      return cached.userInfo;
+    }
+
+    // ✅ 修复：尝试从数据库获取用户ID（最多一次查询）
     try {
       const user = await db
         .selectFrom("users")
@@ -235,6 +293,11 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
           userId: user.userid || userId,
           userDbId: user.id.toString(), // ✅ user.id 现在是字符串类型
         };
+        // ✅ 修复：缓存 JWT token 结果
+        userTokenCache.set(jwt, {
+          userInfo,
+          expiresAt: Date.now() + USER_CACHE_TTL_MS,
+        });
         userInfoCache.set(req, userInfo);
         return userInfo;
       }
@@ -242,9 +305,14 @@ export async function getUserInfo(req: NextRequest): Promise<UserInfo | null> {
       console.error("[UserAuth] Failed to fetch user from database", (e as Error).message);
     }
 
+    // ✅ 修复：即使用户不存在，也缓存结果（避免重复查询）
     const userInfo: UserInfo = {
       userId,
     };
+    userTokenCache.set(jwt, {
+      userInfo,
+      expiresAt: Date.now() + USER_CACHE_TTL_MS,
+    });
     userInfoCache.set(req, userInfo);
     return userInfo;
   } catch (e) {

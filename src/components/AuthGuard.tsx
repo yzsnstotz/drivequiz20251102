@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useAppSession } from "@/contexts/SessionContext";
 
 /**
  * 客户端认证守卫组件
@@ -13,7 +13,7 @@ const LICENSE_PREFERENCE_CHECKED_KEY = 'license_preference_checked';
 const LICENSE_PREFERENCE_SKIPPED_KEY = 'license_preference_skipped';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useAppSession();
   const router = useRouter();
   const pathname = usePathname();
   const hasCheckedRef = useRef(false);

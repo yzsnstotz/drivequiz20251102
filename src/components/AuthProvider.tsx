@@ -2,6 +2,7 @@
 
 import { SessionProvider } from "next-auth/react";
 import { ReactNode } from "react";
+import { AppSessionProvider } from "@/contexts/SessionContext";
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -14,7 +15,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
       refetchInterval={0}
       refetchOnWindowFocus={false}
     >
-      {children}
+      <AppSessionProvider>{children}</AppSessionProvider>
     </SessionProvider>
   );
 }

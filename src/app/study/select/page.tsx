@@ -6,7 +6,7 @@ import { ChevronLeft, X } from "lucide-react";
 import LicenseTypeSelector from "../components/LicenseTypeSelector";
 import StageSelector from "../components/StageSelector";
 import { useLanguage } from "@/lib/i18n";
-import { useSession } from "next-auth/react";
+import { useAppSession } from "@/contexts/SessionContext";
 
 const LICENSE_PREFERENCE_SKIPPED_KEY = 'license_preference_skipped';
 
@@ -14,7 +14,7 @@ function LicenseSelectContent() {
   const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session } = useSession();
+  const { data: session } = useAppSession();
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedLicenseType, setSelectedLicenseType] = useState<string | null>(
     null

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { User, XSquare, Settings, Edit2, Trophy, BookOpen, Star, Info, ChevronDown, ChevronUp, Mail, Globe, Shield, Bell, Moon, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/lib/i18n';
-import { useSession } from 'next-auth/react';
+import { useAppSession } from '@/contexts/SessionContext';
 import { apiFetch } from '@/lib/apiClient.front';
 import ActivationStatusCard from '@/components/ActivationStatusCard';
 
@@ -36,7 +36,7 @@ interface ProfileData {
 
 function ProfilePage() {
   const { t, language, setLanguage: setLanguageContext } = useLanguage();
-  const { data: session } = useSession();
+  const { data: session } = useAppSession();
   const [nickname, setNickname] = useState('User');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');

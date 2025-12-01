@@ -184,7 +184,7 @@ async function checkProviderHealth(provider: HeartbeatProvider): Promise<Provide
  * GET /api/admin/ai/heartbeat
  * 同时检查 local 和 render 两个 AI 服务的健康状态
  */
-const handler = async (req: NextRequest): Promise<NextResponse> => {
+export const GET = withAdminAuth(async (req: NextRequest): Promise<NextResponse> => {
   try {
     const checkedAt = new Date().toISOString();
     const providers: HeartbeatProvider[] = ["local", "render"];
@@ -204,7 +204,4 @@ const handler = async (req: NextRequest): Promise<NextResponse> => {
       err instanceof Error ? err.message : "Unexpected error",
     );
   }
-};
-
-// 通过 withAdminAuth 包装导出
-export const GET = withAdminAuth(handler);
+});

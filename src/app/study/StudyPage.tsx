@@ -7,13 +7,13 @@ import StageSelector from "./components/StageSelector";
 import ModeSelector from "./components/ModeSelector";
 import { useLanguage } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useAppSession } from "@/contexts/SessionContext";
 import { getLicenseTypeLabel } from "@/lib/licenseTypeLabels";
 
 export default function StudyPage() {
   const { t, language } = useLanguage();
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session } = useAppSession();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedLicenseType, setSelectedLicenseType] = useState<string | null>(
     null

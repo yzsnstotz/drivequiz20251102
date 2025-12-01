@@ -804,6 +804,13 @@ async function processBatchAsync(
     `[BatchProcess] [${requestId}] 过滤后题目数量: ${questions.length}`,
   );
 
+  // ✅ 修复：将题目转换为 Map，用于快速查找（避免循环内重复查询）
+  const questionsById = new Map<number, typeof questions[0]>();
+  for (const question of questions) {
+    questionsById.set(question.id, question);
+  }
+  console.log(`[BatchProcess] [${requestId}] 已创建题目 Map，共 ${questionsById.size} 个题目`);
+
   // ✅ 修复 Task 4：子任务管理辅助函数
   // 创建子任务记录
   const createTaskItem = async (
@@ -1332,35 +1339,40 @@ async function processBatchAsync(
           
           console.log(`[BatchProcess] [${requestId}] 正在进行题目ID ${question.id} 的${operationName}任务`);
 
-          // ✅ 修复：在执行每个操作前，重新从数据库获取最新的 explanation（如果 fill_missing 已经更新了它）
-          // 对于 translate 操作，同时获取 content 和 explanation，避免重复查询
-          const needsContent = operation === "translate";
-          const currentQuestion = await db
-            .selectFrom("questions")
-            .select(needsContent ? ["explanation", "content"] : ["explanation"])
-            .where("id", "=", question.id)
-            .executeTakeFirst();
-          
-          if (currentQuestion?.explanation) {
-            if (typeof currentQuestion.explanation === "string") {
-              explanation = currentQuestion.explanation;
-            } else if (typeof currentQuestion.explanation === "object" && currentQuestion.explanation !== null) {
-              explanation = currentQuestion.explanation.zh || explanation;
+          // ✅ 修复：从内存 Map 获取题目数据，避免重复查询数据库
+          // 注意：如果 fill_missing 更新了 explanation，会在保存后更新 Map
+          const cachedQuestion = questionsById.get(question.id);
+          if (!cachedQuestion) {
+            console.error(`[BatchProcess] [${requestId}] 题目 ${question.id} 不在 Map 中，跳过`);
+            continue;
+          }
+
+          // ✅ 修复：使用 Map 中的最新数据（如果之前有操作更新了它）
+          // 对于 fill_missing 操作，会在保存后更新 Map，所以这里获取的是最新数据
+          if (cachedQuestion.explanation) {
+            if (typeof cachedQuestion.explanation === "string") {
+              explanation = cachedQuestion.explanation;
+            } else if (typeof cachedQuestion.explanation === "object" && cachedQuestion.explanation !== null) {
+              explanation = cachedQuestion.explanation.zh || explanation;
             }
           }
 
-          // ✅ 修复：如果查询了 content，更新本地的 content 变量（用于翻译操作）
-          if (needsContent && currentQuestion && "content" in currentQuestion) {
-            if (currentQuestion.content) {
-              if (typeof currentQuestion.content === "string") {
-                content = currentQuestion.content;
-              } else if (typeof currentQuestion.content === "object" && currentQuestion.content !== null) {
-                // 多语言对象，优先使用中文
-                const contentObj = currentQuestion.content as { [key: string]: string | undefined };
-                content = contentObj.zh || content;
-              }
+          // ✅ 修复：从 Map 获取 content（用于翻译操作）
+          if (operation === "translate" && cachedQuestion.content) {
+            if (typeof cachedQuestion.content === "string") {
+              content = cachedQuestion.content;
+            } else if (typeof cachedQuestion.content === "object" && cachedQuestion.content !== null) {
+              // 多语言对象，优先使用中文
+              const contentObj = cachedQuestion.content as { [key: string]: string | undefined };
+              content = contentObj.zh || content;
             }
           }
+
+          // ✅ 修复：为了兼容后续代码，创建一个 currentQuestion 对象（但不查询数据库）
+          const currentQuestion = {
+            explanation: cachedQuestion.explanation,
+            content: cachedQuestion.content,
+          };
 
           try {
             if (operation === "translate" && input.translateOptions) {
@@ -1713,6 +1725,13 @@ async function processBatchAsync(
                   })
                   .where("id", "=", question.id)
                   .execute();
+                
+                // ✅ 修复：更新 Map 中的题目数据，确保后续操作使用最新数据
+                const cachedQuestion = questionsById.get(question.id);
+                if (cachedQuestion) {
+                  cachedQuestion.content = updatedContent as any;
+                  cachedQuestion.explanation = explanationToSave as any;
+                }
                   
                   // ✅ 修复 Task 4：更新子任务状态为 succeeded（先检查语言完整性）
                   const completenessCheck = await checkQuestionLanguageCompleteness(question.id);
@@ -2106,6 +2125,14 @@ async function processBatchAsync(
                     })
                     .where("id", "=", question.id)
                     .execute();
+                
+                // ✅ 修复：更新 Map 中的题目数据，确保后续操作使用最新数据
+                const cachedQuestion = questionsById.get(question.id);
+                if (cachedQuestion) {
+                  cachedQuestion.content = updatedContent as any;
+                  cachedQuestion.options = updatedOptions;
+                  cachedQuestion.explanation = updatedExplanation as any;
+                }
                 } catch (dbError: any) {
                   console.error(`[BatchProcess] Database update failed for Q${question.id}:`, {
                     error: dbError.message,
@@ -2290,16 +2317,11 @@ async function processBatchAsync(
               topic_tags: result.topic_tags,
             });
 
-            // 1. 从 DB 重新加载当前题目（保证拿到完整结构）
-            const currentQuestion = await db
-              .selectFrom("questions")
-              .selectAll()
-              .where("id", "=", question.id)
-              .executeTakeFirst();
-
+            // ✅ 修复：从 Map 获取题目数据，避免重复查询数据库
+            const currentQuestion = questionsById.get(question.id);
             if (!currentQuestion) {
               console.warn(
-                `[BatchProcess][category_tags] Question ${question.id} not found, skip.`,
+                `[BatchProcess][category_tags] Question ${question.id} not found in Map, skip.`,
               );
               continue;
             }
@@ -2340,6 +2362,9 @@ async function processBatchAsync(
               topic_tags: (currentQuestion as any).topic_tags,
               mode: "updateOnly", // 防止插入幽灵题
             } as any);
+            
+            // ✅ 修复：更新 Map 中的题目数据（tags 已更新）
+            // currentQuestion 对象已经在内存中更新了 tags，Map 引用会自动反映这些更改
               
             console.log(`[BatchProcess] Updated category and tags for Q${question.id}`);
               

@@ -380,19 +380,34 @@ export async function callAiDirect(params: AiClientRequest): Promise<AiClientRes
     
     const errorMessage = `AI service error: ${response.status} ${detailedMessage}`;
     
-    // 增强错误日志
-    console.error("[callAiDirect] AI service 调用失败:", {
-      provider,
-      status: response.status,
-      statusText: response.statusText,
-      url: requestUrl,
-      baseUrl: url,
-      errorCode: parsedError?.errorCode || "UNKNOWN",
-      errorMessage: detailedMessage,
-      rawError: errorText.substring(0, 500),
-      hasParsedError: !!parsedError,
+    // 增强错误日志（确保所有值都是可序列化的基本类型）
+    const errorLogInfo = {
+      provider: String(provider || "(未定义)"),
+      status: response?.status ? Number(response.status) : "(未定义)",
+      statusText: String(response?.statusText || "(未定义)"),
+      url: String(requestUrl || "(未定义)"),
+      baseUrl: String(url || "(未定义)"),
+      errorCode: String(parsedError?.errorCode || "UNKNOWN"),
+      errorMessage: String(detailedMessage || "(无错误消息)"),
+      rawError: String(errorText?.substring(0, 500) || "(无原始错误)"),
+      hasParsedError: Boolean(!!parsedError),
       timestamp: new Date().toISOString(),
-    });
+    };
+    
+    console.error("[callAiDirect] AI service 调用失败:", errorLogInfo);
+    
+    // 同时输出格式化字符串，确保信息可见
+    console.error(
+      `[callAiDirect] AI service 调用失败详情:\n` +
+      `  Provider: ${errorLogInfo.provider}\n` +
+      `  Status: ${errorLogInfo.status}\n` +
+      `  Status Text: ${errorLogInfo.statusText}\n` +
+      `  URL: ${errorLogInfo.url}\n` +
+      `  Base URL: ${errorLogInfo.baseUrl}\n` +
+      `  Error Code: ${errorLogInfo.errorCode}\n` +
+      `  Error Message: ${errorLogInfo.errorMessage}\n` +
+      `  Raw Error: ${errorLogInfo.rawError.substring(0, 200)}`
+    );
     
     // 针对配置不匹配的情况提供更友好的错误提示
     let userFriendlyMessage = errorMessage;

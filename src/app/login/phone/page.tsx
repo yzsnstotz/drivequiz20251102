@@ -3,12 +3,12 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useAppSession } from "@/contexts/SessionContext";
 
 function PhoneInputContent() {
   const { t } = useLanguage();
   const router = useRouter();
-  const { data: session, update } = useSession();
+  const { data: session, update } = useAppSession();
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
