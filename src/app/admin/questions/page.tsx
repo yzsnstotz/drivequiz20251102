@@ -1571,6 +1571,7 @@ export default function QuestionsPage() {
                 <col style={{ width: "100px" }} />
                 <col style={{ width: "80px" }} />
                 <col style={{ width: "300px" }} />
+                <col style={{ width: "150px" }} />
                 <col style={{ width: "100px" }} />
                 <col style={{ width: "300px" }} />
                 <col style={{ width: "120px" }} />
@@ -1606,6 +1607,7 @@ export default function QuestionsPage() {
                   >
                     题目内容 {filters.sortBy === "content" && (filters.sortOrder === "asc" ? "↑" : "↓")}
                   </th>
+                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">图片</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">正确答案</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">解析</th>
                   <th className="text-left py-2 px-3 text-xs font-medium text-gray-700 whitespace-nowrap">驾照标签</th>
@@ -1636,10 +1638,38 @@ export default function QuestionsPage() {
                         ? item.content 
                         : (item.content?.zh || item.content?.en || item.content?.ja || '')}
                     </td>
+                    <td className="py-2 px-3 text-xs">
+                      {item.image ? (
+                        <div className="flex flex-col gap-1">
+                          <a
+                            href={item.image}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 hover:underline truncate max-w-[140px]"
+                            title={item.image}
+                          >
+                            {item.image.length > 30 ? `${item.image.substring(0, 30)}...` : item.image}
+                          </a>
+                          <img
+                            src={item.image}
+                            alt="题目图片"
+                            className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer hover:opacity-80"
+                            onClick={() => window.open(item.image, '_blank')}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[10px]">—</span>
+                      )}
+                    </td>
                     <td className="py-2 px-3 text-xs whitespace-nowrap">
                       {Array.isArray(item.correctAnswer)
                         ? item.correctAnswer.join(", ")
-                        : item.correctAnswer}
+                        : typeof item.correctAnswer === 'object' && item.correctAnswer !== null
+                        ? JSON.stringify(item.correctAnswer)
+                        : String(item.correctAnswer || '—')}
                     </td>
                     <td className="py-2 px-3 text-xs overflow-hidden" style={{ wordBreak: "break-word", whiteSpace: "normal" }}>
                       {item.explanation ? (
@@ -2042,12 +2072,38 @@ export default function QuestionsPage() {
                       : (item.content?.zh || item.content?.en || item.content?.ja || '')}
                   </div>
                 </div>
+                {item.image && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">图片</div>
+                    <div className="space-y-1">
+                      <a
+                        href={item.image}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-xs break-all"
+                      >
+                        {item.image}
+                      </a>
+                      <img
+                        src={item.image}
+                        alt="题目图片"
+                        className="w-full max-w-xs rounded border border-gray-200 cursor-pointer hover:opacity-80"
+                        onClick={() => window.open(item.image, '_blank')}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <div className="text-xs text-gray-500 mb-1">正确答案</div>
                   <div className="text-xs">
                     {Array.isArray(item.correctAnswer)
                       ? item.correctAnswer.join(", ")
-                      : item.correctAnswer}
+                      : typeof item.correctAnswer === 'object' && item.correctAnswer !== null
+                      ? JSON.stringify(item.correctAnswer)
+                      : String(item.correctAnswer || '—')}
                   </div>
                 </div>
                 {item.explanation && (
@@ -2082,7 +2138,9 @@ export default function QuestionsPage() {
                     <div className="text-xs text-gray-500 mb-1">选项</div>
                     <div className="text-xs space-y-1">
                       {item.options.map((opt, idx) => (
-                        <div key={idx}>{String.fromCharCode(65 + idx)}. {opt}</div>
+                        <div key={idx}>
+                          {String.fromCharCode(65 + idx)}. {typeof opt === 'string' ? opt : typeof opt === 'object' && opt !== null ? JSON.stringify(opt) : String(opt || '')}
+                        </div>
                       ))}
                     </div>
                   </div>

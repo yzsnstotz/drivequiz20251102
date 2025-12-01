@@ -33,7 +33,8 @@ export async function getAiExpectedTime(
     const apiUrl = new URL(baseUrl);
     apiUrl.searchParams.set("provider", provider);
     if (model) {
-      apiUrl.searchParams.set("model", encodeURIComponent(model));
+      // URL.searchParams.set() 会自动编码，不需要手动使用 encodeURIComponent
+      apiUrl.searchParams.set("model", model);
     }
 
     let response: Response;

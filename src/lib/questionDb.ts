@@ -902,10 +902,27 @@ export async function saveQuestionFile(
     // 如果是统一包（__unified__），直接覆盖整个文件，不合并
     if (packageName === "__unified__") {
       // 确保所有题目的答案格式都正确（规范化）
-      const normalizedQuestions = data.questions.map((q) => ({
-        ...q,
-        correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
-      }));
+      // 同时确保image字段即使为null也包含在JSON中（使用null而不是undefined）
+      const normalizedQuestions = data.questions.map((q) => {
+        // 确保image字段使用null而不是undefined，这样JSON.stringify不会省略它
+        // 注意：确保即使传入的q.image有值，也要正确保留
+        let imageValue: string | null = null;
+        if (q.image !== null && q.image !== undefined) {
+          if (typeof q.image === 'string' && q.image.trim() !== '') {
+            imageValue = q.image.trim(); // 保留有效的URL字符串
+          } else {
+            imageValue = null; // 空字符串或其他类型，使用null
+          }
+        } else {
+          imageValue = null; // null或undefined，使用null
+        }
+        
+        return {
+          ...q,
+          correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
+          image: imageValue, // 明确设置image字段，确保即使为null也包含在JSON中
+        };
+      });
       
       const unifiedData: any = {
         questions: normalizedQuestions,
@@ -915,12 +932,27 @@ export async function saveQuestionFile(
       // 扩展字段：多语言
       if (data.questionsByLocale) {
         // 为所有 locale 规范化答案
+        // 同时确保image字段即使为null也包含在JSON中
         const normalizedByLocale: Record<string, Question[]> = {};
         for (const [loc, list] of Object.entries(data.questionsByLocale)) {
-          normalizedByLocale[loc] = list.map((q) => ({
-            ...q,
-            correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
-          }));
+          normalizedByLocale[loc] = list.map((q) => {
+            // 确保image字段使用null而不是undefined
+            const imageValue = q.image !== undefined && q.image !== null && typeof q.image === 'string' && q.image.trim() !== ''
+              ? q.image
+              : (q.image === null ? null : undefined);
+            
+            const normalized: any = {
+              ...q,
+              correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
+            };
+            
+            // 明确设置image字段
+            if (imageValue !== undefined) {
+              normalized.image = imageValue;
+            }
+            
+            return normalized;
+          });
         }
         unifiedData.questionsByLocale = normalizedByLocale;
       }
@@ -1289,7 +1321,7 @@ export async function saveUnifiedVersion(
  */
 export async function getUnifiedVersionContent(
   version: string
-): Promise<{ questions: Question[]; version: string; aiAnswers: Record<string, string> } | null> {
+): Promise<{ questions: Question[]; version: string; aiAnswers: Record<string, string>; questionsByLocale?: Record<string, Question[]>; aiAnswersByLocale?: Record<string, Record<string, string>> } | null> {
   try {
     const result = await db
       .selectFrom("question_package_versions")
@@ -1304,11 +1336,21 @@ export async function getUnifiedVersionContent(
     }
 
     const content = result.package_content as any;
-    return {
-      questions: content.questions || [],
+    const resultData: any = {
+      questions: Array.isArray(content.questions) ? content.questions : [],
       version: content.version || version,
-      aiAnswers: content.aiAnswers || {},
+      aiAnswers: content.aiAnswers && typeof content.aiAnswers === 'object' ? content.aiAnswers : {},
     };
+    
+    // 安全地读取多语言字段
+    if (content.questionsByLocale && typeof content.questionsByLocale === 'object') {
+      resultData.questionsByLocale = content.questionsByLocale;
+    }
+    if (content.aiAnswersByLocale && typeof content.aiAnswersByLocale === 'object') {
+      resultData.aiAnswersByLocale = content.aiAnswersByLocale;
+    }
+    
+    return resultData;
   } catch (error) {
     console.error(`[getUnifiedVersionContent] Error:`, error);
     return null;
@@ -1486,6 +1528,14 @@ export async function updateAllJsonPackages(): Promise<{
   questionsUpdated?: number;
   aiAnswersAdded?: number;
   aiAnswersUpdated?: number;
+  validationReport?: {
+    isConsistent: boolean;
+    dbQuestionCount: number;
+    jsonQuestionCount: number;
+    missingQuestionIds: number[];
+    conversionErrors: Array<{ questionId: number; error: string }>;
+    warnings: string[];
+  };
 }> {
   try {
     // 0. 获取上一个版本的信息（用于对比）
@@ -1519,38 +1569,71 @@ export async function updateAllJsonPackages(): Promise<{
     console.log(`[updateAllJsonPackages] 从数据库读取到 ${allDbQuestions.length} 个题目`);
 
     // 转换为前端格式（使用content_hash作为hash，不重新计算）
-    const questionsWithHash = allDbQuestions.map((q) => {
-      // 优先使用category字段，如果没有则从license_type_tag数组中获取（取第一个，如果没有则使用"其他"）
-      const category = q.category || 
-        (Array.isArray(q.license_type_tag) && q.license_type_tag.length > 0
-          ? q.license_type_tag[0]
-          : "其他");
+    // 添加错误处理，确保单个题目转换失败不会中断整个流程
+    const questionsWithHash: any[] = [];
+    const conversionErrors: Array<{ questionId: number; error: string }> = [];
+    
+    for (const q of allDbQuestions) {
+      try {
+        // 优先使用category字段，如果没有则从license_type_tag数组中获取（取第一个，如果没有则使用"其他"）
+        const category = q.category || 
+          (Array.isArray(q.license_type_tag) && q.license_type_tag.length > 0
+            ? q.license_type_tag[0]
+            : "其他");
 
-      // 处理content字段：保持多语言对象格式
-      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
-      if (typeof q.content === "string") {
-        // 兼容旧格式：单语言字符串
-        content = q.content;
-      } else {
-        // 新格式：多语言对象
-        content = q.content;
+        // 处理content字段：保持多语言对象格式
+        let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
+        if (typeof q.content === "string") {
+          // 兼容旧格式：单语言字符串
+          content = q.content;
+        } else {
+          // 新格式：多语言对象
+          content = q.content;
+        }
+
+        // 修复image字段处理：使用null而不是undefined，确保JSON序列化时字段不会被省略
+        // 如果image为null、undefined或空字符串，统一使用null
+        // 注意：确保即使数据库中有有效的URL字符串，也要正确保留
+        let imageValue: string | null = null;
+        if (q.image !== null && q.image !== undefined) {
+          if (typeof q.image === 'string' && q.image.trim() !== '') {
+            imageValue = q.image.trim(); // 保留有效的URL字符串
+          } else {
+            imageValue = null; // 空字符串或其他类型，使用null
+          }
+        } else {
+          imageValue = null; // null或undefined，使用null
+        }
+
+        questionsWithHash.push({
+          id: q.id,
+          type: q.type,
+          content,
+          options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
+          correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+          image: imageValue, // 使用null而不是undefined，确保JSON序列化时字段被包含
+          explanation: q.explanation || undefined,
+          category,
+          hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
+          license_tags: q.license_type_tag || undefined,
+          stage_tag: q.stage_tag || undefined,
+          topic_tags: q.topic_tags || undefined,
+        });
+      } catch (error) {
+        // 记录转换失败的题目，但不中断整个流程
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        conversionErrors.push({
+          questionId: q.id,
+          error: errorMessage,
+        });
+        console.error(`[updateAllJsonPackages] 题目 ${q.id} 转换失败:`, error);
       }
+    }
 
-      return {
-        id: q.id,
-        type: q.type,
-        content,
-        options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
-        image: q.image || undefined,
-        explanation: q.explanation || undefined,
-        category,
-        hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
-        license_tags: q.license_type_tag || undefined,
-        stage_tag: q.stage_tag || undefined,
-        topic_tags: q.topic_tags || undefined,
-      };
-    });
+    // 如果有转换错误，记录警告
+    if (conversionErrors.length > 0) {
+      console.warn(`[updateAllJsonPackages] ${conversionErrors.length} 个题目转换失败:`, conversionErrors);
+    }
     
     // 3. 获取所有题目的AI回答（从数据库，使用hash作为question_hash）
     // 批量查询所有AI回答，提高性能并支持多种locale格式
@@ -1869,6 +1952,88 @@ export async function updateAllJsonPackages(): Promise<{
       ? Math.min(previousAiAnswersCount, aiAnswersCount)
       : 0; // 如果没有上一个版本，没有更新的AI回答
 
+    // 8. 数据一致性验证
+    console.log(`[updateAllJsonPackages] 开始数据一致性验证`);
+    const dbQuestionCount = allDbQuestions.length;
+    const jsonQuestionCount = questionsWithHash.length;
+    const warnings: string[] = [];
+    
+    // 检查题目数量是否一致
+    if (dbQuestionCount !== jsonQuestionCount) {
+      const warning = `题目数量不一致：数据库中有 ${dbQuestionCount} 个题目，但JSON包中只有 ${jsonQuestionCount} 个题目`;
+      console.warn(`[updateAllJsonPackages] ${warning}`);
+      warnings.push(warning);
+    }
+    
+    // 检查是否有题目丢失（通过ID对比）
+    const dbQuestionIds = new Set(allDbQuestions.map(q => q.id));
+    const jsonQuestionIds = new Set(questionsWithHash.map(q => q.id));
+    const missingQuestionIds: number[] = [];
+    
+    for (const dbId of Array.from(dbQuestionIds)) {
+      if (!jsonQuestionIds.has(dbId)) {
+        missingQuestionIds.push(dbId);
+      }
+    }
+    
+    if (missingQuestionIds.length > 0) {
+      const warning = `发现 ${missingQuestionIds.length} 个题目在JSON包中丢失，题目ID: ${missingQuestionIds.slice(0, 10).join(', ')}${missingQuestionIds.length > 10 ? '...' : ''}`;
+      console.warn(`[updateAllJsonPackages] ${warning}`);
+      warnings.push(warning);
+    }
+    
+    // 检查关键字段完整性
+    const questionsWithMissingFields: number[] = [];
+    for (const q of questionsWithHash) {
+      if (!q.id || !q.type || !q.content) {
+        questionsWithMissingFields.push(q.id);
+      }
+    }
+    
+    if (questionsWithMissingFields.length > 0) {
+      const warning = `发现 ${questionsWithMissingFields.length} 个题目缺少关键字段，题目ID: ${questionsWithMissingFields.slice(0, 10).join(', ')}${questionsWithMissingFields.length > 10 ? '...' : ''}`;
+      console.warn(`[updateAllJsonPackages] ${warning}`);
+      warnings.push(warning);
+    }
+    
+    // 检查image字段是否都包含（即使为null）
+    const questionsWithoutImageField: number[] = [];
+    for (const q of questionsWithHash) {
+      // 检查image字段是否存在（即使是null也应该存在）
+      if (!('image' in q)) {
+        questionsWithoutImageField.push(q.id);
+      }
+    }
+    
+    if (questionsWithoutImageField.length > 0) {
+      const warning = `发现 ${questionsWithoutImageField.length} 个题目缺少image字段，题目ID: ${questionsWithoutImageField.slice(0, 10).join(', ')}${questionsWithoutImageField.length > 10 ? '...' : ''}`;
+      console.warn(`[updateAllJsonPackages] ${warning}`);
+      warnings.push(warning);
+    }
+    
+    // 生成验证报告
+    const isConsistent = 
+      dbQuestionCount === jsonQuestionCount && 
+      missingQuestionIds.length === 0 && 
+      questionsWithMissingFields.length === 0 &&
+      questionsWithoutImageField.length === 0 &&
+      conversionErrors.length === 0;
+    
+    const validationReport = {
+      isConsistent,
+      dbQuestionCount,
+      jsonQuestionCount,
+      missingQuestionIds,
+      conversionErrors,
+      warnings,
+    };
+    
+    if (isConsistent) {
+      console.log(`[updateAllJsonPackages] 数据一致性验证通过`);
+    } else {
+      console.warn(`[updateAllJsonPackages] 数据一致性验证失败`, validationReport);
+    }
+
     console.log(`[updateAllJsonPackages] Updated all packages to unified version ${version}`, {
       totalQuestions,
       aiAnswersCount,
@@ -1879,6 +2044,7 @@ export async function updateAllJsonPackages(): Promise<{
       questionsUpdated,
       aiAnswersAdded,
       aiAnswersUpdated,
+      validationReport,
     });
 
     return {
@@ -1892,6 +2058,7 @@ export async function updateAllJsonPackages(): Promise<{
       questionsUpdated,
       aiAnswersAdded,
       aiAnswersUpdated,
+      validationReport,
     };
   } catch (error) {
     console.error(`[updateAllJsonPackages] Error:`, error);

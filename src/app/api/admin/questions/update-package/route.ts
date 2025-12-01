@@ -37,6 +37,36 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     } else {
       message += `  - 新增AI回答：${result.aiAnswersAdded || 0} 个（首次生成）\n`;
     }
+    
+    // 添加数据一致性验证报告
+    if (result.validationReport) {
+      message += `\n✅ 数据一致性验证：\n`;
+      if (result.validationReport.isConsistent) {
+        message += `  - 状态：通过 ✓\n`;
+        message += `  - 数据库题目数：${result.validationReport.dbQuestionCount} 个\n`;
+        message += `  - JSON包题目数：${result.validationReport.jsonQuestionCount} 个\n`;
+      } else {
+        message += `  - 状态：失败 ✗\n`;
+        message += `  - 数据库题目数：${result.validationReport.dbQuestionCount} 个\n`;
+        message += `  - JSON包题目数：${result.validationReport.jsonQuestionCount} 个\n`;
+        if (result.validationReport.missingQuestionIds.length > 0) {
+          message += `  - 丢失题目数：${result.validationReport.missingQuestionIds.length} 个\n`;
+          message += `  - 丢失题目ID：${result.validationReport.missingQuestionIds.slice(0, 10).join(', ')}${result.validationReport.missingQuestionIds.length > 10 ? '...' : ''}\n`;
+        }
+        if (result.validationReport.conversionErrors.length > 0) {
+          message += `  - 转换失败题目数：${result.validationReport.conversionErrors.length} 个\n`;
+        }
+        if (result.validationReport.warnings.length > 0) {
+          message += `  - 警告数量：${result.validationReport.warnings.length} 个\n`;
+          result.validationReport.warnings.slice(0, 5).forEach((warning, idx) => {
+            message += `    ${idx + 1}. ${warning}\n`;
+          });
+          if (result.validationReport.warnings.length > 5) {
+            message += `    ... 还有 ${result.validationReport.warnings.length - 5} 个警告\n`;
+          }
+        }
+      }
+    }
 
     return success({
       version: result.version,
@@ -49,6 +79,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
       questionsUpdated: result.questionsUpdated,
       aiAnswersAdded: result.aiAnswersAdded,
       aiAnswersUpdated: result.aiAnswersUpdated,
+      validationReport: result.validationReport,
       message,
     });
   } catch (err: any) {

@@ -726,6 +726,7 @@ export interface Database {
   };
   VerificationToken: VerificationTokenTable; // 映射到 verification_tokens 表
   questions: QuestionTable;
+  questions_duplicate: QuestionTable; // 题目表副本，结构和 questions 表相同
   question_ai_answers: QuestionAiAnswerTable;
   question_ai_answer_pending_updates: QuestionAiAnswerPendingUpdateTable;
   question_package_versions: QuestionPackageVersionTable;

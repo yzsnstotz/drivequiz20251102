@@ -605,7 +605,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
       // 重新聚焦输入框
       inputRef.current?.focus();
     }
-  }, [input, loading, pushMessage, messages, isActivated, showActivationModal]);
+  }, [input, loading, pushMessage, messages, isActivated, showActivationModal, language, t, currentProvider, currentModel]);
 
 
   return (
