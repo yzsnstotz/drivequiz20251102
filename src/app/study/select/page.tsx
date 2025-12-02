@@ -180,15 +180,20 @@ function LicenseSelectContent() {
   );
 }
 
+function LoadingFallback() {
+  const { t } = useLanguage();
+  return (
+    <div className="container mx-auto px-4 py-6 pb-20">
+      <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
+        <p className="text-gray-600" suppressHydrationWarning>{t('common.loading')}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function LicenseSelectPage() {
   return (
-    <Suspense fallback={
-      <div className="container mx-auto px-4 py-6 pb-20">
-        <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-          <p className="text-gray-600">{t('common.loading')}</p>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<LoadingFallback />}>
       <LicenseSelectContent />
     </Suspense>
   );

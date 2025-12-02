@@ -6,6 +6,7 @@ import Link from "next/link";
 import Header from "@/components/common/Header";
 import AdSlot from "@/components/common/AdSlot";
 import { ArrowLeft } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 // 这里应该从localStorage或API加载错题
 // 暂时使用示例数据

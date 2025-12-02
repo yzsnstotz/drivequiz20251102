@@ -284,12 +284,13 @@ export default function QuestionAIDialog({
   const formatCorrectAnswer = (): string => {
     // 对于判断题，将true/false转换为当前语言
     if (question.type === "truefalse") {
-      if (question.correctAnswer === "true") {
+      const answer = Array.isArray(question.correctAnswer) ? question.correctAnswer[0] : question.correctAnswer;
+      if (answer === "true") {
         return language === "en" ? "True" : language === "ja" ? "正しい" : "正确";
-      } else if (question.correctAnswer === "false") {
+      } else if (answer === "false") {
         return language === "en" ? "False" : language === "ja" ? "誤り" : "错误";
       } else {
-        return question.correctAnswer;
+        return String(answer);
       }
     }
     
