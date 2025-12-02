@@ -149,10 +149,15 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
       console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ Table not found - ai_config table may not exist`);
       errorMsg = "数据库表不存在，请运行数据库迁移脚本";
       errorCode = "DATABASE_TABLE_NOT_FOUND";
-    } else if (errorString.includes('ssl') || errorString.includes('tls')) {
-      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ SSL/TLS error`);
-      errorMsg = "数据库 SSL 连接错误，请检查 SSL 配置";
-      errorCode = "DATABASE_SSL_ERROR";
+    } else if (errorString.includes('ssl') || errorString.includes('tls') || errorString.includes('certificate') || errorString.includes('self-signed')) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ SSL/TLS certificate error detected`);
+      if (errorString.includes('self-signed')) {
+        errorMsg = "数据库 SSL 证书验证失败（自签名证书），已自动修复 SSL 配置，请重新部署应用";
+        errorCode = "DATABASE_SSL_CERT_ERROR";
+      } else {
+        errorMsg = "数据库 SSL 连接错误，请检查 SSL 配置";
+        errorCode = "DATABASE_SSL_ERROR";
+      }
     } else {
       errorMsg = err instanceof Error ? err.message : "Unexpected server error.";
     }
@@ -612,10 +617,15 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
       console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ Table not found - ai_config table may not exist`);
       errorMsg = "数据库表不存在，请运行数据库迁移脚本";
       errorCode = "DATABASE_TABLE_NOT_FOUND";
-    } else if (errorString.includes('ssl') || errorString.includes('tls')) {
-      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ SSL/TLS error`);
-      errorMsg = "数据库 SSL 连接错误，请检查 SSL 配置";
-      errorCode = "DATABASE_SSL_ERROR";
+    } else if (errorString.includes('ssl') || errorString.includes('tls') || errorString.includes('certificate') || errorString.includes('self-signed')) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ SSL/TLS certificate error detected`);
+      if (errorString.includes('self-signed')) {
+        errorMsg = "数据库 SSL 证书验证失败（自签名证书），已自动修复 SSL 配置，请重新部署应用";
+        errorCode = "DATABASE_SSL_CERT_ERROR";
+      } else {
+        errorMsg = "数据库 SSL 连接错误，请检查 SSL 配置";
+        errorCode = "DATABASE_SSL_ERROR";
+      }
     } else {
       errorMsg = err instanceof Error ? err.message : "Unexpected server error.";
     }

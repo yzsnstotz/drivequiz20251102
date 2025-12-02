@@ -212,9 +212,16 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     );
   }
 
+  // 检测是否需要 SSL 连接（Supabase 必须使用 SSL）
+  const isSupabase =
+    connectionString.includes("supabase.com") ||
+    connectionString.includes("supabase.co") ||
+    connectionString.includes("sslmode=require");
+
   // 创建 Pool 配置对象（只保留必需字段，所有连接参数由 connectionString 自动解析）
   const poolConfig: {
     connectionString: string;
+    ssl?: boolean | { rejectUnauthorized: boolean };
     max?: number; // 最大连接数
     min?: number; // 最小连接数
     idleTimeoutMillis?: number; // 空闲连接超时时间（毫秒）
@@ -223,7 +230,7 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
     connectionString,
-    // 连接池配置：相对主库更“克制”，避免争抢过多连接资源
+    // 连接池配置：相对主库更"克制"，避免争抢过多连接资源
     max: 10, // 降低 AI DB 最大连接数，减少对主库的压力
     min: 1, // 保持最小连接数较低
     idleTimeoutMillis: 20000, // 空闲连接 20 秒后关闭
@@ -231,6 +238,18 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     statement_timeout: 40000, // 语句超时 40 秒
     query_timeout: 40000, // 查询超时 40 秒
   };
+
+  // Supabase 必须使用 SSL，但需要接受自签名证书
+  if (isSupabase) {
+    poolConfig.ssl = {
+      rejectUnauthorized: false, // Supabase 使用自签名证书或中间证书链
+    };
+    
+    // 设置环境变量以允许自签名证书（仅用于 Supabase，如果未设置）
+    if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
+  }
 
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
