@@ -27,7 +27,17 @@ const getAiConfigUpdate = () => (aiDb as any).updateTable("ai_config");
  * 读取 AI 配置
  */
 export const GET = withAdminAuth(async (_req: NextRequest) => {
+  const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  
   try {
+    // 检查环境变量配置
+    if (!process.env.AI_DATABASE_URL) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ AI_DATABASE_URL environment variable is not configured`);
+      return internalError(
+        "AI_DATABASE_URL environment variable is not configured. Please configure it in Vercel Dashboard for Preview/Production environments."
+      );
+    }
+
     const rows = await getAiConfigSelect()
       .selectAll()
       .where("key", "in", [
@@ -103,8 +113,53 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
 
     return success(result);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unexpected server error.";
-    return internalError(msg);
+    console.error(`[GET /api/admin/ai/config] [${requestId}] ===== Request failed =====`);
+    console.error(`[GET /api/admin/ai/config] [${requestId}] Error:`, err);
+    console.error(`[GET /api/admin/ai/config] [${requestId}] Error type:`, err instanceof Error ? err.constructor.name : typeof err);
+    console.error(`[GET /api/admin/ai/config] [${requestId}] Error message:`, err instanceof Error ? err.message : String(err));
+    console.error(`[GET /api/admin/ai/config] [${requestId}] Error stack:`, err instanceof Error ? err.stack : 'N/A');
+    
+    // 检查是否是连接错误
+    const message = err instanceof Error ? err.message : "Unknown Error";
+    const errorString = message.toLowerCase();
+    
+    let errorMsg = "Unexpected server error.";
+    let errorCode = "INTERNAL_ERROR";
+    
+    if (errorString.includes('enotfound') || errorString.includes('getaddrinfo')) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ DNS resolution error detected`);
+      const connectionString = process.env.AI_DATABASE_URL || "";
+      const maskedConnection = connectionString.replace(/:([^:@]+)@/, ':***@');
+      console.error(`[GET /api/admin/ai/config] [${requestId}] Connection string:`, maskedConnection.substring(0, 80) + '...');
+      errorMsg = "无法解析数据库主机地址，请检查 AI_DATABASE_URL 配置";
+      errorCode = "DATABASE_DNS_ERROR";
+    } else if (errorString.includes('timeout') || errorString.includes('timed out')) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ Connection timeout detected`);
+      errorMsg = "数据库连接超时，请检查网络连接或数据库状态";
+      errorCode = "DATABASE_TIMEOUT";
+    } else if (errorString.includes('connection') && errorString.includes('refused')) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ Connection refused - database may be down or unreachable`);
+      errorMsg = "数据库连接被拒绝，数据库可能已暂停或不可访问";
+      errorCode = "DATABASE_CONNECTION_REFUSED";
+    } else if (errorString.includes('authentication') || errorString.includes('password')) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ Authentication error - check credentials`);
+      errorMsg = "数据库认证失败，请检查 AI_DATABASE_URL 中的用户名和密码";
+      errorCode = "DATABASE_AUTH_ERROR";
+    } else if (errorString.includes('relation') && errorString.includes('does not exist')) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ Table not found - ai_config table may not exist`);
+      errorMsg = "数据库表不存在，请运行数据库迁移脚本";
+      errorCode = "DATABASE_TABLE_NOT_FOUND";
+    } else if (errorString.includes('ssl') || errorString.includes('tls')) {
+      console.error(`[GET /api/admin/ai/config] [${requestId}] ❌ SSL/TLS error`);
+      errorMsg = "数据库 SSL 连接错误，请检查 SSL 配置";
+      errorCode = "DATABASE_SSL_ERROR";
+    } else {
+      errorMsg = err instanceof Error ? err.message : "Unexpected server error.";
+    }
+    
+    console.error(`[GET /api/admin/ai/config] [${requestId}] ===== End error report =====`);
+    
+    return internalError(errorMsg);
   }
 });
 
@@ -120,7 +175,17 @@ export const GET = withAdminAuth(async (_req: NextRequest) => {
  * }
  */
 export const PUT = withAdminAuth(async (req: NextRequest) => {
+  const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  
   try {
+    // 检查环境变量配置
+    if (!process.env.AI_DATABASE_URL) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ AI_DATABASE_URL environment variable is not configured`);
+      return internalError(
+        "AI_DATABASE_URL environment variable is not configured. Please configure it in Vercel Dashboard for Preview/Production environments."
+      );
+    }
+
     const adminInfo = await getAdminInfo(req);
     if (!adminInfo) {
       return internalError("Failed to get admin info");
@@ -511,8 +576,53 @@ export const PUT = withAdminAuth(async (req: NextRequest) => {
 
     return success(result);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unexpected server error.";
-    return internalError(msg);
+    console.error(`[PUT /api/admin/ai/config] [${requestId}] ===== Request failed =====`);
+    console.error(`[PUT /api/admin/ai/config] [${requestId}] Error:`, err);
+    console.error(`[PUT /api/admin/ai/config] [${requestId}] Error type:`, err instanceof Error ? err.constructor.name : typeof err);
+    console.error(`[PUT /api/admin/ai/config] [${requestId}] Error message:`, err instanceof Error ? err.message : String(err));
+    console.error(`[PUT /api/admin/ai/config] [${requestId}] Error stack:`, err instanceof Error ? err.stack : 'N/A');
+    
+    // 检查是否是连接错误
+    const message = err instanceof Error ? err.message : "Unknown Error";
+    const errorString = message.toLowerCase();
+    
+    let errorMsg = "Unexpected server error.";
+    let errorCode = "INTERNAL_ERROR";
+    
+    if (errorString.includes('enotfound') || errorString.includes('getaddrinfo')) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ DNS resolution error detected`);
+      const connectionString = process.env.AI_DATABASE_URL || "";
+      const maskedConnection = connectionString.replace(/:([^:@]+)@/, ':***@');
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] Connection string:`, maskedConnection.substring(0, 80) + '...');
+      errorMsg = "无法解析数据库主机地址，请检查 AI_DATABASE_URL 配置";
+      errorCode = "DATABASE_DNS_ERROR";
+    } else if (errorString.includes('timeout') || errorString.includes('timed out')) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ Connection timeout detected`);
+      errorMsg = "数据库连接超时，请检查网络连接或数据库状态";
+      errorCode = "DATABASE_TIMEOUT";
+    } else if (errorString.includes('connection') && errorString.includes('refused')) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ Connection refused - database may be down or unreachable`);
+      errorMsg = "数据库连接被拒绝，数据库可能已暂停或不可访问";
+      errorCode = "DATABASE_CONNECTION_REFUSED";
+    } else if (errorString.includes('authentication') || errorString.includes('password')) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ Authentication error - check credentials`);
+      errorMsg = "数据库认证失败，请检查 AI_DATABASE_URL 中的用户名和密码";
+      errorCode = "DATABASE_AUTH_ERROR";
+    } else if (errorString.includes('relation') && errorString.includes('does not exist')) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ Table not found - ai_config table may not exist`);
+      errorMsg = "数据库表不存在，请运行数据库迁移脚本";
+      errorCode = "DATABASE_TABLE_NOT_FOUND";
+    } else if (errorString.includes('ssl') || errorString.includes('tls')) {
+      console.error(`[PUT /api/admin/ai/config] [${requestId}] ❌ SSL/TLS error`);
+      errorMsg = "数据库 SSL 连接错误，请检查 SSL 配置";
+      errorCode = "DATABASE_SSL_ERROR";
+    } else {
+      errorMsg = err instanceof Error ? err.message : "Unexpected server error.";
+    }
+    
+    console.error(`[PUT /api/admin/ai/config] [${requestId}] ===== End error report =====`);
+    
+    return internalError(errorMsg);
   }
 });
 
