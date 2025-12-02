@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-12-03 02:45:00（修复BottomNavigation的hydration错误：添加suppressHydrationWarning）
-const BUILD_TIME = "2025-12-03 02:45:00";
+// 最后更新：2025-12-03 02:48:55（修复build错误：添加缺失的导入和修复类型错误）
+const BUILD_TIME = "2025-12-03 02:48:55";
 
 /**
  * 获取版本号（构建时间）
