@@ -43,23 +43,39 @@ let aiConfigCache: { dbProvider: string | null; timestamp: number } | null = nul
 
 /**
  * 获取当前的 aiProvider 配置（通过 API，带缓存）
+ * 
+ * 缓存策略：
+ * 1. 如果缓存有效（未过期），直接返回
+ * 2. 如果缓存过期但存在，使用过期缓存以保持会话一致性（避免后台切换配置导致前端报错）
+ * 3. 只有在完全没有缓存的情况下才请求 API
  */
 async function getCurrentAiProvider(): Promise<string | null> {
-  // 检查缓存
   const now = Date.now();
+  
+  // 1. 检查缓存是否有效
   if (aiConfigCache && now - aiConfigCache.timestamp < AI_CONFIG_CACHE_TTL) {
     return aiConfigCache.dbProvider;
   }
 
+  // 2. 缓存过期但存在，使用过期缓存以保持会话一致性
+  // 这样可以确保前端在整个会话期间使用相同的 provider 配置
+  // 后台切换配置不会影响已打开的前端页面，只有刷新页面后才会获取新配置
+  if (aiConfigCache) {
+    if (process.env.NODE_ENV === "development") {
+      console.log("[getCurrentAiProvider] 缓存已过期，但使用过期缓存以保持会话一致性:", {
+        dbProvider: aiConfigCache.dbProvider,
+        age: Math.round((now - aiConfigCache.timestamp) / 1000) + "秒",
+      });
+    }
+    return aiConfigCache.dbProvider;
+  }
+
+  // 3. 完全没有缓存时才请求 API
   try {
     const response = await fetch("/api/ai/config", {
-      cache: "force-cache", // 利用浏览器缓存
+      cache: "no-store", // 改为 no-store，避免浏览器缓存干扰
     });
     if (!response.ok) {
-      // 如果请求失败，尝试使用缓存（即使过期）
-      if (aiConfigCache) {
-        return aiConfigCache.dbProvider;
-      }
       if (process.env.NODE_ENV === "development") {
         console.warn("[getCurrentAiProvider] API 响应失败:", response.status, response.statusText);
       }
@@ -77,10 +93,6 @@ async function getCurrentAiProvider(): Promise<string | null> {
     // 返回数据库中的原始值
     return dbProvider || null;
   } catch (error) {
-    // 如果请求失败，尝试使用缓存（即使过期）
-    if (aiConfigCache) {
-      return aiConfigCache.dbProvider;
-    }
     if (process.env.NODE_ENV === "development") {
       console.warn("[getCurrentAiProvider] 获取配置失败:", error);
     }
