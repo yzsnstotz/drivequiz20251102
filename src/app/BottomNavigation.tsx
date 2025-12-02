@@ -65,7 +65,7 @@ export default function BottomNavigation() {
                 }`}
               >
                 <IconComponent className={`h-6 w-6 transition-transform duration-200 ${item.active ? 'scale-110' : ''}`} />
-                <span className={`text-xs font-medium transition-all duration-200 ${item.active ? 'font-semibold' : ''}`}>{item.label}</span>
+                <span className={`text-xs font-medium transition-all duration-200 ${item.active ? 'font-semibold' : ''}`} suppressHydrationWarning>{item.label}</span>
               </Link>
             );
           })}
