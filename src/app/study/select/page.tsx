@@ -68,11 +68,11 @@ function LicenseSelectContent() {
         // 跳转到回调URL或首页
         router.push(callbackUrl);
       } else {
-        setError(result.message || "保存失败，请稍后重试");
+        setError(result.message || t('settings.saveError'));
       }
     } catch (err) {
       console.error("[LicenseSelectPage] Save error:", err);
-      setError("保存失败，请稍后重试");
+      setError(t('settings.saveError'));
     } finally {
       setLoading(false);
     }
@@ -173,7 +173,7 @@ function LicenseSelectContent() {
         )}
 
         {loading && (
-          <div className="mt-4 text-center text-gray-600">保存中...</div>
+          <div className="mt-4 text-center text-gray-600">{t('settings.saving')}</div>
         )}
       </div>
     </div>
@@ -185,7 +185,7 @@ export default function LicenseSelectPage() {
     <Suspense fallback={
       <div className="container mx-auto px-4 py-6 pb-20">
         <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-          <p className="text-gray-600">加载中...</p>
+          <p className="text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     }>

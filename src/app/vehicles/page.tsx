@@ -9,6 +9,7 @@ import AIButton from "@/components/common/AIButton";
 import Pagination, { PaginationMeta } from "@/components/common/Pagination";
 import FilterBar, { VehicleFilters } from "@/components/common/FilterBar";
 import VehicleCard, { Vehicle } from "@/components/vehicle/VehicleCard";
+import { useLanguage } from "@/lib/i18n";
 
 // 缓存和请求去重机制（组件外部定义，避免每次渲染重新创建）
 const vehicleCache = new Map<string, { data: Vehicle[]; pagination: PaginationMeta | null; timestamp: number }>();
@@ -38,6 +39,7 @@ const fetchVehiclesWithDedup = async (url: string) => {
 
 export default function VehiclesPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +158,7 @@ export default function VehiclesPage() {
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">加载中...</p>
+            <p className="mt-4 text-gray-600">{t('common.loading')}</p>
           </div>
         ) : error ? (
           <div className="text-center py-12">

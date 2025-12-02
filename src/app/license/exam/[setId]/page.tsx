@@ -7,6 +7,7 @@ import AdSlot from "@/components/common/AdSlot";
 import QuestionAIDialog from "@/components/QuestionAIDialog";
 import QuestionImage from "@/components/common/QuestionImage";
 import { isValidImageUrl } from "@/lib/imageUtils";
+import { useLanguage } from "@/lib/i18n";
 import { ArrowLeft, Clock, Bot } from "lucide-react";
 
 interface Question {
@@ -23,6 +24,7 @@ export default function LicenseExamPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
+  const { t } = useLanguage();
   const setId = params?.setId as string;
   const licenseType = searchParams.get("type") || "provisional";
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -163,7 +165,7 @@ export default function LicenseExamPage() {
         <Header title="考试" showAIButton={false} />
         <div className="container mx-auto px-4 py-12 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">加载中...</p>
+          <p className="mt-4 text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -256,7 +258,7 @@ export default function LicenseExamPage() {
               onClick={finishExam}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
             >
-              提交试卷
+              {t('exam.submit')}
             </button>
           </div>
         </div>

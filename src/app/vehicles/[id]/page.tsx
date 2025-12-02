@@ -6,6 +6,7 @@ import { apiGet } from "@/lib/apiClient.front";
 import Header from "@/components/common/Header";
 import AdSlot from "@/components/common/AdSlot";
 import AIButton from "@/components/common/AIButton";
+import { useLanguage } from "@/lib/i18n";
 import { ArrowLeft } from "lucide-react";
 
 interface VehicleDetail {
@@ -45,6 +46,7 @@ interface VehicleDetail {
 export default function VehicleDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const { t } = useLanguage();
   const vehicleId = params?.id as string;
   const [vehicle, setVehicle] = useState<VehicleDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ export default function VehicleDetailPage() {
         <Header title="车辆详情" showAIButton={true} aiContext="vehicle" />
         <div className="container mx-auto px-4 py-12 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">加载中...</p>
+          <p className="mt-4 text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );

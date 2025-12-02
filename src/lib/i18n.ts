@@ -57,6 +57,8 @@ export const adminTranslations: Translations = {
     'common.delete': '删除',
     'common.edit': '编辑',
     'common.create': '创建',
+    'common.changing': '修改中...',
+    'common.confirmChange': '确认修改',
     'common.search': '搜索',
     'common.actions': '操作',
     'common.refresh': '刷新',
@@ -384,6 +386,8 @@ export const adminTranslations: Translations = {
     
     // 通用
     'common.loading': '読み込み中...',
+    'common.changing': '変更中...',
+    'common.confirmChange': '変更を確認',
     'common.error': 'エラー',
     'common.success': '成功',
     'common.confirm': '確認',
@@ -835,6 +839,7 @@ export const userTranslations: Translations = {
     'settings.notifications.pushDesc': '接收浏览器推送通知',
     'settings.saved': '设置已保存',
     'settings.saving': '保存中...',
+    'settings.saveError': '保存失败，请稍后重试',
     
     // AI助手
     'ai.assistant': 'AI 助手',
@@ -1005,6 +1010,8 @@ export const userTranslations: Translations = {
     'common.cancel': 'Cancel',
     'common.save': 'Save',
     'common.submit': 'Submit',
+    'common.changing': 'Changing...',
+    'common.confirmChange': 'Confirm Change',
     
     // 语言
     'language.title': 'Select Language',
@@ -1202,6 +1209,7 @@ export const userTranslations: Translations = {
     'settings.notifications.pushDesc': 'Receive browser push notifications',
     'settings.saved': 'Settings saved',
     'settings.saving': 'Saving...',
+    'settings.saveError': 'Failed to save, please try again',
     
     // AI助手
     'ai.assistant': 'AI Assistant',
@@ -1365,6 +1373,8 @@ export const userTranslations: Translations = {
     
     // 通用
     'common.loading': '読み込み中...',
+    'common.changing': '変更中...',
+    'common.confirmChange': '変更を確認',
     'common.error': 'エラー',
     'common.back': '戻る',
     'common.close': '閉じる',
@@ -1569,6 +1579,7 @@ export const userTranslations: Translations = {
     'settings.notifications.pushDesc': 'ブラウザのプッシュ通知を受信',
     'settings.saved': '設定を保存しました',
     'settings.saving': '保存中...',
+    'settings.saveError': '保存に失敗しました。しばらくしてからもう一度お試しください',
     
     // AI助手
     'ai.assistant': 'AIアシスタント',

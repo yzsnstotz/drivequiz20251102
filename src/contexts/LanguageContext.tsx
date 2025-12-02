@@ -14,42 +14,42 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const LANGUAGE_STORAGE_KEY = 'user-language';
 
+// ✅ 修复：同步获取客户端语言，避免闪现zh
+function getClientLanguage(): Language {
+  if (typeof window === 'undefined') {
+    return 'zh'; // SSR 环境返回默认值
+  }
+
+  // 1）优先读取本地存储的用户选择
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language | null;
+  if (saved && ['zh', 'en', 'ja'].includes(saved)) {
+    return saved;
+  }
+
+  // 2）没有保存则根据浏览器语言猜测
+  const browserLang = navigator.language || navigator.languages?.[0] || 'zh';
+  if (browserLang.startsWith('ja')) {
+    return 'ja';
+  }
+  if (browserLang.startsWith('en')) {
+    return 'en';
+  }
+
+  // 3）兜底：中文
+  return 'zh';
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // ✅ 修复：SSR 和客户端初始值必须一致，避免 hydration mismatch
-  // 初始值统一使用 'zh'，在 useEffect 中再更新为实际语言
+  // ✅ 修复：SSR和客户端hydration时都使用'zh'作为初始值，避免hydration错误
+  // 然后在客户端挂载后立即更新为用户选择的语言
   const [language, setLanguageState] = useState<Language>('zh');
   const [mounted, setMounted] = useState(false);
   const [languageReady, setLanguageReady] = useState(false);
 
-  // 客户端挂载后从 localStorage 读取语言设置
+  // 客户端挂载后立即更新为用户选择的语言
   useEffect(() => {
     setMounted(true);
-    
-    // ✅ 修复：在客户端挂载后同步读取 localStorage，确保语言立即更新
-    const getClientLanguage = (): Language => {
-      if (typeof window === 'undefined') {
-        return 'zh';
-      }
-
-      // 1）优先读取本地存储的用户选择
-      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language | null;
-      if (saved && ['zh', 'en', 'ja'].includes(saved)) {
-        return saved;
-      }
-
-      // 2）没有保存则根据浏览器语言猜测
-      const browserLang = navigator.language || navigator.languages?.[0] || 'zh';
-      if (browserLang.startsWith('ja')) {
-        return 'ja';
-      }
-      if (browserLang.startsWith('en')) {
-        return 'en';
-      }
-
-      // 3）兜底：中文
-      return 'zh';
-    };
-
+    // 立即从localStorage读取用户选择的语言
     const clientLanguage = getClientLanguage();
     setLanguageState(clientLanguage);
     setLanguageReady(true);

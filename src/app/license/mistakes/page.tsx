@@ -11,6 +11,7 @@ import { ArrowLeft } from "lucide-react";
 // 暂时使用示例数据
 export default function LicenseMistakesPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [mistakes, setMistakes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +35,7 @@ export default function LicenseMistakesPage() {
         <Header title="错题本" showAIButton={false} />
         <div className="container mx-auto px-4 py-12 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">加载中...</p>
+          <p className="mt-4 text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );

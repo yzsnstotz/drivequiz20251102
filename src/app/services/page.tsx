@@ -9,6 +9,7 @@ import AIButton from "@/components/common/AIButton";
 import Pagination, { PaginationMeta } from "@/components/common/Pagination";
 import FilterBar, { ServiceFilters } from "@/components/common/FilterBar";
 import ServiceCard, { Service } from "@/components/service/ServiceCard";
+import { useLanguage } from "@/lib/i18n";
 
 // 缓存和请求去重机制（组件外部定义，避免每次渲染重新创建）
 const serviceCache = new Map<string, { data: Service[]; pagination: PaginationMeta | null; timestamp: number }>();
@@ -38,6 +39,7 @@ const fetchServicesWithDedup = async (url: string) => {
 
 export default function ServicesPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +158,7 @@ export default function ServicesPage() {
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mx-auto"></div>
-            <p className="mt-4 text-gray-600 dark:text-ios-dark-text-secondary">加载中...</p>
+            <p className="mt-4 text-gray-600 dark:text-ios-dark-text-secondary">{t('common.loading')}</p>
           </div>
         ) : error ? (
           <div className="text-center py-12">

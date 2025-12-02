@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { ApiError, apiPost } from "@/lib/apiClient";
+import { useLanguage } from "@/lib/i18n";
 
 type ChangePasswordModalProps = {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export default function ChangePasswordModal({
   onClose,
   onSuccess,
 }: ChangePasswordModalProps) {
+  const { t } = useLanguage();
   const [oldToken, setOldToken] = useState("");
   const [newToken, setNewToken] = useState("");
   const [confirmToken, setConfirmToken] = useState("");
@@ -183,7 +185,7 @@ export default function ChangePasswordModal({
               disabled={loading}
               className="flex-1 rounded-md bg-blue-500 text-white text-sm font-medium px-4 py-2 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "修改中..." : "确认修改"}
+              {loading ? t('common.changing') : t('common.confirmChange')}
             </button>
             <button
               type="button"

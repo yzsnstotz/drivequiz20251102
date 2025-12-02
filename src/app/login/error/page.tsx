@@ -59,13 +59,18 @@ function LoginErrorContent() {
   );
 }
 
+function LoadingFallback() {
+  const { t } = useLanguage();
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-gray-600">{t('common.loading')}</div>
+    </div>
+  );
+}
+
 export default function LoginErrorPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">加载中...</div>
-      </div>
-    }>
+    <Suspense fallback={<LoadingFallback />}>
       <LoginErrorContent />
     </Suspense>
   );

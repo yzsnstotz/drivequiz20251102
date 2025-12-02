@@ -8,6 +8,7 @@ import AIButton from "@/components/common/AIButton";
 import QuestionAIDialog from "@/components/QuestionAIDialog";
 import QuestionImage from "@/components/common/QuestionImage";
 import { isValidImageUrl } from "@/lib/imageUtils";
+import { useLanguage } from "@/lib/i18n";
 import { ArrowLeft, Check, X, Bot } from "lucide-react";
 
 interface Question {
@@ -25,6 +26,7 @@ export default function LicenseStudyPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
+  const { t } = useLanguage();
   const setId = params?.setId as string;
   const licenseType = searchParams.get("type") || "provisional";
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -134,7 +136,7 @@ export default function LicenseStudyPage() {
         <Header title="学习" showAIButton={true} aiContext="license" />
         <div className="container mx-auto px-4 py-12 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">加载中...</p>
+          <p className="mt-4 text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );

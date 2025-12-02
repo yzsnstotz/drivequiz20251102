@@ -190,7 +190,7 @@ export default function StudyPage() {
               <div className="w-6 h-6 bg-blue-600 dark:bg-blue-400 rounded-full animate-ios-pulse"></div>
             </div>
           </div>
-          <p className="mt-4 text-gray-600 dark:text-gray-300">{t('common.loading')}</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-300" suppressHydrationWarning>{t('common.loading')}</p>
         </div>
       </div>
     );

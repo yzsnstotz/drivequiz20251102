@@ -21,6 +21,7 @@ import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 function ExamModePageFallback() {
   console.log('[ExamMode] ExamModePageFallback rendering (Suspense fallback)');
   const { t } = useLanguage();
+  
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex items-center space-x-4 mb-6">
@@ -29,7 +30,7 @@ function ExamModePageFallback() {
       <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-sm dark:shadow-ios-dark-sm mb-6">
         <div className="flex flex-col items-center justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mb-4"></div>
-          <p className="text-gray-600 dark:text-ios-dark-text-secondary">{t("common.loading")}</p>
+          <p className="text-gray-600 dark:text-ios-dark-text-secondary" suppressHydrationWarning>{t("common.loading")}</p>
         </div>
       </div>
     </div>
