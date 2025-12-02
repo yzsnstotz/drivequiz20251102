@@ -191,6 +191,53 @@ function getAiConnectionString(): string {
   return connectionString;
 }
 
+/**
+ * 解析连接字符串，提取配置信息
+ */
+function parseAiConnectionString(connectionString: string): {
+  host: string;
+  port: number;
+  database: string | undefined;
+  user: string | undefined;
+  password: string | undefined;
+  sslMode: string | null;
+  sslEnabled: boolean;
+} {
+  // 清理可能的前缀
+  let cleanedConnectionString = connectionString.trim();
+  if (cleanedConnectionString.startsWith('DATABASE_URL=')) {
+    cleanedConnectionString = cleanedConnectionString.substring('DATABASE_URL='.length);
+  } else if (cleanedConnectionString.startsWith('AI_DATABASE_URL=')) {
+    cleanedConnectionString = cleanedConnectionString.substring('AI_DATABASE_URL='.length);
+  }
+  
+  // 处理 postgres:// 和 postgresql:// 协议
+  if (cleanedConnectionString.startsWith('postgres://')) {
+    cleanedConnectionString = cleanedConnectionString.replace('postgres://', 'postgresql://');
+  }
+  
+  const url = new URL(cleanedConnectionString);
+
+  const host = url.hostname;
+  const port = url.port ? Number(url.port) : 5432;
+  const database = url.pathname ? url.pathname.slice(1) : undefined;
+  const user = url.username ? decodeURIComponent(url.username) : undefined;
+  const password = url.password ? decodeURIComponent(url.password) : undefined;
+
+  const sslMode = url.searchParams.get("sslmode");
+  const sslEnabled = !!(sslMode && sslMode !== "disable");
+
+  return {
+    host,
+    port,
+    database,
+    user,
+    password,
+    sslMode,
+    sslEnabled,
+  };
+}
+
 function createAiDbInstance(): Kysely<AiDatabase> {
   const connectionString = getAiConnectionString();
 
@@ -205,22 +252,41 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     throw new Error("[AI DB][Config] AI_DATABASE_URL is not set");
   }
 
+  // 解析连接字符串
+  const parsed = parseAiConnectionString(connectionString);
+
   // 仅在开发环境记录配置日志
   if (process.env.NODE_ENV === "development") {
-    console.log("[AI DB][Config] Using DATABASE_URL (first 80 chars):",
+    console.log("[AI DB][Config] Using AI_DATABASE_URL (first 80 chars):",
       connectionString.substring(0, 80) + "...",
     );
+    console.log("[AI DB][Config] Parsed connection:", {
+      host: parsed.host,
+      port: parsed.port,
+      database: parsed.database,
+      sslMode: parsed.sslMode,
+      sslEnabled: parsed.sslEnabled,
+    });
   }
 
   // 检测是否需要 SSL 连接（Supabase 必须使用 SSL）
   const isSupabase =
-    connectionString.includes("supabase.com") ||
-    connectionString.includes("supabase.co") ||
-    connectionString.includes("sslmode=require");
+    parsed.host.includes("supabase.com") ||
+    parsed.host.includes("supabase.co") ||
+    parsed.sslEnabled;
 
-  // 创建 Pool 配置对象（只保留必需字段，所有连接参数由 connectionString 自动解析）
+  // 构建 SSL 配置
+  const ssl = isSupabase || parsed.sslEnabled
+    ? { rejectUnauthorized: false }
+    : undefined;
+
+  // 创建 Pool 配置对象（使用分离的配置，确保 SSL 配置正确应用）
   const poolConfig: {
-    connectionString: string;
+    host: string;
+    port: number;
+    database: string | undefined;
+    user: string | undefined;
+    password: string | undefined;
     ssl?: boolean | { rejectUnauthorized: boolean };
     max?: number; // 最大连接数
     min?: number; // 最小连接数
@@ -229,7 +295,12 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     statement_timeout?: number; // 语句超时时间（毫秒）
     query_timeout?: number; // 查询超时时间（毫秒）
   } = {
-    connectionString,
+    host: parsed.host,
+    port: parsed.port,
+    database: parsed.database,
+    user: parsed.user,
+    password: parsed.password,
+    ssl, // 使用分离的配置确保 SSL 设置正确应用
     // 连接池配置：相对主库更"克制"，避免争抢过多连接资源
     max: 10, // 降低 AI DB 最大连接数，减少对主库的压力
     min: 1, // 保持最小连接数较低
@@ -238,18 +309,6 @@ function createAiDbInstance(): Kysely<AiDatabase> {
     statement_timeout: 40000, // 语句超时 40 秒
     query_timeout: 40000, // 查询超时 40 秒
   };
-
-  // Supabase 必须使用 SSL，但需要接受自签名证书
-  if (isSupabase) {
-    poolConfig.ssl = {
-      rejectUnauthorized: false, // Supabase 使用自签名证书或中间证书链
-    };
-    
-    // 设置环境变量以允许自签名证书（仅用于 Supabase，如果未设置）
-    if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    }
-  }
 
   // 创建 Pool 实例并传递给 PostgresDialect
   const pool = new Pool(poolConfig);
