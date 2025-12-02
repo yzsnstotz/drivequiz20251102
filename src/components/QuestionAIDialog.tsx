@@ -255,9 +255,83 @@ export default function QuestionAIDialog({
     }
   }, [isOpen]);
 
+  // 将简短语言格式转换为BCP-47格式
+  const getLocaleForAI = (): string => {
+    if (language === "en") return "en-US";
+    if (language === "ja") return "ja-JP";
+    return "zh-CN";
+  };
+
+  // 格式化正确答案（提取为辅助函数，便于复用）
+  const formatCorrectAnswer = (): string => {
+    // 对于判断题，将true/false转换为当前语言
+    if (question.type === "truefalse") {
+      if (question.correctAnswer === "true") {
+        return language === "en" ? "True" : language === "ja" ? "正しい" : "正确";
+      } else if (question.correctAnswer === "false") {
+        return language === "en" ? "False" : language === "ja" ? "誤り" : "错误";
+      } else {
+        return question.correctAnswer;
+      }
+    }
+    
+    // 对于单选题和多选题，需要将答案转换为选项标签（A、B、C等）
+    const options = getQuestionOptions(question.options, language);
+    if (options && options.length > 0) {
+      if (Array.isArray(question.correctAnswer)) {
+        // 多选题：将多个答案转换为选项标签
+        return question.correctAnswer
+          .map((answer) => {
+            // 如果答案已经是选项标签（A、B、C等），直接返回
+            if (/^[A-Z]$/.test(String(answer))) {
+              return answer;
+            }
+            // 否则，查找答案在选项中的索引
+            const index = options.findIndex((opt) => opt === answer || opt.trim() === String(answer).trim());
+            if (index >= 0) {
+              return String.fromCharCode(65 + index);
+            }
+            return answer;
+          })
+          .join("、");
+      } else {
+        // 单选题：将答案转换为选项标签
+        const answer = String(question.correctAnswer);
+        // 如果答案已经是选项标签（A、B、C等），直接返回
+        if (/^[A-Z]$/.test(answer)) {
+          return answer;
+        }
+        // 否则，查找答案在选项中的索引
+        const index = options.findIndex((opt) => opt === answer || opt.trim() === answer.trim());
+        if (index >= 0) {
+          return String.fromCharCode(65 + index);
+        }
+        return answer;
+      }
+    }
+    
+    // 如果没有选项，直接返回答案（兼容旧格式）
+    if (Array.isArray(question.correctAnswer)) {
+      return question.correctAnswer.join("、");
+    }
+    return question.correctAnswer;
+  };
+
   // 初始化本地explanation（显示本地解析和引导消息）
   const initializeLocalExplanation = () => {
     const newMessages: Message[] = [];
+    
+    // 先显示正确答案提示
+    const correctAnswerText = formatCorrectAnswer();
+    const answerAnnouncement: Message = {
+      role: "assistant",
+      content: t("ai.answerAnnouncement").replace("{answer}", correctAnswerText),
+      metadata: {
+        aiProvider: "system",
+        sourceType: "system-tip",
+      },
+    };
+    newMessages.push(answerAnnouncement);
     
     // 检查是否有本地explanation
     if (question.explanation) {
@@ -295,14 +369,41 @@ export default function QuestionAIDialog({
 
   const formatQuestionForAI = () => {
     // 处理多语言content字段
-    const contentText =
-      typeof question.content === "string"
-        ? question.content
-        : question.content?.[language] ||
-          question.content?.zh ||
-          "";
-
+    // 优先使用当前语言，如果没有则使用中文
+    let contentText: string;
+    let isContentInTargetLang = false;
+    
+    if (typeof question.content === "string") {
+      // 旧格式：单语言字符串，默认为中文
+      contentText = question.content;
+      isContentInTargetLang = language === "zh";
+    } else {
+      // 新格式：多语言对象
+      // 检查是否有当前语言的版本
+      const targetLangContent = question.content?.[language];
+      if (targetLangContent && typeof targetLangContent === "string" && targetLangContent.trim().length > 0) {
+        contentText = targetLangContent;
+        isContentInTargetLang = true;
+      } else {
+        // 回退到中文
+        contentText = question.content?.zh || "";
+        isContentInTargetLang = false;
+      }
+    }
+    
     let questionText = `${t("ai.question.label")}${contentText}\n\n`;
+    
+    // 如果题目内容语言与用户语言不匹配，添加语言说明
+    if (!isContentInTargetLang && language !== "zh") {
+      const langNote = language === "en" 
+        ? "(Note: The question is in Chinese, please provide explanation in English.)"
+        : language === "ja"
+        ? "(注：問題は中国語です。日本語で説明してください。)"
+        : "";
+      if (langNote) {
+        questionText = `${t("ai.question.label")}${contentText} ${langNote}\n\n`;
+      }
+    }
 
     // 处理多语言options字段
     const options = getQuestionOptions(question.options, language);
@@ -315,24 +416,8 @@ export default function QuestionAIDialog({
       questionText += "\n";
     }
 
-    // 格式化正确答案
-    let correctAnswerText = "";
-    if (Array.isArray(question.correctAnswer)) {
-      correctAnswerText = question.correctAnswer.join("、");
-    } else {
-      // 对于判断题，将true/false转换为当前语言
-      if (question.type === "truefalse") {
-        if (question.correctAnswer === "true") {
-          correctAnswerText = language === "en" ? "True" : language === "ja" ? "正しい" : "正确";
-        } else if (question.correctAnswer === "false") {
-          correctAnswerText = language === "en" ? "False" : language === "ja" ? "誤り" : "错误";
-        } else {
-          correctAnswerText = question.correctAnswer;
-        }
-      } else {
-        correctAnswerText = question.correctAnswer;
-      }
-    }
+    // 格式化正确答案（使用辅助函数）
+    const correctAnswerText = formatCorrectAnswer();
     questionText += `${t("ai.correctAnswer.label")}${correctAnswerText}\n\n`;
 
     if (question.explanation) {
@@ -390,6 +475,18 @@ export default function QuestionAIDialog({
         // 1. 优先检查内存缓存（理论上每次更新缓存都会和localStorage同步，所以缓存没有localStorage也应该没有）
         const memoryCachedAnswer = memoryCache.get(questionHash);
         if (memoryCachedAnswer) {
+          // 先显示正确答案提示
+          const correctAnswerText = formatCorrectAnswer();
+          const answerAnnouncement: Message = {
+            role: "assistant",
+            content: t("ai.answerAnnouncement").replace("{answer}", correctAnswerText),
+            metadata: {
+              aiProvider: "system",
+              sourceType: "system-tip",
+            },
+          };
+          setMessages((prev) => [...prev, answerAnnouncement]);
+          
           const newMessage: Message = {
             role: "assistant",
             content: memoryCachedAnswer,
@@ -405,7 +502,7 @@ export default function QuestionAIDialog({
           if (question.image) {
             const tipMessage: Message = {
               role: "assistant",
-              content: "💡 提示：由于AI无法直接查看图片，如果您在追问时描述图片中的内容（如标志、路况、车辆位置等），我可以为您提供更准确的解析。",
+              content: t("ai.imageTip"),
               metadata: {
                 aiProvider: "system",
                 sourceType: "system-tip",
@@ -425,6 +522,19 @@ export default function QuestionAIDialog({
           const cachedAnswer = localAiAnswers[questionHash];
           // 存入内存缓存（与localStorage同步）
           memoryCache.set(questionHash, cachedAnswer);
+          
+          // 先显示正确答案提示
+          const correctAnswerText = formatCorrectAnswer();
+          const answerAnnouncement: Message = {
+            role: "assistant",
+            content: t("ai.answerAnnouncement").replace("{answer}", correctAnswerText),
+            metadata: {
+              aiProvider: "system",
+              sourceType: "system-tip",
+            },
+          };
+          setMessages((prev) => [...prev, answerAnnouncement]);
+          
           const newMessage: Message = {
             role: "assistant",
             content: cachedAnswer,
@@ -440,7 +550,7 @@ export default function QuestionAIDialog({
           if (question.image) {
             const tipMessage: Message = {
               role: "assistant",
-              content: "💡 提示：由于AI无法直接查看图片，如果您在追问时描述图片中的内容（如标志、路况、车辆位置等），我可以为您提供更准确的解析。",
+              content: t("ai.imageTip"),
               metadata: {
                 aiProvider: "system",
                 sourceType: "system-tip",
@@ -509,7 +619,7 @@ export default function QuestionAIDialog({
       const payload = await callAiDirect({
         provider: providerToUse,
           question: questionText,
-          locale: language,
+          locale: getLocaleForAI(), // 使用BCP-47格式的locale
           scene: "question_explanation",
         model: currentModel,
         // questionHash 不再传递给 ai-service，因为 ai-service 不处理缓存
@@ -539,6 +649,20 @@ export default function QuestionAIDialog({
           ? "cached" 
           : (payload.data.aiProvider || providerToUse); // 使用响应中的 aiProvider，如果没有则使用调用时的 provider
 
+        // 在显示AI解析之前，先显示正确答案提示（仅首次提问时显示）
+        if (!isFollowUpQuestion) {
+          const correctAnswerText = formatCorrectAnswer();
+          const answerAnnouncement: Message = {
+            role: "assistant",
+            content: t("ai.answerAnnouncement").replace("{answer}", correctAnswerText),
+            metadata: {
+              aiProvider: "system",
+              sourceType: "system-tip",
+            },
+          };
+          setMessages((prev) => [...prev, answerAnnouncement]);
+        }
+
         const newMessage: Message = {
           role: "assistant",
           content: answer,
@@ -556,7 +680,7 @@ export default function QuestionAIDialog({
         if (!isFollowUpQuestion && question.image) {
           const tipMessage: Message = {
             role: "assistant",
-            content: "💡 提示：由于AI无法直接查看图片，如果您在追问时描述图片中的内容（如标志、路况、车辆位置等），我可以为您提供更准确的解析。",
+            content: t("ai.imageTip"),
             metadata: {
               aiProvider: "system",
               sourceType: "system-tip",
@@ -622,7 +746,7 @@ export default function QuestionAIDialog({
         <div className="flex items-center justify-between p-4 border-b dark:border-ios-dark-border">
           <div className="flex items-center space-x-2">
             <Bot className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">AI智能助手</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t("ai.assistant")}</h2>
             <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">by Zalem</span>
           </div>
           <button
@@ -636,11 +760,9 @@ export default function QuestionAIDialog({
 
         {/* 题目显示区域 */}
         <div className="p-4 border-b dark:border-ios-dark-border bg-gray-50 dark:bg-black max-h-48 overflow-y-auto">
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">当前题目：</div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t("question.current")}</div>
           <div className="text-gray-900 dark:text-white mb-2">
-            {typeof question.content === 'string' 
-              ? question.content 
-              : (question.content?.zh || '')}
+            {getQuestionContent(question.content as any, language) || ''}
           </div>
           {isValidImageUrl(question.image) && (
             <div className="mt-2 relative w-full h-32">
@@ -843,7 +965,7 @@ export default function QuestionAIDialog({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="输入你的问题..."
+              placeholder={t("ai.input.placeholder")}
               className="flex-1 min-h-[60px] max-h-[120px] p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isLoading || isInitialLoading}
             />
@@ -851,17 +973,17 @@ export default function QuestionAIDialog({
               onClick={handleSend}
               disabled={!inputValue.trim() || isLoading || isInitialLoading}
               className="px-4 py-3 bg-blue-600 dark:bg-blue-500 text-white dark:text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-              aria-label={isLoading ? "发送中" : "发送"}
+              aria-label={isLoading ? t("ai.send.sending") : t("ai.send.button")}
             >
               {isLoading ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin text-white dark:text-white" />
-                  <span className="ml-2 text-white dark:text-white">发送中…</span>
+                  <span className="ml-2 text-white dark:text-white">{t("ai.send.sending")}</span>
                 </>
               ) : (
                 <>
                   <Send className="h-5 w-5 text-white dark:text-white" />
-                  <span className="ml-2 text-white dark:text-white">发送</span>
+                  <span className="ml-2 text-white dark:text-white">{t("ai.send.button")}</span>
                 </>
               )}
             </button>

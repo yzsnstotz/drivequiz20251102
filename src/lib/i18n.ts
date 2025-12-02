@@ -848,7 +848,9 @@ export const userTranslations: Translations = {
     'ai.correctAnswer.label': '正确答案：',
     'ai.explanation.label': '解析：',
     'ai.prompt': '请进一步解析这道题目。',
+    'ai.answerAnnouncement': '正确答案是：{answer}',
     'ai.localExplanation.guide': '以上是题目的基础解析，如果您有疑问或需要更详细的解释，请随时提问。',
+    'ai.imageTip': '💡 提示：由于AI无法直接查看图片，如果您在追问时描述图片中的内容（如标志、路况、车辆位置等），我可以为您提供更准确的解析。',
     
     // 学习页面
     'study.reset': '从头开始',
@@ -1213,7 +1215,9 @@ export const userTranslations: Translations = {
     'ai.correctAnswer.label': 'Correct answer:',
     'ai.explanation.label': 'Explanation:',
     'ai.prompt': 'Please provide a detailed explanation for this question.',
+    'ai.answerAnnouncement': 'The correct answer is: {answer}',
     'ai.localExplanation.guide': 'The above is the basic explanation of the question. If you have any questions or need a more detailed explanation, please feel free to ask.',
+    'ai.imageTip': '💡 Tip: Since AI cannot directly view images, if you describe the content in the image (such as signs, road conditions, vehicle positions, etc.) when asking follow-up questions, I can provide you with more accurate analysis.',
     
     // 学习页面
     'study.reset': 'Start Over',
@@ -1578,7 +1582,9 @@ export const userTranslations: Translations = {
     'ai.correctAnswer.label': '正解：',
     'ai.explanation.label': '解説：',
     'ai.prompt': 'この問題について詳しく解説してください。',
+    'ai.answerAnnouncement': '正解は：{answer}',
     'ai.localExplanation.guide': '以上が問題の基本的な解説です。ご質問やより詳細な解説が必要な場合は、お気軽にお尋ねください。',
+    'ai.imageTip': '💡 ヒント：AIは画像を直接確認できないため、フォローアップ質問で画像の内容（標識、道路状況、車両の位置など）を説明していただければ、より正確な解析を提供できます。',
     
     // 学习页面
     'study.reset': '最初から',

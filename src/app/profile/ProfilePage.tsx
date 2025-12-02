@@ -40,8 +40,8 @@ function ProfilePage() {
   const [nickname, setNickname] = useState('User');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
-  const [accountInfoExpanded, setAccountInfoExpanded] = useState(true);
-  const [studyExpanded, setStudyExpanded] = useState(true);
+  const [accountInfoExpanded, setAccountInfoExpanded] = useState(false);
+  const [studyExpanded, setStudyExpanded] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   
   // 设置相关state
