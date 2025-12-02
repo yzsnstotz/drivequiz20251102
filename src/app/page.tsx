@@ -337,7 +337,7 @@ export default function HomePage() {
             {/* 登录/用户信息 */}
             {status === "loading" ? (
               <div className="px-3 py-1.5 text-gray-400">
-                <span className="text-sm">{t('common.loading')}</span>
+                <span className="text-sm" suppressHydrationWarning>{t('common.loading')}</span>
               </div>
             ) : session?.user ? (
               <div className="flex items-center space-x-2">

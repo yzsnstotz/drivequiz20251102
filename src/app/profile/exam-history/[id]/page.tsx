@@ -83,7 +83,7 @@ export default function ExamDetailPage() {
         <div className="container mx-auto px-4 py-6 pb-20">
           <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm">
             <div className="text-center py-12">
-              <p className="text-gray-500 dark:text-gray-400">{t('common.loading')}</p>
+              <p className="text-gray-500 dark:text-gray-400" suppressHydrationWarning>{t('common.loading')}</p>
             </div>
           </div>
         </div>

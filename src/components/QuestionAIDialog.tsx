@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -98,6 +98,24 @@ export default function QuestionAIDialog({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // ✅ 修复：使用useMemo缓存图片URL验证结果，避免每次渲染都调用
+  const hasValidImage = useMemo(() => {
+    return isValidImageUrl(question.image);
+  }, [question.image]);
+
+  // ✅ 修复：使用useMemo缓存题目内容，避免每次渲染都调用
+  const questionContent = useMemo(() => {
+    return getQuestionContent(question.content as any, language) || '';
+  }, [question.content, language]);
+
+  // ✅ 修复：使用useMemo缓存选项内容，避免每次渲染都调用
+  const questionOptions = useMemo(() => {
+    if (!question.options || question.options.length === 0) {
+      return [];
+    }
+    return getQuestionOptions(question.options, language);
+  }, [question.options, language]);
 
   useEffect(() => {
     if (isOpen) {
@@ -762,9 +780,9 @@ export default function QuestionAIDialog({
         <div className="p-4 border-b dark:border-ios-dark-border bg-gray-50 dark:bg-black max-h-48 overflow-y-auto">
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t("question.current")}</div>
           <div className="text-gray-900 dark:text-white mb-2">
-            {getQuestionContent(question.content as any, language) || ''}
+            {questionContent}
           </div>
-          {isValidImageUrl(question.image) && (
+          {hasValidImage && (
             <div className="mt-2 relative w-full h-32">
               <Image
                 src={question.image!.trim()}
@@ -775,9 +793,9 @@ export default function QuestionAIDialog({
               />
             </div>
           )}
-          {question.options && question.options.length > 0 && (
+          {questionOptions.length > 0 && (
             <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              {getQuestionOptions(question.options, language).map((option, index) => {
+              {questionOptions.map((option, index) => {
                 const label = String.fromCharCode(65 + index);
                 return (
                   <div key={index} className="mb-1">

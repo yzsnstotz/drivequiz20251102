@@ -61,7 +61,7 @@ export default function ExamHistoryPage() {
           {examHistory.length === 0 ? (
             <div className="text-center py-12">
               <Trophy className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400 text-lg">{t('profile.noExamHistory')}</p>
+              <p className="text-gray-500 dark:text-gray-400 text-lg" suppressHydrationWarning>{t('profile.noExamHistory')}</p>
             </div>
           ) : (
             <div className="space-y-4">

@@ -27,7 +27,7 @@ export default function Header({ title, showAIButton = true, aiContext = "genera
         <div className="flex items-center justify-between h-16">
           {/* Logo / Title */}
           <div className="flex items-center gap-2">
-            <Link href="/" className="text-xl font-bold text-blue-600 dark:text-blue-500">
+            <Link href="/" className="text-xl font-bold text-blue-600 dark:text-blue-500" suppressHydrationWarning>
               {title || "ZALEM"}
             </Link>
             <span className="text-[9px] text-gray-400 font-mono hidden sm:inline">

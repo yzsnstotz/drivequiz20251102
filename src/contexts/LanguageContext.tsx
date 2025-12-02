@@ -17,7 +17,7 @@ const LANGUAGE_STORAGE_KEY = 'user-language';
 // ✅ 修复：同步获取客户端语言，避免闪现zh
 function getClientLanguage(): Language {
   if (typeof window === 'undefined') {
-    return 'zh'; // SSR 环境返回默认值
+    return 'en'; // SSR 环境返回英文
   }
 
   // 1）优先读取本地存储的用户选择
@@ -40,20 +40,23 @@ function getClientLanguage(): Language {
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // ✅ 修复：SSR和客户端hydration时都使用'zh'作为初始值，避免hydration错误
-  // 然后在客户端挂载后立即更新为用户选择的语言
-  const [language, setLanguageState] = useState<Language>('zh');
+  // ✅ 修复：使用函数初始化，在客户端首次渲染时就从localStorage读取正确的语言
+  // SSR时getClientLanguage()返回'en'，客户端时返回用户选择的语言
+  // 由于已添加suppressHydrationWarning，可以安全地使用函数初始化
+  const [language, setLanguageState] = useState<Language>(() => getClientLanguage());
   const [mounted, setMounted] = useState(false);
   const [languageReady, setLanguageReady] = useState(false);
 
-  // 客户端挂载后立即更新为用户选择的语言
+  // 客户端挂载后标记为就绪，并确保语言状态与localStorage同步
   useEffect(() => {
     setMounted(true);
-    // 立即从localStorage读取用户选择的语言
-    const clientLanguage = getClientLanguage();
-    setLanguageState(clientLanguage);
+    // 确保语言状态与localStorage同步（处理可能的竞态条件）
+    const currentLanguage = getClientLanguage();
+    if (currentLanguage !== language) {
+      setLanguageState(currentLanguage);
+    }
     setLanguageReady(true);
-  }, []);
+  }, [language]);
 
   // ✅ 修复：确保语言切换时同步写入 localStorage
   const updateLanguage = React.useCallback((lang: Language) => {

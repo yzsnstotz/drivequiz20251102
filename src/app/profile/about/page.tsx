@@ -47,7 +47,7 @@ export default function AboutPage() {
               <ChevronLeft className="h-6 w-6" />
             </button>
             {/* 标题 */}
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-white" suppressHydrationWarning>
               {t('profile.about') || '关于'}
             </h1>
           </div>
@@ -57,7 +57,7 @@ export default function AboutPage() {
         <div className="bg-white dark:bg-ios-dark-bg-secondary rounded-2xl p-6 shadow-ios-sm dark:shadow-ios-dark-sm">
           <div className="flex items-center space-x-3 mb-6">
             <Info className="h-6 w-6 text-blue-600 dark:text-blue-500" />
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-ios-dark-text">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-ios-dark-text" suppressHydrationWarning>
               {t('profile.about') || '关于'}
             </h1>
           </div>
@@ -65,20 +65,20 @@ export default function AboutPage() {
           <div className="space-y-6">
             {/* 题库版本号 */}
             <div className="border-b border-gray-200 dark:border-ios-dark-border pb-4">
-              <h2 className="text-sm font-medium text-gray-500 dark:text-ios-dark-text-secondary mb-2">
+              <h2 className="text-sm font-medium text-gray-500 dark:text-ios-dark-text-secondary mb-2" suppressHydrationWarning>
                 {t('profile.questionBankVersion') || '题库版本号'}
               </h2>
-              <p className="text-lg font-semibold text-gray-900 dark:text-ios-dark-text">
+              <p className="text-lg font-semibold text-gray-900 dark:text-ios-dark-text" suppressHydrationWarning>
                 {pkgVersion || (t('profile.questionBankVersionUnknown') || '未知')}
               </p>
             </div>
 
             {/* 软件版本号 */}
             <div className="border-b border-gray-200 dark:border-ios-dark-border pb-4">
-              <h2 className="text-sm font-medium text-gray-500 dark:text-ios-dark-text-secondary mb-2">
+              <h2 className="text-sm font-medium text-gray-500 dark:text-ios-dark-text-secondary mb-2" suppressHydrationWarning>
                 {t('profile.appVersion') || '软件版本号'}
               </h2>
-              <p className="text-lg font-semibold text-gray-900 dark:text-ios-dark-text">
+              <p className="text-lg font-semibold text-gray-900 dark:text-ios-dark-text" suppressHydrationWarning>
                 {appVersion || (t('profile.appVersionUnknown') || '未知')}
               </p>
             </div>
@@ -87,11 +87,11 @@ export default function AboutPage() {
             <div className="pt-4">
               <div className="flex items-center space-x-2 mb-4">
                 <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-500" />
-                <h2 className="text-sm font-medium text-orange-600 dark:text-orange-500">
+                <h2 className="text-sm font-medium text-orange-600 dark:text-orange-500" suppressHydrationWarning>
                   {t('profile.testingFeatures') || '测试用功能（慎用）'}
                 </h2>
               </div>
-              <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mb-4">
+              <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mb-4" suppressHydrationWarning>
                 {t('profile.testingFeaturesDesc') || '以下功能仅用于测试，使用后可能导致数据丢失，请谨慎操作！'}
               </p>
               
@@ -120,10 +120,10 @@ export default function AboutPage() {
                 >
                   <XSquare className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
                   <div className="flex-grow text-left">
-                    <h3 className="font-medium text-red-600 dark:text-red-400">
+                    <h3 className="font-medium text-red-600 dark:text-red-400" suppressHydrationWarning>
                       {t('profile.clearActivation') || '清除激活'}
                     </h3>
-                    <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">
+                    <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1" suppressHydrationWarning>
                       {t('profile.clearActivationDesc') || '清除当前激活状态，需要重新激活'}
                     </p>
                   </div>
@@ -147,10 +147,10 @@ export default function AboutPage() {
                 >
                   <Trash2 className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
                   <div className="flex-grow text-left">
-                    <h3 className="font-medium text-orange-600 dark:text-orange-400">
+                    <h3 className="font-medium text-orange-600 dark:text-orange-400" suppressHydrationWarning>
                       {t('profile.clearCache') || '清除缓存'}
                     </h3>
-                    <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1">
+                    <p className="text-xs text-gray-500 dark:text-ios-dark-text-secondary mt-1" suppressHydrationWarning>
                       {t('profile.clearCacheDesc') || '清除所有缓存和本地数据（用于测试）'}
                     </p>
                   </div>

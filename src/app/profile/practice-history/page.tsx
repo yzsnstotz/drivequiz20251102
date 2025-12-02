@@ -42,7 +42,7 @@ export default function PracticeHistoryPage() {
           {practiceHistory.length === 0 ? (
             <div className="text-center py-12">
               <BookOpen className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400 text-lg">{t('profile.noPracticeHistory')}</p>
+              <p className="text-gray-500 dark:text-gray-400 text-lg" suppressHydrationWarning>{t('profile.noPracticeHistory')}</p>
             </div>
           ) : (
             <div className="space-y-4">
