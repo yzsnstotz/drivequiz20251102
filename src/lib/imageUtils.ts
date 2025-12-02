@@ -10,15 +10,12 @@
  */
 export function isValidImageUrl(url: string | null | undefined): boolean {
   try {
-    // 首先检查是否为 null 或 undefined
+    // 首先检查是否为 null 或 undefined（这是正常的边界情况，不输出日志）
     if (url === null || url === undefined) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[isValidImageUrl] URL is null or undefined');
-      }
       return false;
     }
     
-    // 确保是字符串类型
+    // 确保是字符串类型（类型错误才输出警告）
     if (typeof url !== 'string') {
       if (process.env.NODE_ENV === 'development') {
         console.warn('[isValidImageUrl] URL is not a string:', { url, type: typeof url });
@@ -26,12 +23,9 @@ export function isValidImageUrl(url: string | null | undefined): boolean {
       return false;
     }
     
-    // 检查 trim 后是否为空字符串
+    // 检查 trim 后是否为空字符串（空字符串也是正常边界情况，不输出日志）
     const trimmed = url.trim();
     if (trimmed.length === 0) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[isValidImageUrl] URL is empty after trim');
-      }
       return false;
     }
     
@@ -44,24 +38,19 @@ export function isValidImageUrl(url: string | null | undefined): boolean {
       trimmed.startsWith('/')
     );
     
-    if (process.env.NODE_ENV === 'development') {
-      if (isValid) {
-        console.log('[isValidImageUrl] URL is valid:', { 
-          url: trimmed.substring(0, 100), 
-          startsWith: trimmed.startsWith('/') ? '/' : (lowerTrimmed.startsWith('http://') ? 'http://' : 'https://')
-        });
-      } else {
-        console.log('[isValidImageUrl] URL is invalid:', { 
-          url: trimmed.substring(0, 100),
-          reason: 'Does not start with http://, https://, or /'
-        });
-      }
+    // 只在开发环境且URL有效时输出日志（用于调试有效URL）
+    // 无效URL不输出日志，避免频繁渲染时的日志污染
+    if (process.env.NODE_ENV === 'development' && isValid) {
+      console.log('[isValidImageUrl] URL is valid:', { 
+        url: trimmed.substring(0, 100), 
+        startsWith: trimmed.startsWith('/') ? '/' : (lowerTrimmed.startsWith('http://') ? 'http://' : 'https://')
+      });
     }
     
     return isValid;
   } catch (error) {
     // 任何错误都被捕获，返回 false，避免阻塞渲染
-    // 限流：只在开发环境打印一次警告
+    // 只在开发环境打印一次警告
     if (process.env.NODE_ENV === 'development') {
       console.warn('[isValidImageUrl] Error checking image URL (suppressed):', error);
     }

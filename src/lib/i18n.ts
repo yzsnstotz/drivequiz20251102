@@ -848,6 +848,7 @@ export const userTranslations: Translations = {
     'ai.correctAnswer.label': '正确答案：',
     'ai.explanation.label': '解析：',
     'ai.prompt': '请进一步解析这道题目。',
+    'ai.localExplanation.guide': '以上是题目的基础解析，如果您有疑问或需要更详细的解释，请随时提问。',
     
     // 学习页面
     'study.reset': '从头开始',
@@ -1212,6 +1213,7 @@ export const userTranslations: Translations = {
     'ai.correctAnswer.label': 'Correct answer:',
     'ai.explanation.label': 'Explanation:',
     'ai.prompt': 'Please provide a detailed explanation for this question.',
+    'ai.localExplanation.guide': 'The above is the basic explanation of the question. If you have any questions or need a more detailed explanation, please feel free to ask.',
     
     // 学习页面
     'study.reset': 'Start Over',
@@ -1576,6 +1578,7 @@ export const userTranslations: Translations = {
     'ai.correctAnswer.label': '正解：',
     'ai.explanation.label': '解説：',
     'ai.prompt': 'この問題について詳しく解説してください。',
+    'ai.localExplanation.guide': '以上が問題の基本的な解説です。ご質問やより詳細な解説が必要な場合は、お気軽にお尋ねください。',
     
     // 学习页面
     'study.reset': '最初から',

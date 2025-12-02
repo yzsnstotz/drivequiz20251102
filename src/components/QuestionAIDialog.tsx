@@ -236,14 +236,14 @@ export default function QuestionAIDialog({
     }
   }, [messages, isOpen, question.hash]);
 
-  // 初始化AI解释（仅在首次打开且没有缓存时）
+  // 初始化本地explanation（仅在首次打开且没有缓存时）
   useEffect(() => {
     if (isOpen && !hasInitialized.current && question && messages.length === 0) {
       hasInitialized.current = true;
       setIsInitialLoading(true);
-      fetchAIExplanation();
+      initializeLocalExplanation();
     }
-  }, [isOpen, question, messages.length]);
+  }, [isOpen, question, messages.length, language]);
 
   // 重置状态当对话框关闭
   useEffect(() => {
@@ -254,6 +254,44 @@ export default function QuestionAIDialog({
       setInputValue("");
     }
   }, [isOpen]);
+
+  // 初始化本地explanation（显示本地解析和引导消息）
+  const initializeLocalExplanation = () => {
+    const newMessages: Message[] = [];
+    
+    // 检查是否有本地explanation
+    if (question.explanation) {
+      const explanationText = getQuestionContent(
+        question.explanation as any,
+        language
+      );
+      
+      if (explanationText && explanationText.trim()) {
+        // 添加本地explanation作为assistant消息
+        newMessages.push({
+          role: "assistant",
+          content: explanationText,
+          metadata: {
+            aiProvider: "system",
+            sourceType: "knowledge-base",
+          },
+        });
+      }
+    }
+    
+    // 添加引导消息
+    newMessages.push({
+      role: "assistant",
+      content: t("ai.localExplanation.guide"),
+      metadata: {
+        aiProvider: "system",
+        sourceType: "system-tip",
+      },
+    });
+    
+    setMessages(newMessages);
+    setIsInitialLoading(false);
+  };
 
   const formatQuestionForAI = () => {
     // 处理多语言content字段
@@ -316,10 +354,21 @@ export default function QuestionAIDialog({
     try {
       setIsLoading(true);
       
-      const questionText = userQuestion || formatQuestionForAI();
-      
       // 判断是首次提问还是用户追问
-      const isFollowUpQuestion = !!userQuestion; // 如果userQuestion存在，说明是用户追问
+      const isFollowUpQuestion = !!userQuestion; // 如果userQuestion存在，说明是用户提问
+      
+      // 构建问题文本：如果用户提问，需要包含题目信息和用户问题
+      let questionText: string;
+      if (userQuestion) {
+        // 用户提问：包含题目信息 + 用户问题
+        const baseQuestionText = formatQuestionForAI();
+        // 移除formatQuestionForAI末尾的默认prompt，替换为用户的实际问题
+        const baseWithoutPrompt = baseQuestionText.replace(new RegExp(t("ai.prompt") + "$"), "").trim();
+        questionText = `${baseWithoutPrompt}\n\n${t("ai.question.label")}${userQuestion}`;
+      } else {
+        // 没有用户问题（这种情况现在不应该发生，但保留作为fallback）
+        questionText = formatQuestionForAI();
+      }
       
       // 获取题目的hash值（仅在首次提问时使用）
       const questionHash = isFollowUpQuestion ? null : question.hash;
