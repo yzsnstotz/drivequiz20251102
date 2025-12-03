@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ApiError, apiGet } from "@/lib/apiClient";
+import { ApiError, apiFetch } from "@/lib/apiClient";
 
 type SourceInfo = {
   title: string;
@@ -130,13 +130,24 @@ export default function AdminAiLogsPage() {
         if (filters.model) params.model = filters.model;
         if (filters.q) params.q = filters.q;
 
-        const data = await apiGet<ListResponse>("/api/admin/ai/logs", { query: params });
+        // 构建查询字符串
+        const queryString = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            queryString.append(k, String(v));
+          }
+        });
+        const url = `/api/admin/ai/logs${queryString.toString() ? `?${queryString.toString()}` : ""}`;
+        
+        // 使用 apiFetch 获取完整响应（包含 pagination）
+        const response = await apiFetch<ListResponse>(url);
         if (!mounted) return;
 
-        const payload = data as unknown as any;
-        const items = (payload.items ?? payload) as LogItem[];
+        // apiFetch 返回 { ok: true, data: { items }, pagination }
+        const items = response.data?.items || (Array.isArray(response.data) ? response.data : []);
+        const pagination = response.pagination || null;
         setItems(items);
-        setPagination(payload.pagination || null);
+        setPagination(pagination);
       } catch (e) {
         if (!mounted) return;
         if (e instanceof ApiError) {
