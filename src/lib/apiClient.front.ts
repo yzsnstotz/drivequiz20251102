@@ -7,7 +7,7 @@
  * - 统一抛错：ApiError
  */
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 export interface ApiSuccess<T = unknown> {
   ok: true;
