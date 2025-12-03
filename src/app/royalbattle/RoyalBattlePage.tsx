@@ -315,13 +315,13 @@ function RoyalBattlePage() {
           )}
           
           {currentQuestion.type === 'truefalse' ? (
-            <div className="space-y-3">
+            <div className="flex flex-row gap-3">
               {['true', 'false'].map((option) => (
                 <button
                   key={option}
                   onClick={() => handleAnswer(option)}
                   disabled={showAnswer}
-                  className={`w-full p-4 rounded-xl text-left ${showAnswer ? 'cursor-not-allowed' : ''} ${
+                  className={`flex-1 p-4 rounded-xl text-center ${showAnswer ? 'cursor-not-allowed' : ''} ${
                     selectedAnswer === option
                       ? 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-gray-100'
                       : 'bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent text-gray-900 dark:text-gray-100'

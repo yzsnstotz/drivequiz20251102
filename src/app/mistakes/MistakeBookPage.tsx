@@ -289,7 +289,7 @@ function MistakeBookPage() {
             )}
             
             {selectedQuestion.type === 'truefalse' ? (
-              <div className="space-y-3">
+              <div className="flex flex-row gap-3">
                 {['true', 'false'].map((option) => {
                   const isSelected =
                     (Array.isArray(practiceSelected)
@@ -306,7 +306,7 @@ function MistakeBookPage() {
                       key={option}
                       onClick={() => handlePracticeAnswer(selectedQuestion, option)}
                       disabled={practiceShowAnswer}
-                      className={`w-full p-4 rounded-xl text-left transition-colors ${
+                      className={`flex-1 p-4 rounded-xl text-center transition-colors ${
                         practiceShowAnswer
                           ? isCorrectOption
                             ? 'bg-green-50 dark:bg-green-900/30 border-2 border-green-500'

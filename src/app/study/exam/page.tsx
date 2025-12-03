@@ -940,7 +940,7 @@ function ExamModePageContent() {
           })()}
 
           {currentQuestion.type === "truefalse" ? (
-            <div className="space-y-3">
+            <div className="flex flex-row gap-3">
               {["true", "false"].map((option) => {
                 const isSelected = selectedAnswer === option;
 
@@ -949,7 +949,7 @@ function ExamModePageContent() {
                     key={option}
                     onClick={() => !showAnswer && handleAnswer(option)}
                     disabled={showAnswer}
-                    className={`w-full p-4 rounded-xl text-left transition-colors ${
+                    className={`flex-1 p-4 rounded-xl text-center transition-colors ${
                       isSelected
                         ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-600 dark:border-blue-400 text-gray-900 dark:text-ios-dark-text"
                         : "bg-gray-50 dark:bg-ios-dark-bg-tertiary border-2 border-transparent hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary/80 text-gray-900 dark:text-ios-dark-text"

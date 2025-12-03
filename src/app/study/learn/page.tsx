@@ -15,7 +15,6 @@ import { isFavorite } from "@/lib/favorites";
 import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 
 function StudyModePageFallback() {
-  console.log('[StudyMode] StudyModePageFallback rendering (Suspense fallback)');
   const { t } = useLanguage();
   
   return (
@@ -34,19 +33,12 @@ function StudyModePageFallback() {
 }
 
 function StudyModePageContent() {
-  // 在组件函数体最开始（在hooks之前）添加日志
-  console.log("[StudyPage] rendering", { page: "learn", timestamp: new Date().toISOString() });
-  
-  console.log('[StudyMode] ====== Component rendering ======', { timestamp: new Date().toISOString() });
-  
   const searchParams = useSearchParams();
   const router = useRouter();
   const { language, t } = useLanguage();
 
   const licenseType = searchParams.get("licenseType");
   const stage = searchParams.get("stage") as "provisional" | "regular" | null;
-  
-  console.log('[StudyMode] Component initialized with params:', { licenseType, stage, language });
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [questionHashes, setQuestionHashes] = useState<string[]>([]);
@@ -68,19 +60,9 @@ function StudyModePageContent() {
 
   // 加载题目
   useEffect(() => {
-    console.log('[StudyMode] ====== useEffect triggered ======', { 
-      licenseType, 
-      stage, 
-      timestamp: new Date().toISOString(),
-      hasSearchParams: !!searchParams,
-      hasRouter: !!router,
-    });
-    
     let isMounted = true; // 用于检查组件是否已卸载
     
     const loadQuestions = async () => {
-      console.log('[StudyMode] loadQuestions function called', { licenseType, stage, timestamp: new Date().toISOString() });
-      
       if (!licenseType || !stage) {
         console.warn('[StudyMode] Missing licenseType or stage, redirecting to /study', { licenseType, stage });
         router.push("/study");
@@ -88,20 +70,11 @@ function StudyModePageContent() {
       }
 
       try {
-        console.log('[StudyMode] Setting loading state to true');
         setIsLoading(true);
         
-        console.log('[StudyMode] Calling loadUnifiedQuestionsPackage...');
         const pkg = await loadUnifiedQuestionsPackage();
-        console.log('[StudyMode] Package loaded:', { 
-          hasPackage: !!pkg, 
-          hasQuestions: !!(pkg?.questions), 
-          questionCount: pkg?.questions?.length || 0,
-          hasQuestionsByLocale: !!(pkg?.questionsByLocale),
-        });
         
         if (!isMounted) {
-          console.log('[StudyMode] Component unmounted, aborting');
           return; // 如果组件已卸载，不再更新状态
         }
         
@@ -109,18 +82,9 @@ function StudyModePageContent() {
         let allQuestions: any[] = [];
         if (pkg?.questionsByLocale && pkg.questionsByLocale[language]) {
           allQuestions = pkg.questionsByLocale[language];
-          console.log(`[StudyMode] Using questionsByLocale for language: ${language}, count: ${allQuestions.length}`);
         } else {
           allQuestions = pkg?.questions || [];
-          console.log(`[StudyMode] Using default questions, count: ${allQuestions.length}`);
         }
-        
-        console.log('[StudyMode] Extracted questions:', { 
-          count: allQuestions.length,
-          firstQuestionId: allQuestions[0]?.id,
-          firstQuestionHasImage: !!allQuestions[0]?.image,
-          firstQuestionImageUrl: allQuestions[0]?.image ? String(allQuestions[0].image).substring(0, 100) : null,
-        });
 
         if (!allQuestions || allQuestions.length === 0) {
           console.error("[StudyMode] Failed to load questions: no questions in package", {
@@ -153,15 +117,6 @@ function StudyModePageContent() {
           return !(matchesLicense && matchesStage);
         });
 
-        console.log(`[StudyMode] Loaded ${allQuestions.length} total questions, filtered to ${filtered.length} questions for licenseType=${licenseType}, stage=${stage}`);
-        if (filteredOut.length > 0) {
-          console.log(`[StudyMode] Filtered out ${filteredOut.length} questions:`, filteredOut.map(q => ({
-            id: q.id,
-            license_type_tag: (q as any).license_type_tag,
-            stage_tag: (q as any).stage_tag,
-            category: q.category
-          })));
-        }
         if (allQuestions.length - filtered.length !== filteredOut.length) {
           console.warn(`[StudyMode] Mismatch: expected ${allQuestions.length - filtered.length} filtered out, but found ${filteredOut.length}`);
         }
@@ -215,11 +170,6 @@ function StudyModePageContent() {
                 )
                 .filter((q): q is Question => q !== undefined);
 
-              console.log('[StudyMode] Using saved progress:', { 
-                questionCount: orderedQuestions.length,
-                startIndex,
-                hashesCount: hashes.length,
-              });
               setQuestions(orderedQuestions);
               setQuestionHashes(hashes);
               setCurrentIndex(startIndex);
@@ -238,7 +188,6 @@ function StudyModePageContent() {
             hashes = shuffled.map(
               (q) => q.hash || q.id?.toString() || `q_${q.id}`
             );
-            console.log('[StudyMode] Setting shuffled questions:', { count: shuffled.length });
             setQuestions(shuffled);
             setQuestionHashes(hashes);
             localStorage.setItem(
@@ -254,12 +203,10 @@ function StudyModePageContent() {
           }
         } else {
           // 没有保存的进度，随机化并保存
-          console.log('[StudyMode] No saved progress, shuffling questions');
           const shuffled = [...filtered].sort(() => Math.random() - 0.5);
           hashes = shuffled.map(
             (q) => q.hash || q.id?.toString() || `q_${q.id}`
           );
-          console.log('[StudyMode] Setting shuffled questions (no saved progress):', { count: shuffled.length });
           setQuestions(shuffled);
           setQuestionHashes(hashes);
           localStorage.setItem(
@@ -281,7 +228,6 @@ function StudyModePageContent() {
           favorites[hash] = isFavorite(hash);
         });
         setFavoriteState(favorites);
-        console.log('[StudyMode] Questions loaded successfully, setting loading to false');
       } catch (error) {
         console.error("[StudyMode] Failed to load questions:", {
           error: error instanceof Error ? error.message : String(error),
@@ -295,7 +241,6 @@ function StudyModePageContent() {
         }
       } finally {
         if (isMounted) {
-          console.log('[StudyMode] Finally block: setting loading to false');
           setIsLoading(false);
         }
       }
@@ -668,23 +613,23 @@ function StudyModePageContent() {
   return (
     <StudyErrorBoundary>
       <div className="container mx-auto px-4 py-6 pb-24">
-      <div className="flex items-center space-x-4 mb-6">
+      <div className="flex items-center flex-wrap gap-2 md:gap-4 mb-6">
         <h1 className="text-xl font-bold text-gray-900 dark:text-ios-dark-text">
           {t("study.mode.study")}
         </h1>
-        <div className="ml-auto flex items-center space-x-4">
+        <div className="ml-auto flex items-center flex-wrap gap-2 md:gap-4">
           <button
             onClick={() => setShowResetConfirm(true)}
-            className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text rounded-lg hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary transition-colors"
+            className="flex items-center space-x-1 px-2 md:px-3 py-1.5 text-xs md:text-sm text-gray-600 dark:text-ios-dark-text-secondary hover:text-gray-900 dark:hover:text-ios-dark-text rounded-lg hover:bg-gray-100 dark:hover:bg-ios-dark-bg-tertiary transition-colors whitespace-nowrap"
             title={t('study.reset')}
           >
-            <RotateCcw className="h-4 w-4" />
-            <span>{t('study.reset')}</span>
+            <RotateCcw className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline">{t('study.reset')}</span>
           </button>
-          <span className="text-sm text-gray-600 dark:text-ios-dark-text-secondary">
+          <span className="text-xs md:text-sm text-gray-600 dark:text-ios-dark-text-secondary whitespace-nowrap">
             {t("study.progress")}: {calculateProgress()}%
           </span>
-          <span className="text-sm text-blue-600 dark:text-blue-400">
+          <span className="text-xs md:text-sm text-blue-600 dark:text-blue-400 whitespace-nowrap">
             {t("exam.accuracy")}: {calculateAccuracy()}%
           </span>
         </div>
@@ -722,26 +667,9 @@ function StudyModePageContent() {
           {(() => {
             try {
               const imageUrl = currentQuestion.image;
-              console.log('[StudyMode] Rendering question image:', {
-                questionId: currentQuestion.id,
-                hasImage: !!imageUrl,
-                imageType: typeof imageUrl,
-                imageValue: imageUrl ? String(imageUrl) : null,
-                imageValuePreview: imageUrl ? String(imageUrl).substring(0, 100) : null,
-              });
-              
               const isValid = isValidImageUrl(imageUrl);
-              console.log('[StudyMode] Image URL validation result:', {
-                questionId: currentQuestion.id,
-                isValid,
-                imageUrl: imageUrl ? String(imageUrl) : null,
-              });
               
               if (isValid) {
-                console.log('[StudyMode] Image URL is valid, rendering QuestionImage', {
-                  questionId: currentQuestion.id,
-                  imageUrl: imageUrl ? String(imageUrl) : null,
-                });
                 return (
                   <QuestionImage
                     src={imageUrl!}
@@ -751,10 +679,6 @@ function StudyModePageContent() {
                   />
                 );
               } else {
-                console.log('[StudyMode] Image URL is invalid, skipping image render', {
-                  questionId: currentQuestion.id,
-                  imageUrl: imageUrl ? String(imageUrl) : null,
-                });
                 return null;
               }
             } catch (error) {
@@ -769,7 +693,7 @@ function StudyModePageContent() {
           })()}
 
           {currentQuestion.type === "truefalse" ? (
-            <div className="space-y-3">
+            <div className="flex flex-row gap-3">
               {["true", "false"].map((option) => {
                 const isSelected = selectedAnswer === option;
                 const isCorrectOption =
@@ -782,7 +706,7 @@ function StudyModePageContent() {
                     key={option}
                     onClick={() => !showAnswer && handleAnswer(option)}
                     disabled={showAnswer}
-                    className={`w-full p-4 rounded-xl text-left transition-colors ${
+                    className={`flex-1 p-4 rounded-xl text-center transition-colors ${
                       showAnswer
                         ? isCorrectOption
                           ? "bg-green-50 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-400 text-gray-900 dark:text-ios-dark-text"

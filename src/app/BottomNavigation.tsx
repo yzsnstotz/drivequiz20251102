@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
@@ -14,11 +14,35 @@ import { useLanguage } from '@/lib/i18n';
 
 export default function BottomNavigation() {
   const pathname = usePathname();
-  const { t } = useLanguage();
+  const { t, languageReady } = useLanguage();
+  const [mounted, setMounted] = useState(false);
+  
+  // 确保只在客户端挂载后渲染，避免SSR/客户端不一致
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // 在AI页面、admin路由、登录页面隐藏底部导航栏
   if (pathname === '/ai' || pathname.startsWith('/admin/') || pathname.startsWith('/login')) {
     return null;
+  }
+  
+  // 等待语言就绪和客户端挂载后再渲染导航项
+  if (!mounted || !languageReady) {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 ios-nav-blur dark:ios-nav-blur-dark border-t border-gray-200/50 dark:border-ios-dark-border z-10">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-around py-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex flex-col items-center space-y-1 px-4 py-2">
+                <div className="h-6 w-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                <div className="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </nav>
+    );
   }
   
   const navItems = [
