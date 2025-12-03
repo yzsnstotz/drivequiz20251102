@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { apiFetch, apiPost, apiDelete, ApiError } from "@/lib/apiClient";
 import { TaskErrorPanel } from "./_components/TaskErrorPanel";
 
-type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled" | "succeeded";
+type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled" | "succeeded" | "paused";
 
 type SubtaskDetail = {
   operation: string;
@@ -37,7 +37,7 @@ type TaskListItem = {
   taskId: string;
   id: string; // 兼容字段
   createdAt: string;
-  status: "pending" | "processing" | "succeeded" | "failed" | "completed" | "cancelled";
+  status: "pending" | "processing" | "succeeded" | "failed" | "completed" | "cancelled" | "paused";
   questionCount: number;
   operations: string[];
   progress: TaskProgress;
@@ -173,6 +173,9 @@ export default function QuestionProcessingPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [pausingTaskId, setPausingTaskId] = useState<string | null>(null);
+  const [resumingTaskId, setResumingTaskId] = useState<string | null>(null);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const detailRefreshRef = useRef<NodeJS.Timeout | null>(null);
   const [currentAiLogs, setCurrentAiLogs] = useState<Array<{ question: string; answer: string; model: string; created_at: string }>>([]);
@@ -516,8 +519,8 @@ export default function QuestionProcessingPage() {
               totalItems: updatedTask.progress.totalItems
             });
             setSelectedTask(updatedTask);
-            // 如果任务已完成、失败或取消，停止刷新
-            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled" || updatedTask.status === "succeeded") {
+            // 如果任务已完成、失败、取消或暂停，停止刷新
+            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled" || updatedTask.status === "succeeded" || updatedTask.status === "paused") {
               console.log('[Frontend] [checkAndRefresh] Task finished, stopping refresh');
               if (detailRefreshRef.current) {
                 clearInterval(detailRefreshRef.current);
@@ -723,8 +726,8 @@ export default function QuestionProcessingPage() {
             // 重置错误计数（成功加载）
             detailErrorCount = 0;
             
-            // 如果任务已完成、失败或取消，停止刷新
-            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled") {
+            // 如果任务已完成、失败、取消或暂停，停止刷新
+            if (updatedTask.status === "completed" || updatedTask.status === "failed" || updatedTask.status === "cancelled" || updatedTask.status === "paused") {
               shouldRefresh = false;
               if (detailRefreshRef.current) {
                 clearInterval(detailRefreshRef.current);
@@ -742,7 +745,7 @@ export default function QuestionProcessingPage() {
                   taskId: updatedTask.task_id,
                   id: String(updatedTask.id),
                   createdAt: updatedTask.created_at,
-                  status: updatedTask.status as "pending" | "processing" | "succeeded" | "failed" | "completed" | "cancelled",
+                  status: updatedTask.status as "pending" | "processing" | "succeeded" | "failed" | "completed" | "cancelled" | "paused",
                   questionCount: updatedTask.total_questions,
                   operations: updatedTask.operations,
                   progress: {
@@ -961,6 +964,8 @@ export default function QuestionProcessingPage() {
         return "bg-red-100 text-red-800";
       case "cancelled":
         return "bg-gray-100 text-gray-800";
+      case "paused":
+        return "bg-yellow-100 text-yellow-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -978,6 +983,8 @@ export default function QuestionProcessingPage() {
         return "失败";
       case "cancelled":
         return "已取消";
+      case "paused":
+        return "已暂停";
       default:
         return status;
     }
@@ -1077,6 +1084,155 @@ export default function QuestionProcessingPage() {
       setError(apiErr.message || "删除任务失败");
     } finally {
       setDeletingTaskId(null);
+    }
+  };
+
+  const handlePauseTask = async (taskId: string) => {
+    if (!confirm("确定要暂停这个任务吗？任务将在完成当前批次后暂停。")) {
+      return;
+    }
+
+    setPausingTaskId(taskId);
+    setError(null);
+
+    try {
+      await apiFetch<{ taskId: string; status: string; message: string }>(
+        `/api/admin/question-processing/batch-process?taskId=${taskId}&action=pause`,
+        { method: "PATCH" }
+      );
+      await loadTasks();
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'info' as const,
+            message: `⏸️ 任务 ${taskId.substring(0, 8)}... 已暂停`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.message || "暂停任务失败");
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'error' as const,
+            message: `❌ 暂停任务失败: ${apiErr.message || "未知错误"}`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
+    } finally {
+      setPausingTaskId(null);
+    }
+  };
+
+  const handleResumeTask = async (taskId: string) => {
+    if (!confirm("确定要恢复这个任务吗？任务将继续处理未完成的题目。")) {
+      return;
+    }
+
+    setResumingTaskId(taskId);
+    setError(null);
+
+    try {
+      await apiFetch<{ taskId: string; status: string; message: string }>(
+        `/api/admin/question-processing/batch-process?taskId=${taskId}&action=resume`,
+        { method: "PATCH" }
+      );
+      await loadTasks();
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'info' as const,
+            message: `▶️ 任务 ${taskId.substring(0, 8)}... 已恢复`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.message || "恢复任务失败");
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'error' as const,
+            message: `❌ 恢复任务失败: ${apiErr.message || "未知错误"}`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
+    } finally {
+      setResumingTaskId(null);
+    }
+  };
+
+  const handleRetryTask = async (taskId: string) => {
+    if (!confirm("确定要重试这个任务吗？将创建一个新任务，只处理未完成的题目。")) {
+      return;
+    }
+
+    setRetryingTaskId(taskId);
+    setError(null);
+
+    try {
+      const response = await apiPost<{ 
+        originalTaskId: string; 
+        newTaskId: string; 
+        pendingQuestionCount: number;
+        message: string;
+      }>(
+        `/api/admin/question-processing/batch-process/retry`,
+        { taskId }
+      );
+      await loadTasks();
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'info' as const,
+            message: `🔄 任务 ${taskId.substring(0, 8)}... 已重试，新任务ID: ${response.newTaskId?.substring(0, 8)}...，待处理题目: ${response.pendingQuestionCount}`,
+            taskId: response.newTaskId || taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.message || "重试任务失败");
+      setProcessingLogs(prev => {
+        const newLogs = [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            level: 'error' as const,
+            message: `❌ 重试任务失败: ${apiErr.message || "未知错误"}`,
+            taskId: taskId,
+            logType: 'task-processing' as const,
+          }
+        ];
+        return newLogs.slice(-200);
+      });
+    } finally {
+      setRetryingTaskId(null);
     }
   };
 
@@ -1537,6 +1693,7 @@ export default function QuestionProcessingPage() {
           <option value="completed">已完成</option>
           <option value="failed">失败</option>
           <option value="cancelled">已取消</option>
+          <option value="paused">已暂停</option>
         </select>
       </div>
 
@@ -1636,13 +1793,36 @@ export default function QuestionProcessingPage() {
                     {formatDate(task.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <button
                         onClick={() => handleOpenTaskDetail(task)}
                         className="text-blue-600 hover:text-blue-800"
                       >
                         查看详情
                       </button>
+                      {/* 暂停按钮 */}
+                      {(task.status === "pending" || task.status === "processing") && (
+                        <button
+                          onClick={() => handlePauseTask(task.taskId)}
+                          disabled={pausingTaskId === task.taskId}
+                          className="text-yellow-600 hover:text-yellow-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="暂停任务（完成当前批次后停止）"
+                        >
+                          {pausingTaskId === task.taskId ? "暂停中..." : "暂停"}
+                        </button>
+                      )}
+                      {/* 恢复按钮 */}
+                      {task.status === "paused" && (
+                        <button
+                          onClick={() => handleResumeTask(task.taskId)}
+                          disabled={resumingTaskId === task.taskId}
+                          className="text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="恢复任务（继续处理未完成的题目）"
+                        >
+                          {resumingTaskId === task.taskId ? "恢复中..." : "恢复"}
+                        </button>
+                      )}
+                      {/* 取消按钮 */}
                       {(task.status === "pending" || task.status === "processing") && (
                         <button
                           onClick={() => handleCancelTask(task.taskId)}
@@ -1653,6 +1833,18 @@ export default function QuestionProcessingPage() {
                           {cancellingTaskId === task.taskId ? "取消中..." : "取消"}
                         </button>
                       )}
+                      {/* 重试按钮 */}
+                      {(task.status === "failed" || task.status === "cancelled" || task.status === "paused") && (
+                        <button
+                          onClick={() => handleRetryTask(task.taskId)}
+                          disabled={retryingTaskId === task.taskId}
+                          className="text-purple-600 hover:text-purple-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="重试任务（跳过失败的题目，继续未完成的题目）"
+                        >
+                          {retryingTaskId === task.taskId ? "重试中..." : "重试"}
+                        </button>
+                      )}
+                      {/* 删除按钮 */}
                       {(task.status === "completed" || task.status === "failed" || task.status === "cancelled" || task.status === "succeeded") && (
                         <button
                           onClick={() => handleDeleteTask(task.taskId)}

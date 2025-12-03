@@ -632,7 +632,7 @@ interface QuestionPolishHistoryTable {
 interface BatchProcessTaskTable {
   id: Generated<number>;
   task_id: string;
-  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled" | "paused" | "partial_success";
   operations: string[];
   question_ids: number[] | null;
   translate_options: any | null; // JSONB
