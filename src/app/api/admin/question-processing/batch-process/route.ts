@@ -2326,29 +2326,32 @@ async function processBatchAsync(
               continue;
             }
 
-            // 2. 在内存中应用 tags（参考 applyTagsFromFullPipeline 逻辑）
-            // 将 AI 返回的 tags 应用到 currentQuestion 对象上
-            const licenseTags = result.license_tags ?? result.license_type_tag ?? null;
-            if (Array.isArray(licenseTags) && licenseTags.length > 0) {
-              const normalized = licenseTags
+            // ✅ 步骤5：确保 category_tags 操作也走统一 tags 链路
+            // 使用统一的字段名 license_type_tag（而不是 license_tags）
+            // generateCategoryAndTags 已经返回了 license_type_tag 字段（通过 normalizeAIResult 处理）
+            
+            // 2. 在内存中应用 tags（使用统一的字段名）
+            if (Array.isArray(result.license_type_tag) && result.license_type_tag.length > 0) {
+              const normalized = result.license_type_tag
                 .filter((t: string) => typeof t === "string" && t.trim().length > 0)
                 .map((t: string) => t.trim().toUpperCase());
-              (currentQuestion as any).license_tags = Array.from(new Set(normalized));
+              (currentQuestion as any).license_type_tag = Array.from(new Set(normalized));
             }
 
             if (result.stage_tag) {
               (currentQuestion as any).stage_tag = result.stage_tag;
             }
 
-            if (Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
-              const normalized = result.topic_tags
-                .filter((t: string) => typeof t === "string" && t.trim().length > 0)
-                .map((t: string) => t.trim());
-              (currentQuestion as any).topic_tags = Array.from(new Set(normalized));
-            }
+            // if (Array.isArray(result.topic_tags) && result.topic_tags.length > 0) {
+            //   const normalized = result.topic_tags
+            //     .filter((t: string) => typeof t === "string" && t.trim().length > 0)
+            //     .map((t: string) => t.trim());
+            //   (currentQuestion as any).topic_tags = Array.from(new Set(normalized));
+            // }
 
             // 3. 通过 saveQuestionToDb 统一落库（使用 updateOnly 模式）
             // ✅ 修复：传入原始的 content_hash 作为 hash 字段，确保通过 content_hash 查找题目
+            // ✅ 步骤5：使用统一的字段名 license_type_tag
             await saveQuestionToDb({
               id: currentQuestion.id,
               hash: currentQuestion.content_hash, // ✅ 传入原始的 content_hash，不重新计算
@@ -2357,9 +2360,9 @@ async function processBatchAsync(
               options: currentQuestion.options,
               correctAnswer: currentQuestion.correct_answer,
               explanation: currentQuestion.explanation,
-              license_tags: (currentQuestion as any).license_tags,
+              license_type_tag: (currentQuestion as any).license_type_tag, // ✅ 使用统一字段名
               stage_tag: (currentQuestion as any).stage_tag,
-              topic_tags: (currentQuestion as any).topic_tags,
+              // topic_tags: (currentQuestion as any).topic_tags,
               mode: "updateOnly", // 防止插入幽灵题
             } as any);
             

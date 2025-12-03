@@ -2396,10 +2396,21 @@ function buildFullPipelineDbPayload(
     payload.topic_tags = rawTags.topic_tags;
   }
 
-  // license_type_tag：AI 输出为 license_type_tag（单数，与数据库字段名一致），保持数组
+  // ✅ 步骤2：buildFullPipelineDbPayload 只消费 license_type_tag（数组）
+  // rawTags 为 sanitizeAiPayload 的输出
   if (Array.isArray(rawTags.license_type_tag) && rawTags.license_type_tag.length > 0) {
     payload.license_type_tag = rawTags.license_type_tag;
   }
+  // 不要从任何 legacy 字段推断，避免引入噪音；legacy 兼容放在 saveQuestionToDb 做
+  
+  // ✅ 步骤1：添加调试日志
+  console.debug(
+    "[question-processing] buildFullPipelineDbPayload license_type_tag",
+    { 
+      rawLicenseTypeTag: rawTags.license_type_tag, 
+      payloadLicenseTypeTag: payload.license_type_tag 
+    }
+  );
 
   // stage_tag：AI 输出为 stage_tag（单数，与数据库字段名一致），DB 为单值
   // 先采用保守策略：如果只有一个元素，则用该元素；多于一个则暂时保留原 DB 值（在 Save 层合并）
@@ -2553,22 +2564,54 @@ function sanitizeAiPayload(
   sanitized.translations = filteredTranslations;
 
   // 白名单：tags 字段
-  // ✅ 修复：严格按照数据库字段名，使用单数形式（stage_tag、license_type_tag）
-  // 数据库字段：stage_tag（单数）、license_type_tag（单数）、topic_tags（复数，特例）
+  // ✅ 修复：同时支持驼峰命名（AI实际返回格式）和下划线命名（数据库字段名）
+  // AI 实际返回：licenseTypeTag, stageTag, topicTags（驼峰）
+  // 数据库字段：license_type_tag, stage_tag, topic_tags（下划线）
   if (aiResult.tags && typeof aiResult.tags === "object") {
     sanitized.tags = {};
-    // ✅ 修复：从 license_type_tag（单数，与数据库字段名一致）读取
-    if (Array.isArray(aiResult.tags.license_type_tag)) {
-      sanitized.tags.license_type_tag = aiResult.tags.license_type_tag.filter((t: any) => typeof t === "string");
+    
+    // ✅ 步骤2：统一 & 加强 tags 字段构建逻辑
+    // 输入来源：优先从 licenseTypeTag（驼峰，AI实际返回格式）读取，兼容 license_type_tag（下划线）
+    const licenseTypeTagRaw = aiResult.tags.licenseTypeTag ?? aiResult.tags.license_type_tag;
+    
+    // 支持数组：["ORDINARY", "MEDIUM"] 或单字符串："ORDINARY"
+    // 输出统一为 非空字符串数组，字段名必须为 sanitized.tags.license_type_tag
+    if (Array.isArray(licenseTypeTagRaw)) {
+      const cleaned = licenseTypeTagRaw
+        .filter((t: any) => typeof t === "string" && t.trim().length > 0)
+        .map((t: string) => t.trim());
+      if (cleaned.length > 0) {
+        sanitized.tags.license_type_tag = cleaned;
+      }
+    } else if (typeof licenseTypeTagRaw === "string" && licenseTypeTagRaw.trim().length > 0) {
+      sanitized.tags.license_type_tag = [licenseTypeTagRaw.trim()];
     }
-    // ✅ 修复：从 stage_tag（单数，与数据库字段名一致）读取
-    if (Array.isArray(aiResult.tags.stage_tag)) {
-      sanitized.tags.stage_tag = aiResult.tags.stage_tag.filter((t: any) => typeof t === "string");
+    
+    // ✅ 步骤1：添加调试日志
+    console.debug(
+      "[question-processing] sanitizeAiPayload license_type_tag",
+      { 
+        licenseTypeTagRaw: aiResult.tags?.licenseTypeTag ?? aiResult.tags?.license_type_tag, 
+        sanitizedLicenseTypeTag: sanitized.tags?.license_type_tag 
+      }
+    );
+    
+    // ✅ 修复：优先从 stageTag（驼峰，AI实际返回格式）读取，兼容 stage_tag（下划线）
+    // 注意：AI 返回的 stageTag 可能是字符串（如 "provisional"），需要转换为数组
+    const stageTag = aiResult.tags.stageTag ?? aiResult.tags.stage_tag;
+    if (Array.isArray(stageTag)) {
+      sanitized.tags.stage_tag = stageTag.filter((t: any) => typeof t === "string" && t.trim().length > 0);
+    } else if (typeof stageTag === "string" && stageTag.trim().length > 0) {
+      // 支持单个值，转换为数组（因为后续处理期望数组格式）
+      sanitized.tags.stage_tag = [stageTag.trim()];
     }
-    // topic_tags 保持复数形式（数据库字段名就是复数）
-    if (Array.isArray(aiResult.tags.topic_tags)) {
-      sanitized.tags.topic_tags = aiResult.tags.topic_tags.filter((t: any) => typeof t === "string");
+    
+    // ✅ 修复：优先从 topicTags（驼峰，AI实际返回格式）读取，兼容 topic_tags（下划线）
+    const topicTags = aiResult.tags.topicTags ?? aiResult.tags.topic_tags;
+    if (Array.isArray(topicTags)) {
+      sanitized.tags.topic_tags = topicTags.filter((t: any) => typeof t === "string" && t.trim().length > 0);
     }
+    
     if (["easy", "medium", "hard"].includes(aiResult.tags.difficulty_level)) {
       sanitized.tags.difficulty_level = aiResult.tags.difficulty_level;
     }
@@ -3113,6 +3156,12 @@ export async function processFullPipelineBatch(
       });
       console.debug(`[processFullPipelineBatch] [Q${question.id}] [DEBUG] 构建的 DB payload:`, JSON.stringify(dbPayload, null, 2));
       
+      // ✅ 步骤1：添加调试日志
+      console.debug("[processFullPipelineBatch] dbPayload license_type_tag", {
+        questionId: question.id,
+        licenseTypeTag: dbPayload.license_type_tag ?? null,
+      });
+      
       const { db } = await import("@/lib/db");
       const { saveQuestionToDb } = await import("@/lib/questionDb");
       
@@ -3179,10 +3228,11 @@ export async function processFullPipelineBatch(
         // ⚠️ 重要：传入数据库中的原有 explanation，让事务的第二步来添加新翻译
         // ✅ 修复：传入原始的 content_hash 作为 hash 字段，确保通过 content_hash 查找题目
         // ✅ 修复：使用 dbPayload 中的 license_type_tag 和 stage_tag（数据库字段名）
+        // ✅ 步骤4：在事务中使用事务连接调用 saveQuestionToDb
         await saveQuestionToDb({
           ...savePayload,
           explanation: dbQuestion?.explanation || null, // ✅ 使用数据库中的原有 explanation
-        } as any);
+        } as any, { dbOrTrx: trx });
         
         // 2. 保存多语言翻译（在事务中直接更新，不使用 saveQuestionTranslation 函数）
         // ✅ 在进入翻译循环之前，先基于 explanationObject 初始化 updatedExplanation

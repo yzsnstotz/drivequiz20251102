@@ -5,6 +5,8 @@
 // ============================================================
 
 import { db } from "@/lib/db";
+import type { Database } from "@/lib/db";
+import type { Kysely, Transaction } from "kysely";
 import { executeSafely } from "@/lib/dbUtils";
 import { calculateQuestionHash, generateVersion, generateUnifiedVersion, calculateContentHash, calculateFullContentHash, calculateAiAnswersHash, Question } from "@/lib/questionHash";
 import { sql } from "kysely";
@@ -138,10 +140,18 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
 /**
  * 保存题目到数据库
  * @param question 题目对象
- * @param mode 保存模式："upsert"（默认，通过content_hash查找，找不到则插入）或 "updateOnly"（通过content_hash查找，找不到则抛出错误）
+ * @param options 可选参数，包含事务连接
+ * @param options.dbOrTrx 可选的事务连接，如果不传则使用全局 db 实例
+ * @returns 题目的 id
  */
-export async function saveQuestionToDb(question: Question & { mode?: "upsert" | "updateOnly" }): Promise<number> {
+export async function saveQuestionToDb(
+  question: Question & { mode?: "upsert" | "updateOnly" },
+  options?: { dbOrTrx?: Kysely<Database> | Transaction<Database> }
+): Promise<number> {
   try {
+    // ✅ 步骤3：使用传入的事务连接或全局 db 实例
+    const client = options?.dbOrTrx ?? db;
+    
     const mode = (question as any).mode || "upsert"; // 默认 upsert
     // ✅ 修复：如果传入了 hash，使用传入的 hash（原始 content_hash），否则才计算
     // 在 updateOnly 模式下，必须传入原始的 content_hash，不能基于当前内容重新计算
@@ -262,10 +272,17 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
     // ✅ 修复：直接使用 license_type_tag 字段（数据库字段名）
     // license_tags 字段已废弃，不再处理
 
+    // ✅ 步骤1：添加调试日志（输入）
+    console.debug("[questionDb] saveQuestionToDb input license_type_tag", {
+      questionId: cleanedQuestion.id,
+      inputLicenseTypeTag: (cleanedQuestion as any).license_type_tag,
+      inputLegacyLicenseTags: (cleanedQuestion as any).license_tags ?? null,
+    });
+
     // ✅ 修复：统一通过 content_hash 查找题目（content_hash 是题目标识的唯一手段）
     // updateOnly 模式：通过 content_hash 查找，找不到则抛出错误
     // upsert 模式：通过 content_hash 查找，找不到则插入新题目
-    const existing = await db
+    const existing = await client
       .selectFrom("questions")
       .select(["id"])
       .where("content_hash", "=", contentHash)
@@ -292,21 +309,44 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         updated_at: new Date(),
       };
 
-      // ✅ 修复：清理 license_type_tag 数组（JSONB 类型，内部约定为 string[]）
+      // ✅ 步骤3.2：license_type_tag 清洗逻辑修正（宽松接收 + 严格输出）
       if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
-        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
-          // 清理数组：只保留有效的非空字符串
-          const cleanedLicenseTypeTag = (cleanedQuestion as any).license_type_tag
+        let tags = (cleanedQuestion as any).license_type_tag;
+
+        // 如果是字符串，转为单元素数组
+        if (typeof tags === "string") {
+          tags = [tags];
+        }
+
+        if (Array.isArray(tags)) {
+          const cleanedLicenseTypeTag = tags
             .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-            .map((tag: any) => tag.trim());
-          
-          // 如果清理后数组为空，设置为 null
+            .map((tag: string) => tag.trim());
+
           updateData.license_type_tag = cleanedLicenseTypeTag.length > 0 ? cleanedLicenseTypeTag : null;
         } else {
-          // 如果不是数组，设置为 null
           updateData.license_type_tag = null;
         }
       }
+      
+      // ✅ 步骤3.2：保留对 legacy 字段 license_tags 的兼容逻辑（作为兜底）
+      if (
+        updateData.license_type_tag == null &&
+        Array.isArray((cleanedQuestion as any).license_tags) &&
+        (cleanedQuestion as any).license_tags.length > 0
+      ) {
+        const cleanedLegacy = (cleanedQuestion as any).license_tags
+          .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
+          .map((tag: string) => tag.trim());
+
+        updateData.license_type_tag = cleanedLegacy.length > 0 ? cleanedLegacy : null;
+      }
+      
+      // ✅ 步骤1：添加调试日志（清洗后）
+      console.debug("[questionDb] saveQuestionToDb updateData license_type_tag", {
+        questionId: cleanedQuestion.id,
+        updateLicenseTypeTag: (updateData as any).license_type_tag ?? null,
+      });
 
       // ✅ 修复：只有 stage_tag 存在时才更新（null/undefined 时不更新，保留原值）
       if (cleanedQuestion.stage_tag !== null && cleanedQuestion.stage_tag !== undefined) {
@@ -419,7 +459,7 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         finalUpdateData.license_type_tag = sql`null::jsonb`;
       }
 
-      await db
+      await client
         .updateTable("questions")
         .set(finalUpdateData)
         .where("id", "=", existing.id)
@@ -573,7 +613,7 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
         finalInsertData.license_type_tag = sql`null::jsonb`;
       }
 
-      const result = await db
+      const result = await client
         .insertInto("questions")
         .values(finalInsertData)
         .returning("id")
