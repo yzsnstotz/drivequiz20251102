@@ -138,7 +138,19 @@ export default function AIActivationProvider({
       setIsActivated(false);
       lastActivatedStateRef.current = false;
     }
-  }, [activationStatus, activationLoading, checkActivationStatus]);
+  }, [activationStatus, activationLoading, checkActivationStatus, getInitialActivationState]);
+  
+  // ✅ 修复：监听路径变化，当从激活页面返回时重新检查状态
+  useEffect(() => {
+    // 如果路径从 /activation 变为其他页面，重新检查激活状态
+    if (pathname !== "/activation") {
+      const localActivated = getInitialActivationState();
+      if (localActivated && !isActivated) {
+        // 如果localStorage显示已激活但状态未激活，重新检查
+        checkActivationStatus();
+      }
+    }
+  }, [pathname, isActivated, checkActivationStatus, getInitialActivationState]);
 
   const contextValue: AIActivationContextType = {
     isActivated,

@@ -86,7 +86,7 @@ async function findQuestionCategory(questionId: number): Promise<{
         content = dbQuestion.content;
       }
 
-      const question: Question = {
+      const question: Question & { license_type_tag?: string[]; stage_tag?: "both" | "provisional" | "regular"; topic_tags?: string[] } = {
         id: dbQuestion.id,
         type: dbQuestion.type,
         content,
@@ -95,6 +95,10 @@ async function findQuestionCategory(questionId: number): Promise<{
         image: dbQuestion.image || undefined,
         explanation: dbQuestion.explanation || undefined,
         category: dbQuestion.category || category,
+        // ✅ 修复：包含 license_type_tag、stage_tag、topic_tags 字段
+        license_type_tag: Array.isArray(dbQuestion.license_type_tag) ? dbQuestion.license_type_tag : undefined,
+        stage_tag: dbQuestion.stage_tag || undefined,
+        topic_tags: Array.isArray(dbQuestion.topic_tags) ? dbQuestion.topic_tags : undefined,
       };
       
       return { category, question };
@@ -145,7 +149,7 @@ export const PUT = withAdminAuth(
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
       const body = await req.json();
-      const { type, content, options, correctAnswer, image, explanation, category, aiAnswer } = body;
+      const { type, content, options, correctAnswer, image, explanation, category, aiAnswer, license_type_tag, stage_tag, topic_tags } = body;
 
       // 查找题目
       const result = await findQuestionCategory(id);
@@ -159,28 +163,112 @@ export const PUT = withAdminAuth(
         return badRequest("Invalid question type");
       }
 
-      if (content && (typeof content !== "string" || content.trim().length === 0)) {
-        return badRequest("Question content cannot be empty");
+      // ✅ 修复：支持多语言对象格式的content和explanation
+      // content可以是字符串或多语言对象 {zh, en, ja}
+      let normalizedContent: string | { zh?: string; en?: string; ja?: string } | undefined;
+      if (content !== undefined) {
+        if (typeof content === "string") {
+          // 字符串格式：trim后检查是否为空
+          const trimmed = content.trim();
+          if (trimmed.length === 0) {
+            return badRequest("Question content cannot be empty");
+          }
+          normalizedContent = trimmed;
+        } else if (typeof content === "object" && content !== null) {
+          // 多语言对象格式：检查至少有一个语言不为空
+          const multilangContent = content as { zh?: string; en?: string; ja?: string };
+          const hasContent = 
+            (multilangContent.zh && multilangContent.zh.trim().length > 0) ||
+            (multilangContent.en && multilangContent.en.trim().length > 0) ||
+            (multilangContent.ja && multilangContent.ja.trim().length > 0);
+          if (!hasContent) {
+            return badRequest("Question content cannot be empty (at least one language required)");
+          }
+          // 清理空值，只保留有内容的语言
+          normalizedContent = {};
+          if (multilangContent.zh && multilangContent.zh.trim().length > 0) {
+            normalizedContent.zh = multilangContent.zh.trim();
+          }
+          if (multilangContent.en && multilangContent.en.trim().length > 0) {
+            normalizedContent.en = multilangContent.en.trim();
+          }
+          if (multilangContent.ja && multilangContent.ja.trim().length > 0) {
+            normalizedContent.ja = multilangContent.ja.trim();
+          }
+        } else {
+          return badRequest("Invalid content format: must be string or multilang object");
+        }
+      }
+
+      // explanation可以是字符串或多语言对象 {zh, en, ja}
+      let normalizedExplanation: string | { zh?: string; en?: string; ja?: string } | undefined;
+      if (explanation !== undefined) {
+        if (typeof explanation === "string") {
+          normalizedExplanation = explanation.trim() || undefined;
+        } else if (typeof explanation === "object" && explanation !== null) {
+          // 多语言对象格式：清理空值，只保留有内容的语言
+          const multilangExplanation = explanation as { zh?: string; en?: string; ja?: string };
+          normalizedExplanation = {};
+          if (multilangExplanation.zh && multilangExplanation.zh.trim().length > 0) {
+            normalizedExplanation.zh = multilangExplanation.zh.trim();
+          }
+          if (multilangExplanation.en && multilangExplanation.en.trim().length > 0) {
+            normalizedExplanation.en = multilangExplanation.en.trim();
+          }
+          if (multilangExplanation.ja && multilangExplanation.ja.trim().length > 0) {
+            normalizedExplanation.ja = multilangExplanation.ja.trim();
+          }
+          // 如果所有语言都为空，设置为undefined
+          if (Object.keys(normalizedExplanation).length === 0) {
+            normalizedExplanation = undefined;
+          }
+        } else {
+          return badRequest("Invalid explanation format: must be string or multilang object");
+        }
       }
 
       // 构建更新后的题目
-      const updatedQuestion: Question = {
+      const updatedQuestion: Question & { license_type_tag?: string[] | null; stage_tag?: "both" | "provisional" | "regular" | null; topic_tags?: string[] | null } = {
         ...oldQuestion,
         ...(type ? { type } : {}),
-        ...(content ? { content: content.trim() } : {}),
+        ...(normalizedContent !== undefined ? { content: normalizedContent } : {}),
         ...(correctAnswer !== undefined ? { correctAnswer } : {}),
         ...(options !== undefined ? { options } : {}),
         ...(image !== undefined ? (image ? { image: image.trim() } : {}) : {}),
-        ...(explanation !== undefined ? (explanation ? { explanation: explanation.trim() } : {}) : {}),
+        ...(normalizedExplanation !== undefined ? { explanation: normalizedExplanation } : {}),
         category: targetCategory,
+        // ✅ 修复：保留 license_type_tag、stage_tag、topic_tags 字段
+        // 如果请求中提供了这些字段，使用新值；否则保留原值（从 oldQuestion 中）
+        ...(license_type_tag !== undefined 
+          ? { license_type_tag: Array.isArray(license_type_tag) && license_type_tag.length > 0 ? license_type_tag : null } 
+          : (oldQuestion.license_type_tag !== undefined ? { license_type_tag: oldQuestion.license_type_tag } : {})),
+        ...(stage_tag !== undefined 
+          ? { stage_tag: stage_tag || null } 
+          : (oldQuestion.stage_tag !== undefined ? { stage_tag: oldQuestion.stage_tag } : {})),
+        ...(topic_tags !== undefined 
+          ? { topic_tags: Array.isArray(topic_tags) && topic_tags.length > 0 ? topic_tags : null } 
+          : (oldQuestion.topic_tags !== undefined ? { topic_tags: oldQuestion.topic_tags } : {})),
       };
 
+      // ✅ 修复：更新数据库时，传入 id 和 mode（使用updateOnly模式）
       // 1. 更新数据库（作为数据源）
       try {
-        await saveQuestionToDb(updatedQuestion);
-      } catch (dbError) {
-        console.error("[PUT /api/admin/questions/:id] Error updating database:", dbError);
-        // 即使数据库更新失败，也继续同步到JSON包（保持兼容性）
+        // 使用updateOnly模式，传入 id 确保通过 id 查找题目（而不是通过 content_hash）
+        await saveQuestionToDb({ ...updatedQuestion, id: id, mode: "updateOnly" });
+      } catch (dbError: any) {
+        console.error("[PUT /api/admin/questions/:id] Error updating database:", {
+          error: dbError,
+          message: dbError?.message,
+          stack: dbError?.stack,
+          questionId: id,
+          contentHash: oldQuestion.hash || calculateQuestionHash(oldQuestion),
+        });
+        // ✅ 修复：数据库更新失败时返回详细错误信息
+        if (dbError?.message === "QUESTION_NOT_FOUND_FOR_UPDATE") {
+          return internalError("Question not found in database for update. Please refresh and try again.");
+        }
+        // 其他数据库错误也返回详细错误
+        return internalError(`Failed to update question in database: ${dbError?.message || String(dbError)}`);
       }
 
       // 1.5. 更新AI回答（如果提供了 aiAnswer）
@@ -253,35 +341,50 @@ export const PUT = withAdminAuth(
 
         return success({ ...updatedQuestion, category: targetCategory });
       } else {
-        // 在同一文件中更新
-        const updatedQuestion: Question = {
-          ...oldQuestion,
-          ...(type ? { type } : {}),
-          ...(content ? { content: content.trim() } : {}),
-          ...(correctAnswer !== undefined ? { correctAnswer } : {}),
-          ...(options !== undefined ? { options } : {}),
-          ...(image !== undefined ? (image ? { image: image.trim() } : {}) : {}),
-          ...(explanation !== undefined ? (explanation ? { explanation: explanation.trim() } : {}) : {}),
-          category: targetCategory,
-        };
+        // 在同一文件中更新（使用上面已经构建好的updatedQuestion）
+        // 注意：updatedQuestion已经在上面构建完成，包含normalizedContent和normalizedExplanation
 
         // 1. 更新数据库（作为数据源）
         try {
-          await saveQuestionToDb(updatedQuestion);
-        } catch (dbError) {
-          console.error("[PUT /api/admin/questions/:id] Error updating database:", dbError);
-          // 即使数据库更新失败，也继续同步到JSON包（保持兼容性）
+          // 使用updateOnly模式，确保只更新不插入
+          await saveQuestionToDb({ ...updatedQuestion, id: id, mode: "updateOnly" });
+        } catch (dbError: any) {
+          console.error("[PUT /api/admin/questions/:id] Error updating database:", {
+            error: dbError,
+            message: dbError?.message,
+            stack: dbError?.stack,
+            questionId: id,
+            contentHash: oldQuestion.hash || calculateQuestionHash(oldQuestion),
+          });
+          // ✅ 修复：数据库更新失败时返回详细错误信息
+          if (dbError?.message === "QUESTION_NOT_FOUND_FOR_UPDATE") {
+            return internalError("Question not found in database for update. Please refresh and try again.");
+          }
+          // 其他数据库错误也返回详细错误
+          return internalError(`Failed to update question in database: ${dbError?.message || String(dbError)}`);
         }
 
-        // 2. 同步到JSON包
-        const file = await loadQuestionFile(targetCategory);
-        if (!file) return internalError("Question file not found");
-
-        const questionIndex = file.questions.findIndex((q) => q.id === id);
-        if (questionIndex === -1) return notFound("Question not found");
-
-        file.questions[questionIndex] = updatedQuestion;
-        await saveQuestionFile(targetCategory, file);
+        // 2. 同步到JSON包（如果文件存在）
+        try {
+          const file = await loadQuestionFile(targetCategory);
+          if (file) {
+            const questionIndex = file.questions.findIndex((q) => q.id === id);
+            if (questionIndex !== -1) {
+              // 题目存在于JSON文件中，更新它
+              file.questions[questionIndex] = updatedQuestion;
+              await saveQuestionFile(targetCategory, file);
+            } else {
+              // 题目不在JSON文件中，但数据库更新成功，这是正常的（题目可能只存在于数据库中）
+              console.log(`[PUT /api/admin/questions/:id] Question ${id} not found in JSON file, but database update succeeded. This is normal for database-only questions.`);
+            }
+          } else {
+            // JSON文件不存在，但数据库更新成功，这是正常的（题目可能只存在于数据库中）
+            console.log(`[PUT /api/admin/questions/:id] JSON file for category ${targetCategory} not found, but database update succeeded. This is normal for database-only questions.`);
+          }
+        } catch (jsonError) {
+          // JSON文件操作失败不影响数据库更新，只记录错误
+          console.error("[PUT /api/admin/questions/:id] Error syncing to JSON file:", jsonError);
+        }
 
         // 记录操作日志
         try {

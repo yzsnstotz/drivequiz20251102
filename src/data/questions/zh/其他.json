@@ -1,0 +1,299 @@
+{
+  "questions": [
+    {
+      "id": "1",
+      "type": "truefalse",
+      "content": "驾驶车辆时，不应只顾及个人便利，而应充分考虑其他车辆和行人，做到相互礼让，文明驾驶。",
+      "correctAnswer": "true",
+      "explanation": "安全驾驶的核心在于相互尊重和礼让。驾驶员在道路上行驶时，不仅要遵守交通规则，更要时刻关注周围的交通状况，预判其他车辆和行人的动向，并主动采取措施避免危险，展现出对他人的关怀和理解。这种礼让精神是构建和谐交通环境，预防交通事故的重要基石，也是每位驾驶员应具备的基本素养。因此，该陈述是正确的。",
+      "category": "其他"
+    },
+    {
+      "id": "2",
+      "type": "truefalse",
+      "content": {
+        "zh": "在有信号灯的交叉路口，当你想右转时，如果你因直行方向绿灯而进入了交叉路口，但右转信号灯变为红色，此时在交叉路口内停车等待是正确的做法。1",
+        "en": "When attempting to make a right turn at a signalized intersection, if you entered the intersection on a green light for straight traffic but the right-turn signal then turned red, it is correct to stop and wait within the intersection.",
+        "ja": "信号機のある交差点で右折しようとした際、直進方向の青信号で交差点に進入したが、右折方向の信号が赤に変わったため、交差点内で停止して待つのは正しい行動である。"
+      },
+      "correctAnswer": "false",
+      "explanation": {
+        "zh": "在日本交通法规中，即使右转信号灯变为红色，如果你已经因绿灯进入了交叉路口并正在等待右转，你必须在确保安全的前提下尽快完成右转并驶离交叉路口，而不是停留在路口中央阻碍交通。只有在无法安全完成转弯（例如有紧急车辆或行人）时，才可以在不妨碍其他交通的情况下暂时停车。",
+        "en": "Under Japanese traffic laws, if you have entered an intersection on a green light and are waiting to make a right turn, even if the right-turn signal (or the main signal) turns red, you must complete the turn and exit the intersection as soon as it is safe to do so. Stopping and waiting indefinitely within the intersection is generally incorrect as it obstructs other traffic.",
+        "ja": "日本の交通法規では、青信号で交差点に進入し右折待ちをしている最中に右折信号が赤に変わった場合でも、安全が確認でき次第、速やかに右折を完了して交差点から退出する必要があります。交差点内で停止し続けることは、他の交通の妨げとなるため、原則として避けるべきです。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "both",
+      "topic_tags": [
+        "right_of_way"
+      ]
+    },
+    {
+      "id": "56",
+      "type": "truefalse",
+      "content": {
+        "zh": "该标记是“落石危险”的交通标志",
+        "en": "This sign indicates “Falling Rocks Ahead.”",
+        "ja": "この標識は「落石のおそれ」を示す交通標識です。"
+      },
+      "correctAnswer": "true",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.15.09.png?raw=true",
+      "explanation": {
+        "zh": "“落石危险”交通标志（通常为三角形，内部有落石图案）是警告标志的一种，旨在提醒驾驶员前方路段存在岩石或碎石从高处滚落的潜在危险。看到此标志时，驾驶员应立即提高警惕，减速慢行，密切观察路面及两侧山体情况，避免在危险区域长时间停留，并做好随时避让的准备，以确保行车安全。",
+        "en": "The 'Falling Rocks Hazard' traffic sign (typically a triangular sign with a falling rock symbol inside) is a warning sign designed to alert drivers to the potential danger of rocks or debris falling from heights onto the road ahead. Upon seeing this sign, drivers should immediately increase their vigilance, slow down, carefully observe the road surface and the mountain slopes on both sides, avoid prolonged stops in hazardous areas, and be prepared to take evasive action at any moment to ensure driving safety.",
+        "ja": "「落石のおそれあり」の交通標識（通常は三角形で、内部に落石の絵が描かれています）は、前方の道路区間で岩石や小石が高い場所から落下する潜在的な危険があることを運転者に警告するための標識です。この標識を見た運転者は、直ちに警戒を強め、速度を落とし、路面や両側の山の状況を注意深く観察し、危険な場所での長時間の停車を避け、いつでも回避できる準備をして、安全運転を確保する必要があります。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "traffic_sign",
+        "hazard_warning",
+        "road_safety"
+      ]
+    },
+    {
+      "id": "225",
+      "type": "truefalse",
+      "content": {
+        "zh": "当有儿童在道路旁步行时，驾车从其旁边通过，必须暂时停车，确保儿童安全后再通行。",
+        "en": "When passing by a child walking alongside the road, you must temporarily stop and ensure their safety before proceeding.",
+        "ja": "歩行中の子供のそばを通過する際は、一時停止し、安全を確保してから通行しなければならない。"
+      },
+      "correctAnswer": "false",
+      "explanation": {
+        "zh": "错。因为日本交通法并没有规定只要看到儿童在道路旁步行，车辆就必须强制一时停止。法律要求驾驶员“减速、注意观察，并随时能够停车”，但不是无条件停车。只有在儿童有突然横穿道路的明显危险、或在学校周边、横断步道等特定情况下，车辆才有必须停车的义务。因此题目中所说的“必须暂时停车确保安全”是错误的。",
+        "en": "Japanese traffic law does not require a driver to stop the vehicle solely because children are walking along the roadside. What is required is to reduce speed, pay attention, and be prepared to stop at any time, but not to make an unconditional stop. A mandatory stop is required only when there is a clear risk of a child suddenly entering the roadway or in specific areas such as school zones and crosswalks. Simply seeing a child walking by the road does not impose a compulsory stopping obligation.",
+        "ja": "日本の道路交通法では、歩道の横に子どもが歩いているだけで車が必ず一時停止しなければならないという規定はない。求められているのは減速し、安全に注意し、いつでも停止できるようにしておくことであり、無条件の一時停止義務ではない。子どもが飛び出すおそれが明らかにある場合や通学路・横断歩道付近などでは停止が必要になるが、単に道路脇を歩いているだけでは強制停止義務にはならない。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "pedestrian_safety",
+        "child_safety",
+        "driving_rules",
+        "hazard_perception"
+      ]
+    },
+    {
+      "id": "59",
+      "type": "truefalse",
+      "content": {
+        "zh": "持有普通驾驶执照的人，除了可以驾驶普通机动车之外，还可以驾驶小型特殊机动车和轻型摩托车。",
+        "en": "A person holding an ordinary driver's license can drive, in addition to ordinary motor vehicles, small special vehicles and light motorcycles.",
+        "ja": "普通自動車免許を持っている人は、普通自動車のほかに、小型特殊自動車と軽二輪車も運転できる。"
+      },
+      "correctAnswer": "true",
+      "explanation": {
+        "zh": "根据日本道路交通法，持有普通驾驶执照（普通免许）的人不仅可以驾驶普通汽车，还可以驾驶小型特殊机动车以及原付（50cc以下的轻型摩托车）。法律明确允许普通免许包含普通机动车、小型特殊机动车与原付的驾驶范围。因此题目所述内容是正确的。",
+        "en": "Under Japanese Road Traffic Law, a person holding a regular driver’s license is permitted to operate not only ordinary motor vehicles but also small special vehicles and mopeds (50cc or below). These vehicle categories are explicitly included within the scope of a regular driver’s license, so the statement in the question is correct.",
+        "ja": "日本の道路交通法では、普通免許を持っている人は普通自動車に加えて小型特殊自動車と原動機付自転車（50cc以下）を運転することが認められている。普通免許の運転範囲にはこの三種類が含まれるため、設問の内容は正しい。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY"
+      ],
+      "stage_tag": "both",
+      "topic_tags": [
+        "license_types",
+        "vehicle_categories",
+        "driving_scope"
+      ]
+    },
+    {
+      "id": "202",
+      "type": "truefalse",
+      "content": {
+        "zh": "持有大型特殊驾驶执照，可以驾驶大型特殊汽车、小型特殊汽车以及轻型摩托车。",
+        "en": "A large special vehicle license allows you to drive large special vehicles, small special vehicles, and mopeds.",
+        "ja": "大型特殊免許を所持していれば、大型特殊自動車、小型特殊自動車、および原動機付自転車を運転することができる。"
+      },
+      "correctAnswer": "true",
+      "explanation": {
+        "zh": "答案：对。根据日本道路交通法，持有大型特殊驾驶执照（大型特殊免许）的人可以驾驶大型特殊汽车、小型特殊汽车以及原付（50cc 以下轻型摩托车）。大型特殊免许本身允许驾驶大型特殊车辆，而小型特殊车辆属于更低级别的许可范围，因此自动包含在内；此外，日本所有机动车驾驶执照（除了仅限二轮的类型）都自动附带原付驾驶资格，因此题目描述是正确的。",
+        "en": "Under Japanese Road Traffic Law, holding a large special vehicle license (大型特殊免許) allows a driver to operate large special vehicles, small special vehicles, and also mopeds (50cc or below). Small special vehicles fall under a lower category included within the large special license, and moped privileges are automatically granted with all automobile-class licenses. Therefore, the statement in the question is correct.",
+        "ja": "日本の道路交通法では、大型特殊免許を所持している場合、大型特殊自動車だけでなく小型特殊自動車も運転でき、さらにすべての自動車免許と同様に原動機付自転車（50cc以下）の運転資格も含まれている。小型特殊は大型特殊の下位区分であり、原付は自動車免許に付随するため、設問の内容は正しい。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "LARGE_SPECIAL"
+      ],
+      "stage_tag": "both",
+      "topic_tags": [
+        "license_scope",
+        "vehicle_types",
+        "large_special_vehicle",
+        "moped"
+      ]
+    },
+    {
+      "id": "47",
+      "type": "truefalse",
+      "content": {
+        "zh": "在同一方向有三条或更多车道的道路上，最右侧车道是超车道，超车后应尽快驶回左侧车道。慢速车辆应在左侧车道行驶，而快速车辆可以持续占用最右侧车道行驶。",
+        "en": "On a road with three or more lanes in the same direction, the rightmost lane is an overtaking lane, and drivers should return to the left lane as soon as possible after overtaking. Slower vehicles should drive in the left lane, and faster vehicles may continuously occupy the rightmost lane.",
+        "ja": "同一方向に3車線以上ある道路では、一番右側の車線は追越し車線であり、追越し後は速やかに左側の車線に戻るべきである。遅い車両は左側の車線を走行し、速い車両は一番右側の車線を継続して走行してもよい。"
+      },
+      "correctAnswer": "false",
+      "explanation": {
+        "zh": "日本道路交通法规定，在三条或以上同方向车道的道路上，最右侧车道属于“超车车道（追越車線）”，其目的仅限超车使用，车辆完成超车后必须尽快回到左侧车道。法律并未允许“快速车辆长期占用最右侧车道”，相反，持续占用超车道属于违法行为。因此题目中“快速车辆可持续在最右侧车道行驶”的说法是错误的。",
+        "en": "Under Japanese traffic law, on roads with three or more lanes in the same direction, the rightmost lane is designated strictly as an overtaking lane. Vehicles may use it only for overtaking and must return to the left lane as soon as the overtaking maneuver is completed. It is illegal for faster vehicles to continuously occupy the rightmost lane, as the overtaking lane is not meant for sustained travel. Therefore, the statement claiming that fast vehicles may remain in the rightmost lane is incorrect.",
+        "ja": "日本の道路交通法では、同一方向に三車線以上ある道路の最右側車線は「追越車線」とされ、進路変更による追越しのためだけに使用される。追越しが終わった車両は速やかに左側車線へ戻らなければならず、速度の速い車が追越車線を継続して走行することは法律で禁止されている。そのため、設問の「速い車は最右側車線を継続走行できる」という記述は誤りである。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "lane_usage",
+        "overtaking",
+        "road_rules"
+      ]
+    },
+    {
+      "id": "52",
+      "type": "truefalse",
+      "content": {
+        "zh": "该标志所示的场所内，车辆既不能停泊，也不能临时停车。",
+        "en": "When encountering a \"No Parking and No Stopping\" sign, it means that vehicles are prohibited from both parking and temporarily stopping in the area indicated by the sign.",
+        "ja": "「駐停車禁止」の標識がある場所では、駐車も停車もできません。"
+      },
+      "correctAnswer": "false",
+      "image": "https://github.com/yzsnstotz/drivequiz/blob/main/Screenshot%202024-12-17%20at%2021.14.34.png?raw=true",
+      "explanation": {
+        "zh": "该标志为“禁止停车（駐車禁止）”，表示在标示的时段（8时至20时）内，车辆不能进行长时间停放，但允许驾驶者留在车内、在不妨碍交通的前提下短暂停留（即允许临时停车）。如果要禁止一切停留与长时间停车，则应使用“禁止停留（停車禁止）”标志，即蓝底红圈加“×”符号。题目所说“既不能停泊，也不能临时停车”属于错误描述，因此答案为错。",
+        "en": "The sign shown is a “No Parking (駐車禁止)” sign, valid during the indicated hours (8:00–20:00). It prohibits parking for extended periods but still allows temporary stopping, as long as the driver remains able to move immediately and does not obstruct traffic. Only the “No Stopping (停車禁止)” sign—marked with an X—prohibits both parking and temporary stopping. Therefore, the statement claiming that neither parking nor temporary stopping is allowed is incorrect.",
+        "ja": "この標識は「駐車禁止」であり、表示された時間帯（8時から20時）は駐車が禁止されるが、乗員がすぐに発進できる状態で短時間停止する「停車」は禁止されていない。停車も駐車も禁止される場合は「停車禁止」（青地に赤枠の×印）の標識が使用される。したがって「駐車も停車もできない」という設問の記述は誤りである。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "traffic_sign",
+        "parking",
+        "stopping"
+      ]
+    },
+    {
+      "id": "71",
+      "type": "truefalse",
+      "content": {
+        "zh": "在交叉路口右转弯时，应提前靠向道路中心线行驶。",
+        "en": "When turning right at an intersection, you should move close to the center line of the road in advance.",
+        "ja": "交差点で右折する際は、あらかじめ道路の中央線付近に寄って進行する。"
+      },
+      "correctAnswer": "false",
+      "explanation": {
+        "zh": "在日本道路交通法中，车辆在交叉路口右转时必须“提前靠向道路中央”（即接近中心线），这是为了缩短右转弯路径、避免影响左侧直行车辆，并减少与对向直行车的冲突风险。靠近道路中央等待右转属于正确且法律要求的行为，因此题目描述是正确的。",
+        "en": "Under Japanese traffic law, a vehicle turning right at an intersection must move close to the center of the road in advance. This positioning reduces interference with vehicles going straight on the left side and minimizes potential conflict with oncoming traffic. Thus, approaching the road center before making a right turn is the correct and legally required procedure, making the statement true.",
+        "ja": "日本の道路交通法では、交差点で右折する際、あらかじめ道路の中央付近に寄って進行することが義務付けられている。これは右折待ちの位置を明確にし、左側の直進車の妨げを避け、対向車との衝突リスクを減らすためである。したがって設問の内容は正しい。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "intersection",
+        "right_turn",
+        "driving_position"
+      ]
+    },
+    {
+      "id": "219",
+      "type": "truefalse",
+      "content": {
+        "zh": "高明的刹车方法是不过度地使用制动器马上停车，而是尽量通过操作制动踏板来缓慢减速，直至车辆完全停止。",
+        "en": "A good braking technique is not to overuse the brakes to stop abruptly, but to operate the brake pedal smoothly and slow down gradually until the vehicle comes to a complete stop.",
+        "ja": "優れたブレーキ方法とは、ブレーキを過度に使って急停止するのではなく、ブレーキペダルを丁寧に操作してできるだけ緩やかに減速し、車両を完全に停止させることである。"
+      },
+      "correctAnswer": "true",
+      "explanation": {
+        "zh": "安全驾驶原则中，正确的刹车方式是“渐进式刹车”，也称为平稳制动。日本交通安全指南强调，不应突然或过度踩下制动器，因为急刹车容易导致车辆失控、后车追尾、乘客不适或货物移动。良好的刹车方式应通过平稳、可控的踏板操作，让车辆逐渐减速至完全停止，因此题目描述是正确的。",
+        "en": "A proper and safe braking technique involves gradually slowing the vehicle with smooth brake pedal operation rather than stopping abruptly by applying excessive force. Sudden braking can cause loss of control, increase the risk of rear-end collisions, and create discomfort for passengers. Traffic safety guidelines emphasize progressive and controlled braking, making the statement correct.",
+        "ja": "安全運転の基本として、適切なブレーキ操作は急ブレーキや過度なペダル踏み込みではなく、ペダルを滑らかに操作して車を徐々に減速させ、静かに停止させることである。急ブレーキは車両の挙動が乱れたり、追突事故を招いたり、乗員に不快な衝撃を与える可能性があるため、交通安全教育でも「漸減ブレーキ」が推奨されている。よって設問は正しい。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "braking",
+        "driving_technique",
+        "safe_driving"
+      ]
+    },
+    {
+      "id": "232",
+      "type": "truefalse",
+      "content": {
+        "zh": "明知朋友已经饮酒，自己又没有驾驶执照，却仍然请求朋友驾车送自己回家。这种行为是违法的。",
+        "en": "Knowing that a friend had consumed alcohol and not possessing a driver's license oneself, one still asked the friend to drive them home. This act is illegal.",
+        "ja": "友人が飲酒していることを知りながら、自分は運転免許を持っていないため、友人に運転して家まで送ってもらった。このような行為は違法である。"
+      },
+      "correctAnswer": "true",
+      "explanation": {
+        "zh": "根据日本道路交通法，明知对方已经饮酒却仍然要求其驾车属于“酒驾教唆・酒驾要求行为”，是明确违法的；即使自己没有驾照、不亲自驾车，只要“让已饮酒的人开车”，就构成违法，可能受到处罚。日本对酒驾相关行为的处罚十分严格，不仅驾驶者本人违法，请求、允许、强迫饮酒者驾驶的人也会被追究法律责任，因此题目描述是正确的。",
+        "en": "Under Japanese traffic law, asking or encouraging someone to drive while knowing they have consumed alcohol is illegal, even if you yourself do not have a driver’s license and are not the one driving. This behavior is classified as “encouraging or requesting drunk driving,” and those who request, permit, or facilitate a drunk driver can be penalized alongside the driver. Therefore, the statement is correct.",
+        "ja": "日本の道路交通法では、相手が飲酒していると知りながら運転を依頼したり容認したりする行為は「飲酒運転の要求・依頼・容認行為」として明確に違法とされている。自分が免許を持っていない、あるいは運転しない場合でも、飲酒した人に運転をさせるだけで処罰対象となる。飲酒運転に関わる行為全体が厳しく罰せられるため、設問の内容は正しい。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "drunk_driving",
+        "traffic_law",
+        "responsibility"
+      ]
+    },
+    {
+      "id": "161",
+      "type": "truefalse",
+      "content": {
+        "zh": "接近人行横道时，即使没有明显正在横穿的行人，也必须减速至能够随时在人行横道前停车的速度行驶。",
+        "en": "When approaching a crosswalk, even if there are clearly no pedestrians crossing, you must reduce your speed to a level where you can stop immediately before the crosswalk.",
+        "ja": "横断歩道に近づいた際、たとえ横断する歩行者がいないことが明らかであっても、横断歩道の直前で停止できる速度まで減速しなければならない。"
+      },
+      "correctAnswer": "true",
+      "explanation": {
+        "zh": "根据日本道路交通法，车辆在接近人行横道（横断歩道）时，即使没有明显正在通过的行人，也必须以“随时能够在横断步道前安全停车”的速度接近，这属于法律规定的减速义务。特别是无法充分确认横断步道是否安全的情况（有遮挡物、拐角、夜间等），驾驶者必须提前降低车速，以确保随时能够停车并让行人优先通过。因此题目描述是正确的。",
+        "en": "This statement is correct. According to Japanese road traffic law, drivers must slow down when approaching a crosswalk, even if no pedestrians are currently visible, to a speed that allows them to stop safely and immediately before the crosswalk. This is to prioritize pedestrian safety and to be prepared for pedestrians who might suddenly appear.",
+        "ja": "これは正しいです。道路交通法では、運転者は横断歩道に接近する際、歩行者の有無にかかわらず、いつでも安全に停止できる速度まで減速する義務があります。これは歩行者の安全を最優先し、予期せぬ飛び出しなどに対応できるようにするためです。"
+      },
+      "category": "其他",
+      "license_type_tag": [
+        "ORDINARY",
+        "MEDIUM"
+      ],
+      "stage_tag": "provisional",
+      "topic_tags": [
+        "pedestrian_safety",
+        "crosswalk",
+        "speed_control",
+        "traffic_rules"
+      ]
+    }
+  ]
+}

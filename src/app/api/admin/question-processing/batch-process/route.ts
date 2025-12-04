@@ -2356,8 +2356,9 @@ async function processBatchAsync(
               content: currentQuestion.content,
               options: currentQuestion.options,
               correctAnswer: currentQuestion.correct_answer,
+              image: currentQuestion.image, // ✅ 修复：保留图片字段
               explanation: currentQuestion.explanation,
-              license_tags: (currentQuestion as any).license_tags,
+              license_type_tag: (currentQuestion as any).license_tags || (currentQuestion as any).license_type_tag, // ✅ 修复：使用正确的字段名 license_type_tag
               stage_tag: (currentQuestion as any).stage_tag,
               topic_tags: (currentQuestion as any).topic_tags,
               mode: "updateOnly", // 防止插入幽灵题

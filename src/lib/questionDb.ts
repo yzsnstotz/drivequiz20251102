@@ -262,35 +262,62 @@ export async function saveQuestionToDb(question: Question & { mode?: "upsert" | 
     // ✅ 修复：直接使用 license_type_tag 字段（数据库字段名）
     // license_tags 字段已废弃，不再处理
 
-    // ✅ 修复：统一通过 content_hash 查找题目（content_hash 是题目标识的唯一手段）
-    // updateOnly 模式：通过 content_hash 查找，找不到则抛出错误
+    // ✅ 修复：updateOnly 模式优先通过 id 查找，upsert 模式通过 content_hash 查找
+    // updateOnly 模式：如果提供了 id，通过 id 查找；否则通过 content_hash 查找，找不到则抛出错误
     // upsert 模式：通过 content_hash 查找，找不到则插入新题目
-    const existing = await db
-      .selectFrom("questions")
-      .select(["id"])
-      .where("content_hash", "=", contentHash)
-      .executeTakeFirst();
+    let existing: { id: number } | undefined;
     
-    if (!existing && mode === "updateOnly") {
-      console.error(
-        `[saveQuestionToDb] [updateOnly] Question content_hash=${contentHash} not found, aborting without insert.`,
-      );
-      throw new Error("QUESTION_NOT_FOUND_FOR_UPDATE");
+    if (mode === "updateOnly" && question.id) {
+      // ✅ 修复：updateOnly 模式且提供了 id，通过 id 查找（id 是唯一不变的标识符）
+      existing = await db
+        .selectFrom("questions")
+        .select(["id"])
+        .where("id", "=", question.id)
+        .executeTakeFirst();
+      
+      if (!existing) {
+        console.error(
+          `[saveQuestionToDb] [updateOnly] Question id=${question.id} not found, aborting without insert.`,
+        );
+        throw new Error("QUESTION_NOT_FOUND_FOR_UPDATE");
+      }
+    } else {
+      // upsert 模式或 updateOnly 模式但没有提供 id：通过 content_hash 查找
+      existing = await db
+        .selectFrom("questions")
+        .select(["id"])
+        .where("content_hash", "=", contentHash)
+        .executeTakeFirst();
+      
+      if (!existing && mode === "updateOnly") {
+        console.error(
+          `[saveQuestionToDb] [updateOnly] Question content_hash=${contentHash} not found, aborting without insert.`,
+        );
+        throw new Error("QUESTION_NOT_FOUND_FOR_UPDATE");
+      }
     }
 
     if (existing) {
       // 更新现有题目
+      // ✅ 修复：计算新的 content_hash（因为内容可能已修改）
+      const newContentHash = calculateQuestionHash(question);
+      
       // ✅ 修复：构建更新对象，只有字段值存在时才更新（null/undefined 时不更新，保留原值）
       const updateData: any = {
+        content_hash: newContentHash, // ✅ 修复：更新 content_hash 为新值
         type: cleanedQuestion.type,
         content: contentMultilang as any,
         options: cleanedOptions,
         correct_answer: cleanedCorrectAnswer,
-        image: cleanedQuestion.image || null,
         explanation: explanationMultilang as any,
         category: cleanedQuestion.category || null,
         updated_at: new Date(),
       };
+      
+      // ✅ 修复：只有 image 字段存在时才更新（避免删除未指定的图片）
+      if (cleanedQuestion.image !== undefined) {
+        updateData.image = cleanedQuestion.image || null;
+      }
 
       // ✅ 修复：清理 license_type_tag 数组（JSONB 类型，内部约定为 string[]）
       if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {

@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ApiError, apiFetch, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
+import MultilangInput from "@/components/admin/MultilangInput";
 
 type QuestionType = "single" | "multiple" | "truefalse";
 
@@ -81,6 +82,10 @@ export default function QuestionsPage() {
       locale: q("locale", DEFAULT_FILTERS.locale || "zh"),
     };
   });
+
+  // ✅ 修复：添加搜索输入框的本地状态，用于防抖
+  const [searchInput, setSearchInput] = useState<string>(filters.search);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -234,7 +239,12 @@ export default function QuestionsPage() {
         }
       }
     } catch (e) {
-      console.error("Failed to load versions:", e);
+      // ✅ 修复：如果是 Vercel Auth 错误，只记录警告，不抛出错误
+      if (e instanceof ApiError && e.errorCode === "VERCEL_AUTH_BLOCKED") {
+        console.warn("[loadVersions] Vercel Auth blocked, skipping version list reload:", e.message);
+      } else {
+        console.error("Failed to load versions:", e);
+      }
     } finally {
       setLoadingVersions(false);
     }
@@ -314,6 +324,8 @@ export default function QuestionsPage() {
       } else {
         setLoading(true);
         setError(null);
+        // ✅ 修复：不清空列表，避免闪动（数据加载完成后会替换）
+        // setItems([]); // 移除立即清空，让数据加载完成后再更新
       }
 
       const params: Record<string, any> = {
@@ -396,11 +408,61 @@ export default function QuestionsPage() {
     }
   }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder, filters.locale]);
 
+  // ✅ 修复：同步 searchInput 到 filters.search（防抖处理）
+  useEffect(() => {
+    // 清除之前的防抖定时器
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    // 设置新的防抖定时器
+    searchDebounceRef.current = setTimeout(() => {
+      setFilters((prev) => {
+        // 只有当搜索内容真正改变时才更新
+        if (prev.search !== searchInput) {
+          return {
+            ...prev,
+            search: searchInput,
+            page: 1, // 搜索时重置到第一页
+          };
+        }
+        return prev;
+      });
+    }, 500); // 500ms 防抖延迟
+
+    // 清理函数
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchInput]);
+
+  // ✅ 修复：只在组件初始化时同步一次 URL 中的 search 参数到 searchInput
+  // 之后不再同步，避免与防抖逻辑冲突
+  const urlSearchInitialized = useRef(false);
+  useEffect(() => {
+    if (!urlSearchInitialized.current) {
+      const urlSearch = search?.get("search") || "";
+      setSearchInput(urlSearch);
+      urlSearchInitialized.current = true;
+    }
+  }, []);
+
   // 初始加载或筛选条件改变时重置
   useEffect(() => {
-    setItems([]);
-    setHasMore(true);
-    loadData(1, false);
+    // ✅ 修复：只在非搜索场景下立即清空列表，搜索时保留旧数据直到新数据加载完成
+    // 这样可以避免搜索时的闪动
+    if (filters.search) {
+      // 搜索时不清空，让 loadData 完成后替换
+      setHasMore(true);
+      loadData(1, false);
+    } else {
+      // 非搜索场景（分类、排序等）立即清空
+      setItems([]);
+      setHasMore(true);
+      loadData(1, false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.category, filters.search, filters.source, filters.sortBy, filters.sortOrder, filters.locale]);
 
@@ -572,11 +634,43 @@ export default function QuestionsPage() {
 
     const formData = new FormData(e.currentTarget);
     const type = formData.get("type")?.toString() as QuestionType;
-    const content = formData.get("content")?.toString() || "";
     const category = formData.get("category")?.toString() || editingQuestion.category || "免许-1";
     const image = formData.get("image")?.toString() || "";
-    const explanation = formData.get("explanation")?.toString() || "";
     const aiAnswer = formData.get("aiAnswer")?.toString() || "";
+
+    // ✅ 修复：从表单数据中获取多语言content和explanation
+    // 这些字段现在通过MultilangInput组件以JSON字符串形式传递
+    let content: string | { zh?: string; en?: string; ja?: string } | undefined;
+    const contentJson = formData.get("contentMultilang")?.toString();
+    if (contentJson) {
+      try {
+        content = JSON.parse(contentJson);
+      } catch {
+        // 如果解析失败，尝试作为字符串处理（兼容旧格式）
+        const contentStr = formData.get("content")?.toString() || "";
+        content = contentStr.trim() || undefined;
+      }
+    } else {
+      // 兼容旧格式：如果没有多语言数据，使用content字段
+      const contentStr = formData.get("content")?.toString() || "";
+      content = contentStr.trim() || undefined;
+    }
+
+    let explanation: string | { zh?: string; en?: string; ja?: string } | undefined;
+    const explanationJson = formData.get("explanationMultilang")?.toString();
+    if (explanationJson) {
+      try {
+        explanation = JSON.parse(explanationJson);
+      } catch {
+        // 如果解析失败，尝试作为字符串处理（兼容旧格式）
+        const explanationStr = formData.get("explanation")?.toString() || "";
+        explanation = explanationStr.trim() || undefined;
+      }
+    } else {
+      // 兼容旧格式：如果没有多语言数据，使用explanation字段
+      const explanationStr = formData.get("explanation")?.toString() || "";
+      explanation = explanationStr.trim() || undefined;
+    }
 
     // 解析选项
     const options: string[] = [];
@@ -833,14 +927,29 @@ export default function QuestionsPage() {
         message: data.message || `JSON 包更新完成：统一版本号 ${data.version}，共 ${data.totalQuestions} 个题目，${data.aiAnswersCount} 个AI回答`,
         data,
       });
-      // 重新加载版本号列表
-      loadVersions();
+      // ✅ 修复：重新加载版本号列表（忽略错误，不影响主流程）
+      loadVersions().catch((err) => {
+        console.warn("[handleUpdatePackage] Failed to reload versions:", err);
+        // 不显示错误，因为更新JSON包已经成功
+      });
       // 重新加载数据以显示新的 hash
       setItems([]);
       setHasMore(true);
       loadData(1, false);
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "更新 JSON 包失败");
+      console.error("[handleUpdatePackage] Error:", e);
+      if (e instanceof ApiError) {
+        // ✅ 修复：显示详细的错误信息
+        setFormError(`${e.errorCode}: ${e.message}`);
+        // 如果是 Vercel Auth 错误，提供更友好的提示
+        if (e.errorCode === "VERCEL_AUTH_BLOCKED") {
+          setFormError("更新失败：当前环境启用了 Vercel Authentication，请检查部署配置或使用 bypass token。");
+        }
+      } else {
+        setFormError(e instanceof Error ? e.message : "更新 JSON 包失败");
+      }
+      // ✅ 修复：更新失败时也清除成功提示
+      setUpdateResult(null);
     } finally {
       setUpdatingPackage(false);
     }
@@ -1498,8 +1607,8 @@ export default function QuestionsPage() {
           <label className="block text-xs font-medium text-gray-700 mb-1">搜索内容</label>
           <input
             type="text"
-            value={filters.search}
-            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
             placeholder="搜索题目ID、内容、选项、解析..."
           />
@@ -2441,6 +2550,27 @@ function QuestionForm({
   const [showOptions, setShowOptions] = useState(
     question?.type === "single" || question?.type === "multiple" || !question
   );
+  
+  // ✅ 修复：多语言内容状态管理
+  const [contentMultilang, setContentMultilang] = useState<{ zh?: string; en?: string; ja?: string }>(() => {
+    if (!question) return {};
+    if (typeof question.content === "string") {
+      return { zh: question.content };
+    } else if (question.content && typeof question.content === "object") {
+      return question.content;
+    }
+    return {};
+  });
+  
+  const [explanationMultilang, setExplanationMultilang] = useState<{ zh?: string; en?: string; ja?: string }>(() => {
+    if (!question) return {};
+    if (typeof question.explanation === "string") {
+      return { zh: question.explanation };
+    } else if (question.explanation && typeof question.explanation === "object") {
+      return question.explanation;
+    }
+    return {};
+  });
 
   useEffect(() => {
     setShowOptions(type === "single" || type === "multiple");
@@ -2490,17 +2620,32 @@ function QuestionForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">题目内容 *</label>
-        <textarea
-          name="content"
-          required
+        {/* ✅ 修复：使用MultilangInput组件支持多语言编辑 */}
+        <MultilangInput
+          label="题目内容"
+          value={contentMultilang}
+          onChange={(value) => {
+            setContentMultilang(value);
+            // 将多语言数据序列化为JSON字符串，存储在隐藏字段中
+            const form = document.querySelector('form');
+            if (form) {
+              let hiddenInput = form.querySelector('input[name="contentMultilang"]') as HTMLInputElement;
+              if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'contentMultilang';
+                form.appendChild(hiddenInput);
+              }
+              hiddenInput.value = JSON.stringify(value);
+            }
+          }}
+          placeholder="请输入题目内容"
           rows={3}
-          defaultValue={typeof question?.content === 'string' 
-            ? question.content 
-            : (question?.content?.zh || "")}
-          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-          placeholder="请输入题目内容..."
+          multiline={true}
+          required={true}
         />
+        {/* 隐藏字段用于表单提交 */}
+        <input type="hidden" name="contentMultilang" value={JSON.stringify(contentMultilang)} />
       </div>
 
       {showOptions && (
@@ -2636,22 +2781,20 @@ function QuestionForm({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">解析</label>
-        <textarea
-          name="explanation"
+        {/* ✅ 修复：使用MultilangInput组件支持多语言编辑 */}
+        <MultilangInput
+          label="解析"
+          value={explanationMultilang}
+          onChange={(value) => {
+            setExplanationMultilang(value);
+          }}
+          placeholder="请输入题目解析"
           rows={2}
-          defaultValue={
-            question?.explanation
-              ? typeof question.explanation === 'string'
-                ? question.explanation
-                : (typeof question.explanation === 'object' && question.explanation !== null
-                    ? (question.explanation.zh || question.explanation.en || question.explanation.ja || '')
-                    : '')
-              : ""
-          }
-          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-          placeholder="请输入题目解析..."
+          multiline={true}
+          required={false}
         />
+        {/* 隐藏字段用于表单提交，存储JSON格式的多语言数据 */}
+        <input type="hidden" name="explanationMultilang" value={JSON.stringify(explanationMultilang)} />
       </div>
 
       <div>

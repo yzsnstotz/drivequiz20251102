@@ -170,8 +170,16 @@ function getWelcomeMessage(lang: Language): string {
 }
 
 const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
-  const { isActivated, showActivationModal } = useAIActivation();
+  const { isActivated, showActivationModal, checkActivationStatus } = useAIActivation();
   const { t, language, languageReady } = useLanguage();
+  
+  // ✅ 修复：页面加载时检查激活状态
+  useEffect(() => {
+    // 页面加载时重新检查激活状态，确保状态是最新的
+    checkActivationStatus().catch((err) => {
+      console.error("[AIPage] Failed to check activation status on mount:", err);
+    });
+  }, [checkActivationStatus]);
   
   // 初始化消息历史：使用固定的默认值，避免hydration错误
   // 在SSR和客户端都使用相同的默认值（中文），避免hydration不匹配

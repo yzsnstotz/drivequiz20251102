@@ -7,6 +7,7 @@ import { useLanguage } from "@/lib/i18n";
 import { getMultilangContent } from "@/lib/multilangUtils";
 import SuccessModal from "@/components/SuccessModal";
 import { useAIActivation } from "@/components/AIActivationProvider";
+import { useActivation } from "@/contexts/ActivationContext";
 
 interface ContactInfo {
   type: 'business' | 'purchase';
@@ -24,6 +25,7 @@ export default function ActivationPage() {
   const router = useRouter();
   const { t, language } = useLanguage();
   const { checkActivationStatus } = useAIActivation();
+  const { refresh: refreshActivation } = useActivation(); // ✅ 修复：添加refresh函数来刷新激活状态
   const [email, setEmail] = useState("");
   const [activationCode, setActivationCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -119,10 +121,19 @@ export default function ActivationPage() {
           localStorage.setItem("USER_ID", result.data.userid);
         }
         
-        // 更新AIActivationProvider的状态（异步执行，不阻塞UI）
-        checkActivationStatus().catch((err) => {
+        // ✅ 修复：刷新ActivationContext的状态，确保激活状态立即更新
+        try {
+          await refreshActivation();
+        } catch (err) {
+          console.error("[ActivationPage] Failed to refresh activation context:", err);
+        }
+        
+        // ✅ 修复：更新AIActivationProvider的状态（异步执行，不阻塞UI）
+        try {
+          await checkActivationStatus();
+        } catch (err) {
           console.error("[ActivationPage] Failed to update activation status:", err);
-        });
+        }
         
         setShowSuccessModal(true);
         if (result.data?.expiresAt) {
