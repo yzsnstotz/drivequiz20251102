@@ -165,7 +165,7 @@ export const PUT = withAdminAuth(
 
       // ✅ 修复：支持多语言对象格式的content和explanation
       // content可以是字符串或多语言对象 {zh, en, ja}
-      let normalizedContent: string | { zh?: string; en?: string; ja?: string } | undefined;
+      let normalizedContent: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | undefined;
       if (content !== undefined) {
         if (typeof content === "string") {
           // 字符串格式：trim后检查是否为空
@@ -184,51 +184,70 @@ export const PUT = withAdminAuth(
           if (!hasContent) {
             return badRequest("Question content cannot be empty (at least one language required)");
           }
-          // 清理空值，只保留有内容的语言
-          normalizedContent = {};
+          // 清理空值，只保留有内容的语言，确保至少包含zh
+          const cleanedContent: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } = {} as any;
           if (multilangContent.zh && multilangContent.zh.trim().length > 0) {
-            normalizedContent.zh = multilangContent.zh.trim();
+            cleanedContent.zh = multilangContent.zh.trim();
+          } else if (multilangContent.en && multilangContent.en.trim().length > 0) {
+            // 如果没有zh，使用en作为主要语言（但类型要求zh，所以这里需要特殊处理）
+            cleanedContent.zh = multilangContent.en.trim();
+            cleanedContent.en = multilangContent.en.trim();
+          } else if (multilangContent.ja && multilangContent.ja.trim().length > 0) {
+            // 如果没有zh和en，使用ja作为主要语言
+            cleanedContent.zh = multilangContent.ja.trim();
+            cleanedContent.ja = multilangContent.ja.trim();
           }
-          if (multilangContent.en && multilangContent.en.trim().length > 0) {
-            normalizedContent.en = multilangContent.en.trim();
+          // 确保zh存在（类型要求）
+          if (!cleanedContent.zh) {
+            return badRequest("Question content must have at least one language");
           }
-          if (multilangContent.ja && multilangContent.ja.trim().length > 0) {
-            normalizedContent.ja = multilangContent.ja.trim();
-          }
+          normalizedContent = cleanedContent;
         } else {
           return badRequest("Invalid content format: must be string or multilang object");
         }
       }
 
       // explanation可以是字符串或多语言对象 {zh, en, ja}
-      let normalizedExplanation: string | { zh?: string; en?: string; ja?: string } | undefined;
+      let normalizedExplanation: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined } | undefined;
       if (explanation !== undefined) {
         if (typeof explanation === "string") {
           normalizedExplanation = explanation.trim() || undefined;
         } else if (typeof explanation === "object" && explanation !== null) {
-          // 多语言对象格式：清理空值，只保留有内容的语言
+          // 多语言对象格式：清理空值，只保留有内容的语言，确保至少包含zh
           const multilangExplanation = explanation as { zh?: string; en?: string; ja?: string };
-          normalizedExplanation = {};
+          const cleanedExplanation: { zh: string; en?: string; ja?: string; [key: string]: string | undefined } = {} as any;
           if (multilangExplanation.zh && multilangExplanation.zh.trim().length > 0) {
-            normalizedExplanation.zh = multilangExplanation.zh.trim();
-          }
-          if (multilangExplanation.en && multilangExplanation.en.trim().length > 0) {
-            normalizedExplanation.en = multilangExplanation.en.trim();
-          }
-          if (multilangExplanation.ja && multilangExplanation.ja.trim().length > 0) {
-            normalizedExplanation.ja = multilangExplanation.ja.trim();
+            cleanedExplanation.zh = multilangExplanation.zh.trim();
+          } else if (multilangExplanation.en && multilangExplanation.en.trim().length > 0) {
+            // 如果没有zh，使用en作为主要语言
+            cleanedExplanation.zh = multilangExplanation.en.trim();
+            cleanedExplanation.en = multilangExplanation.en.trim();
+          } else if (multilangExplanation.ja && multilangExplanation.ja.trim().length > 0) {
+            // 如果没有zh和en，使用ja作为主要语言
+            cleanedExplanation.zh = multilangExplanation.ja.trim();
+            cleanedExplanation.ja = multilangExplanation.ja.trim();
           }
           // 如果所有语言都为空，设置为undefined
-          if (Object.keys(normalizedExplanation).length === 0) {
+          if (Object.keys(cleanedExplanation).length === 0) {
             normalizedExplanation = undefined;
+          } else {
+            // 确保zh存在（类型要求）
+            if (!cleanedExplanation.zh) {
+              normalizedExplanation = undefined;
+            } else {
+              normalizedExplanation = cleanedExplanation;
+            }
           }
         } else {
           return badRequest("Invalid explanation format: must be string or multilang object");
         }
       }
 
+      // ✅ 修复：oldQuestion 包含扩展字段，需要使用类型断言
+      const oldQuestionWithTags = oldQuestion as Question & { license_type_tag?: string[]; stage_tag?: "both" | "provisional" | "regular"; topic_tags?: string[] };
+      
       // 构建更新后的题目
-      const updatedQuestion: Question & { license_type_tag?: string[] | null; stage_tag?: "both" | "provisional" | "regular" | null; topic_tags?: string[] | null } = {
+      const updatedQuestion: Question & { license_type_tag?: string[] | null | undefined; stage_tag?: "both" | "provisional" | "regular" | null | undefined; topic_tags?: string[] | undefined } = {
         ...oldQuestion,
         ...(type ? { type } : {}),
         ...(normalizedContent !== undefined ? { content: normalizedContent } : {}),
@@ -241,13 +260,13 @@ export const PUT = withAdminAuth(
         // 如果请求中提供了这些字段，使用新值；否则保留原值（从 oldQuestion 中）
         ...(license_type_tag !== undefined 
           ? { license_type_tag: Array.isArray(license_type_tag) && license_type_tag.length > 0 ? license_type_tag : null } 
-          : (oldQuestion.license_type_tag !== undefined ? { license_type_tag: oldQuestion.license_type_tag } : {})),
+          : (oldQuestionWithTags.license_type_tag !== undefined ? { license_type_tag: oldQuestionWithTags.license_type_tag } : {})),
         ...(stage_tag !== undefined 
           ? { stage_tag: stage_tag || null } 
-          : (oldQuestion.stage_tag !== undefined ? { stage_tag: oldQuestion.stage_tag } : {})),
+          : (oldQuestionWithTags.stage_tag !== undefined ? { stage_tag: oldQuestionWithTags.stage_tag } : {})),
         ...(topic_tags !== undefined 
-          ? { topic_tags: Array.isArray(topic_tags) && topic_tags.length > 0 ? topic_tags : null } 
-          : (oldQuestion.topic_tags !== undefined ? { topic_tags: oldQuestion.topic_tags } : {})),
+          ? { topic_tags: Array.isArray(topic_tags) && topic_tags.length > 0 ? topic_tags : undefined } 
+          : (oldQuestionWithTags.topic_tags !== undefined && oldQuestionWithTags.topic_tags !== null ? { topic_tags: oldQuestionWithTags.topic_tags } : {})),
       };
 
       // ✅ 修复：更新数据库时，传入 id 和 mode（使用updateOnly模式）

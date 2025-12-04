@@ -761,6 +761,7 @@ async function processBatchAsync(
       ja?: string;
       [key: string]: string | undefined;
     } | string | null; // 支持多语言对象或字符串（向后兼容）
+    image?: string | null; // ✅ 修复：添加 image 字段
   }> = [];
 
   if (contentHashesToProcess && contentHashesToProcess.length > 0) {
@@ -768,21 +769,21 @@ async function processBatchAsync(
     console.log(`[BatchProcess] [${requestId}] Loading questions by content_hash: ${contentHashesToProcess.length}`);
     questions = await db
       .selectFrom("questions")
-      .select(["id", "content_hash", "type", "content", "options", "correct_answer", "explanation"])
+      .select(["id", "content_hash", "type", "content", "options", "correct_answer", "explanation", "image"]) // ✅ 修复：添加 image 字段
       .where("content_hash", "in", contentHashesToProcess)
       .execute();
   } else if (questionIdsToProcess && questionIdsToProcess.length > 0) {
     console.log(`[BatchProcess] [${requestId}] Loading specified questions: ${questionIdsToProcess.length}`);
     questions = await db
       .selectFrom("questions")
-      .select(["id", "content_hash", "type", "content", "options", "correct_answer", "explanation"]) // ✅ 修复：添加 correct_answer 字段
+      .select(["id", "content_hash", "type", "content", "options", "correct_answer", "explanation", "image"]) // ✅ 修复：添加 image 字段
       .where("id", "in", questionIdsToProcess)
       .execute();
   } else {
     console.log(`[BatchProcess] [${requestId}] Loading all questions`);
     questions = await db
       .selectFrom("questions")
-      .select(["id", "content_hash", "type", "content", "options", "correct_answer", "explanation"]) // ✅ 修复：添加 correct_answer 字段
+      .select(["id", "content_hash", "type", "content", "options", "correct_answer", "explanation", "image"]) // ✅ 修复：添加 image 字段
       .execute();
   }
 
