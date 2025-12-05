@@ -11,6 +11,7 @@ import { NextRequest } from "next/server";
 import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, internalError } from "@/app/api/_lib/errors";
 import { calculateQuestionHash } from "@/lib/questionHash";
+import type { CorrectAnswer } from "@/lib/types/question";
 import { db } from "@/lib/db";
 import {
   getAIAnswerFromDb,
@@ -64,7 +65,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         type: q.type,
         content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+        correctAnswer: q.correct_answer as CorrectAnswer | null,
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category,
@@ -225,4 +226,3 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     return internalError("Failed to calculate AI answers stats");
   }
 });
-

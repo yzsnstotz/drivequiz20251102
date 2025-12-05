@@ -126,7 +126,7 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
         type: q.type,
         content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+        correctAnswer: q.correct_answer,
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category: q.category || packageName,
@@ -952,26 +952,26 @@ export async function saveQuestionFile(
     if (packageName === "__unified__") {
       // 确保所有题目的答案格式都正确（规范化）
       // 同时确保image字段即使为null也包含在JSON中（使用null而不是undefined）
-      const normalizedQuestions = data.questions.map((q) => {
-        // 确保image字段使用null而不是undefined，这样JSON.stringify不会省略它
-        // 注意：确保即使传入的q.image有值，也要正确保留
-        let imageValue: string | null = null;
-        if (q.image !== null && q.image !== undefined) {
-          if (typeof q.image === 'string' && q.image.trim() !== '') {
-            imageValue = q.image.trim(); // 保留有效的URL字符串
+        const normalizedQuestions = data.questions.map((q) => {
+          // 确保image字段使用null而不是undefined，这样JSON.stringify不会省略它
+          // 注意：确保即使传入的q.image有值，也要正确保留
+          let imageValue: string | null = null;
+          if (q.image !== null && q.image !== undefined) {
+            if (typeof q.image === 'string' && q.image.trim() !== '') {
+              imageValue = q.image.trim(); // 保留有效的URL字符串
+            } else {
+              imageValue = null; // 空字符串或其他类型，使用null
+            }
           } else {
-            imageValue = null; // 空字符串或其他类型，使用null
+            imageValue = null; // null或undefined，使用null
           }
-        } else {
-          imageValue = null; // null或undefined，使用null
-        }
-        
-        return {
-          ...q,
-          correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
-          image: imageValue, // 明确设置image字段，确保即使为null也包含在JSON中
-        };
-      });
+          
+          return {
+            ...q,
+          // correctAnswer 直接保持统一结构
+            image: imageValue, // 明确设置image字段，确保即使为null也包含在JSON中
+          };
+        });
       
       const unifiedData: any = {
         questions: normalizedQuestions,
@@ -992,7 +992,7 @@ export async function saveQuestionFile(
             
             const normalized: any = {
               ...q,
-              correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
+              // correctAnswer 直接保持统一结构
             };
             
             // 明确设置image字段
@@ -1038,9 +1038,9 @@ export async function saveQuestionFile(
     const otherQuestions = existingData.questions.filter((q) => q.category !== packageName);
     
     // 规范化新题目的答案格式
-    const normalizedNewQuestions = data.questions.map((q) => ({
+        const normalizedNewQuestions = data.questions.map((q) => ({
       ...q,
-      correctAnswer: normalizeCorrectAnswer(q.correctAnswer, q.type),
+      // 题目对象已包含统一结构的 correctAnswer，无需再转换
     }));
     
     const mergedQuestions = [...otherQuestions, ...normalizedNewQuestions];
@@ -1659,7 +1659,7 @@ export async function updateAllJsonPackages(): Promise<{
           type: q.type,
           content,
           options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-          correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+          correctAnswer: q.correct_answer,
           image: imageValue, // 使用null而不是undefined，确保JSON序列化时字段被包含
           explanation: q.explanation || undefined,
           category,
@@ -2123,4 +2123,3 @@ export async function updateJsonPackage(packageName: string): Promise<void> {
   // 统一版本号下，更新单个包实际是更新所有包
   await updateAllJsonPackages();
 }
-

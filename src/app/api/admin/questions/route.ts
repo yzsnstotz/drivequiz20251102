@@ -31,6 +31,7 @@ import { getContentText, getContentPreview } from "@/lib/questionContentUtils";
 import { getQuestionContent, getQuestionOptions } from "@/lib/questionUtils";
 import fs from "fs/promises";
 import path from "path";
+import type { CorrectAnswer } from "@/lib/types/question";
 
 // 题目数据类型
 export type QuestionType = "single" | "multiple" | "truefalse";
@@ -40,7 +41,7 @@ export interface Question {
   type: QuestionType;
   content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   options?: string[];
-  correctAnswer: string | string[];
+  correctAnswer: CorrectAnswer | null;
   image?: string;
   explanation?: string | {
     zh: string;
@@ -282,7 +283,7 @@ async function collectAllQuestions(): Promise<(Question & { content_hash?: strin
         type: q.type,
         content,
         options,
-        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+        correctAnswer: q.correct_answer as CorrectAnswer | null,
         image: q.image || undefined,
         explanation,
         category,
@@ -719,7 +720,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                   type: q.type,
                   content,
                   options,
-                  correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
+                  correctAnswer: q.correct_answer as CorrectAnswer | null,
                   image: q.image || undefined,
                   explanation,
                   category: q.category || category,
@@ -1168,4 +1169,3 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     return internalError("Failed to create question");
   }
 });
-

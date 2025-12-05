@@ -22,6 +22,7 @@ import { db } from "@/lib/db";
 import fs from "fs/promises";
 import path from "path";
 import type { Question, QuestionFile } from "../route";
+import type { CorrectAnswer } from "@/lib/types/question";
 import { getContentText, getContentPreview } from "@/lib/questionContentUtils";
 
 // 题目数据目录
@@ -91,7 +92,7 @@ async function findQuestionCategory(questionId: number): Promise<{
         type: dbQuestion.type,
         content,
         options: Array.isArray(dbQuestion.options) ? dbQuestion.options : undefined,
-        correctAnswer: normalizeCorrectAnswer(dbQuestion.correct_answer, dbQuestion.type),
+        correctAnswer: dbQuestion.correct_answer as CorrectAnswer | null,
         image: dbQuestion.image || undefined,
         explanation: dbQuestion.explanation || undefined,
         category: dbQuestion.category || category,
@@ -367,4 +368,3 @@ export const DELETE = withAdminAuth(
     }
   }
 );
-

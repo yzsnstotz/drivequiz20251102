@@ -5,6 +5,8 @@
 // ============================================================
 
 import crypto from "crypto";
+import type { CorrectAnswer } from "@/lib/types/question";
+import { getBooleanCorrectAnswer } from "@/lib/questions";
 
 // 题目数据类型
 export type QuestionType = "single" | "multiple" | "truefalse";
@@ -19,7 +21,7 @@ export interface Question {
     [key: string]: string | undefined; // 支持其他语言
   }; // 支持单语言字符串或多语言对象
   options?: string[];
-  correctAnswer: string | string[];
+  correctAnswer: CorrectAnswer | null;
   image?: string;
   explanation?: string | {
     zh: string;
@@ -64,9 +66,27 @@ export function calculateQuestionHash(question: Question): string {
     // 选项（如果有）
     question.options?.join("|") || "",
     // 正确答案（必需）
-    Array.isArray(question.correctAnswer)
-      ? question.correctAnswer.sort().join("|") // 排序以确保一致性
-      : String(question.correctAnswer),
+    (() => {
+      if (!question.correctAnswer) return "";
+      switch (question.type) {
+        case "truefalse": {
+          const v = getBooleanCorrectAnswer(question.correctAnswer);
+          return v === null ? "" : `boolean:${v ? "true" : "false"}`;
+        }
+        case "single": {
+          return question.correctAnswer.type === "single_choice"
+            ? `single:${question.correctAnswer.value}`
+            : "";
+        }
+        case "multiple": {
+          return question.correctAnswer.type === "multiple_choice"
+            ? `multiple:${[...question.correctAnswer.value].sort().join("|")}`
+            : "";
+        }
+        default:
+          return "";
+      }
+    })(),
     // 图片 URL（如果有，因为图片可能影响题目）
     question.image?.trim() || "",
   ]
@@ -183,4 +203,3 @@ export function generateUnifiedVersion(questions: Question[]): string {
   // 3. 组合：hash标识-时间戳
   return `${allContentHash}-${timestamp}`;
 }
-

@@ -15,6 +15,7 @@ import * as XLSX from "xlsx";
 import fs from "fs/promises";
 import path from "path";
 import type { Question, QuestionFile } from "../route";
+import type { CorrectAnswer } from "@/lib/types/question";
 
 // 题目数据目录
 const QUESTIONS_DIR = path.join(process.cwd(), "src/data/questions/zh");
@@ -86,30 +87,30 @@ function parseQuestionRow(row: any, rowIndex: number): {
     }
 
     // 解析正确答案
-    let correctAnswer: string | string[];
-    if (type === "truefalse") {
-      const answerLower = answer.toLowerCase();
-      if (answerLower === "true" || answerLower === "1" || answerLower === "是" || answerLower === "o") {
-        correctAnswer = "true";
-      } else if (answerLower === "false" || answerLower === "0" || answerLower === "否" || answerLower === "x") {
-        correctAnswer = "false";
-      } else {
-        return { question: null, error: `第${rowIndex + 1}行: 判断题答案必须是 true/false` };
-      }
-    } else if (type === "single") {
+  let correctAnswer: CorrectAnswer | null = null;
+  if (type === "truefalse") {
+    const answerLower = answer.toLowerCase();
+    if (answerLower === "true" || answerLower === "1" || answerLower === "是" || answerLower === "o") {
+      correctAnswer = { type: 'boolean', value: true };
+    } else if (answerLower === "false" || answerLower === "0" || answerLower === "否" || answerLower === "x") {
+      correctAnswer = { type: 'boolean', value: false };
+    } else {
+      return { question: null, error: `第${rowIndex + 1}行: 判断题答案必须是 true/false` };
+    }
+  } else if (type === "single") {
       // 单选题: 答案应该是单个选项字母或选项内容
       if (["a", "b", "c", "d"].includes(answer.toLowerCase())) {
-        correctAnswer = answer.toUpperCase();
+        correctAnswer = { type: 'single_choice', value: answer.toUpperCase() };
       } else {
         // 尝试匹配选项内容
         const matchedIndex = options.findIndex((opt) => opt === answer);
         if (matchedIndex >= 0) {
-          correctAnswer = String.fromCharCode(65 + matchedIndex); // A, B, C, D
+          correctAnswer = { type: 'single_choice', value: String.fromCharCode(65 + matchedIndex) };
         } else {
           return { question: null, error: `第${rowIndex + 1}行: 单选题答案格式错误` };
         }
       }
-    } else {
+  } else {
       // 多选题: 答案应该是逗号分隔的选项字母或选项内容
       const answerParts = answer.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
       const correctAnswers: string[] = [];
@@ -131,8 +132,8 @@ function parseQuestionRow(row: any, rowIndex: number): {
         return { question: null, error: `第${rowIndex + 1}行: 多选题至少需要一个正确答案` };
       }
 
-      correctAnswer = correctAnswers;
-    }
+      correctAnswer = { type: 'multiple_choice', value: correctAnswers };
+  }
 
     const question: Question = {
       id: 0, // 将在保存时分配
@@ -277,4 +278,3 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     return internalError("Failed to import questions");
   }
 });
-
