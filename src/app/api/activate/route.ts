@@ -256,14 +256,15 @@ export async function POST(request: NextRequest) {
             status: "active",
             updated_at: now,
           };
-          if (!targetUser.userid) {
+          if (!targetUser?.userid) {
             updateData.userid = userid;
           }
 
+          const targetUserId = targetUser!.id;
           userRecord = await trx
             .updateTable("users")
             .set(updateData)
-            .where("id", "=", targetUser.id)
+            .where("id", "=", targetUserId)
             .returning(["id", "email", "status", "userid"])
             .executeTakeFirst();
         } else {
