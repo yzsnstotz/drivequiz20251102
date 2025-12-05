@@ -11,6 +11,7 @@ export const fetchCache = "force-no-store";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { randomUUID } from "crypto";
 
 /**
  * 统一成功响应
@@ -255,20 +256,22 @@ export async function POST(request: NextRequest) {
             .returning(["id", "email", "status", "userid"])
             .executeTakeFirst();
         } else {
-          // 如果用户不存在，创建新用户（包含userid）
+          // 如果用户不存在，创建新用户（包含userid + 显式生成 id(UUID)）
+          const newUserValues: any = {
+            id: randomUUID(),
+            email,
+            userid, // 生成并存储userid
+            activation_code_id: codeRow.id,
+            status: "active",
+            registration_info: {
+              activation_code: activationCode,
+              activation_id: inserted.id,
+              activated_at: inserted.activated_at.toISOString(),
+            },
+          };
           userRecord = await trx
             .insertInto("users")
-            .values({
-              email,
-              userid, // 生成并存储userid
-              activation_code_id: codeRow.id,
-              status: "active",
-              registration_info: {
-                activation_code: activationCode,
-                activation_id: inserted.id,
-                activated_at: inserted.activated_at.toISOString(),
-              },
-            })
+            .values(newUserValues)
             .returning(["id", "email", "status", "userid"])
             .executeTakeFirst();
         }
@@ -278,8 +281,8 @@ export async function POST(request: NextRequest) {
           email,
           activationCode,
         });
-        // 如果用户表操作失败，记录错误但不中断激活流程（向后兼容）
-        // 可以选择抛出错误来中断事务，但为了兼容性，我们继续执行
+        // 用户写入失败，立即返回错误并终止事务，避免后续出现“current transaction is aborted”
+        return err("USER_WRITE_FAILED", "用户信息写入失败，请稍后重试", 500);
       }
 
       // 8) 记录用户行为（user_behaviors 表）- 将激活视为登录行为
