@@ -13,6 +13,7 @@ import { isValidImageUrl } from "@/lib/imageUtils";
 import FavoriteButton from "../components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
 import StudyErrorBoundary from "@/components/StudyErrorBoundary";
+import { useAIActivation } from "@/components/AIActivationProvider";
 
 function StudyModePageFallback() {
   const { t } = useLanguage();
@@ -36,6 +37,7 @@ function StudyModePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { language, t } = useLanguage();
+  const { isActivated, showActivationModal } = useAIActivation();
 
   const licenseType = searchParams.get("licenseType");
   const stage = searchParams.get("stage") as "provisional" | "regular" | null;
@@ -653,7 +655,13 @@ function StudyModePageContent() {
               onToggle={handleFavoriteToggle}
             />
             <button
-              onClick={() => setShowAIDialog(true)}
+              onClick={() => {
+                if (!isActivated) {
+                  showActivationModal();
+                  return;
+                }
+                setShowAIDialog(true);
+              }}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-500/30 transition-colors text-sm font-medium"
             >
               <Bot className="h-4 w-4" />
