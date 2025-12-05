@@ -7,12 +7,14 @@ import { getLocalPackageVersion } from '@/lib/questionsLoader';
 import { getFormattedVersion } from '@/lib/version';
 import { useLanguage } from '@/lib/i18n';
 import { clearAllCache } from '@/lib/clearCache';
+import { useActivation } from '@/contexts/ActivationContext';
 
 export default function AboutPage() {
   const router = useRouter();
   const { t } = useLanguage();
   const [pkgVersion, setPkgVersion] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string>('');
+  const { refresh } = useActivation();
 
   useEffect(() => {
     // 读取题库版本号
@@ -98,22 +100,32 @@ export default function AboutPage() {
               <div className="space-y-3">
                 {/* 清除激活 */}
                 <button
-                  onClick={() => {
-                    if (confirm(t('profile.clearActivationConfirm'))) {
-                      if (typeof window !== 'undefined') {
-                        // 清除旧的激活状态
-                        localStorage.removeItem('drive-quiz-activated');
-                        localStorage.removeItem('drive-quiz-email');
-                        // 清除新的激活相关存储
-                        localStorage.removeItem('USER_TOKEN');
-                        // 清除cookie中的USER_TOKEN
-                        document.cookie = 'USER_TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-                        // 清除其他可能的激活相关存储
-                        localStorage.removeItem('activation-status');
-                        // 注意：不清除登录记忆，允许快速重新登录
-                        alert(t('profile.clearActivationSuccess'));
-                        window.location.reload();
+                  onClick={async () => {
+                    if (!confirm(t('profile.clearActivationConfirm'))) return;
+                    try {
+                      const res = await fetch('/api/activation/reset', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                      });
+                      const data = await res.json();
+                      if (!data?.success) {
+                        alert('清除激活失败：' + (data?.error ?? '未知错误'));
+                        return;
                       }
+                      if (typeof window !== 'undefined') {
+                        window.localStorage.removeItem('drive-quiz-activated');
+                        window.localStorage.removeItem('drive-quiz-email');
+                        window.localStorage.removeItem('USER_TOKEN');
+                        document.cookie = 'USER_TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                        window.localStorage.removeItem('activation-status');
+                      }
+                      try {
+                        await refresh();
+                      } catch {}
+                      alert(t('profile.clearActivationSuccess'));
+                    } catch (e) {
+                      alert('清除激活失败：' + ((e as Error)?.message || '未知错误'));
                     }
                   }}
                   className="w-full bg-white dark:bg-ios-dark-bg-tertiary border border-red-300 dark:border-red-800 rounded-xl p-4 flex items-center space-x-3 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -163,4 +175,3 @@ export default function AboutPage() {
     </div>
   );
 }
-
