@@ -8,7 +8,7 @@ import Link from "next/link";
 function LoginErrorContent() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
-  const error = searchParams.get("error");
+  const error = searchParams?.get("error") ?? null;
 
   const getErrorMessage = () => {
     switch (error) {
@@ -75,4 +75,3 @@ export default function LoginErrorPage() {
     </Suspense>
   );
 }
-

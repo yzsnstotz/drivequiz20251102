@@ -25,7 +25,7 @@ function LicenseSelectContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
+  const callbackUrl = searchParams?.get("callbackUrl") || "/";
 
   const handleLicenseTypeSelect = (licenseType: string) => {
     setSelectedLicenseType(licenseType);
@@ -198,4 +198,3 @@ export default function LicenseSelectPage() {
     </Suspense>
   );
 }
-

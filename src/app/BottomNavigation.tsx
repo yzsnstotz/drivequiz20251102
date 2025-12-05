@@ -23,7 +23,7 @@ export default function BottomNavigation() {
   }, []);
   
   // 在AI页面、admin路由、登录页面隐藏底部导航栏
-  if (pathname === '/ai' || pathname.startsWith('/admin/') || pathname.startsWith('/login')) {
+  if (pathname && (pathname === '/ai' || pathname.startsWith('/admin/') || pathname.startsWith('/login'))) {
     return null;
   }
   

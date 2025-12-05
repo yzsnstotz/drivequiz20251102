@@ -57,9 +57,9 @@ type TaskItem = {
 };
 
 export default function TaskDetailPage() {
-  const params = useParams();
+  const params = useParams() as { id?: string };
   const router = useRouter();
-  const taskId = params.id as string;
+  const taskId = (params?.id ?? "");
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [taskItems, setTaskItems] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -490,4 +490,3 @@ export default function TaskDetailPage() {
     </div>
   );
 }
-

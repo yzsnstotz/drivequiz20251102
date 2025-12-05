@@ -18,8 +18,8 @@ type Admin = {
 
 export default function AdminEditPage() {
   const router = useRouter();
-  const params = useParams();
-  const id = Number(params.id);
+  const params = useParams() as { id?: string };
+  const id = Number(params?.id ?? NaN);
 
   const [checkingPermission, setCheckingPermission] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
@@ -333,4 +333,3 @@ export default function AdminEditPage() {
     </div>
   );
 }
-

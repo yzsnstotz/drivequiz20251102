@@ -26,7 +26,7 @@ export default function LicenseExamPage() {
   const searchParams = useSearchParams();
   const { t } = useLanguage();
   const setId = params?.setId as string;
-  const licenseType = searchParams.get("type") || "provisional";
+  const licenseType = searchParams?.get("type") || "provisional";
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string | string[]>>({});
@@ -387,4 +387,3 @@ export default function LicenseExamPage() {
     </div>
   );
 }
-

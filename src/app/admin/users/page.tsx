@@ -82,16 +82,16 @@ export default function AdminUsersPage() {
   const sp = useSearchParams();
 
   // URL 参数作为初始状态（便于刷新/分享）
-  const [email, setEmail] = useState<string>(sp.get("email") ?? "");
-  const [code, setCode] = useState<string>(sp.get("code") ?? "");
+  const [email, setEmail] = useState<string>(sp?.get("email") ?? "");
+  const [code, setCode] = useState<string>(sp?.get("code") ?? "");
   const [sortBy, setSortBy] = useState<SortKey>(
-    (sp.get("sortBy") as SortKey) || "createdAt"
+    (sp?.get("sortBy") as SortKey) || "createdAt"
   );
   const [order, setOrder] = useState<SortOrder>(
-    (sp.get("order") as SortOrder) || "desc"
+    (sp?.get("order") as SortOrder) || "desc"
   );
-  const [page, setPage] = useState<number>(Number(sp.get("page") || 1));
-  const [limit] = useState<number>(Number(sp.get("limit") || 20)); // 固定 20，可按需改为可选
+  const [page, setPage] = useState<number>(Number(sp?.get("page") || 1));
+  const [limit] = useState<number>(Number(sp?.get("limit") || 20));
 
   const [loading, setLoading] = useState<boolean>(true);
   const [rows, setRows] = useState<Row[]>([]);

@@ -39,8 +39,8 @@ function StudyModePageContent() {
   const { language, t } = useLanguage();
   const { isActivated, showActivationModal } = useAIActivation();
 
-  const licenseType = searchParams.get("licenseType");
-  const stage = searchParams.get("stage") as "provisional" | "regular" | null;
+  const licenseType = searchParams?.get("licenseType") || null;
+  const stage = (searchParams?.get("stage") as "provisional" | "regular" | null) || null;
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [questionHashes, setQuestionHashes] = useState<string[]>([]);

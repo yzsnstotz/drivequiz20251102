@@ -32,8 +32,8 @@ interface ExamHistoryItem {
 export default function ExamDetailPage() {
   const { t, language } = useLanguage();
   const router = useRouter();
-  const params = useParams();
-  const examId = params.id as string;
+  const params = useParams() as { id?: string };
+  const examId = (params?.id ?? "");
   const [exam, setExam] = useState<ExamHistoryItem | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -310,4 +310,3 @@ export default function ExamDetailPage() {
     </div>
   );
 }
-

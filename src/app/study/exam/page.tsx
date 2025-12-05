@@ -50,9 +50,9 @@ function ExamModePageContent() {
   const { language, t } = useLanguage();
   const { isActivated, showActivationModal } = useAIActivation();
 
-  const licenseType = searchParams.get("licenseType");
-  const stage = searchParams.get("stage") as "provisional" | "regular" | null;
-  const continueExam = searchParams.get("continue") === "true";
+  const licenseType = searchParams?.get("licenseType") || null;
+  const stage = (searchParams?.get("stage") as "provisional" | "regular" | null) || null;
+  const continueExam = (searchParams?.get("continue") === "true");
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -557,7 +557,7 @@ function ExamModePageContent() {
 
   // 监听路由变化，离开考试页面时立即清理计时器
   useEffect(() => {
-    if (!pathname.startsWith("/study/exam")) {
+    if (!(pathname?.startsWith("/study/exam") ?? false)) {
       // 如果不在考试页面，立即清理计时器
       clearTimer();
       // 注意：这里不设置 examStarted 状态，因为组件可能正在卸载

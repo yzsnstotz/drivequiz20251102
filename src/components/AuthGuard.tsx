@@ -22,7 +22,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // 排除 admin 路由，admin 路由使用独立的认证系统
-    if (pathname.startsWith('/admin/')) {
+    if ((pathname?.startsWith('/admin/') ?? false)) {
       return;
     }
 
@@ -97,7 +97,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
               const hasSkipped = localStorage.getItem(LICENSE_PREFERENCE_SKIPPED_KEY) === 'true';
               if (!hasSkipped) {
                 const selectUrl = new URL("/study/select", window.location.origin);
-                selectUrl.searchParams.set("callbackUrl", pathname);
+                selectUrl.searchParams.set("callbackUrl", pathname ?? "/");
                 router.push(selectUrl.toString());
               }
             }
@@ -113,11 +113,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [session, status]); // 移除 router 和 pathname 依赖，避免路径变化时重复检查
 
   // 排除 admin 路由，admin 路由使用独立的认证系统
-  if (pathname.startsWith('/admin/')) {
+  if ((pathname?.startsWith('/admin/') ?? false)) {
     return <>{children}</>;
   }
 
   return <>{children}</>;
 }
-
-

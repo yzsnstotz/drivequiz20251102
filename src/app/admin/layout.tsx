@@ -250,7 +250,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     if (pathname === "/admin") {
       return "/admin/stats";
     }
-    return NAV_ITEMS.find((n) => n.match(pathname))?.href ?? "/admin/stats";
+    return NAV_ITEMS.find((n) => n.match(pathname ?? ""))?.href ?? "/admin/stats";
   }, [pathname, NAV_ITEMS]);
 
   // 在未完成校验前不渲染主体，避免无 Token 的闪屏
