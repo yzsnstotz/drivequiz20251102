@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useLanguage } from "@/lib/i18n";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, MessageCircle, FileText, Handshake, ShoppingCart, User, X } from "lucide-react";
 import OAuthButton from "./components/OAuthButton";
 import QRCodeLogin from "./components/QRCodeLogin";
 import { getLoginMemory, saveLoginMemory, clearLoginMemory } from "@/lib/loginMemory";
 import { getMultilangContent } from "@/lib/multilangUtils";
+import { useAppSession } from "@/contexts/SessionContext";
 
 interface ContactInfo {
   type: 'business' | 'purchase';
@@ -23,9 +24,11 @@ interface TermsOfService {
   version?: string;
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const { t, language } = useLanguage();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { status, loading } = useAppSession();
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [loginMethod, setLoginMethod] = useState<"redirect" | "qrcode" | null>(null);
   const [contactInfo, setContactInfo] = useState<ContactInfo[]>([]);
@@ -34,6 +37,18 @@ export default function LoginPage() {
   const [logoError, setLogoError] = useState(false);
   const [loginMemory, setLoginMemory] = useState<{ provider: string; email?: string } | null>(null);
   const [showSwitchAccount, setShowSwitchAccount] = useState(false);
+  const errorCode = searchParams?.get("error") || "";
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      if (typeof window !== "undefined" && errorCode) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("error");
+        window.history.replaceState({}, "", url.toString());
+      }
+      router.replace("/");
+    }
+  }, [status, errorCode, router]);
 
   useEffect(() => {
     // 加载联系信息
@@ -62,6 +77,14 @@ export default function LoginPage() {
       setLoginMemory(memory);
     }
   }, []);
+
+  function LoadingFallbackInner() {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">{t("common.loading")}</div>
+      </div>
+    );
+  }
 
   const copyToClipboard = (text: string) => {
     if (navigator.clipboard) {
@@ -144,7 +167,52 @@ export default function LoginPage() {
     }
   };
 
+  const ErrorCard = () => {
+    const errorMessageMap: Record<string, string> = {
+      Configuration: "OAuth 配置错误，请检查环境变量或联系管理员。",
+      OAuthSignin: "第三方登录失败，请稍后重试。",
+      OAuthCallback: "登录回调出现问题，请稍后重试。",
+      AccessDenied: "拒绝访问，请确认授权信息。",
+    };
+    const errorMessage =
+      errorMessageMap[errorCode] || "登录过程中出现错误，请稍后重试或联系管理员。";
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-red-600 mb-2">{t("auth.login.error")}</h1>
+              <p className="text-gray-600">{errorMessage}</p>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  router.push("/login");
+                }}
+                className="w-full px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium"
+              >
+                返回登录页面
+              </button>
+              <button
+                onClick={() => router.push("/")}
+                className="w-full px-4 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors font-medium"
+              >
+                返回首页
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
+    <Suspense fallback={<LoadingFallbackInner />}>
+    {status === "unauthenticated" && errorCode ? (
+      <ErrorCard />
+    ) : (loading || status === "loading") ? (
+      <LoadingFallbackInner />
+    ) : (
     <div className="min-h-screen bg-gray-50 flex flex-col p-4">
       <div className="flex-1 flex items-center justify-center">
         <div className="w-full max-w-md">
@@ -418,6 +486,21 @@ export default function LoginPage() {
         </div>
       )}
     </div>
+    )}
+    </Suspense>
   );
 }
 
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-gray-600">加载中…</div>
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
+  );
+}
