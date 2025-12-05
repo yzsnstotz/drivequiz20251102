@@ -2,6 +2,8 @@
 
 import AIPage from "@/components/AIPage";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { useAIActivation } from "@/components/AIActivationProvider";
 
 /**
  * AI 助手页面路由
@@ -9,9 +11,15 @@ import { useRouter } from "next/navigation";
  */
 export default function AIPageRoute() {
   const router = useRouter();
+  const { isActivated, showActivationModal } = useAIActivation();
+  
+  useEffect(() => {
+    if (!isActivated) {
+      showActivationModal();
+    }
+  }, [isActivated, showActivationModal]);
   
   return (
     <AIPage onBack={() => router.back()} />
   );
 }
-

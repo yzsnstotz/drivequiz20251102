@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-12-04 00:21:31（修复AI问答日志功能：修复分页信息丢失问题）
-const BUILD_TIME = "2025-12-04 00:21:31";
+// 最后更新：2025-12-05 10:12:00（修复激活状态与AI助手访问控制）
+const BUILD_TIME = "2025-12-05 10:12:00";
 
 /**
  * 获取版本号（构建时间）
@@ -26,4 +26,3 @@ export function getVersion(): string {
 export function getFormattedVersion(): string {
   return BUILD_TIME;
 }
-
