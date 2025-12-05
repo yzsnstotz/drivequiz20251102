@@ -12,6 +12,7 @@ export const fetchCache = "force-no-store";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { randomUUID } from "crypto";
+import { getUserInfo } from "@/app/api/_lib/withUserAuth";
 
 /**
  * 统一成功响应
@@ -40,6 +41,9 @@ export async function POST(request: NextRequest) {
     const email = (body?.email ?? "").trim();
     const activationCode = (body?.activationCode ?? "").trim();
     const userAgent = (body?.userAgent ?? "").toString();
+
+    const userInfo = await getUserInfo(request);
+    const currentUserId = userInfo?.userDbId || userInfo?.userId || null;
 
     // 校验
     if (!email || !activationCode) {
@@ -223,57 +227,90 @@ export async function POST(request: NextRequest) {
         throw new Error("INSERT_ACTIVATION_FAILED");
       }
 
-      // 7) 创建或更新用户记录（users 表）
-      // 生成userid：使用act-{activationId}格式，与AI日志系统保持一致
+      // 7) 确定目标用户并绑定激活（users 表）
       const userid = `act-${inserted.id}`;
-      
       let userRecord;
       try {
-        // 先尝试查找现有用户
-        const existingUser = await trx
-          .selectFrom("users")
-          .select(["id", "email", "activation_code_id", "userid"])
-          .where("email", "=", email)
-          .executeTakeFirst();
+        if (currentUserId) {
+          let targetUser = await trx
+            .selectFrom("users")
+            .selectAll()
+            .where("id", "=", currentUserId)
+            .executeTakeFirst();
 
-        if (existingUser) {
-          // 如果用户已存在，更新激活码关联和userid（如果还没有）
+          if (!targetUser) {
+            throw new Error("SESSION_USER_NOT_FOUND");
+          }
+
+          if (!targetUser.email && email) {
+            targetUser = await trx
+              .updateTable("users")
+              .set({ email, updated_at: now })
+              .where("id", "=", currentUserId)
+              .returningAll()
+              .executeTakeFirst();
+          }
+
           const updateData: Record<string, any> = {
             activation_code_id: codeRow.id,
             status: "active",
             updated_at: now,
           };
-          
-          // 如果用户还没有userid，则设置
-          if (!existingUser.userid) {
+          if (!targetUser.userid) {
             updateData.userid = userid;
           }
-          
+
           userRecord = await trx
             .updateTable("users")
             .set(updateData)
-            .where("id", "=", existingUser.id)
+            .where("id", "=", targetUser.id)
             .returning(["id", "email", "status", "userid"])
             .executeTakeFirst();
         } else {
-          // 如果用户不存在，创建新用户（包含userid + 显式生成 id(UUID)）
-          const newUserValues: any = {
-            id: randomUUID(),
-            email,
-            userid, // 生成并存储userid
-            activation_code_id: codeRow.id,
-            status: "active",
-            registration_info: {
-              activation_code: activationCode,
-              activation_id: inserted.id,
-              activated_at: inserted.activated_at.toISOString(),
-            },
-          };
-          userRecord = await trx
-            .insertInto("users")
-            .values(newUserValues)
-            .returning(["id", "email", "status", "userid"])
+          if (!email) {
+            throw new Error("EMAIL_REQUIRED_FOR_ANONYMOUS_ACTIVATION");
+          }
+
+          let targetUser = await trx
+            .selectFrom("users")
+            .selectAll()
+            .where("email", "=", email)
             .executeTakeFirst();
+
+          if (targetUser) {
+            const updateData: Record<string, any> = {
+              activation_code_id: codeRow.id,
+              status: "active",
+              updated_at: now,
+            };
+            if (!targetUser.userid) {
+              updateData.userid = userid;
+            }
+            userRecord = await trx
+              .updateTable("users")
+              .set(updateData)
+              .where("id", "=", targetUser.id)
+              .returning(["id", "email", "status", "userid"])
+              .executeTakeFirst();
+          } else {
+            const newUserValues: any = {
+              id: randomUUID(),
+              email,
+              userid,
+              activation_code_id: codeRow.id,
+              status: "active",
+              registration_info: {
+                activation_code: activationCode,
+                activation_id: inserted.id,
+                activated_at: inserted.activated_at.toISOString(),
+              },
+            };
+            userRecord = await trx
+              .insertInto("users")
+              .values(newUserValues)
+              .returning(["id", "email", "status", "userid"])
+              .executeTakeFirst();
+          }
         }
       } catch (userError: any) {
         console.error('[POST /api/activate] User insert/update error:', {
@@ -281,7 +318,12 @@ export async function POST(request: NextRequest) {
           email,
           activationCode,
         });
-        // 用户写入失败，立即返回错误并终止事务，避免后续出现“current transaction is aborted”
+        if ((userError?.message || '').includes('SESSION_USER_NOT_FOUND')) {
+          return err("SESSION_USER_NOT_FOUND", "当前登录用户不存在，无法绑定激活", 400);
+        }
+        if ((userError?.message || '').includes('EMAIL_REQUIRED_FOR_ANONYMOUS_ACTIVATION')) {
+          return err("VALIDATION_FAILED", "未登录状态下需要提供 email", 400);
+        }
         return err("USER_WRITE_FAILED", "用户信息写入失败，请稍后重试", 500);
       }
 
