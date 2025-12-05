@@ -42,6 +42,11 @@ export function normalizeCorrectAnswer(
 
   // 处理判断题
   if (questionType === "truefalse") {
+    // 新结构：对象 { type: 'boolean', value: true/false }
+    if (correctAnswer && typeof correctAnswer === 'object' && !Array.isArray(correctAnswer)) {
+      const v = (correctAnswer as any).value;
+      if (typeof v === 'boolean') return v ? 'true' : 'false';
+    }
     // 如果是布尔值，转换为字符串
     if (typeof correctAnswer === "boolean") {
       return correctAnswer ? "true" : "false";
@@ -302,7 +307,9 @@ export async function saveQuestionToDb(
         type: cleanedQuestion.type,
         content: contentMultilang as any,
         options: cleanedOptions,
-        correct_answer: cleanedCorrectAnswer,
+        correct_answer: (cleanedQuestion.type === 'truefalse' && cleanedCorrectAnswer != null)
+          ? { type: 'boolean', value: String(cleanedCorrectAnswer).toLowerCase() === 'true' }
+          : cleanedCorrectAnswer,
         image: cleanedQuestion.image || null,
         explanation: explanationMultilang as any,
         category: cleanedQuestion.category || null,
@@ -473,7 +480,9 @@ export async function saveQuestionToDb(
         type: cleanedQuestion.type,
         content: contentMultilang as any,
         options: cleanedOptions,
-        correct_answer: cleanedCorrectAnswer,
+        correct_answer: (cleanedQuestion.type === 'truefalse' && cleanedCorrectAnswer != null)
+          ? { type: 'boolean', value: String(cleanedCorrectAnswer).toLowerCase() === 'true' }
+          : cleanedCorrectAnswer,
         image: cleanedQuestion.image || null,
         explanation: explanationMultilang as any,
         category: cleanedQuestion.category || null,
@@ -2114,5 +2123,4 @@ export async function updateJsonPackage(packageName: string): Promise<void> {
   // 统一版本号下，更新单个包实际是更新所有包
   await updateAllJsonPackages();
 }
-
 

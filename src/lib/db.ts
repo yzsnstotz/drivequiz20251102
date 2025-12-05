@@ -488,13 +488,15 @@ interface VerificationTokenTable {
 // ------------------------------------------------------------
 // 1️⃣4️⃣ questions 表结构定义
 // ------------------------------------------------------------
+import type { CorrectAnswer } from "@/lib/types/question";
+
 interface QuestionTable {
   id: Generated<number>;
   content_hash: string;
   type: "single" | "multiple" | "truefalse";
   content: any; // ✅ JSONB - 多语言内容对象
   options: any | null; // ✅ JSONB
-  correct_answer: any | null; // ✅ JSONB
+  correct_answer: CorrectAnswer | null; // ✅ 统一结构 JSONB
   image: string | null;
   explanation: any | null; // ✅ JSONB - 多语言解析对象
   license_types: string[] | null; // 兼容旧字段（数组）
