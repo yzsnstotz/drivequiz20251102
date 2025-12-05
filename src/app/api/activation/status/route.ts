@@ -127,25 +127,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 如果没有登录态，尝试使用激活令牌（USER_TOKEN）回落判定
+    let latestActivation: { id: number; email: string | null; activation_code: string; activated_at: Date } | null = null;
     if (!email) {
-      const response = ok({ valid: false, reasonCode: "NOT_LOGGED_IN" });
-      // ✅ 修复：添加服务器级别缓存（10秒）
-      response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
-      return response;
+      const tokenCookie = request.cookies.get("USER_TOKEN")?.value || null;
+      if (tokenCookie && tokenCookie.startsWith("act-")) {
+        const parts = tokenCookie.split("-");
+        const hexId = parts[parts.length - 1];
+        const parsedId = parseInt(hexId, 16);
+        if (!Number.isNaN(parsedId) && parsedId > 0) {
+          latestActivation = (await executeSafely(
+            async () =>
+              await db
+                .selectFrom("activations")
+                .select(["id", "email", "activation_code", "activated_at"])
+                .where("id", "=", parsedId)
+                .executeTakeFirst(),
+            null
+          )) || null;
+        }
+      }
+      if (!latestActivation) {
+        const response = ok({ valid: false, reasonCode: "NOT_LOGGED_IN" });
+        response.headers.set('Cache-Control', 'public, max-age=10, must-revalidate');
+        return response;
+      }
     }
 
     // 查找用户最新的激活记录（使用安全执行）
-    const latestActivation = await executeSafely(
-      async () =>
-        await db
-          .selectFrom("activations")
-          .select(["id", "email", "activation_code", "activated_at"])
-          .where("email", "=", email)
-          .orderBy("activated_at", "desc")
-          .limit(1)
-          .executeTakeFirst(),
-      null
-    );
+    if (!latestActivation) {
+      latestActivation = (await executeSafely(
+        async () =>
+          await db
+            .selectFrom("activations")
+            .select(["id", "email", "activation_code", "activated_at"])
+            .where("email", "=", email!)
+            .orderBy("activated_at", "desc")
+            .limit(1)
+            .executeTakeFirst(),
+        null
+      )) || null;
+    }
 
     if (!latestActivation) {
       const response = ok({ valid: false, reasonCode: "NO_ACTIVATION_RECORD" });
@@ -311,4 +333,3 @@ export async function GET(request: NextRequest) {
     return err("INTERNAL_ERROR", "Internal Server Error", 500);
   }
 }
-
