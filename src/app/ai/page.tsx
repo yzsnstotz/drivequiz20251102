@@ -3,7 +3,7 @@
 import AIPage from "@/components/AIPage";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useAIActivation } from "@/components/AIActivationProvider";
+import { useActivation } from "@/contexts/ActivationContext";
 
 /**
  * AI 助手页面路由
@@ -11,15 +11,22 @@ import { useAIActivation } from "@/components/AIActivationProvider";
  */
 export default function AIPageRoute() {
   const router = useRouter();
-  const { isActivated, showActivationModal } = useAIActivation();
+  const { status, loading } = useActivation();
+  const isActivated = !!status?.valid;
   
   useEffect(() => {
-    if (!isActivated) {
-      showActivationModal();
+    if (!loading && !isActivated) {
+      router.replace("/activation");
     }
-  }, [isActivated, showActivationModal]);
+  }, [loading, isActivated, router]);
   
-  return (
-    <AIPage onBack={() => router.back()} />
-  );
+  if (loading) {
+    return <div>Loading AI Helper...</div>;
+  }
+
+  if (!isActivated) {
+    return <div>Redirecting to activation...</div>;
+  }
+
+  return <AIPage onBack={() => router.back()} />;
 }
