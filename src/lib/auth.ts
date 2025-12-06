@@ -5,6 +5,7 @@ import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
 import TwitterProvider from "./providers/twitter";
 import WeChatProvider from "./providers/wechat";
+import LineProvider from "./providers/line";
 import type { Adapter } from "next-auth/adapters";
 import { createPatchedKyselyAdapter } from "./auth-kysely-adapter";
 import { getAuthEnvConfig, getAuthBaseUrl } from "@/lib/env";
@@ -81,44 +82,14 @@ export const authOptions: NextAuthConfig = {
       // v4: 不手动配置 redirectUri，由 WeChatProvider 内部使用 getAuthBaseUrl() 生成
       redirectUri: process.env.WECHAT_REDIRECT_URI || undefined,
     } as any),
-    // LINE OAuth（自定义 OAuth2 provider，绕过 OIDC issuer 校验）
-    // 使用 type: "oauth" 而不是 oidc，避免 NextAuth 用全局 issuer 校验 LINE 的 JWT
-    {
-      id: "line",
-      name: "LINE",
-      type: "oauth", // 关键：用 OAuth 而不是 oidc，避开有问题的 issuer 校验
-      clientId: process.env.LINE_CLIENT_ID || "",
-      clientSecret: process.env.LINE_CLIENT_SECRET || "",
-      allowDangerousEmailAccountLinking: true,
-      // ✅ 新增 client 配置，覆盖默认 RS256
-      client: {
-        // 主要是这一行：把 id_token 签名算法从默认 RS256 改为 HS256
-        id_token_signed_response_alg: "HS256",
-        // 可以顺便指定认证方式（非必须，按需）
-        token_endpoint_auth_method: "client_secret_basic",
-      },
-      // 使用 PKCE + state
-      checks: ["pkce", "state"],
-      authorization: {
-        url: "https://access.line.me/oauth2/v2.1/authorize",
-        params: {
-          response_type: "code",
-          scope: "profile", // 🔁 从 "openid profile email" 改成 "profile"，避免 LINE 返回 id_token
-        },
-      },
-      token: "https://api.line.me/oauth2/v2.1/token",
-      userinfo: "https://api.line.me/v2/profile",
-      // 按 LINE Profile API 的返回结构映射用户信息
-      async profile(profile: any) {
-        // 典型结构：{ userId, displayName, pictureUrl, statusMessage? }
-        return {
-          id: profile.userId,
-          name: profile.displayName,
-          image: profile.pictureUrl,
-          email: null, // 现在我们不走 email 了，统一设为 null
-        };
-      },
-    },
+    (() => {
+      const cfg = LineProvider({
+        clientId: (process.env.LINE_CLIENT_ID || process.env.LINE_CHANNEL_ID || "").trim(),
+        clientSecret: (process.env.LINE_CLIENT_SECRET || process.env.LINE_CHANNEL_SECRET || "").trim(),
+      });
+      (cfg as any).allowDangerousEmailAccountLinking = true;
+      return cfg as any;
+    })(),
   ],
   pages: {
     signIn: "/login",
@@ -209,8 +180,9 @@ export const authOptions: NextAuthConfig = {
       }
 
       if (account?.type === "oauth") {
-        const emailCandidate = (user as any)?.email || (profile as any)?.email || (account as any)?.email || null;
-        const isPlaceholder = typeof emailCandidate === "string" && emailCandidate.endsWith("@oauth.local");
+        const rawEmail = (user as any)?.email || (profile as any)?.email || (account as any)?.email || "";
+        const emailCandidate = typeof rawEmail === "string" ? rawEmail.trim() : "";
+        const isPlaceholder = emailCandidate !== "" && emailCandidate.endsWith("@oauth.local");
         if (!emailCandidate || isPlaceholder) {
           (user as any).needsEmailBinding = true;
         }
@@ -252,7 +224,7 @@ export const authOptions: NextAuthConfig = {
       }
       return true;
     },
-    async session({ session, user }) {
+    async session({ session, user, token }) {
       // ✅ 修复：添加计数型日志，便于观察 session 请求频次（节流：每 5 秒最多打一次）
       diagSessionLog();
 
@@ -373,7 +345,7 @@ export const authOptions: NextAuthConfig = {
           console.error("Session callback error:", error);
         }
       }
-      if ((user as any)?.needsEmailBinding) {
+      if ((token as any)?.needsEmailBinding) {
         (session as any).needsEmailBinding = true;
       }
       return session;

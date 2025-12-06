@@ -36,8 +36,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 如果未登录，middleware 会处理重定向
-    if (status === "unauthenticated") {
+    // 由下方 isPublic 检查决定是否需要登录
+
+    const PUBLIC_PATHS = ["/login", "/login/bind-email", "/login/error"];
+    const isPublic = PUBLIC_PATHS.includes(pathname ?? "");
+
+    if (!isPublic && status === "unauthenticated") {
+      router.replace("/login");
       return;
     }
 
