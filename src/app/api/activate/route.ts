@@ -243,6 +243,18 @@ export async function POST(request: NextRequest) {
           }
 
           if (!targetUser.email && email) {
+            const lowerEmail = email.toLowerCase();
+            const occupied = await trx
+              .selectFrom("users")
+              .select(["id", "email"]) 
+              .where("id", "!=", currentUserId)
+              .where((eb) => eb.expression((eb as any).sql`LOWER(email) = ${lowerEmail}`))
+              .executeTakeFirst();
+
+            if (occupied) {
+              return err("EMAIL_ALREADY_BOUND", "该邮箱已被其他账号绑定", 409);
+            }
+
             targetUser = await trx
               .updateTable("users")
               .set({ email, updated_at: now })
