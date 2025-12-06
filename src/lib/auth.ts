@@ -9,6 +9,8 @@ import { createLineProvider } from "@/lib/providers/line";
 import type { Adapter } from "next-auth/adapters";
 import { createPatchedKyselyAdapter } from "./auth-kysely-adapter";
 import { getAuthEnvConfig, getAuthBaseUrl, validateEnv } from "@/lib/env";
+import { sql } from "kysely";
+import { SignJWT } from "jose";
 
 // 环境变量轻量校验（只在开发环境提示）
 validateEnv();
@@ -115,6 +117,60 @@ export const authOptions: NextAuthConfig = {
   },
   callbacks: {
     async signIn({ user, account, profile }) {
+      if (account?.provider === "line") {
+        const rawEmail =
+          (profile as any)?.email ?? (typeof (user as any)?.email === "string" ? (user as any).email : null);
+        const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : null;
+        if (email) {
+          try {
+            const existingUser = await db
+              .selectFrom("users")
+              .select(["id", "email"]) 
+              .where(sql`LOWER(email) = ${email}`)
+              .executeTakeFirst();
+            if (existingUser) {
+              (user as any).email = existingUser.email;
+            } else {
+              (user as any).email = email;
+            }
+          } catch {}
+        } else {
+          const secret = authSecret || process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "";
+          const enc = new TextEncoder();
+          const payload: Record<string, any> = {
+            provider: "line",
+            providerAccountId: account?.providerAccountId,
+            displayName: (profile as any)?.name ?? (profile as any)?.displayName ?? undefined,
+            avatar: (profile as any)?.picture ?? (profile as any)?.avatarUrl ?? undefined,
+          };
+          const token = await new SignJWT(payload)
+            .setProtectedHeader({ alg: "HS256" })
+            .setIssuedAt()
+            .setExpirationTime("10m")
+            .sign(enc.encode(secret));
+          return `/login/email-binding?provider=line&token=${encodeURIComponent(token)}`;
+        }
+      }
+      if (account?.provider === "google") {
+        const rawEmail =
+          (profile as any)?.email ?? (typeof (user as any)?.email === "string" ? (user as any).email : null);
+        const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : null;
+        if (!email) {
+          return false;
+        }
+        try {
+          const existingUserByLower = await db
+            .selectFrom("users")
+            .select(["id", "email"]) 
+            .where(sql`LOWER(email) = ${email}`)
+            .executeTakeFirst();
+          if (existingUserByLower) {
+            (user as any).email = existingUserByLower.email;
+          } else {
+            (user as any).email = email;
+          }
+        } catch {}
+      }
       if (
         account?.error === "OAuthSignin" ||
         account?.error === "OAuthCallback" ||
@@ -129,87 +185,6 @@ export const authOptions: NextAuthConfig = {
         console.log("[signIn] profile.email:", (profile as any)?.email);
         console.log("[signIn] account.email:", (account as any)?.email);
       } catch {}
-      // 处理 OAuthAccountNotLinked 错误：如果邮箱已存在，自动关联账户
-      // 注意：这个 callback 在 NextAuth 检查账户关联之前执行
-      // 如果邮箱已存在但账户未关联，NextAuth 会在后续步骤中抛出 OAuthAccountNotLinked 错误
-      // 我们在这里预先检查并记录，以便在错误处理中处理
-      if (user.email && account?.provider && account?.providerAccountId) {
-        try {
-          // 检查是否存在相同邮箱的用户
-          const existingUser = await db
-            .selectFrom("users")
-            .select(["id", "phone", "oauth_provider"])
-            .where("email", "=", user.email)
-            .executeTakeFirst();
-
-          if (existingUser) {
-            // 检查该 OAuth 账户是否已关联
-            const existingAccount = await db
-              .selectFrom("oauth_accounts")
-              .select(["user_id", "provider", "provider_account_id"])
-              .where("provider", "=", account.provider)
-              .where("provider_account_id", "=", account.providerAccountId)
-              .executeTakeFirst();
-
-            if (!existingAccount) {
-              // 如果账户未关联，自动关联到现有用户
-              console.log("[NextAuth] 检测到邮箱已存在，自动关联OAuth账户:", {
-                email: user.email,
-                provider: account.provider,
-                userId: existingUser.id,
-              });
-              
-              // 手动创建 oauth_accounts 记录
-              await db
-                .insertInto("oauth_accounts")
-                .values({
-                  user_id: existingUser.id,
-                  provider: account.provider,
-                  provider_account_id: account.providerAccountId,
-                  access_token: account.access_token || null,
-                  refresh_token: account.refresh_token || null,
-                  expires_at: account.expires_at ? new Date(account.expires_at * 1000) : null,
-                  token_type: account.token_type || null,
-                  scope: account.scope || null,
-                  id_token: account.id_token || null,
-                  session_state: (account as any).session_state || null,
-                  created_at: new Date(),
-                  updated_at: new Date(),
-                })
-                .onConflict((oc) => oc
-                  .columns(["provider", "provider_account_id"])
-                  .doUpdateSet({
-                    access_token: (eb) => eb.ref("excluded.access_token"),
-                    refresh_token: (eb) => eb.ref("excluded.refresh_token"),
-                    expires_at: (eb) => eb.ref("excluded.expires_at"),
-                    token_type: (eb) => eb.ref("excluded.token_type"),
-                    scope: (eb) => eb.ref("excluded.scope"),
-                    id_token: (eb) => eb.ref("excluded.id_token"),
-                    session_state: (eb) => eb.ref("excluded.session_state"),
-                    updated_at: new Date(),
-                  })
-                )
-                .execute();
-
-              // 更新用户的 OAuth 提供商信息
-              await db
-                .updateTable("users")
-                .set({
-                  oauth_provider: account.provider,
-                  updated_at: new Date(),
-                })
-                .where("id", "=", existingUser.id)
-                .execute();
-
-              // 将 user.id 设置为现有用户的 ID，以便 NextAuth 使用正确的用户
-              // ⚠️ 注意：existingUser.id 现在已经是字符串类型，直接使用
-              user.id = existingUser.id.toString();
-            }
-          }
-        } catch (error) {
-          console.error("[NextAuth] SignIn callback error (account linking):", error);
-        }
-      }
 
       if (account?.type === "oauth") {
         const providerEmailRaw = (profile as any)?.email || (account as any)?.email || "";
@@ -231,7 +206,7 @@ export const authOptions: NextAuthConfig = {
           dbUser = await db
             .selectFrom("users")
             .select(["id", "phone", "oauth_provider"])
-            .where("email", "=", email)
+            .where(sql`LOWER(email) = ${String(email).trim().toLowerCase()}`)
             .executeTakeFirst();
 
           // 如果用户没有电话号码，标记需要输入电话号码
