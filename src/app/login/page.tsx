@@ -172,6 +172,7 @@ function LoginPageContent() {
       Configuration: "OAuth 配置错误，请检查环境变量或联系管理员。",
       OAuthSignin: "第三方登录失败，请稍后重试。",
       OAuthCallback: "登录回调出现问题，请稍后重试。",
+      OAuthCallbackError: "登录过程中出现错误，请检查网络或浏览器设置后重试，或更换登录方式。",
       AccessDenied: "拒绝访问，请确认授权信息。",
     };
     const errorMessage =

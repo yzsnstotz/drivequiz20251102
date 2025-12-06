@@ -399,6 +399,12 @@ export const authOptions: NextAuthConfig = {
       } catch {}
       return token;
     },
+    async redirect({ url, baseUrl }) {
+      if (typeof url === "string" && url.includes("error=")) {
+        console.log("[auth][redirect][with-error]", { url, baseUrl });
+      }
+      return url;
+    },
   },
   // ✅ 保留数据库 session 策略
   session: {
@@ -412,6 +418,16 @@ export const authOptions: NextAuthConfig = {
   logger: {
     error(code: string, metadata?: any) {
       console.error("[NextAuth][Error]", code, metadata);
+      if (code === "OAUTH_CALLBACK_ERROR") {
+        try {
+          console.error(
+            "[NextAuth][LINE][OAuthCallbackError][Detail]",
+            JSON.stringify({ code, metadata }, null, 2)
+          );
+        } catch (e) {
+          console.error("[NextAuth][LINE][OAuthCallbackError][Detail][SerializeFailed]", e);
+        }
+      }
     },
     warn(code: string, metadata?: any) {
       // ✅ 修复：静音 Google redirect_uri 的噪音日志

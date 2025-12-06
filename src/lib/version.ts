@@ -10,8 +10,8 @@
 
 // ✅ 固定版本号（在完成修改指令后更新此值）
 // 格式：YYYY-MM-DD HH:mm:ss
-// 最后更新：2025-12-07 00:00:00（LINE Provider PKCE-only 修复）
-const BUILD_TIME = "2025-12-07 00:00:00";
+// 最后更新：2025-12-07 00:10:00（LINE OAuthCallbackError 诊断增强 v6）
+const BUILD_TIME = "2025-12-07 00:10:00";
 
 /**
  * 获取版本号（构建时间）
