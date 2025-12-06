@@ -41,30 +41,34 @@ function LoginErrorContent() {
     );
   }
 
-  type ErrorMessageKey = "generic" | "oauth" | "session" | "config";
-  const getErrorKey = (e: string | null): ErrorMessageKey => {
-    switch (e) {
-      case "OAuthSignin":
-      case "OAuthCallback":
-      case "OAuthAccountNotLinked":
-      case "AccessDenied":
-        return "oauth";
-      case "SessionRequired":
-        return "session";
-      case "Configuration":
-        return "config";
-      default:
-        return "generic";
+  type ErrorKind = "generic" | "oauth" | "session" | "invalidCheck" | "config";
+  const resolveErrorKind = (e: string | null, c: string | null): ErrorKind => {
+    if (!e) return "generic";
+    if (
+      e === "OAuthSignin" ||
+      e === "OAuthCallback" ||
+      e === "OAuthCreateAccount" ||
+      e === "OAuthAccountNotLinked"
+    ) {
+      return "oauth";
     }
+    if (e === "SessionRequired") return "session";
+    if (e === "Configuration") {
+      if (c === "InvalidCheck" || c === null) return "invalidCheck";
+      return "config";
+    }
+    return "generic";
   };
 
-  const errorKey = getErrorKey(error);
+  const errorKey = resolveErrorKind(error, code);
   let title = "登录失败";
   let description = "登录会话已失效，请重新尝试。";
   if (errorKey === "session") {
     description = "登录会话已过期，请重新登录。";
   } else if (errorKey === "oauth") {
     description = "第三方登录失败，请重新尝试或更换登录方式。";
+  } else if (errorKey === "invalidCheck") {
+    description = "由于浏览器的隐私设置或从外部应用打开，本次登录验证失败。请在浏览器普通模式重新打开本网站并再试一次。";
   } else if (errorKey === "config") {
     description = "系统配置异常，请稍后重试或联系管理员。";
   }

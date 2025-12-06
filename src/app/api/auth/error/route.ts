@@ -18,10 +18,15 @@ export function GET(request: NextRequest) {
   const url = new URL(request.url);
   const searchParams = url.searchParams;
   const error = searchParams.get("error") ?? "Default";
+  const code = searchParams.get("code") ?? "";
+
+  try {
+    console.error("[AuthErrorHandler]", { error, code });
+  } catch {}
 
   const redirectUrl = new URL("/login/error", url.origin);
   redirectUrl.searchParams.set("error", error);
+  if (code) redirectUrl.searchParams.set("code", code);
 
   return NextResponse.redirect(redirectUrl.toString());
 }
-
