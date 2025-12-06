@@ -21,6 +21,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5 分钟
 
   useEffect(() => {
+    console.log("[AuthGuard] status =", status, "pathname =", pathname);
+    try {
+      console.log("[AuthGuard] session =", session);
+    } catch {}
     // 排除 admin 路由，admin 路由使用独立的认证系统
     if ((pathname?.startsWith('/admin/') ?? false)) {
       return;
@@ -42,12 +46,14 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const isPublic = PUBLIC_PATHS.includes(pathname ?? "");
 
     if (!isPublic && status === "unauthenticated") {
+      console.log("[AuthGuard] redirect to /login");
       router.replace("/login");
       return;
     }
 
     if (status === "authenticated" && (session as any)?.needsEmailBinding && pathname !== "/login/bind-email") {
-      router.push("/login/bind-email");
+      console.log("[AuthGuard] redirect to /login/bind-email");
+      router.replace("/login/bind-email");
       return;
     }
 

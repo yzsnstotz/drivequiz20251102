@@ -90,12 +90,39 @@ export const authOptions: NextAuthConfig = {
       return lineProvider ? [lineProvider as any] : [];
     })(),
   ],
+  cookies: {
+    pkceCodeVerifier: {
+      name: "authjs.pkce.code_verifier",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    callbackUrl: {
+      name: "authjs.callback-url",
+      options: {
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   pages: {
     signIn: "/login",
     error: "/login/error", // 错误页面，方便错误展示
   },
   callbacks: {
     async signIn({ user, account, profile }) {
+      if (
+        account?.error === "OAuthSignin" ||
+        account?.error === "OAuthCallback" ||
+        account?.error === "OAuthCreateAccount"
+      ) {
+        console.error("[OAuth Error]", account?.error);
+        return "/login/error";
+      }
       try {
         console.log("[signIn] provider:", account?.provider);
         console.log("[signIn] user.email:", (user as any)?.email);
