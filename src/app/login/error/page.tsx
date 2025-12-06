@@ -12,13 +12,14 @@ function LoginErrorContent() {
   const router = useRouter();
   const { status, loading } = useAppSession();
   const error = searchParams?.get("error") ?? null;
-  const code = searchParams?.get("code") ?? null;
 
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
-      console.error("[LoginError] error =", error, "code =", code);
+      try {
+        console.error("[LoginError]", { error, href: typeof window !== "undefined" ? window.location.href : "" });
+      } catch {}
     }
-  }, [error, code]);
+  }, [error]);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -41,8 +42,8 @@ function LoginErrorContent() {
     );
   }
 
-  type ErrorKind = "generic" | "oauth" | "session" | "invalidCheck" | "config";
-  const resolveErrorKind = (e: string | null, c: string | null): ErrorKind => {
+  type ErrorKind = "generic" | "oauth" | "session" | "invalidCheck";
+  const resolveErrorKind = (e: string | null): ErrorKind => {
     if (!e) return "generic";
     if (
       e === "OAuthSignin" ||
@@ -53,14 +54,11 @@ function LoginErrorContent() {
       return "oauth";
     }
     if (e === "SessionRequired") return "session";
-    if (e === "Configuration") {
-      if (c === "InvalidCheck" || c === null) return "invalidCheck";
-      return "config";
-    }
+    if (e === "Configuration") return "invalidCheck";
     return "generic";
   };
 
-  const errorKey = resolveErrorKind(error, code);
+  const errorKey = resolveErrorKind(error);
   let title = "登录失败";
   let description = "登录会话已失效，请重新尝试。";
   if (errorKey === "session") {
@@ -69,8 +67,6 @@ function LoginErrorContent() {
     description = "第三方登录失败，请重新尝试或更换登录方式。";
   } else if (errorKey === "invalidCheck") {
     description = "由于浏览器的隐私设置或从外部应用打开，本次登录验证失败。请在浏览器普通模式重新打开本网站并再试一次。";
-  } else if (errorKey === "config") {
-    description = "系统配置异常，请稍后重试或联系管理员。";
   }
 
   return (
