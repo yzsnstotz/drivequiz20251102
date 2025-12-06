@@ -400,9 +400,7 @@ export const authOptions: NextAuthConfig = {
       return token;
     },
     async redirect({ url, baseUrl }) {
-      if (typeof url === "string" && url.includes("error=")) {
-        console.log("[auth][redirect][with-error]", { url, baseUrl });
-      }
+      console.log("[NextAuth][Redirect]", { url, baseUrl });
       return url;
     },
   },
@@ -416,37 +414,26 @@ export const authOptions: NextAuthConfig = {
 
   // ✅ 修复：自定义 logger，静音 Google redirect_uri 噪音日志
   logger: {
+    debug(code: string, metadata?: any) {
+      console.log("[NextAuth][Debug]", code, metadata);
+    },
+    warn(code: string, metadata?: any) {
+      console.warn("[NextAuth][Warn]", code, metadata);
+    },
     error(code: string, metadata?: any) {
-      console.error("[NextAuth][Error]", code, metadata);
-      if (code === "OAUTH_CALLBACK_ERROR") {
+      console.error("[NextAuth][Error][Raw]", code, metadata);
+      try {
+        console.error("[NextAuth][Error][Detail]", JSON.stringify({ code, metadata }, null, 2));
+      } catch (e) {
+        console.error("[NextAuth][Error][Detail][SerializeFailed]", e);
+      }
+      if (code === "OAUTH_CALLBACK_ERROR" || code === "OAuthCallbackError") {
         try {
-          console.error(
-            "[NextAuth][LINE][OAuthCallbackError][Detail]",
-            JSON.stringify({ code, metadata }, null, 2)
-          );
+          console.error("[NextAuth][LINE][OAuthCallbackError][Detail]", JSON.stringify(metadata, null, 2));
         } catch (e) {
           console.error("[NextAuth][LINE][OAuthCallbackError][Detail][SerializeFailed]", e);
         }
       }
-    },
-    warn(code: string, metadata?: any) {
-      // ✅ 修复：静音 Google redirect_uri 的噪音日志
-      if (
-        typeof code === "string" &&
-        (code.includes("OAUTH_CALLBACK") ||
-          code.includes("expected redirect_uri") ||
-          (typeof metadata === "string" && metadata.includes("expected redirect_uri")) ||
-          (metadata && typeof metadata === "object" && metadata.providerId === "google"))
-      ) {
-        // 静音 Google OAuth callback 的噪音日志
-        return;
-      }
-      // 如果以后还有其它想静音的 code，可以在这里加
-      console.warn("[NextAuth][Warn]", code, metadata);
-    },
-    debug(code: string, metadata?: any) {
-      if (!isDebug) return;
-      console.log("[NextAuth][Debug]", code, metadata);
     },
   } as any,
 
