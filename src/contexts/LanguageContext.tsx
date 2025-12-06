@@ -43,7 +43,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   // ✅ 修复：使用函数初始化，在客户端首次渲染时就从localStorage读取正确的语言
   // SSR时getClientLanguage()返回'en'，客户端时返回用户选择的语言
   // 由于已添加suppressHydrationWarning，可以安全地使用函数初始化
-  const [language, setLanguageState] = useState<Language>(() => getClientLanguage());
+  const [language, setLanguageState] = useState<Language>('en');
   const [mounted, setMounted] = useState(false);
   const [languageReady, setLanguageReady] = useState(false);
 
@@ -104,4 +104,3 @@ export function useLanguage() {
   }
   return context;
 }
-
