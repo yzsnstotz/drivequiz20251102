@@ -72,7 +72,7 @@ export const authOptions: NextAuthConfig = {
     TwitterProvider({
       clientId: process.env.TWITTER_CLIENT_ID || "",
       clientSecret: process.env.TWITTER_CLIENT_SECRET || "",
-      allowDangerousEmailAccountLinking: true, // 允许将同一个邮箱关联到多个 OAuth 账户
+      allowDangerousEmailAccountLinking: false,
     }),
     // 微信OAuth（自定义提供商）
     WeChatProvider({
@@ -89,6 +89,7 @@ export const authOptions: NextAuthConfig = {
       type: "oauth", // 关键：用 OAuth 而不是 oidc，避开有问题的 issuer 校验
       clientId: process.env.LINE_CLIENT_ID || "",
       clientSecret: process.env.LINE_CLIENT_SECRET || "",
+      allowDangerousEmailAccountLinking: true,
       // ✅ 新增 client 配置，覆盖默认 RS256
       client: {
         // 主要是这一行：把 id_token 签名算法从默认 RS256 改为 HS256
@@ -204,6 +205,14 @@ export const authOptions: NextAuthConfig = {
           }
         } catch (error) {
           console.error("[NextAuth] SignIn callback error (account linking):", error);
+        }
+      }
+
+      if (account?.type === "oauth") {
+        const emailCandidate = (user as any)?.email || (profile as any)?.email || (account as any)?.email || null;
+        const isPlaceholder = typeof emailCandidate === "string" && emailCandidate.endsWith("@oauth.local");
+        if (!emailCandidate || isPlaceholder) {
+          (user as any).needsEmailBinding = true;
         }
       }
 
@@ -364,6 +373,9 @@ export const authOptions: NextAuthConfig = {
           console.error("Session callback error:", error);
         }
       }
+      if ((user as any)?.needsEmailBinding) {
+        (session as any).needsEmailBinding = true;
+      }
       return session;
     },
     async jwt({ token, user }) {
@@ -371,6 +383,9 @@ export const authOptions: NextAuthConfig = {
       // ⚠️ 注意：user.id 现在是字符串类型（UUID），直接使用，不要 parseInt
       if (user?.id) {
         token.userId = user.id.toString();
+      }
+      if ((user as any)?.needsEmailBinding) {
+        (token as any).needsEmailBinding = true;
       }
       return token;
     },
@@ -427,4 +442,3 @@ export const authOptions: NextAuthConfig = {
 
 // NextAuth v5: 导出 auth 函数用于获取会话
 export const { auth } = NextAuth(authOptions);
-

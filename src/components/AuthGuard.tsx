@@ -41,6 +41,11 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    if (status === "authenticated" && (session as any)?.needsEmailBinding && pathname !== "/login/bind-email") {
+      router.push("/login/bind-email");
+      return;
+    }
+
     // 如果已登录，只在初次登录时检查一次
     if (status === "authenticated" && session?.user?.id) {
       // 如果已经检查过，不再重复检查
