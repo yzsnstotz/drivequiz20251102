@@ -126,7 +126,7 @@ export const authOptions: NextAuthConfig = {
             const existingUser = await db
               .selectFrom("users")
               .select(["id", "email"]) 
-              .where(sql`LOWER(email) = ${email}`)
+              .where(sql`LOWER(email) = ${email}` as unknown as any)
               .executeTakeFirst();
             if (existingUser) {
               (user as any).email = existingUser.email;
@@ -162,7 +162,7 @@ export const authOptions: NextAuthConfig = {
           const existingUserByLower = await db
             .selectFrom("users")
             .select(["id", "email"]) 
-            .where(sql`LOWER(email) = ${email}`)
+            .where(sql`LOWER(email) = ${email}` as unknown as any)
             .executeTakeFirst();
           if (existingUserByLower) {
             (user as any).email = existingUserByLower.email;
@@ -206,7 +206,7 @@ export const authOptions: NextAuthConfig = {
           dbUser = await db
             .selectFrom("users")
             .select(["id", "phone", "oauth_provider"])
-            .where(sql`LOWER(email) = ${String(email).trim().toLowerCase()}`)
+            .where(sql`LOWER(email) = ${String(email).trim().toLowerCase()}` as unknown as any)
             .executeTakeFirst();
 
           // 如果用户没有电话号码，标记需要输入电话号码

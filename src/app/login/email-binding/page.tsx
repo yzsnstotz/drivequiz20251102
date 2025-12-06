@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function EmailBindingPage() {
+function EmailBindingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const provider = searchParams.get("provider") || "line";
-  const token = searchParams.get("token") || "";
+  const provider = (searchParams?.get("provider") ?? "line");
+  const token = (searchParams?.get("token") ?? "");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,3 +79,16 @@ export default function EmailBindingPage() {
   );
 }
 
+export default function EmailBindingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-gray-600">加载中…</div>
+        </div>
+      }
+    >
+      <EmailBindingPageContent />
+    </Suspense>
+  );
+}
