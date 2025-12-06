@@ -13,9 +13,6 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   try {
     const { email, token, provider } = await req.json();
-    if (provider !== "line") {
-      return NextResponse.json({ ok: false, message: "仅支持 LINE 绑定" }, { status: 400 });
-    }
     const normalizedEmail = String(email || "").trim().toLowerCase();
     if (!normalizedEmail) {
       return NextResponse.json({ ok: false, message: "邮箱必填" }, { status: 400 });
@@ -31,9 +28,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, message: "令牌无效或过期" }, { status: 401 });
     }
 
+    const providerFromToken = payload?.provider;
     const providerAccountId = payload?.providerAccountId;
     if (!providerAccountId) {
       return NextResponse.json({ ok: false, message: "缺少 providerAccountId" }, { status: 400 });
+    }
+    const finalProvider = String(providerFromToken || provider || "").trim();
+    if (!finalProvider) {
+      return NextResponse.json({ ok: false, message: "缺少 provider" }, { status: 400 });
     }
 
     const adapter = createPatchedKyselyAdapter(db as any);
@@ -59,7 +61,7 @@ export async function POST(req: Request) {
     try {
       await (adapter as any).linkAccount({
         userId,
-        provider: "line",
+        provider: finalProvider,
         providerAccountId,
         type: "oauth",
       });

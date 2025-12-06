@@ -117,6 +117,39 @@ export const authOptions: NextAuthConfig = {
   },
   callbacks: {
     async signIn({ user, account, profile }) {
+      if (account?.provider === "twitter") {
+        const rawEmail = (profile as any)?.email ?? (typeof (user as any)?.email === "string" ? (user as any).email : null);
+        const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : null;
+        if (email) {
+          try {
+            const existingUser = await db
+              .selectFrom("users")
+              .select(["id", "email"]) 
+              .where(sql`LOWER(email) = ${email}` as unknown as any)
+              .executeTakeFirst();
+            if (existingUser) {
+              (user as any).email = existingUser.email;
+            } else {
+              (user as any).email = email;
+            }
+          } catch {}
+        } else {
+          const secret = authSecret || process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "";
+          const enc = new TextEncoder();
+          const payload: Record<string, any> = {
+            provider: "twitter",
+            providerAccountId: account?.providerAccountId,
+            displayName: (profile as any)?.name ?? (profile as any)?.username ?? undefined,
+            avatar: (profile as any)?.picture ?? (profile as any)?.profile_image_url ?? undefined,
+          };
+          const token = await new SignJWT(payload)
+            .setProtectedHeader({ alg: "HS256" })
+            .setIssuedAt()
+            .setExpirationTime("10m")
+            .sign(enc.encode(secret));
+          return `/login/email-binding?provider=twitter&token=${encodeURIComponent(token)}`;
+        }
+      }
       if (account?.provider === "line") {
         const rawEmail =
           (profile as any)?.email ?? (typeof (user as any)?.email === "string" ? (user as any).email : null);

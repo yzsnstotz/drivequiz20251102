@@ -59,27 +59,32 @@ export function createPatchedKyselyAdapter(db: Kysely<Database>): Adapter {
       const now = new Date();
 
       // 2. 直接写入底层表 oauth_accounts（字段全部用下划线命名）
-      await db
-        .insertInto('oauth_accounts')
-        .values({
-          user_id: userId,
-          provider,
-          provider_account_id: providerAccountId,
-          access_token: access_token ?? null,
-          refresh_token: refresh_token ?? null,
-          id_token: id_token ?? null,
-          token_type: token_type ?? null,
-          scope: scope ?? null,
-          session_state: session_state ?? null,
-          expires_at: expires_at ? new Date(expires_at * 1000) : null,
-          created_at: now,
-          updated_at: now,
-        })
-        .executeTakeFirstOrThrow();
+      try {
+        await db
+          .insertInto('oauth_accounts')
+          .values({
+            user_id: userId,
+            provider,
+            provider_account_id: providerAccountId,
+            access_token: access_token ?? null,
+            refresh_token: refresh_token ?? null,
+            id_token: id_token ?? null,
+            token_type: token_type ?? null,
+            scope: scope ?? null,
+            session_state: session_state ?? null,
+            expires_at: expires_at ? new Date(expires_at * 1000) : null,
+            created_at: now,
+            updated_at: now,
+          })
+          .executeTakeFirstOrThrow();
+      } catch (e: any) {
+        const msg = e?.message || '';
+        const isUnique = msg.includes('23505') || msg.toLowerCase().includes('duplicate key') || msg.includes('oauth_accounts_provider_provider_account_id');
+        if (!isUnique) throw e;
+      }
 
       // 3. 按 NextAuth 约定返回原始 AdapterAccount
       return account;
     },
   };
 }
-
