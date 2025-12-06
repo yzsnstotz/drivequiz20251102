@@ -12,6 +12,13 @@ function LoginErrorContent() {
   const router = useRouter();
   const { status, loading } = useAppSession();
   const error = searchParams?.get("error") ?? null;
+  const code = searchParams?.get("code") ?? null;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[LoginError] error =", error, "code =", code);
+    }
+  }, [error, code]);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -24,7 +31,7 @@ function LoginErrorContent() {
     } else if (status === "unauthenticated" && !error) {
       router.replace("/login");
     }
-  }, [status]);
+  }, [status, error, router]);
 
   if (loading || status === "loading") {
     return (
@@ -34,23 +41,41 @@ function LoginErrorContent() {
     );
   }
 
-  const errorMessageMap: Record<string, string> = {
-    Configuration: "OAuth 配置错误，请检查环境变量或联系管理员。",
-    OAuthSignin: "第三方登录失败，请稍后重试。",
-    OAuthCallback: "登录回调出现问题，请稍后重试。",
-    AccessDenied: "拒绝访问，请确认授权信息。",
+  type ErrorMessageKey = "generic" | "oauth" | "session" | "config";
+  const getErrorKey = (e: string | null): ErrorMessageKey => {
+    switch (e) {
+      case "OAuthSignin":
+      case "OAuthCallback":
+      case "OAuthAccountNotLinked":
+      case "AccessDenied":
+        return "oauth";
+      case "SessionRequired":
+        return "session";
+      case "Configuration":
+        return "config";
+      default:
+        return "generic";
+    }
   };
-  const errorMessage =
-    (error && errorMessageMap[error]) ||
-    "登录过程中出现错误，请稍后重试或联系管理员。";
+
+  const errorKey = getErrorKey(error);
+  let title = "登录失败";
+  let description = "登录会话已失效，请重新尝试。";
+  if (errorKey === "session") {
+    description = "登录会话已过期，请重新登录。";
+  } else if (errorKey === "oauth") {
+    description = "第三方登录失败，请重新尝试或更换登录方式。";
+  } else if (errorKey === "config") {
+    description = "系统配置异常，请稍后重试或联系管理员。";
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-red-600 mb-2">{t("auth.login.error")}</h1>
-            <p className="text-gray-600">{errorMessage}</p>
+            <h1 className="text-2xl font-bold text-red-600 mb-2">{title}</h1>
+            <p className="text-gray-600">{description}</p>
           </div>
 
           <div className="space-y-3">
