@@ -248,7 +248,7 @@ export async function POST(request: NextRequest) {
               .selectFrom("users")
               .select(["id", "email"]) 
               .where("id", "!=", currentUserId)
-              .where((eb) => eb.expression((eb as any).sql`LOWER(email) = ${lowerEmail}`))
+              .where(({} as any).sql`LOWER(email) = ${lowerEmail}`)
               .executeTakeFirst();
 
             if (occupied) {
