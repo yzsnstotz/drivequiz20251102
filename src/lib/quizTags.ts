@@ -45,7 +45,7 @@ export function isLicenseTypeTag(v: unknown): v is LicenseTypeTag {
 // 2. stage_tag（考试阶段）
 // ============================================================
 
-export const STAGE_TAGS = ["provisional", "full", "both"] as const;
+export const STAGE_TAGS = ["provisional", "regular", "both"] as const;
 
 export type StageTag = (typeof STAGE_TAGS)[number];
 
@@ -168,3 +168,78 @@ export function normalizeAIResult(raw: any): NormalizedQuestionTags {
   };
 }
 
+export interface RawQuestionTags {
+  license_type_tag?: string[];
+  license_tags?: string[];
+  licenseTypes?: string[];
+  stage_tag?: string | null;
+  stageTag?: string | null;
+  stagetag?: string | null;
+  topic_tags?: string[];
+  topicTags?: string[];
+  topicTag?: string;
+}
+
+export interface NormalizedQuestionTagsDb {
+  license_type_tag: LicenseTypeTag[];
+  stage_tag: StageTag;
+  topic_tags: TopicTag[];
+}
+
+const LICENSE_TYPE_ALIASES: Record<string, LicenseTypeTag> = {
+  ordinary2: "ordinary_2",
+  ordinary_2: "ordinary_2",
+  nishu: "ordinary_2" as unknown as LicenseTypeTag,
+  gaikoku: "foreign_exchange",
+  foreign: "foreign_exchange",
+  provisional_only: "provisional_only",
+};
+
+const STAGE_ALIASES: Record<string, StageTag> = {
+  full: "regular" as unknown as StageTag,
+  regular: "regular",
+  本免: "regular" as unknown as StageTag,
+  provisional: "provisional",
+  仮免: "provisional" as unknown as StageTag,
+  both: "both",
+  all: "both" as unknown as StageTag,
+};
+
+export function normalizeQuestionTags(raw: RawQuestionTags): NormalizedQuestionTagsDb {
+  let licenseCandidates = raw.license_type_tag ?? raw.license_tags ?? raw.licenseTypes ?? [];
+  let stageCandidate = raw.stage_tag ?? raw.stageTag ?? raw.stagetag ?? null;
+  let topicCandidates = raw.topic_tags ?? raw.topicTags ?? (raw.topicTag ? [raw.topicTag] : []);
+
+  licenseCandidates = licenseCandidates.map((v) => v.toLowerCase().trim()).filter(Boolean);
+  topicCandidates = topicCandidates.map((v) => v.toLowerCase().trim()).filter(Boolean);
+  stageCandidate = stageCandidate?.toLowerCase().trim() ?? null;
+
+  const licenseSet = new Set<LicenseTypeTag>();
+  for (const v of licenseCandidates) {
+    const mapped = LICENSE_TYPE_ALIASES[v] ?? (isLicenseTypeTag(v) ? (v as LicenseTypeTag) : null);
+    if (mapped) licenseSet.add(mapped);
+  }
+  if (licenseSet.size === 0) licenseSet.add("common_all");
+
+  let normalizedStage: StageTag | null = null;
+  if (stageCandidate) {
+    normalizedStage = STAGE_ALIASES[stageCandidate] ?? (isStageTag(stageCandidate) ? (stageCandidate as StageTag) : null);
+  }
+  if (!normalizedStage) normalizedStage = "both";
+
+  const topicSet = new Set<TopicTag>();
+  for (const v of topicCandidates) {
+    let mapped: TopicTag | null = null;
+    if (v.startsWith("traffic_sign")) mapped = "signs_and_markings" as unknown as TopicTag;
+    else if (v.includes("highway")) mapped = "weather_night_highway" as unknown as TopicTag;
+    else if (isTopicTag(v)) mapped = v as TopicTag;
+    if (mapped) topicSet.add(mapped);
+  }
+  if (topicSet.size === 0) topicSet.add("other");
+
+  return {
+    license_type_tag: Array.from(licenseSet),
+    stage_tag: normalizedStage,
+    topic_tags: Array.from(topicSet),
+  };
+}

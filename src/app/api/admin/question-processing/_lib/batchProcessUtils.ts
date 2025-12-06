@@ -1942,12 +1942,12 @@ export async function generateCategoryAndTags(params: {
   // 使用统一的规范化函数处理 AI 返回结果
   const normalized = normalizeAIResult(parsed);
 
-  // 转换 stageTag：从新值（"provisional" | "full" | "both"）转换为旧值（兼容）
-  let stageTag: "both" | "provisional" | "regular" | "full" | null = null;
+  // 转换 stageTag：使用统一值（"provisional" | "regular" | "both"）
+  let stageTag: "both" | "provisional" | "regular" | null = null;
   if (normalized.stageTag === "provisional") {
     stageTag = "provisional";
-  } else if (normalized.stageTag === "full") {
-    stageTag = "regular"; // 兼容旧值：full -> regular
+  } else if (normalized.stageTag === "regular") {
+    stageTag = "regular";
   } else if (normalized.stageTag === "both") {
     stageTag = "both";
   }
@@ -2251,78 +2251,29 @@ async function saveQuestionTranslation(
  * 应用一体化处理返回的 tags 到题目
  * ✅ Phase 2.1 修复：统一代码层字段名为 license_tags
  */
+import { normalizeQuestionTags, type RawQuestionTags } from "@/lib/quizTags";
+
 function applyTagsFromFullPipeline(
   tags: {
-    license_type_tag?: string[] | null; // ✅ 修复：使用单数形式，与数据库字段名一致
-    stage_tag?: string[] | null; // ✅ 修复：使用单数形式，与数据库字段名一致
-    topic_tags?: string[] | null; // 保持复数形式（数据库字段名就是复数）
+    license_type_tag?: string[] | null;
+    stage_tag?: string[] | null;
+    topic_tags?: string[] | null;
     difficulty_level?: "easy" | "medium" | "hard" | null;
   },
   question: any
 ): void {
   if (!tags) {
-    console.warn(`[processFullPipelineBatch] [Q${question.id}] AI 未返回 tags，跳过 tag 应用`);
     return;
   }
-
-  // ✅ 修复：使用 license_type_tag（单数，与数据库字段名一致）
-  if (Array.isArray(tags.license_type_tag) && tags.license_type_tag.length > 0) {
-    const normalized = tags.license_type_tag
-      .filter((t) => typeof t === "string" && t.trim().length > 0)
-      .map((t) => t.trim().toUpperCase());
-
-    // 直接使用数据库字段名 license_type_tag
-    (question as any).license_type_tag = Array.from(new Set(normalized));
-  }
-  
-  // ✅ 修复：使用 stage_tag（单数，与数据库字段名一致）
-  if (Array.isArray(tags.stage_tag) && tags.stage_tag.length > 0) {
-    const normalized = tags.stage_tag
-      .filter((t) => typeof t === "string" && t.trim().length > 0)
-      .map((t) => t.trim().toUpperCase());
-
-    if (normalized.length > 0) {
-      // ✅ 修复：使用更宽松的匹配逻辑，支持 FULL_LICENSE 等多种格式
-      const hasBoth = normalized.some((t) => t.includes("BOTH"));
-      const hasFull = normalized.some((t) => t.includes("FULL") || t.includes("REGULAR") || t.includes("FULL_LICENSE"));
-      const hasProvisional = normalized.some((t) => t.includes("PROVISIONAL"));
-
-      if (hasBoth) {
-        question.stage_tag = "both";
-      } else if (hasFull) {
-        question.stage_tag = "regular";
-      } else if (hasProvisional) {
-        question.stage_tag = "provisional";
-      } else {
-        // 兜底：直接用第一个，转小写
-        question.stage_tag = normalized[0].toLowerCase();
-      }
-    }
-  }
-  
-  // 处理 topic_tags（保持复数形式，数据库字段名就是复数）
-  const topicTags = tags.topic_tags ?? question.topic_tags ?? [];
-  if (Array.isArray(tags.topic_tags) && tags.topic_tags.length > 0) {
-    const normalized = tags.topic_tags
-      .filter((t) => typeof t === "string" && t.trim().length > 0)
-      .map((t) => t.trim());
-
-    question.topic_tags = Array.from(new Set(normalized));
-  } else if (Array.isArray(topicTags) && topicTags.length > 0) {
-    question.topic_tags = topicTags;
-  }
-  
-  // ✅ 修复：添加调试日志，使用数据库字段名
-  console.debug(
-    `[processFullPipelineBatch] [Q${question.id}] [DEBUG] tags 应用完成: ${JSON.stringify({
-      license_type_tag: (question as any).license_type_tag,
-      stage_tag: question.stage_tag,
-      topic_tags: question.topic_tags,
-    })}`,
-  );
-  
-  // difficulty_level 目前没有对应的数据库字段，暂不处理
-  // 如果需要，可以在后续添加 difficulty_level 字段
+  const raw: RawQuestionTags = {
+    license_type_tag: Array.isArray(tags.license_type_tag) ? tags.license_type_tag : undefined,
+    stage_tag: Array.isArray(tags.stage_tag) && tags.stage_tag.length ? tags.stage_tag[0] : null,
+    topic_tags: Array.isArray(tags.topic_tags) ? tags.topic_tags : undefined,
+  };
+  const normalized = normalizeQuestionTags(raw);
+  (question as any).license_type_tag = normalized.license_type_tag;
+  question.stage_tag = normalized.stage_tag;
+  question.topic_tags = normalized.topic_tags;
 }
 
 /**
@@ -3473,7 +3424,7 @@ export async function processFullPipelineBatch(
         questionId: question.id,
         content: finalDbData?.content,
         explanation: finalDbData?.explanation,
-        license_tags: finalDbData?.license_type_tag,
+        license_type_tag: finalDbData?.license_type_tag,
         stage_tag: finalDbData?.stage_tag,
         topic_tags: finalDbData?.topic_tags,
       };

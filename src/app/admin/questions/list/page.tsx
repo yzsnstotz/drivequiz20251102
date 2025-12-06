@@ -18,7 +18,7 @@ type Question = {
   category?: string;
   hash?: string;
   aiAnswer?: string;
-  license_tags?: string[]; // 驾照类型标签
+  license_type_tag?: string[];
   stage_tag?: "both" | "provisional" | "regular"; // 阶段标签
   topic_tags?: string[]; // 主题标签数组
   created_at?: string; // 创建时间
@@ -1635,9 +1635,9 @@ export default function QuestionsPage() {
                       )}
                     </td>
                     <td className="py-2 px-3 text-xs">
-                      {item.license_tags && item.license_tags.length > 0 ? (
+                      {item.license_type_tag && item.license_type_tag.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {item.license_tags.map((tag, i) => (
+                          {item.license_type_tag.map((tag, i) => (
                             <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700">
                               {tag}
                             </span>
@@ -2639,4 +2639,3 @@ function QuestionForm({
     </form>
   );
 }
-

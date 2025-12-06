@@ -131,9 +131,9 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
         explanation: q.explanation || undefined,
         category: q.category || packageName,
         hash: q.content_hash, // 使用 content_hash 作为 hash
-        license_tags: q.license_type_tag || undefined,
+        license_type_tag: Array.isArray(q.license_type_tag) ? q.license_type_tag : undefined,
         stage_tag: q.stage_tag || undefined,
-        topic_tags: q.topic_tags || undefined,
+        topic_tags: Array.isArray(q.topic_tags) ? q.topic_tags : undefined,
       };
     });
   } catch (error) {
@@ -277,12 +277,19 @@ export async function saveQuestionToDb(
     // ✅ 修复：直接使用 license_type_tag 字段（数据库字段名）
     // license_tags 字段已废弃，不再处理
 
-    // ✅ 步骤1：添加调试日志（输入）
-    console.debug("[questionDb] saveQuestionToDb input license_type_tag", {
-      questionId: cleanedQuestion.id,
-      inputLicenseTypeTag: (cleanedQuestion as any).license_type_tag,
-      inputLegacyLicenseTags: (cleanedQuestion as any).license_tags ?? null,
-    });
+    const { normalizeQuestionTags } = await import("@/lib/quizTags");
+    const rawTags = {
+      license_type_tag: (cleanedQuestion as any).license_type_tag,
+      license_tags: (cleanedQuestion as any).license_tags,
+      licenseTypes: (cleanedQuestion as any).licenseTypes,
+      stage_tag: (cleanedQuestion as any).stage_tag ?? null,
+      stageTag: (cleanedQuestion as any).stageTag ?? null,
+      stagetag: (cleanedQuestion as any).stagetag ?? null,
+      topic_tags: (cleanedQuestion as any).topic_tags,
+      topicTags: (cleanedQuestion as any).topicTags,
+      topicTag: (cleanedQuestion as any).topicTag,
+    } as any;
+    const normalized = normalizeQuestionTags(rawTags);
 
     // ✅ 修复：统一通过 content_hash 查找题目（content_hash 是题目标识的唯一手段）
     // updateOnly 模式：通过 content_hash 查找，找不到则抛出错误
@@ -315,66 +322,9 @@ export async function saveQuestionToDb(
         category: cleanedQuestion.category || null,
         updated_at: new Date(),
       };
-
-      // ✅ 步骤3.2：license_type_tag 清洗逻辑修正（宽松接收 + 严格输出）
-      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
-        let tags = (cleanedQuestion as any).license_type_tag;
-
-        // 如果是字符串，转为单元素数组
-        if (typeof tags === "string") {
-          tags = [tags];
-        }
-
-        if (Array.isArray(tags)) {
-          const cleanedLicenseTypeTag = tags
-            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-            .map((tag: string) => tag.trim());
-
-          updateData.license_type_tag = cleanedLicenseTypeTag.length > 0 ? cleanedLicenseTypeTag : null;
-        } else {
-          updateData.license_type_tag = null;
-        }
-      }
-      
-      // ✅ 步骤3.2：保留对 legacy 字段 license_tags 的兼容逻辑（作为兜底）
-      if (
-        updateData.license_type_tag == null &&
-        Array.isArray((cleanedQuestion as any).license_tags) &&
-        (cleanedQuestion as any).license_tags.length > 0
-      ) {
-        const cleanedLegacy = (cleanedQuestion as any).license_tags
-          .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-          .map((tag: string) => tag.trim());
-
-        updateData.license_type_tag = cleanedLegacy.length > 0 ? cleanedLegacy : null;
-      }
-      
-      // ✅ 步骤1：添加调试日志（清洗后）
-      console.debug("[questionDb] saveQuestionToDb updateData license_type_tag", {
-        questionId: cleanedQuestion.id,
-        updateLicenseTypeTag: (updateData as any).license_type_tag ?? null,
-      });
-
-      // ✅ 修复：只有 stage_tag 存在时才更新（null/undefined 时不更新，保留原值）
-      if (cleanedQuestion.stage_tag !== null && cleanedQuestion.stage_tag !== undefined) {
-        updateData.stage_tag = cleanedQuestion.stage_tag;
-      }
-
-      // ✅ 修复：清理 topic_tags 数组（TEXT[] 类型）
-      if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
-        if (Array.isArray(cleanedQuestion.topic_tags)) {
-          // 清理数组：只保留有效的非空字符串
-          const cleanedTopicTags = cleanedQuestion.topic_tags
-            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-            .map((tag: any) => tag.trim());
-          
-          // 如果清理后数组为空，设置为 null
-          updateData.topic_tags = cleanedTopicTags.length > 0 ? cleanedTopicTags : null;
-        } else {
-          // 如果不是数组，设置为 null
-          updateData.topic_tags = null;
-        }
-      }
+      updateData.license_type_tag = normalized.license_type_tag.length ? normalized.license_type_tag : null;
+      updateData.stage_tag = normalized.stage_tag ?? undefined;
+      updateData.topic_tags = normalized.topic_tags.length ? normalized.topic_tags : null;
 
       // ✅ 修复：最终验证和清理所有 JSONB 字段，确保没有空对象或空数组
       // 检查 content（JSONB）
@@ -406,7 +356,7 @@ export async function saveQuestionToDb(
         if (updateData.explanation) JSON.stringify(updateData.explanation);
         if (updateData.options) JSON.stringify(updateData.options);
         if (updateData.correct_answer) JSON.stringify(updateData.correct_answer);
-        if (updateData.license_type_tag) JSON.stringify(updateData.license_type_tag);
+      if (updateData.license_type_tag) JSON.stringify(updateData.license_type_tag);
       } catch (finalJsonError) {
         console.error("[saveQuestionToDb] 最终 JSON 验证失败:", finalJsonError, {
           content: updateData.content,
@@ -489,44 +439,9 @@ export async function saveQuestionToDb(
       };
 
       // ✅ 修复：插入时，清理 license_type_tag 数组（JSONB 类型）
-      if ((cleanedQuestion as any).license_type_tag !== null && (cleanedQuestion as any).license_type_tag !== undefined) {
-        if (Array.isArray((cleanedQuestion as any).license_type_tag)) {
-          // 清理数组：只保留有效的非空字符串
-          const cleanedLicenseTypeTag = (cleanedQuestion as any).license_type_tag
-            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-            .map((tag: any) => tag.trim());
-          
-          // 如果清理后数组为空，设置为 null
-          insertData.license_type_tag = cleanedLicenseTypeTag.length > 0 ? cleanedLicenseTypeTag : null;
-        } else {
-          insertData.license_type_tag = null;
-        }
-      } else {
-        insertData.license_type_tag = null;
-      }
-
-      if (cleanedQuestion.stage_tag !== null && cleanedQuestion.stage_tag !== undefined) {
-        insertData.stage_tag = cleanedQuestion.stage_tag;
-      } else {
-        insertData.stage_tag = null;
-      }
-
-      // ✅ 修复：插入时，清理 topic_tags 数组（TEXT[] 类型）
-      if (cleanedQuestion.topic_tags !== null && cleanedQuestion.topic_tags !== undefined) {
-        if (Array.isArray(cleanedQuestion.topic_tags)) {
-          // 清理数组：只保留有效的非空字符串
-          const cleanedTopicTags = cleanedQuestion.topic_tags
-            .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-            .map((tag: any) => tag.trim());
-          
-          // 如果清理后数组为空，设置为 null
-          insertData.topic_tags = cleanedTopicTags.length > 0 ? cleanedTopicTags : null;
-        } else {
-          insertData.topic_tags = null;
-        }
-      } else {
-        insertData.topic_tags = null;
-      }
+      insertData.license_type_tag = normalized.license_type_tag.length ? normalized.license_type_tag : null;
+      insertData.stage_tag = normalized.stage_tag ?? null;
+      insertData.topic_tags = normalized.topic_tags.length ? normalized.topic_tags : null;
 
       // ✅ 修复：最终验证和清理所有 JSONB 字段，确保没有空对象或空数组
       // 检查 content（JSONB）
@@ -1664,7 +1579,7 @@ export async function updateAllJsonPackages(): Promise<{
           explanation: q.explanation || undefined,
           category,
           hash: q.content_hash, // 使用数据库中的content_hash作为hash（同一个值）
-          license_tags: q.license_type_tag || undefined,
+          license_type_tag: Array.isArray(q.license_type_tag) ? q.license_type_tag : undefined,
           stage_tag: q.stage_tag || undefined,
           topic_tags: q.topic_tags || undefined,
         });
