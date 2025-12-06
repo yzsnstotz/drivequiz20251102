@@ -12,7 +12,7 @@ export function createLineProvider() {
   return LineProvider({
     clientId,
     clientSecret,
-    checks: ["state"],
+    checks: ["pkce"],
     authorization: {
       params: {
         scope: "profile openid email",
