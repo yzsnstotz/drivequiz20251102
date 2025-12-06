@@ -93,6 +93,12 @@ export const authOptions: NextAuthConfig = {
   },
   callbacks: {
     async signIn({ user, account, profile }) {
+      try {
+        console.log("[signIn] provider:", account?.provider);
+        console.log("[signIn] user.email:", (user as any)?.email);
+        console.log("[signIn] profile.email:", (profile as any)?.email);
+        console.log("[signIn] account.email:", (account as any)?.email);
+      } catch {}
       // 处理 OAuthAccountNotLinked 错误：如果邮箱已存在，自动关联账户
       // 注意：这个 callback 在 NextAuth 检查账户关联之前执行
       // 如果邮箱已存在但账户未关联，NextAuth 会在后续步骤中抛出 OAuthAccountNotLinked 错误
@@ -176,10 +182,10 @@ export const authOptions: NextAuthConfig = {
       }
 
       if (account?.type === "oauth") {
-        const rawEmail = (user as any)?.email || (profile as any)?.email || (account as any)?.email || "";
-        const emailCandidate = typeof rawEmail === "string" ? rawEmail.trim() : "";
-        const isPlaceholder = emailCandidate !== "" && emailCandidate.endsWith("@oauth.local");
-        if (!emailCandidate || isPlaceholder) {
+        const providerEmailRaw = (profile as any)?.email || (account as any)?.email || "";
+        const providerEmail = typeof providerEmailRaw === "string" ? providerEmailRaw.trim() : "";
+        const isPlaceholder = providerEmail !== "" && providerEmail.endsWith("@oauth.local");
+        if (!providerEmail || isPlaceholder) {
           (user as any).needsEmailBinding = true;
         }
       }
@@ -344,6 +350,9 @@ export const authOptions: NextAuthConfig = {
       if ((token as any)?.needsEmailBinding) {
         (session as any).needsEmailBinding = true;
       }
+      try {
+        console.log("[session] needsEmailBinding:", (session as any)?.needsEmailBinding);
+      } catch {}
       return session;
     },
     async jwt({ token, user }) {
@@ -355,6 +364,9 @@ export const authOptions: NextAuthConfig = {
       if ((user as any)?.needsEmailBinding) {
         (token as any).needsEmailBinding = true;
       }
+      try {
+        console.log("[jwt] needsEmailBinding:", (token as any)?.needsEmailBinding);
+      } catch {}
       return token;
     },
   },
