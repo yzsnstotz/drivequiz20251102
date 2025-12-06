@@ -13,8 +13,13 @@ function EmailBindingPageContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      try {
+        console.log("[EmailBinding] page loaded", { tokenPrefix: token ? String(token).slice(0, 12) : null, provider });
+      } catch {}
+    }
     if (!token) {
-      setError("缺少验证令牌，请重新发起登录。");
+      setError("缺少绑定令牌，请从第三方登录入口重新进入。");
     }
   }, [token]);
 
@@ -45,8 +50,11 @@ function EmailBindingPageContent() {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-6 sm:p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">完善邮箱以完成 {provider.toUpperCase()} 登录</h1>
         <p className="text-gray-600 mb-6">由于第三方未提供邮箱，我们需要您的邮箱来创建或绑定账号。</p>
-        {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">{error}</div>
+        {error && <ErrorBox message={error} />}
+        {process.env.NODE_ENV === "development" && token && (
+          <div className="mb-4 p-2 rounded-lg bg-gray-50 text-gray-500 text-xs">
+            调试: token 前缀 {String(token).slice(0, 16)}...
+          </div>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -60,13 +68,17 @@ function EmailBindingPageContent() {
               placeholder="you@example.com"
             />
           </div>
-          <button
-            type="submit"
-            disabled={submitting || !token}
-            className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300"
-          >
-            {submitting ? "提交中…" : "提交并继续登录"}
-          </button>
+          {token ? (
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300"
+            >
+              {submitting ? "提交中…" : "提交并继续登录"}
+            </button>
+          ) : (
+            <ErrorBox message="绑定链接缺少令牌或已失效，请重新从 LINE 登录。" />
+          )}
         </form>
         <button
           onClick={() => router.push("/login")}
@@ -92,3 +104,6 @@ export default function EmailBindingPage() {
     </Suspense>
   );
 }
+  const ErrorBox = ({ message }: { message: string }) => (
+    <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">{message}</div>
+  );
