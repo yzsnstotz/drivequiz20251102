@@ -13,6 +13,7 @@
     "check:build": "./scripts/check-build.sh",
     "check:types": "tsc --noEmit",
     "fix:build": "tsx scripts/auto-fix-build-errors.ts",
+    "normalize-tags": "tsx scripts/normalize-question-tags.ts",
     "cf:build": "npm install --include=optional && npx @opennextjs/cloudflare build",
     "cf:preview": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler dev",
     "cf:deploy": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler deploy"
