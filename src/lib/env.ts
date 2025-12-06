@@ -172,3 +172,19 @@ export function getAuthEnvConfig(): AuthEnvConfig {
 
   return { secret, url };
 }
+
+/**
+ * 轻量环境变量校验（服务器侧）
+ * - 仅在开发环境打印缺失项
+ * - 生产环境由 getAuthBaseUrl 等强校验保证 fail-fast
+ */
+export function validateEnv(): void {
+  const requiredEnv = [
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
+  ];
+  const missing = requiredEnv.filter((k) => !process.env[k] || process.env[k] === "");
+  if (missing.length > 0 && process.env.NODE_ENV !== "production") {
+    console.error("[env] Missing required env vars:", missing);
+  }
+}

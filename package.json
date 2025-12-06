@@ -16,6 +16,8 @@
     "normalize-tags": "tsx scripts/normalize-question-tags.ts",
     "restore-tags": "tsx scripts/restore-tags-from-latest-package.ts",
     "duplicate-latest": "tsx scripts/duplicate-from-latest-package.ts",
+    "migrate-align-license": "tsx scripts/migrate-align-license-type-tag.ts",
+    "list-tags": "tsx scripts/list-question-tags.ts",
     "cf:build": "npm install --include=optional && npx @opennextjs/cloudflare build",
     "cf:preview": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler dev",
     "cf:deploy": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler deploy"

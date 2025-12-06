@@ -8,7 +8,10 @@ import WeChatProvider from "./providers/wechat";
 import { createLineProvider } from "@/lib/providers/line";
 import type { Adapter } from "next-auth/adapters";
 import { createPatchedKyselyAdapter } from "./auth-kysely-adapter";
-import { getAuthEnvConfig, getAuthBaseUrl } from "@/lib/env";
+import { getAuthEnvConfig, getAuthBaseUrl, validateEnv } from "@/lib/env";
+
+// 环境变量轻量校验（只在开发环境提示）
+validateEnv();
 
 // 解析环境变量配置
 const { secret: authSecret } = getAuthEnvConfig();

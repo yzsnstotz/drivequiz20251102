@@ -2,6 +2,7 @@ import "dotenv/config";
 import { db } from "@/lib/db";
 import { getLatestUnifiedVersionContent } from "@/lib/questionDb";
 import { convertQuestionToDbFormat } from "./_lib/convertQuestionToDb";
+import { sql } from "kysely";
 
 type AnyQuestion = any;
 
@@ -59,17 +60,22 @@ async function run() {
         topic_tags: raw.topic_tags,
         version: raw.version,
       };
-      if (raw.content != null) payload.content = raw.content;
-      if (raw.options != null) payload.options = raw.options;
-      if (raw.correct_answer != null) payload.correct_answer = raw.correct_answer;
-      if (raw.explanation != null) payload.explanation = raw.explanation;
-      if (raw.license_type_tag != null) payload.license_type_tag = raw.license_type_tag;
+      if (raw.content != null) payload.content = sql`${JSON.stringify(raw.content)}::jsonb`;
+      if (raw.options != null) payload.options = sql`${JSON.stringify(raw.options)}::jsonb`;
+      if (raw.correct_answer != null) payload.correct_answer = sql`${JSON.stringify(raw.correct_answer)}::jsonb`;
+      if (raw.explanation != null) payload.explanation = sql`${JSON.stringify(raw.explanation)}::jsonb`;
+      if (raw.license_type_tag != null) payload.license_type_tag = sql`${JSON.stringify(raw.license_type_tag)}::jsonb`;
       await db.insertInto("questions_duplicate").values(payload).execute();
       success++;
       if ((i + 1) % 200 === 0) console.log(`[duplicate-latest] inserted ${i + 1}/${questions.length}`);
     } catch (err) {
       failed++;
-      if (failed <= 10) console.error(`[duplicate-latest] insert error at index ${i}:`, (err as Error)?.message || String(err));
+      if (failed <= 10) {
+        console.error(`[duplicate-latest] insert error at index ${i}:`, (err as Error)?.message || String(err));
+        try {
+          console.error("payload debug:", JSON.stringify(raw).slice(0, 500));
+        } catch {}
+      }
     }
   }
   console.log("[duplicate-latest] done", { version, success, failed });

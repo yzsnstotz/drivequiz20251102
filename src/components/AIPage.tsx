@@ -520,13 +520,13 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
             createdAt: Date.now(),
           });
         } else if (payload.errorCode === "CONFIG_ERROR") {
-          // 配置错误：环境变量未配置
-          const configMessage = t('ai.error.configError');
-          setErrorTip(configMessage);
+          // 统一为服务不可用提示，不再展示“环境变量错误”类UI
+          const serviceUnavailable = t('ai.error.serviceUnavailable');
+          setErrorTip(serviceUnavailable);
           pushMessage({
             id: uid(),
             role: "ai",
-            content: `【${t('ai.error.unknown')}】${message}。${t('ai.error.contactSupport')}`,
+            content: `【${t('ai.error.unknown')}】${serviceUnavailable}`,
             createdAt: Date.now(),
           });
         } else if (payload.errorCode === "AI_SERVICE_ERROR" && message.includes("local")) {
