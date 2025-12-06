@@ -5,7 +5,7 @@ import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
 import TwitterProvider from "./providers/twitter";
 import WeChatProvider from "./providers/wechat";
-import LineProvider from "./providers/line";
+import { createLineProvider } from "@/lib/providers/line";
 import type { Adapter } from "next-auth/adapters";
 import { createPatchedKyselyAdapter } from "./auth-kysely-adapter";
 import { getAuthEnvConfig, getAuthBaseUrl } from "@/lib/env";
@@ -82,13 +82,9 @@ export const authOptions: NextAuthConfig = {
       // v4: 不手动配置 redirectUri，由 WeChatProvider 内部使用 getAuthBaseUrl() 生成
       redirectUri: process.env.WECHAT_REDIRECT_URI || undefined,
     } as any),
-    (() => {
-      const cfg = LineProvider({
-        clientId: (process.env.LINE_CLIENT_ID || process.env.LINE_CHANNEL_ID || "").trim(),
-        clientSecret: (process.env.LINE_CLIENT_SECRET || process.env.LINE_CHANNEL_SECRET || "").trim(),
-      });
-      (cfg as any).allowDangerousEmailAccountLinking = true;
-      return cfg as any;
+    ...(() => {
+      const lineProvider = createLineProvider();
+      return lineProvider ? [lineProvider as any] : [];
     })(),
   ],
   pages: {
