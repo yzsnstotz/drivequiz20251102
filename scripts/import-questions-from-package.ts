@@ -22,137 +22,13 @@ if ((isDevelopment || !isVercel) && !hasTlsReject) {
 }
 
 import { db } from "../src/lib/db";
-import { calculateQuestionHash, Question } from "../src/lib/questionHash";
-import { sanitizeJsonForDb } from "../src/app/api/admin/question-processing/_lib/jsonUtils";
+import { Question } from "../src/lib/questionHash";
+import { convertQuestionToDbFormat } from "./_lib/convertQuestionToDb";
 
 // 配置参数
 const PACKAGE_ID = 11;
 const PACKAGE_VERSION = "fbd0a7a3f20495eb-1763066525733";
 
-/**
- * 将 Question 格式转换为数据库格式
- */
-function convertQuestionToDbFormat(question: Question): {
-  content_hash: string;
-  type: "single" | "multiple" | "truefalse";
-  content: any;
-  options: any | null;
-  correct_answer: any | null;
-  image: string | null;
-  explanation: any | null;
-  license_type_tag: any | null;
-  category: string | null;
-  stage_tag: "both" | "provisional" | "regular" | null;
-  topic_tags: string[] | null;
-  version: string | null;
-} {
-  // 计算 content_hash
-  const contentHash = question.hash || calculateQuestionHash(question);
-
-  // 规范化 content 字段：如果是字符串，转换为多语言对象
-  let contentMultilang: any = null;
-  if (typeof question.content === "string") {
-    contentMultilang = { zh: question.content };
-  } else if (question.content && typeof question.content === "object") {
-    contentMultilang = question.content;
-  }
-  contentMultilang = sanitizeJsonForDb(contentMultilang);
-  if (contentMultilang && typeof contentMultilang === "object" && !Array.isArray(contentMultilang) && Object.keys(contentMultilang).length === 0) {
-    contentMultilang = null;
-  }
-
-  // 规范化 explanation 字段：如果是字符串，转换为多语言对象
-  let explanationMultilang: any = null;
-  if (question.explanation) {
-    if (typeof question.explanation === "string") {
-      explanationMultilang = { zh: question.explanation };
-    } else if (typeof question.explanation === "object" && question.explanation !== null) {
-      explanationMultilang = question.explanation;
-    }
-  }
-  explanationMultilang = sanitizeJsonForDb(explanationMultilang);
-  if (explanationMultilang && typeof explanationMultilang === "object" && !Array.isArray(explanationMultilang) && Object.keys(explanationMultilang).length === 0) {
-    explanationMultilang = null;
-  }
-
-  // 清理 options 字段
-  let cleanedOptions = sanitizeJsonForDb(question.options);
-  if (cleanedOptions && Array.isArray(cleanedOptions)) {
-    cleanedOptions = cleanedOptions
-      .filter((opt: any) => {
-        if (typeof opt !== "string") return false;
-        const trimmed = opt.trim();
-        return trimmed !== "" && trimmed.toLowerCase() !== "explanation";
-      })
-      .map((opt: any) => {
-        if (typeof opt === "string" && opt.includes("\n")) {
-          return opt.split("\n")
-            .map((line: string) => line.trim())
-            .filter((line: string) => line !== "" && line.toLowerCase() !== "explanation");
-        }
-        return opt;
-      })
-      .flat();
-    
-    if (cleanedOptions.length === 0) {
-      cleanedOptions = null;
-    }
-  }
-
-  // 清理 correct_answer 字段
-  let cleanedCorrectAnswer = sanitizeJsonForDb(question.correctAnswer);
-  if (cleanedCorrectAnswer && Array.isArray(cleanedCorrectAnswer) && cleanedCorrectAnswer.length === 0) {
-    cleanedCorrectAnswer = null;
-  } else if (cleanedCorrectAnswer && typeof cleanedCorrectAnswer === "object" && !Array.isArray(cleanedCorrectAnswer) && Object.keys(cleanedCorrectAnswer).length === 0) {
-    cleanedCorrectAnswer = null;
-  }
-
-  // 处理 license_type_tag（兼容 license_tags）
-  let licenseTypeTag: any = null;
-  if ((question as any).license_type_tag !== null && (question as any).license_type_tag !== undefined) {
-    if (Array.isArray((question as any).license_type_tag)) {
-      const cleaned = (question as any).license_type_tag
-        .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-        .map((tag: any) => tag.trim());
-      licenseTypeTag = cleaned.length > 0 ? cleaned : null;
-    }
-  } else if (question.license_tags) {
-    // 兼容旧字段 license_tags
-    if (Array.isArray(question.license_tags)) {
-      const cleaned = question.license_tags
-        .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-        .map((tag: any) => tag.trim());
-      licenseTypeTag = cleaned.length > 0 ? cleaned : null;
-    }
-  }
-
-  // 处理 topic_tags
-  let topicTags: string[] | null = null;
-  if (question.topic_tags !== null && question.topic_tags !== undefined) {
-    if (Array.isArray(question.topic_tags)) {
-      const cleaned = question.topic_tags
-        .filter((tag: any) => typeof tag === "string" && tag.trim() !== "")
-        .map((tag: any) => tag.trim());
-      topicTags = cleaned.length > 0 ? cleaned : null;
-    }
-  }
-
-  return {
-    content_hash: contentHash,
-    type: question.type,
-    content: contentMultilang,
-    options: cleanedOptions,
-    correct_answer: cleanedCorrectAnswer,
-    image: question.image || null,
-    explanation: explanationMultilang,
-    // 注意：questions_duplicate 表可能没有 license_types 字段，所以不包含它
-    license_type_tag: licenseTypeTag,
-    category: question.category || null,
-    stage_tag: question.stage_tag || null,
-    topic_tags: topicTags,
-    version: null, // 不设置版本号
-  };
-}
 
 /**
  * 主函数：从 package_content 导入题目到 questions_duplicate 表
@@ -246,4 +122,3 @@ async function importQuestionsFromPackage() {
 
 // 执行脚本
 importQuestionsFromPackage();
-

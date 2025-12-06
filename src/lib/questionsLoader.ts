@@ -282,19 +282,20 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
     // 如果有本地缓存，立即返回（不等待网络请求）
     if (localVersion) {
       const cached = getCachedPackage(localVersion);
-      if (cached?.questions && cached.questions.length > 0) {
+      const hasTopLevel = !!(cached?.questions && cached.questions.length > 0);
+      const hasLocale = !!(cached?.questionsByLocale && Object.values(cached.questionsByLocale).some(arr => Array.isArray(arr) && arr.length > 0));
+      if (hasTopLevel || hasLocale) {
         console.log("[loadUnifiedQuestionsPackage] 使用本地缓存", {
           version: localVersion,
-          questionCount: cached.questions.length,
+          questionCount: hasTopLevel ? (cached!.questions!.length) : 0,
+          hasLocale,
         });
         
-        // 在后台异步检查更新（不阻塞主流程）
         checkForUpdatesInBackground(localVersion).catch(err => {
-          // 静默处理错误，不影响主流程
           console.warn(`[loadUnifiedQuestionsPackage] 后台检查更新失败:`, err);
         });
         
-        return cached;
+        return cached!;
       }
     }
     
@@ -322,7 +323,16 @@ export async function loadUnifiedQuestionsPackage(): Promise<UnifiedPackage | nu
  */
 export async function loadAllQuestions(): Promise<Question[]> {
   const pkg = await loadUnifiedQuestionsPackage();
-  return pkg?.questions || [];
+  if (!pkg) return [];
+  if (pkg.questions && pkg.questions.length > 0) return pkg.questions;
+  if (pkg.questionsByLocale) {
+    if (pkg.questionsByLocale["zh"] && pkg.questionsByLocale["zh"]!.length > 0) return pkg.questionsByLocale["zh"]!;
+    if (pkg.questionsByLocale["zh-CN"] && pkg.questionsByLocale["zh-CN"]!.length > 0) return pkg.questionsByLocale["zh-CN"]!;
+    if (pkg.questionsByLocale["zh_CN"] && pkg.questionsByLocale["zh_CN"]!.length > 0) return pkg.questionsByLocale["zh_CN"]!;
+    const anyLocale = Object.values(pkg.questionsByLocale).find(arr => Array.isArray(arr) && arr.length > 0);
+    if (anyLocale) return anyLocale as Question[];
+  }
+  return [];
 }
 
 /**
@@ -350,5 +360,4 @@ export async function loadAiAnswersForLocale(locale: string): Promise<Record<str
   }
   return pkg.aiAnswers || {};
 }
-
 

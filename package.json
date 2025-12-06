@@ -14,6 +14,8 @@
     "check:types": "tsc --noEmit",
     "fix:build": "tsx scripts/auto-fix-build-errors.ts",
     "normalize-tags": "tsx scripts/normalize-question-tags.ts",
+    "restore-tags": "tsx scripts/restore-tags-from-latest-package.ts",
+    "duplicate-latest": "tsx scripts/duplicate-from-latest-package.ts",
     "cf:build": "npm install --include=optional && npx @opennextjs/cloudflare build",
     "cf:preview": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler dev",
     "cf:deploy": "npm install --include=optional && npx @opennextjs/cloudflare build && npx wrangler deploy"
