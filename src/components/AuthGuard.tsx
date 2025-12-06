@@ -42,8 +42,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
     // 由下方 isPublic 检查决定是否需要登录
 
-    const PUBLIC_PATHS = ["/login", "/login/bind-email", "/login/error"];
-    const isPublic = PUBLIC_PATHS.includes(pathname ?? "");
+    const PUBLIC_PATHS = ["/login", "/login/bind-email", "/login/error", "/login/email-binding"];
+    const isLoginPath = (pathname === "/login") || ((pathname?.startsWith("/login/")) ?? false);
+    const isPublic = isLoginPath || PUBLIC_PATHS.includes(pathname ?? "");
 
     if (!isPublic && status === "unauthenticated") {
       console.log("[AuthGuard] redirect to /login");
