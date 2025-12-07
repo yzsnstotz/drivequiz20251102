@@ -133,3 +133,10 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npx tsx scripts/test-ai-database-connection.ts
 - [ ] 数据库连接测试通过
 - [ ] `ai_config` 表已创建（如果不存在）
 
+## 🆕 2025-12-07 · AI-LOGS-20251207-001
+- 模块：Admin / Web
+- 根因：`AI_DATABASE_URL` 未配置导致后端返回 500；前端错误提示不足、CSV 导出失败提示不明确。
+- 修复：
+  - 后端 `/api/admin/ai/logs` 返回结构化错误码：`AI_DATABASE_URL_NOT_CONFIGURED`、`AI_DB_DNS_ERROR`、`AI_DB_TIMEOUT`、`AI_DB_CONNECTION_REFUSED`、`AI_DB_AUTH_FAILED`。
+  - 前端 `/admin/ai/logs` 按 errorCode 显示明确提示；错误状态下禁用 CSV；导出失败解析 JSON 并提示。
+- 执行报告：`docs/问题修复/2025-12-07/后台AI问答日志板块无法正常工作/执行报告/后台AI问答日志板块无法正常工作_执行报告.md`

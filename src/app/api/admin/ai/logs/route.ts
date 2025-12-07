@@ -147,8 +147,15 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     
     if (!hasAiDbUrl) {
       console.error(`[GET /api/admin/ai/logs] [${requestId}] [Step 1] ❌ AI_DATABASE_URL is not configured!`);
-      return internalError(
-        "AI_DATABASE_URL environment variable is not configured. Please configure it in Vercel Dashboard for Preview/Production environments."
+      return NextResponse.json(
+        {
+          ok: false,
+          errorCode: "AI_DATABASE_URL_NOT_CONFIGURED",
+          message:
+            "AI 日志数据库未配置。请在部署环境设置 AI_DATABASE_URL（直连 5432，sslmode=require）并重新部署。",
+          requestId,
+        },
+        { status: 500 }
       );
     }
     
@@ -455,7 +462,25 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     
     console.error(`[GET /api/admin/ai/logs] [${requestId}] ===== End error report =====`);
     
-    return internalError(`Failed to fetch AI logs: ${message}`);
+    let code = "INTERNAL_ERROR";
+    if (errorString.includes("enotfound") || errorString.includes("getaddrinfo")) {
+      code = "AI_DB_DNS_ERROR";
+    } else if (errorString.includes("timeout") || errorString.includes("timed out")) {
+      code = "AI_DB_TIMEOUT";
+    } else if (errorString.includes("connection") && errorString.includes("refused")) {
+      code = "AI_DB_CONNECTION_REFUSED";
+    } else if (errorString.includes("authentication") || errorString.includes("password")) {
+      code = "AI_DB_AUTH_FAILED";
+    }
+    return NextResponse.json(
+      {
+        ok: false,
+        errorCode: code,
+        message: `Failed to fetch AI logs: ${message}`,
+        requestId,
+      },
+      { status: 500 }
+    );
   }
 });
 

@@ -95,7 +95,7 @@ export default function AdminAiLogsPage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<LogItem[]>([]);
   const [pagination, setPagination] = useState<ListResponse["pagination"] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [errorInfo, setErrorInfo] = useState<{ code: string; message: string } | null>(null);
   const [selectedSources, setSelectedSources] = useState<LogItem | null>(null);
 
   // 同步 filters 到 URL
@@ -115,7 +115,7 @@ export default function AdminAiLogsPage() {
     let mounted = true;
     (async () => {
       setLoading(true);
-      setError(null);
+      setErrorInfo(null);
       try {
         const params: Record<string, any> = {
           page: filters.page,
@@ -152,12 +152,12 @@ export default function AdminAiLogsPage() {
         if (!mounted) return;
         if (e instanceof ApiError) {
           if (e.status === 401) {
-            setError("未授权：请先登录管理口令");
+            setErrorInfo({ code: "AUTH_REQUIRED", message: "未授权：请先登录管理口令" });
           } else {
-            setError(`${e.errorCode}: ${e.message}`);
+            setErrorInfo({ code: e.errorCode, message: e.message });
           }
         } else {
-          setError(e instanceof Error ? e.message : "未知错误");
+          setErrorInfo({ code: "UNKNOWN_ERROR", message: e instanceof Error ? e.message : "未知错误" });
         }
       } finally {
         if (mounted) setLoading(false);
@@ -199,23 +199,37 @@ export default function AdminAiLogsPage() {
     const base = typeof window !== "undefined" ? window.location.origin : "";
     const url = `${base}/api/admin/ai/logs?${params.toString()}`;
     const token = typeof window !== "undefined" ? localStorage.getItem("ADMIN_TOKEN") : undefined;
-
-    fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((res) => res.blob())
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(async (res) => {
+        if (!res.ok) {
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            const j = await res.json();
+            const code = j?.errorCode || "HTTP_ERROR";
+            const msg = j?.message || `HTTP ${res.status}`;
+            throw new ApiError({ status: res.status, errorCode: code, message: msg, details: j });
+          }
+          throw new ApiError({ status: res.status, errorCode: "HTTP_ERROR", message: `HTTP ${res.status}` });
+        }
+        return res.blob();
+      })
       .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
+        const urlObj = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url;
+        a.href = urlObj;
         a.download = `ai-logs-${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
+        window.URL.revokeObjectURL(urlObj);
         document.body.removeChild(a);
       })
       .catch((err) => {
-        console.error("Download CSV failed:", err);
+        if (err instanceof ApiError) {
+          setErrorInfo({ code: err.errorCode, message: err.message });
+          alert(`${err.errorCode}: ${err.message}`);
+          return;
+        }
+        setErrorInfo({ code: "CSV_DOWNLOAD_FAILED", message: err instanceof Error ? err.message : "unknown error" });
         alert("下载失败：" + (err instanceof Error ? err.message : "unknown error"));
       });
   };
@@ -244,6 +258,7 @@ export default function AdminAiLogsPage() {
           <button
             onClick={handleDownloadCSV}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+            disabled={!!errorInfo}
           >
             导出 CSV
           </button>
@@ -256,8 +271,20 @@ export default function AdminAiLogsPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-3 bg-red-50 text-red-700 rounded border border-red-200 text-sm">{error}</div>
+      {errorInfo && (
+        <div className="p-3 bg-red-50 text-red-700 rounded border border-red-200 text-sm">
+          {errorInfo.code === "AI_DATABASE_URL_NOT_CONFIGURED"
+            ? "AI 日志数据库未配置：请在 Vercel 对应环境设置 AI_DATABASE_URL（直连 5432，sslmode=require）并重新部署。"
+            : errorInfo.code === "AI_DB_DNS_ERROR"
+            ? "数据库主机 DNS 解析失败，请检查连接字符串中的主机名是否正确。"
+            : errorInfo.code === "AI_DB_TIMEOUT"
+            ? "数据库连接超时，请检查网络或数据库状态。"
+            : errorInfo.code === "AI_DB_CONNECTION_REFUSED"
+            ? "数据库连接被拒绝，数据库可能不可达或已暂停。"
+            : errorInfo.code === "AI_DB_AUTH_FAILED"
+            ? "数据库认证失败，请检查用户名/密码。"
+            : errorInfo.message}
+        </div>
       )}
 
       {/* 筛选表单 */}
