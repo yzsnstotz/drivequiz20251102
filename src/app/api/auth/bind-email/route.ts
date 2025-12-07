@@ -73,7 +73,15 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true });
+    const origin = new URL(req.url).origin;
+    if (finalProvider === "line" || finalProvider === "twitter") {
+      const url = new URL("/login", origin);
+      url.searchParams.set("bind", `${finalProvider}_success`);
+      if (normalizedEmail) url.searchParams.set("email", normalizedEmail);
+      return NextResponse.redirect(url);
+    }
+
+    return NextResponse.redirect(new URL(`/api/auth/signin/${finalProvider}?callbackUrl=/`, origin));
   } catch (err: any) {
     return NextResponse.json({ ok: false, message: err?.message || String(err) }, { status: 500 });
   }

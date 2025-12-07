@@ -38,6 +38,8 @@ function LoginPageContent() {
   const [loginMemory, setLoginMemory] = useState<{ provider: string; email?: string } | null>(null);
   const [showSwitchAccount, setShowSwitchAccount] = useState(false);
   const errorCode = searchParams?.get("error") || "";
+  const bind = searchParams?.get("bind") || "";
+  const boundEmail = searchParams?.get("email") || "";
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -180,6 +182,20 @@ function LoginPageContent() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
+            {bind === "line_success" && (
+              <div className="p-3 rounded-xl bg-green-50 text-green-700 text-sm">
+                {boundEmail
+                  ? `你的 LINE 账号已成功绑定到 ${boundEmail}，请再次点击「LINE 登录」完成登录。`
+                  : "你的 LINE 账号已成功绑定，请再次点击「LINE 登录」完成登录。"}
+              </div>
+            )}
+            {bind === "twitter_success" && (
+              <div className="p-3 rounded-xl bg-green-50 text-green-700 text-sm">
+                {boundEmail
+                  ? `你的 Twitter 账号已成功绑定到 ${boundEmail}，请再次点击「Twitter 登录」完成登录。`
+                  : "你的 Twitter 账号已成功绑定，请再次点击「Twitter 登录」完成登录。"}
+              </div>
+            )}
             <div className="text-center">
               <h1 className="text-2xl font-bold text-red-600 mb-2">{t("auth.login.error")}</h1>
               <p className="text-gray-600">{errorMessage}</p>
