@@ -1,6 +1,5 @@
 // apps/web/app/api/ai/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { aiDb } from "@/lib/aiDb";
 
 // 运行配置（动态渲染，服务端执行）
 export const runtime = "nodejs";
@@ -9,9 +8,13 @@ export const dynamic = "force-dynamic";
 /** === 环境变量（遵循《🛠️ 研发规范 v1.0》命名） ===
  *  AI_SERVICE_URL        e.g. https://ai.example.com/v1
  *  AI_SERVICE_TOKEN      与 AI-Service 的 Service Token 对齐
+ *  SUPABASE_URL          Supabase 项目 URL
+ *  SUPABASE_SERVICE_KEY  Supabase 服务密钥（仅服务端）
  */
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "";
 const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
 
 // 统一响应类型（与《📐 接口与命名规范 v1.0》对齐）
 type Ok<T> = { ok: true; data: T; pagination?: never };
@@ -33,13 +36,6 @@ type AskBody = {
   question?: string;
   userId?: string;
   lang?: string; // "zh" | "ja" | "en" | ...
-  scene?: string;
-  model?: string;
-  messages?: any[]; // 历史消息
-  sourceLanguage?: string;
-  targetLanguage?: string;
-  seedUrl?: string;
-  maxHistory?: number;
 };
 
 // 兼容 AI-Service 两种返回结构
@@ -51,8 +47,6 @@ type AiServiceDataA = {
   costEstimate?: { inputTokens?: number; outputTokens?: number; approxUsd?: number };
   time?: string;
   lang?: string;
-  aiProvider?: string;
-  cached?: boolean;
 };
 type AiServiceDataB = {
   answer: string;
@@ -62,7 +56,6 @@ type AiServiceDataB = {
   lang?: string;
   cached?: boolean;
   time?: string;
-  aiProvider?: string;
 };
 
 // === 工具：标准错误包裹 ===
@@ -72,42 +65,59 @@ function badRequest(message: string): NextResponse<Err> {
 function providerError(message: string): NextResponse<Err> {
   return NextResponse.json({ ok: false, errorCode: "PROVIDER_ERROR", message }, { status: 502 });
 }
+function internalError(message = "Internal Server Error"): NextResponse<Err> {
+  return NextResponse.json({ ok: false, errorCode: "INTERNAL_ERROR", message }, { status: 500 });
+}
 
 // === 落库：ai_logs（失败仅告警，不阻断） ===
-async function insertAiLog(log: {
+async function writeAiLogToSupabase(log: {
   userId?: string | null;
   question: string;
   answer: string;
-  scene: string;
-  locale: string | null; // 存 zh/ja/en
+  lang?: string | null; // 存 zh/ja/en
   model: string;
   ragHits: number;
   safetyFlag: "ok" | "needs_human" | "blocked";
   costEstUsd?: number | null;
-  sources?: any;
-  aiProvider?: string | null;
-  cached?: boolean;
+  createdAtIso?: string;
 }) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    // eslint-disable-next-line no-console
+    console.warn("[web] skip ai_logs insert: missing SUPABASE env");
+    return;
+  }
+  // 与后端约定的 snake_case 字段
+  // 注意：数据库表中的字段名是 locale，不是 language
+  const payload = [
+    {
+      user_id: log.userId ?? null,
+      question: log.question,
+      answer: log.answer,
+      locale: log.lang ?? null, // 使用 locale 字段（数据库表中的实际字段名）
+      model: log.model,
+      rag_hits: log.ragHits,
+      safety_flag: log.safetyFlag,
+      cost_est: log.costEstUsd ?? null,
+      created_at: log.createdAtIso ?? new Date().toISOString(),
+    },
+  ];
+
   try {
-    // 严格参照 数据库结构_AI_SERVICE.md 中 ai_logs 字段名称与类型
-    await aiDb
-      .insertInto("ai_logs")
-      .values({
-        user_id: log.userId ?? null,
-        question: log.question,
-        answer: log.answer,
-        from: log.scene, // Map scene to from column
-        locale: log.locale ?? null,
-        model: log.model,
-        rag_hits: log.ragHits,
-        safety_flag: log.safetyFlag,
-        cost_est: log.costEstUsd ?? null,
-        sources: log.sources ?? null,
-        ai_provider: log.aiProvider ?? null,
-        cached: log.cached ?? false,
-        created_at: new Date(), // 使用当前时间
-      })
-      .execute();
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ai_logs`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      // eslint-disable-next-line no-console
+      console.warn("[web] ai_logs insert non-2xx", { status: res.status, text });
+    }
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn("[web] ai_logs insert failed", { error: (e as Error).message });
@@ -119,26 +129,18 @@ async function callAiService(body: AskBody): Promise<Response> {
   if (!AI_SERVICE_URL || !AI_SERVICE_TOKEN) {
     throw new Error("AI service not configured");
   }
-  
-  // 过滤 undefined/null 字段
-  const payload = Object.fromEntries(
-    Object.entries(body).filter(([_, v]) => v !== undefined && v !== null)
-  );
-
   return fetch(`${AI_SERVICE_URL.replace(/\/+$/, "")}/ask`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${AI_SERVICE_TOKEN}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 
 // === POST /api/ai/chat ===
 export async function POST(req: NextRequest) {
-  const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-  
   try {
     const input = (await req.json().catch(() => ({}))) as AskBody;
 
@@ -160,9 +162,11 @@ export async function POST(req: NextRequest) {
 
     // 直接转发非 2xx 或失败结构
     if (!upstream.ok) {
+      // 上游非 2xx，尽量透传错误体
       return NextResponse.json(upstreamJson, { status: upstream.status || 502 });
     }
     if (!("ok" in upstreamJson) || upstreamJson.ok !== true) {
+      // 语义失败
       const status =
         (upstreamJson as Err).errorCode === "CONTENT_BLOCKED"
           ? 403
@@ -187,7 +191,7 @@ export async function POST(req: NextRequest) {
       (data.lang as string | undefined) ||
       (typeof input.lang === "string" ? input.lang : undefined);
 
-    // 费用估算：优先使用上游 costEstimate.approxUsd；否则为 null
+    // 费用估算：优先使用上游 costEstimate.approxUsd；否则为 null（后续可接入统一估算器）
     const approxUsd =
       (data as AiServiceDataA).costEstimate?.approxUsd ?? null;
 
@@ -195,32 +199,27 @@ export async function POST(req: NextRequest) {
     const safetyFlag: "ok" | "needs_human" | "blocked" =
       (data as AiServiceDataA).safetyFlag ?? "ok";
 
-    // 异步写 ai_logs（不阻断）
-    // 强制 scene="chat" 如果前端没传 (但前端应该传)
-    // 根据需求：scene 固定为 "chat"
-    const scene = "chat";
+    // createdAt：用上游 time 或现在
+    const createdAt = (data.time as string | undefined) || new Date().toISOString();
 
-    void insertAiLog({
+    // 异步写 ai_logs（不阻断）
+    void writeAiLogToSupabase({
       userId: input.userId ?? null,
       question: input.question,
       answer: data.answer,
-      scene: scene,
-      locale: lang ?? null,
+      lang: lang ?? null,
       model: data.model,
       ragHits,
       safetyFlag,
       costEstUsd: approxUsd,
-      sources: (data as AiServiceDataA).sources ? JSON.stringify((data as AiServiceDataA).sources) : null,
-      aiProvider: data.aiProvider ?? null,
-      cached: data.cached ?? false,
-    }).catch((e) => {
-        console.warn(`[${requestId}] ai_logs async write failed`, e);
-    });
+      createdAtIso: createdAt,
+    }).catch(() => {});
 
     // 原样返回上游成功体
     return NextResponse.json(upstreamJson, { status: 200 });
   } catch (e: any) {
-    console.error(`[web] /api/ai/chat error [${requestId}]`, {
+    // eslint-disable-next-line no-console
+    console.error("[web] /api/ai/chat error", {
       message: e?.message,
       name: e?.name,
     });
