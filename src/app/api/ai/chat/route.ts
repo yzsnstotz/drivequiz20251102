@@ -1,4 +1,3 @@
-// apps/web/app/api/ai/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { aiDb } from "@/lib/aiDb";
 

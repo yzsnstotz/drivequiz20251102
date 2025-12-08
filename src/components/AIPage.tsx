@@ -8,6 +8,7 @@ import { callAiDirect, type AiProviderKey } from "@/lib/aiClient.front";
 import { getAiExpectedTime } from "@/lib/aiStatsClient";
 import { getCurrentAiProvider } from "@/lib/aiProviderConfig.front";
 import AIActivationProvider, { useAIActivation } from "@/components/AIActivationProvider";
+import { useAppSession } from "@/contexts/SessionContext";
 import { detectLangFromText } from "@/lib/languageDetector";
 
 /** ---- 协议与类型 ---- */
@@ -153,6 +154,15 @@ function localeToLang(locale: string | undefined): "zh" | "ja" | "en" {
   return "zh";
 }
 
+async function callAiViaBackend(payload: any) {
+  const res = await fetch("/api/ai/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return await res.json();
+}
+
 /** ---- 组件 ---- */
 // Get welcome message based on language
 // 注意：这个函数现在不再使用，改为使用翻译键
@@ -170,6 +180,7 @@ function getWelcomeMessage(lang: Language): string {
 }
 
 const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
+  const { session } = useAppSession();
   const { isActivated, showActivationModal } = useAIActivation();
   const { t, language, languageReady } = useLanguage();
   
@@ -495,15 +506,15 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         timestamp: new Date().toISOString(),
       });
 
-      // 直接调用 ai-service（使用当前配置的 provider）
-      const payload = await callAiDirect({
-        provider: currentProvider,
+      // 改为调用后端 API (via callAiViaBackend) 以支持日志记录
+      const payload = await callAiViaBackend({
         question: q,
-        locale: userLocale,
+        lang: localeToLang(userLocale),
         scene: "chat",
         messages: historyMessages.length > 0 ? historyMessages : undefined,
         maxHistory: 10,
         model: currentModel,
+        userId: session?.user?.id || null,
       });
 
       if (!payload.ok) {
