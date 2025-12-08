@@ -126,4 +126,4 @@ index 9f8c853..b4ccd8b 100644
 
 ## 9) 分支与提交
 - 分支：main
-- 提交哈希：待补充（将记录本次代码提交哈希）
+- 提交哈希：`1bac51bf2fdd196b9d2f8a27ebde8ac9428b1fff`（fix: ensure AI chat logs persisted and verified via real DB (AI-LOGS-20251207-FULL-V3)）
