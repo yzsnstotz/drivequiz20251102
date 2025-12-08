@@ -425,14 +425,24 @@ function getDbInstance(): Kysely<AiDatabase> {
   const hasDbUrl = !!process.env.AI_DATABASE_URL;
   const isBuild = isBuildTime();
   const shouldUsePlaceholder = isBuild || !hasDbUrl;
-  
+
   if (shouldUsePlaceholder) {
+    // 构建时使用占位符
+    if (isBuild) {
+      if (!placeholderInstance) {
+        placeholderInstance = createPlaceholderAiDb();
+      }
+      return placeholderInstance;
+    }
+    // 运行时缺少配置：记录警告但仍使用占位符（保持兼容性）
+    // 注意：调用方（如 insertAiLog）应该检查环境变量
+    console.warn('[AI DB] AI_DATABASE_URL not configured, using placeholder (operations will be no-ops)');
     if (!placeholderInstance) {
       placeholderInstance = createPlaceholderAiDb();
     }
     return placeholderInstance;
   }
-  
+
   return getActualDbInstance();
 }
 

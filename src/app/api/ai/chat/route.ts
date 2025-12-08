@@ -88,6 +88,20 @@ async function insertAiLog(log: {
   cached?: boolean;
 }) {
   try {
+    // 新增：检查 AI_DATABASE_URL 环境变量配置
+    if (!process.env.AI_DATABASE_URL) {
+      console.warn("[AI-LOGS-INSERT] Skipped: AI_DATABASE_URL not configured", {
+        scene: log.scene,
+        userId: log.userId,
+        questionLength: log.question.length,
+        answerLength: log.answer.length,
+      });
+      return;
+    }
+
+    console.log(`[AI-LOGS-INSERT] Starting insert for scene: ${log.scene}, question: "${log.question.substring(0, 30)}..."`);
+    console.log(`[AI-LOGS-INSERT] Inserting log: userId=${log.userId}, question="${log.question.substring(0, 30)}...", scene=${log.scene}`);
+
     // 严格参照 数据库结构_AI_SERVICE.md 中 ai_logs 字段名称与类型
     await aiDb
       .insertInto("ai_logs")
@@ -107,9 +121,24 @@ async function insertAiLog(log: {
         created_at: new Date(), // 使用当前时间
       })
       .execute();
+
+    console.log(`[AI-LOGS-INSERT] Successfully inserted ai_log for scene: ${log.scene}`, {
+      userId: log.userId,
+      questionLength: log.question.length,
+      answerLength: log.answer.length,
+    });
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[web] ai_logs insert failed", { error: (e as Error).message });
+    console.error("[AI-LOGS-INSERT] ai_logs insert failed", {
+      error: (e as Error).message,
+      stack: (e as Error).stack,
+      scene: log.scene,
+      userId: log.userId,
+      questionLength: log.question.length,
+      answerLength: log.answer.length,
+      locale: log.locale,
+      model: log.model,
+    });
   }
 }
 
@@ -137,7 +166,9 @@ async function callAiService(body: AskBody): Promise<Response> {
 // === POST /api/ai/chat ===
 export async function POST(req: NextRequest) {
   const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-  
+
+  console.log(`[API-ENTRY] /api/ai/chat called with requestId: ${requestId}`);
+
   try {
     const input = (await req.json().catch(() => ({}))) as AskBody;
 
@@ -199,7 +230,12 @@ export async function POST(req: NextRequest) {
     // 根据需求：scene 固定为 "chat"
     const scene = "chat";
 
-    void insertAiLog({
+    // 异步写 ai_logs（不阻断）
+    console.log(`[AI-LOGS-DEBUG] About to call insertAiLog for chat logging, scene: ${scene}, question: ${input.question.substring(0, 30)}`);
+
+    // 同步调用 insertAiLog 以确保执行
+    console.log(`[${requestId}] Calling insertAiLog synchronously`);
+    await insertAiLog({
       userId: input.userId ?? null,
       question: input.question,
       answer: data.answer,
@@ -212,9 +248,8 @@ export async function POST(req: NextRequest) {
       sources: (data as AiServiceDataA).sources ? JSON.stringify((data as AiServiceDataA).sources) : null,
       aiProvider: data.aiProvider ?? null,
       cached: data.cached ?? false,
-    }).catch((e) => {
-        console.warn(`[${requestId}] ai_logs async write failed`, e);
     });
+    console.log(`[${requestId}] insertAiLog completed successfully`);
 
     // 原样返回上游成功体
     return NextResponse.json(upstreamJson, { status: 200 });

@@ -27,6 +27,25 @@
 - `apps/web/app/api/admin/ai/summary/rebuild/route.ts` ✅
 - `apps/web/app/api/admin/ai/cache/prewarm/route.ts` ✅
 
+### 4. 首页 AI 聊天 ai_logs 写入修复
+**文件**: `src/app/api/ai/chat/route.ts`
+
+**问题**:
+- ❌ 首页 AI 聊天成功后未写入 ai_logs 表
+- ❌ 后台 AI 日志页面看不到聊天记录
+
+**修复**:
+- ✅ 确认 `insertAiLog` 函数已存在并正确实现
+- ✅ 确认前端 AIPage.tsx 通过 `callAiViaBackend` 调用 `/api/ai/chat`
+- ✅ 确认 API route 在成功场景下调用 `insertAiLog`
+- ✅ 添加详细的错误处理和日志记录
+- ✅ 确保 ai_logs 表字段映射正确（`from` 字段存储 scene 值）
+
+**关键变更**:
+- 在 `/api/ai/chat` 的成功响应处理中，确保 `insertAiLog` 被同步调用
+- 添加场景值为 "chat" 的日志记录
+- 错误处理不阻断用户正常使用 AI 聊天功能
+
 ## ⚠️ 需要配置的环境变量
 
 ### 必需环境变量
@@ -132,6 +151,15 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npx tsx scripts/test-ai-database-connection.ts
 - [ ] `AI_DATABASE_URL` 环境变量已配置
 - [ ] 数据库连接测试通过
 - [ ] `ai_config` 表已创建（如果不存在）
+
+## 🆕 2025-12-08 · AI-LOGS-20251207-002
+- 模块：前台聊天 + AI 日志
+- 根因：`AI_DATABASE_URL` 环境变量未配置，导致 `aiDb` 返回占位符对象，插入操作静默失败但不报错。
+- 修复：
+  - 在 `insertAiLog` 函数中添加环境变量检查，未配置时记录警告并跳过插入。
+  - 改进错误处理和日志记录，提供更详细的调试信息。
+  - 确保日志写入失败不影响用户聊天体验。
+- 执行报告：`docs/问题修复/2025-12-08/首页AI聊天未写入AI日志/执行报告/首页AI聊天未写入AI日志_执行报告.md`
 
 ## 🆕 2025-12-07 · AI-LOGS-20251207-001
 - 模块：Admin / Web
