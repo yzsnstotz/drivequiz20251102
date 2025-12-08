@@ -502,6 +502,87 @@ export type AiDbPoolStats = {
   status: "healthy" | "warning" | "critical";
 };
 
+// ------------------------------------------------------------
+// AI 日志写入助手函数
+// ------------------------------------------------------------
+
+export interface AiLogEntry {
+  userId: string | null;
+  question: string;
+  answer: string;
+  from: string;
+  locale: string | null;
+  model: string | null;
+  ragHits?: number | null;
+  safetyFlag?: "ok" | "needs_human" | "blocked";
+  costEst?: number | null;
+  sources?: unknown;
+  aiProvider?: string | null;
+  cached?: boolean;
+  contextTag?: string | null;
+}
+
+/**
+ * 统一的 AI 日志写入函数
+ * 严格按照数据库结构_AI_SERVICE.md 中的 ai_logs 表字段规范
+ * 失败仅告警，不阻断业务流程
+ */
+export async function insertAiLog(entry: AiLogEntry): Promise<void> {
+  try {
+    // 检查环境变量配置
+    if (!process.env.AI_DATABASE_URL) {
+      console.warn("[AI-LOGS-INSERT] Skipped: AI_DATABASE_URL not configured", {
+        from: entry.from,
+        userId: entry.userId,
+        questionLength: entry.question.length,
+        answerLength: entry.answer.length,
+      });
+      return;
+    }
+
+    console.log(`[AI-LOGS-INSERT] Starting insert for from: ${entry.from}, question: "${entry.question.substring(0, 30)}..."`);
+
+    // 严格参照数据库结构_AI_SERVICE.md 中的 ai_logs 字段名称与类型
+    await aiDb
+      .insertInto("ai_logs")
+      .values({
+        user_id: entry.userId,
+        question: entry.question,
+        answer: entry.answer,
+        from: entry.from,
+        locale: entry.locale,
+        model: entry.model,
+        rag_hits: entry.ragHits ?? null,
+        safety_flag: entry.safetyFlag ?? "ok",
+        cost_est: entry.costEst ?? null,
+        sources: entry.sources ?? null,
+        ai_provider: entry.aiProvider ?? null,
+        cached: entry.cached ?? false,
+        context_tag: entry.contextTag ?? null,
+        created_at: new Date(),
+      })
+      .execute();
+
+    console.log(`[AI-LOGS-INSERT] Successfully inserted ai_log for from: ${entry.from}`, {
+      userId: entry.userId,
+      questionLength: entry.question.length,
+      answerLength: entry.answer.length,
+    });
+  } catch (e) {
+    // 日志写入失败仅告警，不阻断业务流程
+    console.error("[AI-LOGS-INSERT] ai_logs insert failed", {
+      error: (e as Error).message,
+      stack: (e as Error).stack,
+      from: entry.from,
+      userId: entry.userId,
+      questionLength: entry.question.length,
+      answerLength: entry.answer.length,
+      locale: entry.locale,
+      model: entry.model,
+    });
+  }
+}
+
 export function getAiDbPoolStats(): AiDbPoolStats | null {
   if (!aiDbPool) {
     // 如果 Pool 还没有创建，尝试初始化数据库实例

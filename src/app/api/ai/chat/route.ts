@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { aiDb } from "@/lib/aiDb";
+import { aiDb, insertAiLog } from "@/lib/aiDb";
 
 // 运行配置（动态渲染，服务端执行）
 export const runtime = "nodejs";
@@ -70,76 +70,6 @@ function badRequest(message: string): NextResponse<Err> {
 }
 function providerError(message: string): NextResponse<Err> {
   return NextResponse.json({ ok: false, errorCode: "PROVIDER_ERROR", message }, { status: 502 });
-}
-
-// === 落库：ai_logs（失败仅告警，不阻断） ===
-async function insertAiLog(log: {
-  userId?: string | null;
-  question: string;
-  answer: string;
-  scene: string;
-  locale: string | null; // 存 zh/ja/en
-  model: string;
-  ragHits: number;
-  safetyFlag: "ok" | "needs_human" | "blocked";
-  costEstUsd?: number | null;
-  sources?: any;
-  aiProvider?: string | null;
-  cached?: boolean;
-}) {
-  try {
-    // 新增：检查 AI_DATABASE_URL 环境变量配置
-    if (!process.env.AI_DATABASE_URL) {
-      console.warn("[AI-LOGS-INSERT] Skipped: AI_DATABASE_URL not configured", {
-        scene: log.scene,
-        userId: log.userId,
-        questionLength: log.question.length,
-        answerLength: log.answer.length,
-      });
-      return;
-    }
-
-    console.log(`[AI-LOGS-INSERT] Starting insert for scene: ${log.scene}, question: "${log.question.substring(0, 30)}..."`);
-    console.log(`[AI-LOGS-INSERT] Inserting log: userId=${log.userId}, question="${log.question.substring(0, 30)}...", scene=${log.scene}`);
-
-    // 严格参照 数据库结构_AI_SERVICE.md 中 ai_logs 字段名称与类型
-    await aiDb
-      .insertInto("ai_logs")
-      .values({
-        user_id: log.userId ?? null,
-        question: log.question,
-        answer: log.answer,
-        from: log.scene, // Map scene to from column
-        locale: log.locale ?? null,
-        model: log.model,
-        rag_hits: log.ragHits,
-        safety_flag: log.safetyFlag,
-        cost_est: log.costEstUsd ?? null,
-        sources: log.sources ?? null,
-        ai_provider: log.aiProvider ?? null,
-        cached: log.cached ?? false,
-        created_at: new Date(), // 使用当前时间
-      })
-      .execute();
-
-    console.log(`[AI-LOGS-INSERT] Successfully inserted ai_log for scene: ${log.scene}`, {
-      userId: log.userId,
-      questionLength: log.question.length,
-      answerLength: log.answer.length,
-    });
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error("[AI-LOGS-INSERT] ai_logs insert failed", {
-      error: (e as Error).message,
-      stack: (e as Error).stack,
-      scene: log.scene,
-      userId: log.userId,
-      questionLength: log.question.length,
-      answerLength: log.answer.length,
-      locale: log.locale,
-      model: log.model,
-    });
-  }
 }
 
 // === 调用 AI-Service /ask ===
@@ -239,12 +169,12 @@ export async function POST(req: NextRequest) {
       userId: input.userId ?? null,
       question: input.question,
       answer: data.answer,
-      scene: scene,
+      from: scene, // 使用统一的 from 字段
       locale: lang ?? null,
       model: data.model,
       ragHits,
       safetyFlag,
-      costEstUsd: approxUsd,
+      costEst: approxUsd, // 统一字段名为 costEst
       sources: (data as AiServiceDataA).sources ? JSON.stringify((data as AiServiceDataA).sources) : null,
       aiProvider: data.aiProvider ?? null,
       cached: data.cached ?? false,
