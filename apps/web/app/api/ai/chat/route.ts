@@ -1,6 +1,6 @@
 // apps/web/app/api/ai/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { aiDb, insertAiLog } from "@/lib/aiDb";
+import { insertAiLog } from "@/lib/aiDb";
 
 // 运行配置（动态渲染，服务端执行）
 export const runtime = "nodejs";
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
     // 根据需求：scene 固定为 "chat"
     const scene = "chat";
 
-    void insertAiLog({
+    await insertAiLog({
       userId: input.userId ?? null,
       question: input.question,
       answer: data.answer,
@@ -175,8 +175,6 @@ export async function POST(req: NextRequest) {
       sources: (data as AiServiceDataA).sources ? JSON.stringify((data as AiServiceDataA).sources) : null,
       aiProvider: data.aiProvider ?? null,
       cached: data.cached ?? false,
-    }).catch((e) => {
-        console.warn(`[${requestId}] ai_logs async write failed`, e);
     });
 
     // 原样返回上游成功体

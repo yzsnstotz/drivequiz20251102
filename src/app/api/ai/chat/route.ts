@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { aiDb, insertAiLog } from "@/lib/aiDb";
+import { insertAiLog } from "@/lib/aiDb";
 
 // 运行配置（动态渲染，服务端执行）
 export const runtime = "nodejs";

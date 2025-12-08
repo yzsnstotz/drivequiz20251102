@@ -40,6 +40,8 @@
 - ✅ 确认 API route 在成功场景下调用 `insertAiLog`
 - ✅ 添加详细的错误处理和日志记录
 - ✅ 确保 ai_logs 表字段映射正确（`from` 字段存储 scene 值）
+- ✅ 新增 question/answer 基础清洗（trim），减少空白垃圾数据
+- ✅ 2025-12-08 v3 实测落库成功：`ai_logs.id=714`，question="AI 日志写入测试 v3 - 001"，后台 `/admin/ai/logs` 可见
 
 **关键变更**:
 - 在 `/api/ai/chat` 的成功响应处理中，确保 `insertAiLog` 被同步调用
@@ -148,19 +150,20 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npx tsx scripts/test-ai-database-connection.ts
 - [x] CSV 导出功能已添加
 - [x] 配置 API 路由已验证（使用 `aiDb`）
 - [x] API 路由位置已验证
-- [ ] `AI_DATABASE_URL` 环境变量已配置
-- [ ] 数据库连接测试通过
+- [x] `AI_DATABASE_URL` 环境变量已配置（.env.local 已加载）
+- [x] 数据库连接测试通过（NODE_TLS_REJECT_UNAUTHORIZED=0 直连 Supabase）
 - [ ] `ai_config` 表已创建（如果不存在）
 
 ## 🆕 2025-12-08 · AI-LOGS-20251207-FULL
 - 模块：前台聊天 + AI 日志 + 后台管理
-- 根因：存在重复的日志写入代码，接口不统一，缺少环境变量检查，导致写入逻辑不稳定。
+- 根因：存在重复的日志写入代码，接口不统一，缺少环境变量检查，导致写入逻辑不稳定；此前报告未做真实落库验证。
 - 修复：
   - 创建统一的 `insertAiLog` helper 函数，清理重复代码约110行。
   - 统一接口参数（`from` 替代 `scene`，`costEst` 替代 `costEstUsd`）。
   - 添加环境变量检查，确保在配置缺失时有明确警告。
-  - 确保前台聊天 → API → 数据库 → 后台查询的完整链路工作正常。
-- 执行报告：`docs/问题修复/2025-12-08/AI问答日志读写闭环修复/执行报告/AI问答日志读写闭环修复_执行报告.md`
+  - 增补 question/answer 基础清洗。
+  - 2025-12-08 v3 已用真实 AI Service 和 Supabase DB 验证：`/api/ai/chat` 返回 200，`ai_logs` 新增 id=714。
+- 执行报告（v3 实测版）：`docs/问题修复/2025-12-08/AI问答日志读写闭环修复/执行报告/AI问答日志读写闭环修复_执行报告.md`
 
 ## 🆕 2025-12-08 · AI-LOGS-20251207-002
 - 模块：前台聊天 + AI 日志

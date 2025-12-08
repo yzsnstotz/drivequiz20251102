@@ -522,6 +522,12 @@ export interface AiLogEntry {
   contextTag?: string | null;
 }
 
+// 统一清洗文本字段，避免存储多余空白或 undefined
+function cleanTextField(text: string | null | undefined): string {
+  if (typeof text !== "string") return "";
+  return text.trim();
+}
+
 /**
  * 统一的 AI 日志写入函数
  * 严格按照数据库结构_AI_SERVICE.md 中的 ai_logs 表字段规范
@@ -542,13 +548,16 @@ export async function insertAiLog(entry: AiLogEntry): Promise<void> {
 
     console.log(`[AI-LOGS-INSERT] Starting insert for from: ${entry.from}, question: "${entry.question.substring(0, 30)}..."`);
 
+    const cleanedQuestion = cleanTextField(entry.question);
+    const cleanedAnswer = cleanTextField(entry.answer);
+
     // 严格参照数据库结构_AI_SERVICE.md 中的 ai_logs 字段名称与类型
     await aiDb
       .insertInto("ai_logs")
       .values({
         user_id: entry.userId,
-        question: entry.question,
-        answer: entry.answer,
+        question: cleanedQuestion,
+        answer: cleanedAnswer,
         from: entry.from,
         locale: entry.locale,
         model: entry.model,
