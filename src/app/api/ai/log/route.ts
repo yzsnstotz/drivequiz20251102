@@ -50,8 +50,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = await resolveUserIdForLogs(req);
-    console.debug("[AI_DEBUG][resolvedUserId]", userId);
+    let userId: string | null = null;
+    try {
+      userId = await resolveUserIdForLogs(req);
+      console.debug("[AI_DEBUG][resolvedUserId]", userId);
+    } catch (err) {
+      console.error("[AI_ERROR][log] Failed to resolve userId:", err);
+      userId = null; // 降级为匿名，避免 502
+    }
 
     console.log("[/api/ai/log] inserting", {
       dbTag: aiDbDebugTag,

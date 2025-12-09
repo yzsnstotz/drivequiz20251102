@@ -140,8 +140,15 @@ export async function POST(req: NextRequest) {
 
     // === 成功场景：落库（失败仅告警） ===
     const data = upstreamJson.data as AiServiceDataA & AiServiceDataB;
-    const userId = await resolveUserIdForLogs(req);
-    console.debug("[AI_DEBUG][resolvedUserId]", userId);
+
+    let userId: string | null = null;
+    try {
+      userId = await resolveUserIdForLogs(req);
+      console.debug("[AI_DEBUG][resolvedUserId]", userId);
+    } catch (err) {
+      console.error("[AI_ERROR][chat] Failed to resolve userId:", err);
+      userId = null; // 降级为匿名，避免 502
+    }
 
     // rag 命中：优先 sources 数量；若无 sources，用 reference 是否存在推断 0/1
     const ragHits = Array.isArray((data as AiServiceDataA).sources)
