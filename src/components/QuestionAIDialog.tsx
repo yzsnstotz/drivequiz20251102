@@ -345,11 +345,25 @@ export default function QuestionAIDialog({
 
   const logAiConversation = async (payload: any) => {
     try {
+      console.log("[QuestionAIDialog] log payload", {
+        from: payload.from,
+        questionSample: payload.question?.slice(0, 30),
+      });
       await fetch("/api/ai/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      });
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => null);
+          console.log("[QuestionAIDialog] /api/ai/log response", {
+            status: res.status,
+            data,
+          });
+        })
+        .catch((error) => {
+          console.warn("[QuestionAIDialog] /api/ai/log failed", error);
+        });
     } catch (error) {
       console.warn("[QuestionAIDialog] 写入 AI 日志失败", error);
     }

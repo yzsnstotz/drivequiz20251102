@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { insertAiLog } from "@/lib/aiDb";
+import { insertAiLog, aiDbDebugTag } from "@/lib/aiDb";
 import { getUserInfo } from "@/app/api/_lib/withUserAuth";
 
 export const runtime = "nodejs";
@@ -24,9 +24,9 @@ type LogRequestBody = {
 export async function POST(req: NextRequest) {
   try {
     const body: LogRequestBody = (await req.json().catch(() => ({}))) as LogRequestBody;
-    const { question, answer, from } = body;
+    const { question, answer = "", from } = body;
 
-    if (!question || !from) {
+    if (!question || typeof question !== "string") {
       return NextResponse.json(
         {
           ok: false,
@@ -36,11 +36,28 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (!from || typeof from !== "string") {
+      return NextResponse.json(
+        {
+          ok: false,
+          errorCode: "INVALID_PAYLOAD",
+          message: "from 必须为非空字符串",
+        },
+        { status: 400 }
+      );
+    }
 
     const userInfo = await getUserInfo(req);
     const userId = body.userId ?? userInfo?.userId ?? null; // 前端不可伪造，但保留 body.userId 兼容旧调用
 
-    await insertAiLog({
+    console.log("[/api/ai/log] inserting", {
+      dbTag: aiDbDebugTag,
+      from,
+      userId,
+      qSample: String(question).slice(0, 30),
+    });
+
+    const insertedId = await insertAiLog({
       userId,
       question: String(question),
       answer: answer != null ? String(answer) : "",
@@ -56,7 +73,12 @@ export async function POST(req: NextRequest) {
       contextTag: body.contextTag ?? null,
     });
 
-    return NextResponse.json({ ok: true });
+    console.log("[/api/ai/log] inserted", {
+      dbTag: aiDbDebugTag,
+      insertedId,
+    });
+
+    return NextResponse.json({ ok: true, insertedId, dbTag: aiDbDebugTag });
   } catch (err: any) {
     console.error("[api/ai/log] insertAiLog failed", err);
     return NextResponse.json(

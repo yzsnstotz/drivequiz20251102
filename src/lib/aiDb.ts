@@ -171,6 +171,7 @@ interface AiDatabase {
 
 let aiDbInstance: Kysely<AiDatabase> | null = null;
 let aiDbPool: Pool | null = null;
+export let aiDbDebugTag: string = "unknown";
 
 // 检查是否在构建阶段
 function isBuildTime(): boolean {
@@ -242,6 +243,12 @@ function createAiDbInstance(): Kysely<AiDatabase> {
   const connectionString = getAiConnectionString();
 
   const isPlaceholder = connectionString === 'postgresql://placeholder:placeholder@placeholder:5432/placeholder';
+  try {
+    const url = new URL(connectionString);
+    aiDbDebugTag = `${url.hostname}/${url.pathname.replace("/", "")}`;
+  } catch {
+    aiDbDebugTag = connectionString.slice(0, 50);
+  }
   
   if (isPlaceholder) {
     return createPlaceholderAiDb();
@@ -533,63 +540,54 @@ function cleanTextField(text: string | null | undefined): string {
  * 严格按照数据库结构_AI_SERVICE.md 中的 ai_logs 表字段规范
  * 失败仅告警，不阻断业务流程
  */
-export async function insertAiLog(entry: AiLogEntry): Promise<void> {
-  try {
-    // 检查环境变量配置
-    if (!process.env.AI_DATABASE_URL) {
-      console.warn("[AI-LOGS-INSERT] Skipped: AI_DATABASE_URL not configured", {
-        from: entry.from,
-        userId: entry.userId,
-        questionLength: entry.question.length,
-        answerLength: entry.answer.length,
-      });
-      return;
-    }
-
-    console.log(`[AI-LOGS-INSERT] Starting insert for from: ${entry.from}, question: "${entry.question.substring(0, 30)}..."`);
-
-    const cleanedQuestion = cleanTextField(entry.question);
-    const cleanedAnswer = cleanTextField(entry.answer);
-
-    // 严格参照数据库结构_AI_SERVICE.md 中的 ai_logs 字段名称与类型
-    await aiDb
-      .insertInto("ai_logs")
-      .values({
-        user_id: entry.userId,
-        question: cleanedQuestion,
-        answer: cleanedAnswer,
-        from: entry.from,
-        locale: entry.locale,
-        model: entry.model,
-        rag_hits: entry.ragHits ?? null,
-        safety_flag: entry.safetyFlag ?? "ok",
-        cost_est: entry.costEst ?? null,
-        sources: entry.sources ?? null,
-        ai_provider: entry.aiProvider ?? null,
-        cached: entry.cached ?? false,
-        context_tag: entry.contextTag ?? null,
-        created_at: new Date(),
-      })
-      .execute();
-
-    console.log(`[AI-LOGS-INSERT] Successfully inserted ai_log for from: ${entry.from}`, {
-      userId: entry.userId,
-      questionLength: entry.question.length,
-      answerLength: entry.answer.length,
-    });
-  } catch (e) {
-    // 日志写入失败仅告警，不阻断业务流程
-    console.error("[AI-LOGS-INSERT] ai_logs insert failed", {
-      error: (e as Error).message,
-      stack: (e as Error).stack,
+export async function insertAiLog(entry: AiLogEntry): Promise<number | null> {
+  // 检查环境变量配置
+  if (!process.env.AI_DATABASE_URL) {
+    console.warn("[AI-LOGS-INSERT] Skipped: AI_DATABASE_URL not configured", {
       from: entry.from,
       userId: entry.userId,
       questionLength: entry.question.length,
       answerLength: entry.answer.length,
+    });
+    throw new Error("AI_DATABASE_URL not configured");
+  }
+
+  console.log(`[AI-LOGS-INSERT] Starting insert for from: ${entry.from}, question: "${entry.question.substring(0, 30)}..."`);
+
+  const cleanedQuestion = cleanTextField(entry.question);
+  const cleanedAnswer = cleanTextField(entry.answer);
+
+  const inserted = await aiDb
+    .insertInto("ai_logs")
+    .values({
+      user_id: entry.userId,
+      question: cleanedQuestion,
+      answer: cleanedAnswer,
+      from: entry.from,
       locale: entry.locale,
       model: entry.model,
-    });
-  }
+      rag_hits: entry.ragHits ?? null,
+      safety_flag: entry.safetyFlag ?? "ok",
+      cost_est: entry.costEst ?? null,
+      sources: entry.sources ?? null,
+      ai_provider: entry.aiProvider ?? null,
+      cached: entry.cached ?? false,
+      context_tag: entry.contextTag ?? null,
+      created_at: new Date(),
+    })
+    .returning("id")
+    .executeTakeFirst();
+
+  const insertedId = inserted?.id ?? null;
+
+  console.log(`[AI-LOGS-INSERT] Successfully inserted ai_log for from: ${entry.from}`, {
+    userId: entry.userId,
+    questionLength: entry.question.length,
+    answerLength: entry.answer.length,
+    insertedId,
+  });
+
+  return insertedId;
 }
 
 export function getAiDbPoolStats(): AiDbPoolStats | null {
