@@ -159,6 +159,7 @@ async function callAiViaBackend(payload: any) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    credentials: "include",
   });
   return await res.json();
 }

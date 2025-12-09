@@ -350,6 +350,7 @@ export default function QuestionAIDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        credentials: "include",
       })
         .then(async (res) => {
           const data = await res.json().catch(() => null);
