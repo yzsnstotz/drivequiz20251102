@@ -182,7 +182,7 @@ function isBuildTime(): boolean {
 }
 
 function getAiConnectionString(): string {
-  const connectionString = process.env.AI_DATABASE_URL || process.env.DATABASE_URL;
+  const connectionString = process.env.AI_DATABASE_URL;
   
   if (!connectionString) {
     console.error('[AI DB] AI_DATABASE_URL is not configured!');
@@ -578,7 +578,7 @@ export async function insertAiLog(entry: AiLogEntry): Promise<number | null> {
     .returning("id")
     .executeTakeFirst();
 
-  const insertedId = inserted?.id ?? null;
+  const insertedId = inserted?.id != null ? Number(inserted.id) : null;
 
   console.log(`[AI-LOGS-INSERT] Successfully inserted ai_log for from: ${entry.from}`, {
     userId: entry.userId,
