@@ -182,7 +182,7 @@ function isBuildTime(): boolean {
 }
 
 function getAiConnectionString(): string {
-  const connectionString = process.env.AI_DATABASE_URL;
+  const connectionString = process.env.AI_DATABASE_URL || process.env.DATABASE_URL;
   
   if (!connectionString) {
     console.error('[AI DB] AI_DATABASE_URL is not configured!');
