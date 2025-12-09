@@ -106,7 +106,13 @@ export async function POST(req: NextRequest) {
   console.debug("[AI_DEBUG][cookie]", req.headers.get("cookie"));
 
   try {
-    const input = (await req.json().catch(() => ({}))) as AskBody;
+    let input: AskBody;
+    try {
+      input = (await req.json()) as AskBody;
+    } catch (err) {
+      console.error("[AI_ERROR][chat] Failed to parse JSON body:", err);
+      return NextResponse.json({ success: false, error: "Invalid request body" }, { status: 400 });
+    }
 
     // 简单校验
     if (!input.question || typeof input.question !== "string") {
@@ -146,7 +152,7 @@ export async function POST(req: NextRequest) {
       userId = await resolveUserIdForLogs(req);
       console.debug("[AI_DEBUG][resolvedUserId]", userId);
     } catch (err) {
-      console.error("[AI_ERROR][chat] Failed to resolve userId:", err);
+      console.error("[AI_ERROR][resolveUserId]", err);
       userId = null; // 降级为匿名，避免 502
     }
 
@@ -193,17 +199,10 @@ export async function POST(req: NextRequest) {
     // 原样返回上游成功体
     return NextResponse.json(upstreamJson, { status: 200 });
   } catch (e: any) {
-    console.error(`[web] /api/ai/chat error [${requestId}]`, {
-      message: e?.message,
-      name: e?.name,
-    });
+    console.error("[AI_ERROR][chat-route]", e);
     return NextResponse.json(
-      {
-        ok: false,
-        errorCode: "INTERNAL_ERROR",
-        message: e?.message ?? "AI 服务调用失败",
-      },
-      { status: 502 }
+      { success: false, error: "AI service unavailable", detail: String(e?.message ?? e) },
+      { status: 500 }
     );
   }
 }

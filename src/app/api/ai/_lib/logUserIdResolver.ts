@@ -5,10 +5,9 @@ import { getUserInfo } from "@/app/api/_lib/withUserAuth";
 
 function getCookieValue(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
-  const parts = cookieHeader.split(";").map((p) => p.trim());
-  const item = parts.find((p) => p.startsWith(name + "="));
-  if (!item) return null;
-  return decodeURIComponent(item.substring(name.length + 1));
+  const match = cookieHeader.match(new RegExp(`${name}=([^;]+)`));
+  if (!match || !match[1]) return null;
+  return decodeURIComponent(match[1]);
 }
 
 /**

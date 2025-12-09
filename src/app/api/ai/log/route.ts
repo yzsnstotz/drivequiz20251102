@@ -26,7 +26,13 @@ export async function POST(req: NextRequest) {
     // 调试：打印请求携带的 Cookie（用于排查 userId 解析为空的问题）
     console.debug("[AI_DEBUG][cookie]", req.headers.get("cookie"));
 
-    const body: LogRequestBody = (await req.json().catch(() => ({}))) as LogRequestBody;
+    let body: LogRequestBody;
+    try {
+      body = (await req.json()) as LogRequestBody;
+    } catch (err) {
+      console.error("[AI_ERROR][log] Failed to parse JSON body:", err);
+      return NextResponse.json({ success: false, error: "Invalid request body" }, { status: 400 });
+    }
     const { question, answer = "", from } = body;
 
     if (!question || typeof question !== "string") {
@@ -55,7 +61,7 @@ export async function POST(req: NextRequest) {
       userId = await resolveUserIdForLogs(req);
       console.debug("[AI_DEBUG][resolvedUserId]", userId);
     } catch (err) {
-      console.error("[AI_ERROR][log] Failed to resolve userId:", err);
+      console.error("[AI_ERROR][resolveUserId]", err);
       userId = null; // 降级为匿名，避免 502
     }
 
@@ -97,13 +103,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, insertedId, dbTag: aiDbDebugTag });
   } catch (err: any) {
-    console.error("[api/ai/log] insertAiLog failed", err);
+    console.error("[AI_ERROR][log-route]", err);
     return NextResponse.json(
-      {
-        ok: false,
-        errorCode: "INTERNAL_ERROR",
-        message: err?.message || "日志写入失败",
-      },
+      { success: false, error: "AI service unavailable", detail: String(err?.message ?? err) },
       { status: 500 }
     );
   }
