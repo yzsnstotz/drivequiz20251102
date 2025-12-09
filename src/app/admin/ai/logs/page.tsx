@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ApiError, apiFetch } from "@/lib/apiClient";
 
@@ -23,7 +23,7 @@ type LogItem = {
   safetyFlag: "ok" | "needs_human" | "blocked";
   costEstimate: number | null;
   sources: SourceInfo[];
-  from: string | null; // "study" | "question" | "chat" 等，标识来源
+  from: string | null; // chat | home_chat | study_chat | exam_chat | question 等
   aiProvider: string | null; // "openai" | "local" | "openrouter" | "openrouter_direct" | "openai_direct" | "cache"
   cached: boolean | null; // 是否是缓存
   cacheSource: string | null; // "json" | "database"，缓存来源
@@ -93,10 +93,78 @@ export default function AdminAiLogsPage() {
   });
 
   const [loading, setLoading] = useState(true);
+  const COLUMN_WIDTH_STORAGE_KEY = "ai_logs_column_widths";
   const [items, setItems] = useState<LogItem[]>([]);
   const [pagination, setPagination] = useState<ListResponse["pagination"] | null>(null);
   const [errorInfo, setErrorInfo] = useState<{ code: string; message: string } | null>(null);
   const [selectedSources, setSelectedSources] = useState<LogItem | null>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    id: 90,
+    userId: 260,
+    question: 280,
+    answer: 280,
+    locale: 100,
+    model: 140,
+    ragHits: 80,
+    from: 140,
+    provider: 160,
+    safety: 110,
+    cost: 120,
+    createdAt: 180,
+  });
+  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+
+  // 读取本地持久化的列宽
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = localStorage.getItem(COLUMN_WIDTH_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object") {
+          setColumnWidths((prev) => ({ ...prev, ...parsed }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // 持久化列宽到 localStorage（可选）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(COLUMN_WIDTH_STORAGE_KEY, JSON.stringify(columnWidths));
+    } catch {
+      // ignore
+    }
+  }, [columnWidths]);
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      const resizing = resizingRef.current;
+      if (!resizing) return;
+      const delta = e.clientX - resizing.startX;
+      setColumnWidths((prev) => {
+        const baseWidth = resizing.startWidth;
+        const nextWidth = Math.max(80, baseWidth + delta);
+        if (prev[resizing.key] === nextWidth) return prev;
+        return { ...prev, [resizing.key]: nextWidth };
+      });
+    };
+
+    const handleUp = () => {
+      resizingRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, []);
 
   // 同步 filters 到 URL
   useEffect(() => {
@@ -236,6 +304,36 @@ export default function AdminAiLogsPage() {
 
   const fmt = (v?: string | null) =>
     v ? new Date(v).toISOString().replace(".000Z", "Z").slice(0, 19).replace("T", " ") : "—";
+
+  const beginResize = (key: string, e: React.MouseEvent) => {
+    const th = (e.currentTarget as HTMLElement).parentElement;
+    const fallbackWidth = th?.getBoundingClientRect()?.width ?? 150;
+    const width = columnWidths[key] ?? fallbackWidth;
+    resizingRef.current = { key, startX: e.clientX, startWidth: width };
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const getColumnStyle = (key: string) => {
+    const width = columnWidths[key];
+    return width ? { width, minWidth: width } : undefined;
+  };
+
+  const formatFromLabel = (value: string | null) => {
+    if (!value) return "—";
+    const mapping: Record<string, string> = {
+      chat: "首页聊天",
+      home_chat: "首页聊天",
+      question: "题目解析",
+      study_chat: "学科学习助手",
+      exam_chat: "考试助手",
+    };
+    return mapping[value] ?? `其他（${value}）`;
+  };
+
+  const clearUserFilter = () => {
+    setFilters((f) => ({ ...f, userId: "", page: 1 }));
+  };
 
   const safetyFlagColors: Record<LogItem["safetyFlag"], string> = {
     ok: "bg-green-100 text-green-800",
@@ -401,6 +499,19 @@ export default function AdminAiLogsPage() {
         </div>
       </form>
 
+      {filters.userId && (
+        <div className="flex items-center flex-wrap gap-2 text-sm bg-blue-50 border border-blue-100 text-blue-700 px-3 py-2 rounded">
+          <span className="font-medium">当前过滤：</span>
+          <span className="font-mono break-all">userId = {filters.userId}</span>
+          <button
+            onClick={clearUserFilter}
+            className="text-blue-700 underline-offset-2 hover:underline"
+          >
+            清除用户过滤
+          </button>
+        </div>
+      )}
+
       {/* 列表 */}
       {loading ? (
         <div className="p-8 text-center text-gray-500">加载中...</div>
@@ -408,41 +519,123 @@ export default function AdminAiLogsPage() {
         <>
           <div className="border rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left">ID</th>
-                    <th className="px-4 py-2 text-left">用户ID</th>
-                    <th className="px-4 py-2 text-left">问题</th>
-                    <th className="px-4 py-2 text-left">回答</th>
-                    <th className="px-4 py-2 text-left">语言</th>
-                    <th className="px-4 py-2 text-left">模型</th>
-                    <th className="px-4 py-2 text-left">RAG</th>
-                    <th className="px-4 py-2 text-left">来源</th>
-                    <th className="px-4 py-2 text-left">安全</th>
-                    <th className="px-4 py-2 text-left">成本</th>
-                    <th className="px-4 py-2 text-left">时间</th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("id")}>
+                      <span>ID</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("id", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("userId")}>
+                      <span>用户ID</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("userId", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("question")}>
+                      <span>问题</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("question", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("answer")}>
+                      <span>回答</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("answer", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("locale")}>
+                      <span>语言</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("locale", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("model")}>
+                      <span>模型</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("model", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("ragHits")}>
+                      <span>RAG</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("ragHits", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("from")}>
+                      <span>来源</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("from", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("provider")}>
+                      <span>Provider</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("provider", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("safety")}>
+                      <span>安全</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("safety", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("cost")}>
+                      <span>成本</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("cost", e)}
+                      />
+                    </th>
+                    <th className="relative px-4 py-2 text-left" style={getColumnStyle("createdAt")}>
+                      <span>时间</span>
+                      <span
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none"
+                        onMouseDown={(e) => beginResize("createdAt", e)}
+                      />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
                         暂无数据
                       </td>
                     </tr>
                   ) : (
                     items.map((item) => (
                       <tr key={item.id} className="border-t hover:bg-gray-50">
-                        <td className="px-4 py-2 text-xs">{item.id}</td>
-                        <td className="px-4 py-2 text-xs font-mono" title={item.userId || "匿名用户"}>
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("id")}>{item.id}</td>
+                        <td
+                          className="px-4 py-2 text-xs font-mono"
+                          style={getColumnStyle("userId")}
+                          title={item.userId || "匿名用户"}
+                        >
                           {item.userId ? (
-                            <span className="text-blue-600">{item.userId.slice(0, 8)}...</span>
+                            <button
+                              onClick={() => setFilters((f) => ({ ...f, userId: item.userId || "", page: 1 }))}
+                              className="text-blue-600 hover:underline break-all text-left"
+                            >
+                              {item.userId}
+                            </button>
                           ) : (
                             <span className="text-gray-400">匿名</span>
                           )}
                         </td>
-                        <td className="px-4 py-2 max-w-xs truncate" title={item.question}>
+                        <td className="px-4 py-2 max-w-xs truncate" style={getColumnStyle("question")} title={item.question}>
                           {/* 如果是习题调用，在问题开头添加标识 */}
                           {item.from === "question" ? (
                             <span className="inline-flex items-center gap-1">
@@ -453,11 +646,11 @@ export default function AdminAiLogsPage() {
                             item.question
                           )}
                         </td>
-                        <td className="px-4 py-2 max-w-xs truncate" title={item.answer || ""}>
+                        <td className="px-4 py-2 max-w-xs truncate" style={getColumnStyle("answer")} title={item.answer || ""}>
                           {item.answer || "—"}
                         </td>
-                        <td className="px-4 py-2 text-xs">{item.locale || "—"}</td>
-                        <td className="px-4 py-2 text-xs">
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("locale")}>{item.locale || "—"}</td>
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("model")}>
                           {/* 如果是缓存，显示"Cached"，否则显示模型名称 */}
                           {item.cached ? (
                             <span className="text-orange-600 font-medium">Cached</span>
@@ -465,31 +658,23 @@ export default function AdminAiLogsPage() {
                             item.model || "—"
                           )}
                         </td>
-                        <td className="px-4 py-2 text-xs">{item.ragHits}</td>
-                        <td className="px-4 py-2 text-xs">
-                          {/* 显示AI服务提供商和缓存来源 */}
-                          {item.cached ? (
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-orange-600 font-medium">缓存</span>
-                              {item.cacheSource && (
-                                <span className="text-gray-500 text-[10px]">
-                                  {item.cacheSource === "json" ? "JSON缓存" : "数据库缓存"}
-                                </span>
-                              )}
-                            </div>
-                          ) : item.aiProvider ? (
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("ragHits")}>{item.ragHits}</td>
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("from")}>
+                          <span className="inline-flex items-center gap-2">
+                            <span className="whitespace-nowrap">{formatFromLabel(item.from)}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("provider")}>
+                          <div className="flex flex-col gap-0.5">
                             <span className="text-blue-600">
-                              {item.aiProvider === "openai" ? "OpenAI" :
-                               item.aiProvider === "local" ? "Local" :
-                               item.aiProvider === "openrouter" ? "OpenRouter" :
-                               item.aiProvider === "openrouter_direct" ? "OpenRouter Direct" :
-                               item.aiProvider === "openai_direct" ? "OpenAI Direct" :
-                               item.aiProvider}
+                              {item.aiProvider || "—"}
                             </span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                          {/* 来源按钮（如果有sources） */}
+                            {item.cached && (
+                              <span className="text-orange-600 text-[11px] font-medium">
+                                缓存{item.cacheSource ? ` (${item.cacheSource})` : ""}
+                              </span>
+                            )}
+                          </div>
                           {item.sources.length > 0 && (
                             <button
                               onClick={() => setSelectedSources(item)}
@@ -499,17 +684,17 @@ export default function AdminAiLogsPage() {
                             </button>
                           )}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-2" style={getColumnStyle("safety")}>
                           <span
                             className={`px-2 py-1 rounded text-xs ${safetyFlagColors[item.safetyFlag]}`}
                           >
                             {safetyFlagLabels[item.safetyFlag]}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-xs">
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("cost")}>
                           {item.costEstimate != null ? `$${item.costEstimate.toFixed(4)}` : "—"}
                         </td>
-                        <td className="px-4 py-2 text-xs">{fmt(item.createdAt)}</td>
+                        <td className="px-4 py-2 text-xs" style={getColumnStyle("createdAt")}>{fmt(item.createdAt)}</td>
                       </tr>
                     ))
                   )}

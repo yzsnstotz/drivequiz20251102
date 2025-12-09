@@ -154,6 +154,15 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npx tsx scripts/test-ai-database-connection.ts
 - [x] 数据库连接测试通过（NODE_TLS_REJECT_UNAUTHORIZED=0 直连 Supabase）
 - [ ] `ai_config` 表已创建（如果不存在）
 
+## 🆕 2025-12-09 · AI-LOGS-20251209-UX-SOURCE
+- 模块：AI 日志展示 + 学习/考试 AI 助手
+- 修复：
+  - 后台 AI 日志表支持列宽拖动、userId 点击过滤，并新增来源标签映射（首页/学习/考试）。
+  - 学科学习 / 考试页面 AI 助手调用统一写入 `ai_logs`（from=study_chat/exam_chat），失败不阻断回答。
+  - 管理端查询返回 from/aiProvider/cached，并在 CSV 中输出。
+- 执行报告：`docs/问题修复/2025-12-09/AI问答日志UX与来源增强/执行报告/AI问答日志UX与来源增强_执行报告.md`
+- 执行报告 v2（补充落库查询）：`docs/问题修复/2025-12-09/AI问答日志UX与来源增强/执行报告/AI问答日志UX与来源增强_执行报告_v2.md`
+
 ## 🆕 2025-12-08 · AI-LOGS-20251207-FULL
 - 模块：前台聊天 + AI 日志 + 后台管理
 - 根因：存在重复的日志写入代码，接口不统一，缺少环境变量检查，导致写入逻辑不稳定；此前报告未做真实落库验证。

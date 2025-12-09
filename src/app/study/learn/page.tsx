@@ -817,6 +817,9 @@ function StudyModePageContent() {
           question={currentQuestion}
           isOpen={showAIDialog}
           onClose={() => setShowAIDialog(false)}
+          fromTag="study_chat"
+          contextTag="study"
+          contextMeta={{ licenseType, stage }}
         />
       )}
 

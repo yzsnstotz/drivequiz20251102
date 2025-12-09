@@ -55,6 +55,9 @@ interface QuestionAIDialogProps {
   question: Question;
   isOpen: boolean;
   onClose: () => void;
+  fromTag?: string;
+  contextTag?: string;
+  contextMeta?: Record<string, string | number | boolean | null | undefined>;
 }
 
 interface Message {
@@ -73,6 +76,9 @@ export default function QuestionAIDialog({
   question,
   isOpen,
   onClose,
+  fromTag = "question",
+  contextTag,
+  contextMeta,
 }: QuestionAIDialogProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -86,6 +92,7 @@ export default function QuestionAIDialog({
   const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
   const { isActivated } = useAIActivation();
   const router = useRouter();
+  const resolvedContextTag = contextTag ?? fromTag;
 
   // 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
   const cleanModelName = (model: string | undefined): string | undefined => {
@@ -152,7 +159,7 @@ export default function QuestionAIDialog({
     if (isOpen) {
       getCurrentAiProvider()
         .then((config) => {
-          console.log("[QuestionAIDialog] 获取到 provider 配置:", {
+          console.log("[AI Provider Selected][QuestionAIDialog]", {
             provider: config.provider,
             model: config.model,
           });
@@ -336,6 +343,18 @@ export default function QuestionAIDialog({
     return question.correctAnswer;
   };
 
+  const logAiConversation = async (payload: any) => {
+    try {
+      await fetch("/api/ai/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      console.warn("[QuestionAIDialog] 写入 AI 日志失败", error);
+    }
+  };
+
   // 初始化本地explanation（显示本地解析和引导消息）
   const initializeLocalExplanation = () => {
     const newMessages: Message[] = [];
@@ -460,6 +479,7 @@ export default function QuestionAIDialog({
       
       // 判断是首次提问还是用户追问
       const isFollowUpQuestion = !!userQuestion; // 如果userQuestion存在，说明是用户提问
+      const localeForAI = getLocaleForAI();
       
       // 构建问题文本：如果用户提问，需要包含题目信息和用户问题
       let questionText: string;
@@ -634,12 +654,17 @@ export default function QuestionAIDialog({
         isFollowUp: isFollowUpQuestion,
         currentProviderState: currentProvider, // 调试：显示当前状态
       });
+      console.log("[AI Provider Selected][QuestionAIDialog] 即将调用", {
+        provider: providerToUse,
+        model: currentModel,
+        from: fromTag,
+      });
       
       const payload = await callAiDirect({
         provider: providerToUse,
-          question: questionText,
-          locale: getLocaleForAI(), // 使用BCP-47格式的locale
-          scene: "question_explanation",
+        question: questionText,
+        locale: localeForAI, // 使用BCP-47格式的locale
+        scene: "question_explanation",
         model: currentModel,
         // questionHash 不再传递给 ai-service，因为 ai-service 不处理缓存
         // 缓存逻辑现在完全由前端处理
@@ -656,8 +681,8 @@ export default function QuestionAIDialog({
         }
         
         // 确保 sources 包含耗时信息（如果 ai-service 没有返回，前端计算）
-        let sources = payload.data.sources || [];
-        const hasDurationInfo = sources.some((s: any) => s.title === "处理耗时");
+        const sources = payload.data.sources || [];
+        const hasDurationInfo = Array.isArray(sources) && sources.some((s: any) => s.title === "处理耗时");
         if (!hasDurationInfo) {
           // 如果 ai-service 没有返回耗时信息，前端不计算（因为前端无法准确计算服务端处理时间）
           // 但保留 sources 数组，以便后续显示其他来源信息
@@ -667,6 +692,8 @@ export default function QuestionAIDialog({
         const actualProvider = payload.data.cached 
           ? "cached" 
           : (payload.data.aiProvider || providerToUse); // 使用响应中的 aiProvider，如果没有则使用调用时的 provider
+        const logSources = Array.isArray(sources) ? sources : [];
+        const ragHitsForLog = logSources.length;
 
         // 在显示AI解析之前，先显示正确答案提示（仅首次提问时显示）
         if (!isFollowUpQuestion) {
@@ -694,6 +721,38 @@ export default function QuestionAIDialog({
           },
         };
         setMessages((prev) => [...prev, newMessage]);
+        
+        const contextForLog = {
+          ...(contextMeta || {}),
+          questionId: question.id,
+          questionHash: question.hash,
+          from: fromTag,
+        };
+        const sourcesForLog = [...logSources];
+        if (Object.keys(contextForLog).length > 0) {
+          sourcesForLog.push({
+            title: "context",
+            url: "",
+            snippet: JSON.stringify(contextForLog).slice(0, 500),
+          });
+        }
+        const safetyFlagForLog = (payload.data as any)?.safetyFlag ?? "ok";
+        const costEst = (payload.data as any)?.costEstimate?.approxUsd ?? null;
+        void logAiConversation({
+          userId: getStoredUserId(),
+          question: questionText,
+          answer,
+          from: fromTag,
+          locale: localeForAI,
+          model: payload.data.model,
+          ragHits: ragHitsForLog,
+          safetyFlag: safetyFlagForLog,
+          costEst,
+          sources: sourcesForLog,
+          aiProvider: actualProvider,
+          cached: payload.data.cached ?? false,
+          contextTag: resolvedContextTag,
+        });
         
         // 如果是首次提问且题目有图片，添加提示消息
         if (!isFollowUpQuestion && question.image) {

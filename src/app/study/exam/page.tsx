@@ -1031,6 +1031,9 @@ function ExamModePageContent() {
           question={currentQuestion}
           isOpen={showAIDialog}
           onClose={() => setShowAIDialog(false)}
+          fromTag="exam_chat"
+          contextTag="exam"
+          contextMeta={{ licenseType, stage }}
         />
       )}
       </div>

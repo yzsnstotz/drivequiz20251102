@@ -29,6 +29,8 @@ interface CachedProviderConfig {
  * 缓存键
  */
 const CACHE_KEY = "AI_PROVIDER_CONFIG_CACHE";
+const LEGACY_PROVIDER_KEY = "ai_provider";
+const LEGACY_MODEL_KEY = "ai_model";
 
 /**
  * 缓存过期时间（毫秒）：5分钟
@@ -53,6 +55,57 @@ function getCachedConfig(): CachedProviderConfig | null {
     return config;
   } catch (error) {
     console.warn("[getCurrentAiProvider] 读取缓存失败:", error);
+    return null;
+  }
+}
+
+/**
+ * 读取用户本地选择（兼容旧键和值结构）
+ * - 优先读取 localStorage("ai_provider")；支持 string 或 JSON { provider, model }
+ * - 兼容单独的 localStorage("ai_model")
+ */
+function readLegacySelection(): AiProviderConfig | null {
+  if (typeof window === "undefined") return null;
+  try {
+    let provider: string | null = null;
+    let model: string | undefined = undefined;
+
+    const rawProvider = localStorage.getItem(LEGACY_PROVIDER_KEY);
+    const rawModel = localStorage.getItem(LEGACY_MODEL_KEY);
+
+    if (rawProvider) {
+      // 兼容 JSON 结构 { provider, model }
+      try {
+        const parsed = JSON.parse(rawProvider);
+        if (parsed && typeof parsed === "object") {
+          provider = parsed.provider ?? null;
+          model = parsed.model ?? rawModel ?? undefined;
+        } else if (typeof parsed === "string") {
+          provider = parsed;
+          model = rawModel ?? undefined;
+        }
+      } catch {
+        provider = rawProvider;
+        model = rawModel ?? undefined;
+      }
+    }
+
+    if (!provider) return null;
+
+    const normalized = mapDbProviderToClientProvider(provider);
+    if (normalized !== "local" && normalized !== "render") {
+      console.warn("[getCurrentAiProvider] 本地 provider 非法，忽略:", provider);
+      return null;
+    }
+
+    const config: AiProviderConfig = { provider: normalized, model };
+    console.log("[getCurrentAiProvider] 使用本地存储的 provider", {
+      provider: config.provider,
+      model: config.model,
+    });
+    return config;
+  } catch (error) {
+    console.warn("[getCurrentAiProvider] 读取本地 provider 失败:", error);
     return null;
   }
 }
@@ -104,6 +157,12 @@ function saveToCache(config: AiProviderConfig): void {
  * @returns 当前配置的 provider 和 model
  */
 export async function getCurrentAiProvider(): Promise<AiProviderConfig> {
+  // 0. 用户本地选择优先（符合“用户选择优先，缺失才 fallback”）
+  const localSelection = readLegacySelection();
+  if (localSelection) {
+    return localSelection;
+  }
+
   // 1. 检查缓存
   const cached = getCachedConfig();
   if (cached && !isCacheExpired(cached)) {
@@ -170,6 +229,8 @@ export async function getCurrentAiProvider(): Promise<AiProviderConfig> {
       };
     }
 
+    // 只有完全没有数据时才兜底 render，避免覆盖用户选择
+    console.warn("[getCurrentAiProvider] 无缓存且 API 失败，使用兜底 render");
     return { provider: "render", model: "gpt-4o-mini" };
   } catch (error) {
     console.warn("[getCurrentAiProvider] 获取配置失败，尝试使用缓存:", error);
@@ -184,7 +245,8 @@ export async function getCurrentAiProvider(): Promise<AiProviderConfig> {
         model: cached.model,
       };
     }
-    // 没有缓存，使用默认值
+    // 没有缓存也没有用户选择，才兜底 render
+    console.warn("[getCurrentAiProvider] 无缓存无用户选择，使用兜底 render");
     return { provider: "render", model: "gpt-4o-mini" };
   }
 }

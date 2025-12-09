@@ -323,7 +323,7 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
   useEffect(() => {
     getCurrentAiProvider()
       .then((config) => {
-        console.log("[AIPage] 获取到 provider 配置（使用缓存机制）:", {
+        console.log("[AI Provider Selected][AIPage]", {
           provider: config.provider,
           model: config.model,
           timestamp: new Date().toISOString(),
@@ -504,6 +504,12 @@ const AIPageContent: React.FC<AIPageProps> = ({ onBack }) => {
         userLanguage: language,
         userLocale,
         timestamp: new Date().toISOString(),
+      });
+
+      // 记录当前选择的 provider/model，便于回归排查
+      console.log("[AI Provider Selected][AIPage]", {
+        provider: currentProvider,
+        model: currentModel,
       });
 
       // 改为调用后端 API (via callAiViaBackend) 以支持日志记录
