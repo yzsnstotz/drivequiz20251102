@@ -77,8 +77,7 @@ export default function QuestionAIDialog({
   isOpen,
   onClose,
   fromTag = "question",
-  contextTag,
-  contextMeta,
+  contextMeta = {},
 }: QuestionAIDialogProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -92,8 +91,6 @@ export default function QuestionAIDialog({
   const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
   const { isActivated } = useAIActivation();
   const router = useRouter();
-  const resolvedContextTag = contextTag ?? fromTag;
-
   // 清理模型名称，移除日期信息（如 gpt-4o-mini-2024-07-18 -> gpt-4o-mini）
   const cleanModelName = (model: string | undefined): string | undefined => {
     if (!model) return undefined;
@@ -765,7 +762,7 @@ export default function QuestionAIDialog({
           sources: sourcesForLog,
           aiProvider: actualProvider,
           cached: payload.data.cached ?? false,
-          contextTag: resolvedContextTag,
+          // contextTag 不再从前端传递，统一由后端决定（当前版本固定 null）
         });
         
         // 如果是首次提问且题目有图片，添加提示消息

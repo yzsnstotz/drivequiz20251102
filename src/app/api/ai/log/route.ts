@@ -58,12 +58,12 @@ export async function POST(req: NextRequest) {
     });
     console.log("[/api/ai/log] debug payload", {
       sources: body.sources,
-      contextTag: body.contextTag,
       ragHits: body.ragHits,
       costEst: body.costEst,
       cached: body.cached,
     });
 
+    const contextTag: string | null = null;
     const insertedId = await insertAiLog({
       userId,
       question: String(question),
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       sources: null,
       aiProvider: body.aiProvider ?? null,
       cached: body.cached ?? false,
-      contextTag: body.contextTag ?? null,
+      contextTag,
     });
 
     console.log("[/api/ai/log] inserted", {

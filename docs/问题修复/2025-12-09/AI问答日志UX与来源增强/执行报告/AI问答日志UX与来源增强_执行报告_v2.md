@@ -40,3 +40,4 @@
 
 ## 5. 后续建议
 - 若需真实回答验证，请在 AI-Service 可用时重试（现有 `/api/ai/log` 已可落库，主要受上游 AI 配额/内容限制）。
+- context_tag 处理：当前版本在前端不再传递 contextTag，后端 `/api/ai/log` 写入时强制 context_tag=null；insertAiLog 侧 normalize JSON，避免 context_tag/sources 等字段触发 JSON/约束错误。约束定义（ai_logs_context_tag_check）因无直连数据库权限暂未查询到具体枚举，待有权限时补录原文。
