@@ -23,6 +23,9 @@ type LogRequestBody = {
 
 export async function POST(req: NextRequest) {
   try {
+    // 调试：打印请求携带的 Cookie（用于排查 userId 解析为空的问题）
+    console.debug("[AI_DEBUG][cookie]", req.headers.get("cookie"));
+
     const body: LogRequestBody = (await req.json().catch(() => ({}))) as LogRequestBody;
     const { question, answer = "", from } = body;
 
@@ -48,6 +51,7 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = await resolveUserIdForLogs(req);
+    console.debug("[AI_DEBUG][resolvedUserId]", userId);
 
     console.log("[/api/ai/log] inserting", {
       dbTag: aiDbDebugTag,

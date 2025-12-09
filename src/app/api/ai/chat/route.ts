@@ -100,6 +100,9 @@ export async function POST(req: NextRequest) {
 
   console.log(`[API-ENTRY] /api/ai/chat called with requestId: ${requestId}`);
 
+  // 调试：打印请求携带的 Cookie（用于排查 userId 解析为空的问题）
+  console.debug("[AI_DEBUG][cookie]", req.headers.get("cookie"));
+
   try {
     const input = (await req.json().catch(() => ({}))) as AskBody;
 
@@ -136,6 +139,7 @@ export async function POST(req: NextRequest) {
     // === 成功场景：落库（失败仅告警） ===
     const data = upstreamJson.data as AiServiceDataA & AiServiceDataB;
     const userId = await resolveUserIdForLogs(req);
+    console.debug("[AI_DEBUG][resolvedUserId]", userId);
 
     // rag 命中：优先 sources 数量；若无 sources，用 reference 是否存在推断 0/1
     const ragHits = Array.isArray((data as AiServiceDataA).sources)
