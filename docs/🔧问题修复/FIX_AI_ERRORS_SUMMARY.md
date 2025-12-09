@@ -160,6 +160,7 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npx tsx scripts/test-ai-database-connection.ts
   - 后台 AI 日志表支持列宽拖动、userId 点击过滤，并新增来源标签映射（首页/学习/考试）。
   - 学科学习 / 考试页面 AI 助手调用统一写入 `ai_logs`（from=study_chat/exam_chat），失败不阻断回答。
   - 管理端查询返回 from/aiProvider/cached，并在 CSV 中输出。
+- JSON 兜底：`/api/ai/log` 将 JSON 字段统一置 null，`insertAiLog` normalize 防止 “invalid input syntax for type json”；无登录态直调 `/api/ai/log` 已实测 insertedId=725/726/727（chat/study_chat/exam_chat）。
 - 执行报告：`docs/问题修复/2025-12-09/AI问答日志UX与来源增强/执行报告/AI问答日志UX与来源增强_执行报告.md`
 - 执行报告 v2（补充落库查询）：`docs/问题修复/2025-12-09/AI问答日志UX与来源增强/执行报告/AI问答日志UX与来源增强_执行报告_v2.md`
 

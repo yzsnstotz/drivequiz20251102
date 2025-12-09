@@ -2,29 +2,22 @@
 
 - **Issue ID**：AI-LOGS-20251209-UX-SOURCE
 - **日期**：2025-12-09
-- **执行方式**：本地脚本直连 AI DB（使用既有 `insertAiLog`），AI-Service 因内容拦截 + Gemini 免费额配额用尽无法返回有效回答，故以人工占位回答完成写库验证。
-- **脚本位置**：临时 `/tmp/ai-log-insert.ts`（调用 `insertAiLog`，sources 为空，contextTag=null，userId=null）。
+- **执行方式**：无登录态直接调用线上 `/api/ai/log`（真实链路写库）；AI-Service 回答使用占位文本，重点验证落库与 JSON 兜底。
 
 ## 1. 三入口写库与 SQL 结果
-- 插入问题：
-  - 首页：`首页日志验证 2025-12-09-A`（from=`chat`）
-  - 学科学习：`学习助手日志验证 2025-12-09-B`（from=`study_chat`）
-  - 考试页面：`考试助手日志验证 2025-12-09-C`（from=`exam_chat`）
-- SQL：
+- 直接调用 `/api/ai/log`（无登录态）：
+  - 首页：`首页日志验证 2025-12-09-A (no-login)` → insertedId=725
+  - 学科学习：`学习助手日志验证 2025-12-09-B (no-login)` → insertedId=726
+  - 考试页面：`考试助手日志验证 2025-12-09-C (no-login)` → insertedId=727
+  - 返回示例：`{"ok":true,"insertedId":..., "dbTag":"aws-1-ap-northeast-1.pooler.supabase.com/postgres"}`
+- SQL（参考）：
   ```sql
   SELECT id, user_id, question, "from", created_at
   FROM ai_logs
-  WHERE question LIKE '%2025-12-09-%'
-  ORDER BY created_at DESC;
+  WHERE id in (725,726,727)
+  ORDER BY id DESC;
   ```
-- 查询结果（真实数据库返回）：
-  | id  | user_id | question                     | from       | created_at (UTC)       |
-  | --- | ------- | --------------------------- | ---------- | ---------------------- |
-  | 721 | null    | 考试助手日志验证 2025-12-09-C | exam_chat  | 2025-12-08T22:06:45.203Z |
-  | 720 | null    | 学习助手日志验证 2025-12-09-B | study_chat | 2025-12-08T22:06:45.102Z |
-  | 719 | null    | 首页日志验证 2025-12-09-A     | chat       | 2025-12-08T22:06:41.274Z |
-
-> 说明：AI-Service 先后因内容敏感拦截 / Gemini 免费额度耗尽，未能获取真实回答；为完成落库链路验证，改用占位回答落库，并在日志中注明 `aiProvider=manual`，不会影响来源字段与前端展示逻辑。
+> 说明：路由层已将 JSON 字段统一置 null，insertAiLog 侧 normalize（仅 object/array/null；字符串尝试 parse 失败则置 null），避免 “invalid input syntax for type json”。
 
 ## 2. from 字段确认
 - 首页：`chat`
@@ -46,4 +39,4 @@
 - `npm run build`：通过（同上既有警告，未新增阻塞）。
 
 ## 5. 后续建议
-- 若需真实回答验证，请在 AI-Service 可用时重试 `/tmp/ai-log-run.ts`（需解决内容安全或更换非 Gemini 模型配额）。
+- 若需真实回答验证，请在 AI-Service 可用时重试（现有 `/api/ai/log` 已可落库，主要受上游 AI 配额/内容限制）。
