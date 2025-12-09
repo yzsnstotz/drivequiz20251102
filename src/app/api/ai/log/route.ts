@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertAiLog, aiDbDebugTag } from "@/lib/aiDb";
-import { getUserInfo } from "@/app/api/_lib/withUserAuth";
+import { resolveUserIdForLogs } from "@/app/api/ai/_lib/logUserIdResolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,8 +47,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userInfo = await getUserInfo(req);
-    const userId = body.userId ?? userInfo?.userId ?? null; // 前端不可伪造，但保留 body.userId 兼容旧调用
+    const userId = await resolveUserIdForLogs(req);
 
     console.log("[/api/ai/log] inserting", {
       dbTag: aiDbDebugTag,

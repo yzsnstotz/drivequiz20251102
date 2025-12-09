@@ -1,6 +1,7 @@
 // apps/web/app/api/ai/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { insertAiLog } from "@/lib/aiDb";
+import { resolveUserIdForLogs } from "@/app/api/ai/_lib/logUserIdResolver";
 
 // 运行配置（动态渲染，服务端执行）
 export const runtime = "nodejs";
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
 
     // === 成功场景：落库（失败仅告警） ===
     const data = upstreamJson.data as AiServiceDataA & AiServiceDataB;
+    const userId = await resolveUserIdForLogs(req);
 
     // rag 命中：优先 sources 数量；若无 sources，用 reference 是否存在推断 0/1
     const ragHits = Array.isArray((data as AiServiceDataA).sources)
@@ -163,7 +165,7 @@ export async function POST(req: NextRequest) {
     const scene = "chat";
 
     await insertAiLog({
-      userId: input.userId ?? null,
+      userId,
       question: input.question,
       answer: data.answer,
       from: scene, // 使用统一的 from 字段
