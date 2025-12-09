@@ -56,6 +56,13 @@ export async function POST(req: NextRequest) {
       userId,
       qSample: String(question).slice(0, 30),
     });
+    console.log("[/api/ai/log] debug payload", {
+      sources: body.sources,
+      contextTag: body.contextTag,
+      ragHits: body.ragHits,
+      costEst: body.costEst,
+      cached: body.cached,
+    });
 
     const insertedId = await insertAiLog({
       userId,
@@ -67,7 +74,8 @@ export async function POST(req: NextRequest) {
       ragHits: body.ragHits ?? null,
       safetyFlag: body.safetyFlag ?? "ok",
       costEst: body.costEst ?? null,
-      sources: body.sources ?? null,
+      // 路由层简单埋点，JSON 字段统一置 null，避免非法 JSON 触发 500
+      sources: null,
       aiProvider: body.aiProvider ?? null,
       cached: body.cached ?? false,
       contextTag: body.contextTag ?? null,

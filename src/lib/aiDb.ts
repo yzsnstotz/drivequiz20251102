@@ -535,6 +535,21 @@ function cleanTextField(text: string | null | undefined): string {
   return text.trim();
 }
 
+// 统一处理 JSON/JSONB 入参，防止传入非 JSON 类型导致数据库错误
+function normalizeJsonValue(value: unknown): object | unknown[] | null {
+  if (value == null) return null;
+  if (typeof value === "object") return value as object;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "object" ? (parsed as object) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 /**
  * 统一的 AI 日志写入函数
  * 严格按照数据库结构_AI_SERVICE.md 中的 ai_logs 表字段规范
@@ -556,6 +571,7 @@ export async function insertAiLog(entry: AiLogEntry): Promise<number | null> {
 
   const cleanedQuestion = cleanTextField(entry.question);
   const cleanedAnswer = cleanTextField(entry.answer);
+  const normalizedSources = normalizeJsonValue(entry.sources ?? null);
 
   const inserted = await aiDb
     .insertInto("ai_logs")
@@ -569,7 +585,7 @@ export async function insertAiLog(entry: AiLogEntry): Promise<number | null> {
       rag_hits: entry.ragHits ?? null,
       safety_flag: entry.safetyFlag ?? "ok",
       cost_est: entry.costEst ?? null,
-      sources: entry.sources ?? null,
+      sources: normalizedSources,
       ai_provider: entry.aiProvider ?? null,
       cached: entry.cached ?? false,
       context_tag: entry.contextTag ?? null,
