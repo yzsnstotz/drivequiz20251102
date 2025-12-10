@@ -156,6 +156,21 @@ const ActivationModal: React.FC<ActivationModalProps> = ({ onSubmit, onClose }) 
           </div>
         </form>
 
+        {/* 学生免费入口 */}
+        <div className="mt-4 bg-blue-50 dark:bg-gray-800 border border-blue-100 dark:border-gray-700 rounded-lg p-3 text-sm flex items-center justify-between">
+          <div className="text-gray-700 dark:text-gray-100">{t('activation.studentHint')}</div>
+          <button
+            type="button"
+            className="text-blue-600 hover:text-blue-800 text-sm"
+            onClick={() => {
+              onClose();
+              router.push("/student/ai-apply");
+            }}
+          >
+            {t('activation.studentApply')}
+          </button>
+        </div>
+
         {/* 联系信息区域 */}
         {(businessInfo || purchaseInfo) && (
           <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">

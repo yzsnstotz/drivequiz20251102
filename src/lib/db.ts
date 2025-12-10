@@ -404,6 +404,31 @@ interface UserTable {
 }
 
 // ------------------------------------------------------------
+// 1️⃣2️⃣ student_verifications 表结构定义
+// ------------------------------------------------------------
+interface StudentVerificationTable {
+  id: Generated<string>;
+  user_id: string;
+  full_name: string;
+  nationality: string;
+  email: string;
+  phone_number: string;
+  channel_source: string;
+  school_name: string;
+  study_period_from: Date | null;
+  study_period_to: Date | null;
+  admission_docs: any;
+  status: "pending" | "approved" | "rejected" | "expired";
+  review_note: string | null;
+  reviewer_id: string | null;
+  reviewed_at: Date | null;
+  valid_from: Date | null;
+  valid_until: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+// ------------------------------------------------------------
 // 1️⃣3️⃣ user_behaviors 表结构定义
 // ------------------------------------------------------------
 interface UserBehaviorTable {
@@ -738,6 +763,7 @@ export interface Database {
   question_polish_history: QuestionPolishHistoryTable;
   batch_process_tasks: BatchProcessTaskTable;
   question_processing_task_items: QuestionProcessingTaskItemsTable;
+  student_verifications: StudentVerificationTable;
 }
 
 // ------------------------------------------------------------
