@@ -21,3 +21,4 @@
 
 ### 风险与同步
 - 如新增需要登录的前缀，需同步 `isAuthRequiredPath` 使用者（AuthGuard/middleware 已共用配置）。
+- 新增会话刷新机制：SessionContext 增加缓存过期与聚焦刷新，AuthGuard 进入保护路由时强制拉取最新 session，登出统一刷新，避免伪登录导致误跳 `/activation`。

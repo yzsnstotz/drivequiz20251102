@@ -14,13 +14,22 @@ const LICENSE_PREFERENCE_CHECKED_KEY = 'license_preference_checked';
 const LICENSE_PREFERENCE_SKIPPED_KEY = 'license_preference_skipped';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { data: session, status, isAuthenticatedStrict } = useAppSession();
+  const { data: session, status, isAuthenticatedStrict, fetchSession } = useAppSession();
   const router = useRouter();
   const pathname = usePathname();
   const hasCheckedRef = useRef(false);
   const lastCheckTimeRef = useRef<number>(0);
   const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5 分钟
   const requiresAuth = isAuthRequiredPath(pathname);
+  const hasRefreshedOnceRef = useRef(false);
+
+  // 进入需要登录的页面时，先强制刷新一次 session，避免使用过期缓存
+  useEffect(() => {
+    if (!requiresAuth) return;
+    if (hasRefreshedOnceRef.current) return;
+    hasRefreshedOnceRef.current = true;
+    void fetchSession(true);
+  }, [requiresAuth, fetchSession]);
 
   useEffect(() => {
     console.log("[AuthGuard] status =", status, "pathname =", pathname);
@@ -136,10 +145,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  if (requiresAuth && status === "loading") {
+  // 需要登录：会话刷新/加载中时保持空渲染，避免基于旧状态误跳
+  if (requiresAuth && (status === "loading" || !hasRefreshedOnceRef.current)) {
     return <></>;
   }
 
+  // 需要登录但仍未通过严格认证：等待上方 useEffect 跳转登录
   if (requiresAuth && !isAuthenticatedStrict) {
     return <></>;
   }

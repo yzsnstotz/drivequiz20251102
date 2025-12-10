@@ -13,6 +13,9 @@ import { GLOBAL_LOCK } from "@/lib/global-lock";
 const sessionFetchLock = { current: false };
 const sessionCache: { current: any } = { current: null };
 const sessionFetched = { current: false };
+const lastFetchedAt = { current: 0 };
+
+const MAX_SESSION_AGE_MS = 60 * 1000; // 会话缓存最大有效期
 
 type AppSessionStatus = "loading" | "unauthenticated" | "authenticated";
 
@@ -20,11 +23,13 @@ interface AppSessionContextValue {
   session: any | null;
   status: AppSessionStatus;
   loading: boolean;
+  isRefreshing: boolean;
   // 保持向后兼容，保留 data 字段
   data: any | null;
   // 保持向后兼容，保留 update 方法
   update: () => Promise<any | null>;
   isAuthenticatedStrict: boolean;
+  fetchSession: (force?: boolean) => Promise<void>;
 }
 
 const AppSessionContext = createContext<AppSessionContextValue | undefined>(
@@ -42,66 +47,87 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<AppSessionStatus>("loading");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (sessionFetched.current) {
-      // 已经加载过，直接使用缓存
-      setSession(sessionCache.current);
-      setStatus(
-        sessionCache.current?.user ? "authenticated" : "unauthenticated"
-      );
-      setLoading(false);
-      return;
-    }
+  const fetchSession = React.useCallback(
+    async (force = false) => {
+      if (isRefreshing) return;
 
-    if (sessionFetchLock.current) return;
+      const now = Date.now();
+      if (
+        !force &&
+        sessionFetched.current &&
+        lastFetchedAt.current &&
+        now - lastFetchedAt.current < MAX_SESSION_AGE_MS
+      ) {
+        // 缓存未过期，直接使用
+        setSession(sessionCache.current);
+        setStatus(
+          sessionCache.current?.user ? "authenticated" : "unauthenticated"
+        );
+        setLoading(false);
+        return;
+      }
 
-    // 全局锁检查
-    if (GLOBAL_LOCK.sessionRequested) {
-      // 如果已经在其他地方请求了，等待一下再检查缓存
-      const checkInterval = setInterval(() => {
-        if (sessionFetched.current) {
-          setSession(sessionCache.current);
-          setStatus(
-            sessionCache.current?.user ? "authenticated" : "unauthenticated"
-          );
-          setLoading(false);
-          clearInterval(checkInterval);
-        }
-      }, 100);
-      return () => clearInterval(checkInterval);
-    }
+      if (sessionFetchLock.current && sessionFetched.current && !force) {
+        setSession(sessionCache.current);
+        setStatus(
+          sessionCache.current?.user ? "authenticated" : "unauthenticated"
+        );
+        setLoading(false);
+        return;
+      }
 
-    sessionFetchLock.current = true;
-    GLOBAL_LOCK.sessionRequested = true;
+      sessionFetchLock.current = true;
+      GLOBAL_LOCK.sessionRequested = true;
+      setIsRefreshing(true);
+      setLoading(true);
 
-    // ✅ 修复：添加调试日志，方便确认请求次数
-    if (process.env.NODE_ENV === "development") {
-      console.log("[Diag][SessionContext] fetching /api/auth/session");
-    }
+      try {
+        const res = await fetch("/api/auth/session", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
 
-    fetch("/api/auth/session", {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then((res) => res.json())
-      .then((data) => {
+        const data = res.ok ? await res.json() : null;
         sessionFetched.current = true;
         sessionCache.current = data;
+        lastFetchedAt.current = Date.now();
+
         setSession(data);
         setStatus(data?.user ? "authenticated" : "unauthenticated");
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error("[SessionProvider] fetch session error", err);
+        sessionFetched.current = true;
+        sessionCache.current = null;
+        lastFetchedAt.current = Date.now();
         setSession(null);
         setStatus("unauthenticated");
-      })
-      .finally(() => {
+      } finally {
         setLoading(false);
+        setIsRefreshing(false);
         sessionFetchLock.current = false;
-      });
-  }, []); // ← 必须为空，禁止依赖任何变量
+      }
+    },
+    [isRefreshing]
+  );
+
+  useEffect(() => {
+    if (!sessionFetched.current) {
+      void fetchSession(true);
+    }
+  }, [fetchSession]);
+
+  // 窗口聚焦时强制刷新，防止跨标签/过期会话误判
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleFocus = () => {
+      void fetchSession(true);
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [fetchSession]);
 
   // 手动刷新方法
   const update = async () => {
@@ -109,36 +135,15 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
     sessionCache.current = null;
     sessionFetchLock.current = false;
     GLOBAL_LOCK.sessionRequested = false;
-
-    setLoading(true);
-    setStatus("loading");
-
-    try {
-      const res = await fetch("/api/auth/session", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      const data = await res.json();
-      sessionFetched.current = true;
-      sessionCache.current = data;
-      setSession(data);
-      setStatus(data?.user ? "authenticated" : "unauthenticated");
-      return data;
-    } catch (err) {
-      console.error("[SessionProvider] update session error", err);
-      setSession(null);
-      setStatus("unauthenticated");
-      return null;
-    } finally {
-      setLoading(false);
-    }
+    await fetchSession(true);
+    return sessionCache.current;
   };
 
   const value: AppSessionContextValue = {
     session,
     status,
     loading,
+    isRefreshing,
     data: session, // 保持向后兼容
     update,
     isAuthenticatedStrict:
@@ -146,6 +151,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
       !!session?.user &&
       typeof session.user.id === "string" &&
       session.user.id.length > 0,
+    fetchSession,
   };
 
   return (
