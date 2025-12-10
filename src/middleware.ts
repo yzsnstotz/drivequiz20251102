@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -8,16 +9,6 @@ export async function middleware(request: NextRequest) {
     if (prefix === "/") return path === "/";
     return path === prefix || path.startsWith(`${prefix}/`);
   };
-
-  const PUBLIC_PATH_PREFIXES = [
-    "/",
-    "/license",
-    "/services",
-    "/vehicles",
-    "/about",
-    "/terms",
-    "/privacy",
-  ];
 
   const AUTH_REQUIRED_PREFIXES = [
     "/study",
@@ -31,13 +22,12 @@ export async function middleware(request: NextRequest) {
   const isStaticAsset =
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/static/") ||
-    pathname === "/favicon.png" ||
-    pathname === "/favicon.ico" ||
-    pathname === "/icon.png" ||
-    pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js|woff|woff2|ttf|eot)$/);
+    pathname.startsWith("/assets/") ||
+    pathname.startsWith("/favicon.ico") ||
+    pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|woff2?|ttf|eot)$/) !== null;
 
   const isAuthRoute =
-    pathname.startsWith("/login") || pathname.startsWith("/api/auth");
+    pathname === "/login" || pathname.startsWith("/api/auth");
 
   // 1) 静态资源与内部资源放行
   if (isStaticAsset) {
@@ -49,16 +39,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 在 Edge Runtime 中，只检查 session cookie 是否存在
-  // 详细的登录检查和驾照选择检查将在客户端组件中进行
-  const sessionToken = request.cookies.get("authjs.session-token")?.value ||
-    request.cookies.get("__Secure-authjs.session-token")?.value;
+  // 在 Edge Runtime 中，仅获取一次登录态
+  const token = await getToken({ req: request });
+  const isAuthenticated = !!token;
 
   const isAuthRequired = AUTH_REQUIRED_PREFIXES.some((prefix) =>
     matchesPrefix(pathname, prefix)
   );
 
-  if (isAuthRequired && !sessionToken) {
+  if (isAuthRequired && !isAuthenticated) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", request.nextUrl.toString());
     return NextResponse.redirect(loginUrl);
