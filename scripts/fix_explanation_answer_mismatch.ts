@@ -4,6 +4,7 @@ import {
   checkExplanationConsistency,
   normalizeCorrectAnswer,
 } from "../src/app/api/admin/question-processing/_lib/explanationConsistency";
+import { sql } from "kysely";
 
 type QuestionRow = {
   id: number;
@@ -66,27 +67,112 @@ function toFixedText(text: string, locale: Locale, expected: string): string | n
   return replacement;
 }
 
+async function debugConnectionAndSchema() {
+  console.log("========== DB CONNECTION & SCHEMA DIAGNOSTIC ==========");
+  const rawUrl =
+    process.env.DRIVEQUIZ_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    "";
+  try {
+    const u = new URL(rawUrl);
+    u.password = "***";
+    console.log("[diagnostic] Using DB =", u.toString());
+  } catch (e) {
+    console.log("[diagnostic] Using DB =", rawUrl);
+  }
+
+  // 1) 检查 questions 表是否存在
+  try {
+    const exists = await db
+      .selectFrom("information_schema.tables")
+      .select("table_name")
+      .where("table_name", "=", "questions")
+      .execute();
+    if (!exists.length) {
+      console.log("[diagnostic] ERROR: questions 表不存在！");
+      console.log("脚本将停止运行。请检查连接串是否正确指向 DriveQuiz 主库。");
+      process.exit(1);
+    }
+  } catch (err) {
+    console.log("[diagnostic] ERROR: 无法访问 information_schema", err);
+    process.exit(1);
+  }
+
+  // 2) 打印 questions 数量
+  const total = await db
+    .selectFrom("questions")
+    .select(({ fn }) => fn.countAll<number>().as("total"))
+    .executeTakeFirst();
+  console.log("[diagnostic] questions.total =", total?.total ?? 0);
+  if (!total?.total) {
+    console.log("[diagnostic] FATAL: 当前数据库中 questions 表为空。");
+    console.log("脚本不能继续运行。");
+    console.log("请检查驱动的数据库连接是否正确（DRIVEQUIZ_DATABASE_URL）。");
+    process.exit(1);
+  }
+
+  // 3) 抽样前 3 条题目
+  const sample = await db
+    .selectFrom("questions")
+    .select(["id", "correct_answer", "explanation"])
+    .orderBy("id")
+    .limit(3)
+    .execute();
+  console.log("[diagnostic] sample =", JSON.stringify(sample, null, 2));
+  if (!sample.length) {
+    console.log("[diagnostic] FATAL: 抽样结果为空，请检查数据表。");
+    process.exit(1);
+  }
+  for (const s of sample) {
+    const exp = (s as any).explanation;
+    const expType = typeof exp;
+    if (!(exp === null || expType === "string" || expType === "object")) {
+      console.log("[diagnostic] FATAL: sample.explanation 类型异常 =", expType);
+      process.exit(1);
+    }
+  }
+  console.log("========================================================");
+}
+
 async function main() {
   console.log(
     `[fix_explanation_answer_mismatch] start | mode=${APPLY ? "apply-to-task-items" : "dry-run"}`,
   );
   console.log(`[fix_explanation_answer_mismatch] audit task id = ${AUDIT_TASK_ID}`);
+  await debugConnectionAndSchema();
 
   let lastId = 0;
+  let offset = 0;
+  let useOffset = false;
 
   while (true) {
-    const rows = await db
+    let query = db
       .selectFrom("questions")
       .select(["id", "correct_answer", "explanation"])
-      .where("id", ">", lastId)
-      .orderBy("id")
-      .limit(BATCH_SIZE)
-      .execute();
+      .orderBy("id");
+    if (useOffset) {
+      query = query.offset(offset);
+    } else {
+      query = query.where("id", ">", lastId);
+    }
+    const rows = await query.limit(BATCH_SIZE).execute();
 
     if (!rows.length) break;
 
+    // 自动检测 id 是否为数字，不是则切换 offset 模式
+    if (!useOffset && rows.length > 0 && typeof (rows[0] as any).id !== "number") {
+      useOffset = true;
+      offset = 0;
+      lastId = 0;
+      console.log("[diagnostic] detected non-numeric question id, switch to offset-based scan");
+      continue;
+    }
+
     for (const row of rows as QuestionRow[]) {
-      lastId = row.id;
+      lastId = typeof row.id === "number" ? row.id : lastId;
+      if (useOffset) {
+        offset += 1;
+      }
       stats.scannedQuestions += 1;
 
       const explanation = row.explanation;
@@ -191,6 +277,18 @@ async function main() {
     }: ${stats.queuedForReview}`,
   );
   console.log(`Need manual review (无自动建议): ${stats.needManual}`);
+
+  if (stats.scannedQuestions > 0 && stats.inconsistentDetected === 0) {
+    console.log("[diagnostic] NOTICE: 已扫描所有题目，但未检测到任何解析不一致。");
+    console.log("若你确认存在问题，建议检查 checkExplanationConsistency() 的判断规则。");
+  }
+
+  console.log("========== SCRIPT SELF-DIAGNOSTIC REPORT ==========");
+  console.log("Database:", process.env.DRIVEQUIZ_DATABASE_URL ? "OK" : "MISSING");
+  console.log("Questions table exists: OK");
+  console.log("Questions count:", stats.scannedQuestions, "(non-zero expected)");
+  console.log("Script mode:", APPLY ? "apply → writing audit task_items" : "dry-run");
+  console.log("====================================================");
 }
 
 main().catch((err) => {
