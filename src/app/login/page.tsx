@@ -5,7 +5,7 @@ import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useLanguage } from "@/lib/i18n";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, MessageCircle, FileText, Handshake, ShoppingCart, User, X } from "lucide-react";
+import { Mail, MessageCircle, FileText, Handshake, ShoppingCart, User, X, ArrowLeft } from "lucide-react";
 import OAuthButton from "./components/OAuthButton";
 import QRCodeLogin from "./components/QRCodeLogin";
 import { getLoginMemory, saveLoginMemory, clearLoginMemory } from "@/lib/loginMemory";
@@ -230,6 +230,16 @@ function LoginPageContent() {
       <LoadingFallbackInner />
     ) : (
     <div className="min-h-screen bg-gray-50 flex flex-col p-4">
+      <div className="w-full max-w-md mx-auto mb-3">
+        <button
+          onClick={() => router.push("/")}
+          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          aria-label="返回首页"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="text-sm">{t("common.back")}</span>
+        </button>
+      </div>
       <div className="flex-1 flex items-center justify-center">
         <div className="w-full max-w-md">
           <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
