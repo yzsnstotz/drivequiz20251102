@@ -51,8 +51,9 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.tasks", href: "/admin/tasks", match: (p: string) => p.startsWith("/admin/tasks"), permission: "tasks", group: "users" },
   // 题库管理分组
   { key: "nav.questions", href: "/admin/questions", match: (p: string) => p === "/admin/questions" || (p.startsWith("/admin/questions/") && !p.startsWith("/admin/question-processing") && !p.startsWith("/admin/polish-reviews")), permission: "questions", group: "questions" },
-  { key: "nav.questionProcessing", href: "/admin/question-processing", match: (p: string) => p.startsWith("/admin/question-processing") && !p.startsWith("/admin/question-processing/error-dashboard"), permission: "questions", group: "questions" },
+  { key: "nav.questionProcessing", href: "/admin/question-processing", match: (p: string) => p.startsWith("/admin/question-processing") && !p.startsWith("/admin/question-processing/error-dashboard") && !p.startsWith("/admin/question-processing/explanation-consistency"), permission: "questions", group: "questions" },
   { key: "nav.questionProcessingErrorStats", href: "/admin/question-processing/error-dashboard", match: (p: string) => p.startsWith("/admin/question-processing/error-dashboard"), permission: "questions", group: "questions" },
+  { key: "nav.questionProcessingConsistency", href: "/admin/question-processing/explanation-consistency", match: (p: string) => p.startsWith("/admin/question-processing/explanation-consistency"), permission: "questions", group: "questions" },
   { key: "nav.polishReviews", href: "/admin/polish-reviews", match: (p: string) => p.startsWith("/admin/polish-reviews"), permission: "questions", group: "questions" },
   // 商户与广告分组
   { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants", group: "merchant" },

@@ -56,6 +56,13 @@ type TaskItem = {
   processed_data: any;
 };
 
+type ExplanationConsistency = {
+  status?: "consistent" | "inconsistent" | "unknown";
+  expected?: "true" | "false" | "unknown";
+  inferred?: "true" | "false" | "unknown";
+  locale?: string;
+};
+
 export default function TaskDetailPage() {
   const params = useParams() as { id?: string };
   const router = useRouter();
@@ -85,8 +92,13 @@ export default function TaskDetailPage() {
   // 获取任务子项
   const fetchTaskItems = async () => {
     try {
-      const response = await apiFetch<{ items: TaskItem[] }>(`/api/admin/question-processing/tasks/${taskId}/items`);
-      setTaskItems(response.data?.items || []);
+      const response = await apiFetch<{ items: any[] }>(`/api/admin/question-processing/tasks/${taskId}/items`);
+      const normalized = (response.data?.items || []).map((item) => {
+        const error_detail = item.error_detail ?? item.errorDetail ?? null;
+        const target_lang = item.target_lang ?? item.targetLang ?? null;
+        return { ...item, error_detail, target_lang };
+      }) as TaskItem[];
+      setTaskItems(normalized);
     } catch (err: any) {
       console.error('Error fetching task items:', err);
     }
@@ -127,6 +139,26 @@ export default function TaskDetailPage() {
     if (selectedStep === "all") return true;
     return log.message.includes(`step=${selectedStep}`);
   }) || [];
+
+  const normalizeConsistency = (raw: any): ExplanationConsistency[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) {
+      return raw.filter(Boolean);
+    }
+    return [raw];
+  };
+
+  const renderStatusBadge = (status?: string) => {
+    if (status === "inconsistent") return <span className="px-2 py-1 rounded bg-red-100 text-red-800 text-xs">不一致</span>;
+    if (status === "consistent") return <span className="px-2 py-1 rounded bg-green-100 text-green-800 text-xs">一致</span>;
+    return <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs">未知</span>;
+  };
+
+  const renderTruth = (val?: string) => {
+    if (val === "true") return "正确";
+    if (val === "false") return "错误";
+    return "未知";
+  };
 
   // 格式化 JSON
   const formatJson = (obj: any): string => {
@@ -405,6 +437,38 @@ export default function TaskDetailPage() {
                         <div className="font-medium mb-2">
                           题目 ID: {item.question_id} | 操作: {item.operation}
                         </div>
+                        {/* 解析一致性展示 */}
+                        {(() => {
+                          const consistencyList = normalizeConsistency(errorDetail?.explanationConsistency);
+                          if (!consistencyList.length) return null;
+                          const hasInconsistent = consistencyList.some(c => c.status === "inconsistent");
+                          return (
+                            <div className={`mb-3 p-3 rounded ${hasInconsistent ? "bg-red-100 border border-red-200" : "bg-gray-50 border border-gray-200"}`}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium text-sm">解析一致性</span>
+                                {hasInconsistent && <span className="text-xs text-red-600">检测到不一致</span>}
+                                <a
+                                  className="text-xs text-blue-600 hover:text-blue-800"
+                                  href={`/admin/questions/${item.question_id}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  查看题目
+                                </a>
+                              </div>
+                              <div className="space-y-1">
+                                {consistencyList.map((c, idx) => (
+                                  <div key={idx} className="flex items-center gap-3 text-sm">
+                                    {renderStatusBadge(c.status)}
+                                    <span>期望：{renderTruth(c.expected)}</span>
+                                    <span>AI 判定：{renderTruth(c.inferred)}</span>
+                                    {c.locale && <span>语言：{c.locale}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {errorDetail.errorMessage && (
                           <div className="text-red-600 mb-2">
                             {errorDetail.errorMessage}

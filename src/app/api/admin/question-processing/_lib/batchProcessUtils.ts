@@ -13,6 +13,10 @@ import { normalizeAIResult } from "@/lib/quizTags";
 import { buildQuestionTranslationInput, buildQuestionPolishInput, buildQuestionFillMissingInput } from "@/lib/questionPromptBuilder";
 import { buildNormalizedQuestion } from "@/lib/questionNormalize";
 import { cleanJsonString, sanitizeJsonForDb } from './jsonUtils';
+import {
+  checkExplanationConsistency,
+  type ExplanationConsistencyResult,
+} from "./explanationConsistency";
 
 // 在模块级提前加载一次配置（与 question-processor 保持一致）
 const qpAiConfig = loadQpAiConfig();
@@ -84,6 +88,11 @@ export type TranslationDiagnostic = {
     contentPreview?: string;
     explanationPreview?: string;
   } | null;
+  explanationConsistency?: Array<
+    ExplanationConsistencyResult & {
+      locale: string;
+    }
+  >;
 };
 
 export interface CategoryAndTagsResult {
@@ -2621,6 +2630,7 @@ export async function processFullPipelineBatch(
       aiRequest?: any;
       aiResponse?: any;
       processedData?: any;
+      errorDetail?: any;
     }) => Promise<void>;
     // ✅ Task 4: 新增：用于写入 AI 诊断日志的回调函数
     onLog?: (questionId: number, log: {
@@ -3306,6 +3316,22 @@ export async function processFullPipelineBatch(
             const isExplanationEnglish = isEnglishContent(explanationStr);
             
             let shouldSaveExplanation = true;
+            const consistency = checkExplanationConsistency(
+              explanationStr,
+              (question as any).correct_answer ?? null,
+              lang,
+            );
+            if (consistency.status === "inconsistent") {
+              shouldSaveExplanation = false;
+              diagnostic.explanationConsistency = [
+                ...(diagnostic.explanationConsistency ?? []),
+                { ...consistency, locale: lang },
+              ];
+              console.warn(
+                `[processFullPipelineBatch] [Q${question.id}] ⚠️ explanation 判定与 correct_answer 不一致，跳过写入`,
+                consistency,
+              );
+            }
             
             if (lang === "zh" && !isExplanationChinese) {
               console.warn(
@@ -3438,6 +3464,13 @@ export async function processFullPipelineBatch(
           aiResponse: aiResponseDebug,
           processedData: dbPayload, // ✅ Task 2: 使用构建的 DB payload，字段名已映射为数据库字段
         });
+        if (diagnostic.explanationConsistency && diagnostic.explanationConsistency.length > 0) {
+          await onProgress(question.id, {
+            errorDetail: {
+              explanationConsistency: diagnostic.explanationConsistency,
+            },
+          } as any);
+        }
       }
 
       // ========== STAGE 8: FINALIZE_RESULT ==========
