@@ -8,7 +8,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS student_verifications (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id           uuid NOT NULL REFERENCES users(id),
+  user_id           text NOT NULL REFERENCES users(id),
   full_name         text NOT NULL,
   nationality       text NOT NULL,
   email             text NOT NULL,
