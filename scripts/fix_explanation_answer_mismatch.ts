@@ -84,9 +84,9 @@ async function debugConnectionAndSchema() {
   // 1) 检查 questions 表是否存在
   try {
     const exists = await db
-      .selectFrom("information_schema.tables")
-      .select("table_name")
-      .where("table_name", "=", "questions")
+      .selectFrom(sql`information_schema.tables`.as("t"))
+      .select("t.table_name")
+      .where("t.table_name", "=", "questions")
       .execute();
     if (!exists.length) {
       console.log("[diagnostic] ERROR: questions 表不存在！");
