@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppSession } from "@/contexts/SessionContext";
+import { isAuthRequiredPath } from "@/config/authRoutes";
 
 /**
  * 客户端认证守卫组件
@@ -19,6 +20,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const hasCheckedRef = useRef(false);
   const lastCheckTimeRef = useRef<number>(0);
   const MIN_CHECK_INTERVAL = 5 * 60 * 1000; // 最小检查间隔：5 分钟
+  const requiresAuth = isAuthRequiredPath(pathname);
 
   useEffect(() => {
     console.log("[AuthGuard] status =", status, "pathname =", pathname);
@@ -40,15 +42,15 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 由下方 isPublic 检查决定是否需要登录
-
-    const PUBLIC_PATHS = ["/login", "/login/bind-email", "/login/error", "/login/email-binding"];
-    const isLoginPath = (pathname === "/login") || ((pathname?.startsWith("/login/")) ?? false);
-    const isPublic = isLoginPath || PUBLIC_PATHS.includes(pathname ?? "");
-
-    if (!isPublic && status === "unauthenticated") {
-      console.log("[AuthGuard] redirect to /login");
-      router.replace("/login");
+    // 仅在需要登录的路径执行登录校验
+    if (requiresAuth && status === "unauthenticated") {
+      const callbackUrl =
+        typeof window !== "undefined" ? window.location.href : requestUrl(pathname);
+      const url =
+        callbackUrl != null
+          ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
+          : "/login";
+      router.replace(url);
       return;
     }
 
@@ -127,12 +129,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
       checkLicensePreference();
     }
-  }, [session, status]); // 移除 router 和 pathname 依赖，避免路径变化时重复检查
+  }, [session, status, requiresAuth, router, pathname]); // 依赖 requiresAuth 保持与路由前缀一致
 
   // 排除 admin 路由，admin 路由使用独立的认证系统
   if ((pathname?.startsWith('/admin/') ?? false)) {
     return <>{children}</>;
   }
 
+  // 需要登录的路径且会话加载中时，可在这里返回 loading UI；当前保持直接渲染
   return <>{children}</>;
+}
+
+// 兜底：在 SSR 环境下构造基础 URL
+function requestUrl(pathname: string | null) {
+  if (!pathname) return undefined;
+  if (typeof window !== "undefined") return window.location.href;
+  return pathname;
 }

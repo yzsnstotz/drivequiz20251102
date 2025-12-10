@@ -1,23 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { isAuthRequiredPath } from "@/config/authRoutes";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  const matchesPrefix = (path: string, prefix: string) => {
-    if (prefix === "/") return path === "/";
-    return path === prefix || path.startsWith(`${prefix}/`);
-  };
-
-  const AUTH_REQUIRED_PREFIXES = [
-    "/study",
-    "/license/study",
-    "/license/exam",
-    "/ai",
-    "/profile",
-    "/admin",
-  ];
 
   const isStaticAsset =
     pathname.startsWith("/_next/") ||
@@ -43,9 +30,7 @@ export async function middleware(request: NextRequest) {
   const token = await getToken({ req: request });
   const isAuthenticated = !!token;
 
-  const isAuthRequired = AUTH_REQUIRED_PREFIXES.some((prefix) =>
-    matchesPrefix(pathname, prefix)
-  );
+  const isAuthRequired = isAuthRequiredPath(pathname);
 
   if (isAuthRequired && !isAuthenticated) {
     const loginUrl = new URL("/login", request.url);
