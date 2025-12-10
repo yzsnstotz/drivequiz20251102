@@ -4,6 +4,16 @@ import type { NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const PUBLIC_PATH_PREFIXES = [
+    "/",
+    "/license",
+    "/services",
+    "/vehicles",
+    "/about",
+    "/terms",
+    "/privacy",
+  ];
+
   const AUTH_REQUIRED_PREFIXES = [
     "/study",
     "/license/study",
@@ -25,6 +35,14 @@ export async function middleware(request: NextRequest) {
     pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js|woff|woff2|ttf|eot)$/);
 
   if (isWhitelisted) {
+    return NextResponse.next();
+  }
+
+  // 公共信息页（只读）放行，但排除需要登录的子路径
+  const isPublicInfoPage =
+    PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix)) &&
+    !AUTH_REQUIRED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  if (isPublicInfoPage) {
     return NextResponse.next();
   }
 
