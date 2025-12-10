@@ -3,6 +3,7 @@ export const AUTH_REQUIRED_PREFIXES = [
   "/license/study",
   "/license/exam",
   "/ai",
+  "/activation",
   "/profile",
   "/admin",
 ];

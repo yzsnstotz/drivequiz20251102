@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { useAIActivation } from "@/components/AIActivationProvider";
 import { useRouter } from "next/navigation";
 
 interface AIButtonProps {
@@ -17,21 +16,14 @@ interface AIButtonProps {
  */
 export default function AIButton({ context = "general", className = "", onClick }: AIButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const { isActivated } = useAIActivation();
   const router = useRouter();
 
   const handleClick = () => {
     if (onClick) {
       onClick();
     } else {
-      // 检查激活状态
-      if (isActivated) {
-        // 已激活，跳转到AI助手页面
-        router.push(`/ai?context=${context}`);
-      } else {
-        // 未激活，跳转到激活页面
-        router.push('/activation');
-      }
+      // 统一入口：一律跳转 /ai，由内部逻辑决定是否去激活
+      router.push(`/ai?context=${context}`);
     }
   };
 

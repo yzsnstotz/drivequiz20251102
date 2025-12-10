@@ -438,11 +438,7 @@ export default function HomePage() {
             </div>
             <button
               onClick={() => {
-                if (isActivated) {
-                  router.push('/ai');
-                } else {
-                  router.push('/activation');
-                }
+                router.push('/ai');
               }}
               className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
               aria-label={t('home.aiAssistant')}
@@ -619,11 +615,7 @@ export default function HomePage() {
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-4 mb-6 shadow-md">
           <button
             onClick={() => {
-              if (isActivated) {
-                router.push('/ai');
-              } else {
-                router.push('/activation');
-              }
+              router.push('/ai');
             }}
             className="w-full flex items-center justify-between text-white ios-button active:opacity-80 active:scale-[0.98]"
           >
