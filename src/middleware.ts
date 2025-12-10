@@ -4,6 +4,11 @@ import type { NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const matchesPrefix = (path: string, prefix: string) => {
+    if (prefix === "/") return path === "/";
+    return path === prefix || path.startsWith(`${prefix}/`);
+  };
+
   const PUBLIC_PATH_PREFIXES = [
     "/",
     "/license",
@@ -23,10 +28,7 @@ export async function middleware(request: NextRequest) {
     "/admin",
   ];
 
-  // 白名单：登录页、API、静态资源
-  const isWhitelisted =
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/api/") ||
+  const isStaticAsset =
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/static/") ||
     pathname === "/favicon.png" ||
@@ -34,15 +36,16 @@ export async function middleware(request: NextRequest) {
     pathname === "/icon.png" ||
     pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js|woff|woff2|ttf|eot)$/);
 
-  if (isWhitelisted) {
+  const isAuthRoute =
+    pathname.startsWith("/login") || pathname.startsWith("/api/auth");
+
+  // 1) 静态资源与内部资源放行
+  if (isStaticAsset) {
     return NextResponse.next();
   }
 
-  // 公共信息页（只读）放行，但排除需要登录的子路径
-  const isPublicInfoPage =
-    PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix)) &&
-    !AUTH_REQUIRED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-  if (isPublicInfoPage) {
+  // 2) 登录页 & NextAuth API 放行
+  if (isAuthRoute) {
     return NextResponse.next();
   }
 
@@ -51,14 +54,13 @@ export async function middleware(request: NextRequest) {
   const sessionToken = request.cookies.get("authjs.session-token")?.value ||
     request.cookies.get("__Secure-authjs.session-token")?.value;
 
-  const requiresAuth = AUTH_REQUIRED_PREFIXES.some((prefix) =>
-    pathname.startsWith(prefix)
+  const isAuthRequired = AUTH_REQUIRED_PREFIXES.some((prefix) =>
+    matchesPrefix(pathname, prefix)
   );
 
-  if (requiresAuth && !sessionToken) {
+  if (isAuthRequired && !sessionToken) {
     const loginUrl = new URL("/login", request.url);
-    const callbackUrl = `${pathname}${request.nextUrl.search || ""}`;
-    loginUrl.searchParams.set("callbackUrl", callbackUrl);
+    loginUrl.searchParams.set("callbackUrl", request.nextUrl.toString());
     return NextResponse.redirect(loginUrl);
   }
 
