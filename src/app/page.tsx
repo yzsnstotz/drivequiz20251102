@@ -78,7 +78,7 @@ type AdSlotConfig = {
 
 export default function HomePage() {
   const { language, setLanguage, t } = useLanguage();
-  const { data: session, status } = useAppSession();
+  const { data: session, status, update, isAuthenticatedStrict } = useAppSession();
   const { isActivated } = useAIActivation();
   const router = useRouter();
   const [savedLicensePreference, setSavedLicensePreference] = useState<{ licenseType: string; stage: string } | null>(null);
@@ -352,7 +352,13 @@ export default function HomePage() {
                   </span>
                 </Link>
                 <button
-                  onClick={() => signOut({ callbackUrl: "/" })}
+                  onClick={async () => {
+                    await signOut({ callbackUrl: "/" });
+                    await update();
+                    if (typeof window !== "undefined") {
+                      window.location.href = "/";
+                    }
+                  }}
                   className="flex items-center space-x-1 px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
                   aria-label={t('header.logout')}
                 >

@@ -24,6 +24,7 @@ interface AppSessionContextValue {
   data: any | null;
   // 保持向后兼容，保留 update 方法
   update: () => Promise<any | null>;
+  isAuthenticatedStrict: boolean;
 }
 
 const AppSessionContext = createContext<AppSessionContextValue | undefined>(
@@ -140,6 +141,11 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
     loading,
     data: session, // 保持向后兼容
     update,
+    isAuthenticatedStrict:
+      status === "authenticated" &&
+      !!session?.user &&
+      typeof session.user.id === "string" &&
+      session.user.id.length > 0,
   };
 
   return (

@@ -14,7 +14,7 @@ const LICENSE_PREFERENCE_CHECKED_KEY = 'license_preference_checked';
 const LICENSE_PREFERENCE_SKIPPED_KEY = 'license_preference_skipped';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { data: session, status } = useAppSession();
+  const { data: session, status, isAuthenticatedStrict } = useAppSession();
   const router = useRouter();
   const pathname = usePathname();
   const hasCheckedRef = useRef(false);
@@ -43,7 +43,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     // 仅在需要登录的路径执行登录校验
-    if (requiresAuth && status === "unauthenticated") {
+    if (requiresAuth && !isAuthenticatedStrict) {
       const callbackUrl =
         typeof window !== "undefined" ? window.location.href : requestUrl(pathname);
       const url =
@@ -61,7 +61,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     // 如果已登录，只在初次登录时检查一次
-    if (status === "authenticated" && session?.user?.id) {
+    if (isAuthenticatedStrict && session?.user?.id) {
       // 如果已经检查过，不再重复检查
       if (hasCheckedRef.current) {
         return;
@@ -129,14 +129,21 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
       checkLicensePreference();
     }
-  }, [session, status, requiresAuth, router, pathname]); // 依赖 requiresAuth 保持与路由前缀一致
+  }, [session, status, requiresAuth, router, pathname, isAuthenticatedStrict]); // 依赖 requiresAuth 保持与路由前缀一致
 
   // 排除 admin 路由，admin 路由使用独立的认证系统
   if ((pathname?.startsWith('/admin/') ?? false)) {
     return <>{children}</>;
   }
 
-  // 需要登录的路径且会话加载中时，可在这里返回 loading UI；当前保持直接渲染
+  if (requiresAuth && status === "loading") {
+    return <></>;
+  }
+
+  if (requiresAuth && !isAuthenticatedStrict) {
+    return <></>;
+  }
+
   return <>{children}</>;
 }
 

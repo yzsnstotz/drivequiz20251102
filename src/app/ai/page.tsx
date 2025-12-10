@@ -13,9 +13,9 @@ import { useAppSession } from "@/contexts/SessionContext";
 export default function AIPageRoute() {
   const router = useRouter();
   const { status, loading } = useActivation();
-  const { status: sessionStatus } = useAppSession();
+  const { status: sessionStatus, isAuthenticatedStrict } = useAppSession();
 
-  const isAuthenticated = sessionStatus === "authenticated";
+  const isAuthenticated = isAuthenticatedStrict;
   const isActivated = isAuthenticated && !!status?.valid;
   
   useEffect(() => {
