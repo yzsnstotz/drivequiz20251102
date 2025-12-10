@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import React, { useState, useEffect, useCallback, Suspense, useMemo } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight, Bot, RotateCcw } from "lucide-react";
 import { loadUnifiedQuestionsPackage, Question } from "@/lib/questionsLoader";
 import { filterQuestions } from "@/lib/questionFilter";
@@ -14,6 +14,7 @@ import FavoriteButton from "../components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
 import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 import { useAIActivation } from "@/components/AIActivationProvider";
+import { useAppSession } from "@/contexts/SessionContext";
 
 function StudyModePageFallback() {
   const { t } = useLanguage();
@@ -36,11 +37,18 @@ function StudyModePageFallback() {
 function StudyModePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { language, t } = useLanguage();
   const { isActivated, showActivationModal } = useAIActivation();
+  const { status: sessionStatus, loading: sessionLoading } = useAppSession();
 
   const licenseType = searchParams?.get("licenseType") || null;
   const stage = (searchParams?.get("stage") as "provisional" | "regular" | null) || null;
+
+  const callbackUrl = useMemo(() => {
+    const search = searchParams?.toString();
+    return `${pathname}${search ? `?${search}` : ""}`;
+  }, [pathname, searchParams]);
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [questionHashes, setQuestionHashes] = useState<string[]>([]);
@@ -60,8 +68,18 @@ function StudyModePageContent() {
   );
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  useEffect(() => {
+    if (!sessionLoading && sessionStatus === "unauthenticated") {
+      router.replace(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+    }
+  }, [sessionLoading, sessionStatus, router, callbackUrl]);
+
   // 加载题目
   useEffect(() => {
+    if (sessionStatus !== "authenticated") {
+      return;
+    }
+
     let isMounted = true; // 用于检查组件是否已卸载
     
     const loadQuestions = async () => {
@@ -282,7 +300,7 @@ function StudyModePageContent() {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
-  }, [licenseType, stage, router]);
+  }, [licenseType, stage, language, router, sessionStatus]);
 
   // 保存进度
   const saveProgress = useCallback(
@@ -546,6 +564,14 @@ function StudyModePageContent() {
     // 关闭确认弹窗
     setShowResetConfirm(false);
   };
+
+  if (sessionLoading || sessionStatus === "loading") {
+    return <StudyModePageFallback />;
+  }
+
+  if (sessionStatus === "unauthenticated") {
+    return null;
+  }
 
   if (isLoading) {
     return (

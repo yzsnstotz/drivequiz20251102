@@ -4,18 +4,27 @@ import type { NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 排除路径：登录页面、API路由、admin路由、静态资源
-  if (
+  const AUTH_REQUIRED_PREFIXES = [
+    "/study",
+    "/license/study",
+    "/license/exam",
+    "/ai",
+    "/profile",
+    "/admin",
+  ];
+
+  // 白名单：登录页、API、静态资源
+  const isWhitelisted =
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/") ||
-    pathname.startsWith("/admin/") ||
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/static/") ||
     pathname === "/favicon.png" ||
     pathname === "/favicon.ico" ||
     pathname === "/icon.png" ||
-    pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js|woff|woff2|ttf|eot)$/)
-  ) {
+    pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js|woff|woff2|ttf|eot)$/);
+
+  if (isWhitelisted) {
     return NextResponse.next();
   }
 
@@ -24,10 +33,14 @@ export async function middleware(request: NextRequest) {
   const sessionToken = request.cookies.get("authjs.session-token")?.value ||
     request.cookies.get("__Secure-authjs.session-token")?.value;
 
-  if (!sessionToken) {
-    // 未登录，跳转到登录页面
+  const requiresAuth = AUTH_REQUIRED_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+
+  if (requiresAuth && !sessionToken) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    const callbackUrl = `${pathname}${request.nextUrl.search || ""}`;
+    loginUrl.searchParams.set("callbackUrl", callbackUrl);
     return NextResponse.redirect(loginUrl);
   }
 

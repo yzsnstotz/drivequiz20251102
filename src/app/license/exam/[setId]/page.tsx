@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter, useParams, useSearchParams, usePathname } from "next/navigation";
 import Header from "@/components/common/Header";
 import AdSlot from "@/components/common/AdSlot";
 import QuestionAIDialog from "@/components/QuestionAIDialog";
@@ -9,6 +9,7 @@ import QuestionImage from "@/components/common/QuestionImage";
 import { isValidImageUrl } from "@/lib/imageUtils";
 import { useLanguage } from "@/lib/i18n";
 import { ArrowLeft, Clock, Bot } from "lucide-react";
+import { useAppSession } from "@/contexts/SessionContext";
 
 interface Question {
   id: number;
@@ -24,9 +25,15 @@ export default function LicenseExamPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { t } = useLanguage();
+  const { status: sessionStatus, loading: sessionLoading } = useAppSession();
   const setId = params?.setId as string;
   const licenseType = searchParams?.get("type") || "provisional";
+  const callbackUrl = useMemo(() => {
+    const search = searchParams?.toString();
+    return `${pathname}${search ? `?${search}` : ""}`;
+  }, [pathname, searchParams]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string | string[]>>({});
@@ -36,6 +43,12 @@ export default function LicenseExamPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAIDialog, setShowAIDialog] = useState(false);
+
+  useEffect(() => {
+    if (!sessionLoading && sessionStatus === "unauthenticated") {
+      router.replace(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+    }
+  }, [sessionLoading, sessionStatus, router, callbackUrl]);
 
   const finishExam = useCallback(() => {
     setExamFinished(true);
@@ -58,6 +71,10 @@ export default function LicenseExamPage() {
   }, [examStarted, timeLeft, finishExam]);
 
   const loadQuestions = useCallback(async () => {
+    if (sessionStatus !== "authenticated") {
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -91,11 +108,19 @@ export default function LicenseExamPage() {
     } finally {
       setLoading(false);
     }
-  }, [setId, licenseType]);
+  }, [setId, licenseType, sessionStatus]);
 
   useEffect(() => {
     loadQuestions();
   }, [loadQuestions]);
+
+  if (sessionLoading || sessionStatus === "loading") {
+    return <div>加载中...</div>;
+  }
+
+  if (sessionStatus === "unauthenticated") {
+    return null;
+  }
 
   const handleAnswer = (answer: string) => {
     const currentQuestion = questions[currentIndex];

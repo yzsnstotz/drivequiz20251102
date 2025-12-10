@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter, useParams, useSearchParams, usePathname } from "next/navigation";
 import Header from "@/components/common/Header";
 import AdSlot from "@/components/common/AdSlot";
 import AIButton from "@/components/common/AIButton";
@@ -10,6 +10,7 @@ import QuestionImage from "@/components/common/QuestionImage";
 import { isValidImageUrl } from "@/lib/imageUtils";
 import { useLanguage } from "@/lib/i18n";
 import { ArrowLeft, Check, X, Bot } from "lucide-react";
+import { useAppSession } from "@/contexts/SessionContext";
 
 interface Question {
   id: number;
@@ -26,9 +27,15 @@ export default function LicenseStudyPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { t } = useLanguage();
+  const { status: sessionStatus, loading: sessionLoading } = useAppSession();
   const setId = params?.setId as string;
   const licenseType = searchParams?.get("type") || "provisional";
+  const callbackUrl = useMemo(() => {
+    const search = searchParams?.toString();
+    return `${pathname}${search ? `?${search}` : ""}`;
+  }, [pathname, searchParams]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | string[]>("");
@@ -37,7 +44,17 @@ export default function LicenseStudyPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAIDialog, setShowAIDialog] = useState(false);
 
+  useEffect(() => {
+    if (!sessionLoading && sessionStatus === "unauthenticated") {
+      router.replace(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+    }
+  }, [sessionLoading, sessionStatus, router, callbackUrl]);
+
   const loadQuestions = useCallback(async () => {
+    if (sessionStatus !== "authenticated") {
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -65,7 +82,7 @@ export default function LicenseStudyPage() {
     } finally {
       setLoading(false);
     }
-  }, [setId, licenseType]);
+  }, [setId, licenseType, sessionStatus]);
 
   useEffect(() => {
     loadQuestions();
@@ -86,6 +103,14 @@ export default function LicenseStudyPage() {
       setShowAnswer(true);
     }
   };
+
+  if (sessionLoading || sessionStatus === "loading") {
+    return <div>加载中...</div>;
+  }
+
+  if (sessionStatus === "unauthenticated") {
+    return null;
+  }
 
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {

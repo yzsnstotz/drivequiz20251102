@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import React, { useState, useEffect, useCallback, useRef, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight, Bot, Clock } from "lucide-react";
 import { loadUnifiedQuestionsPackage, Question } from "@/lib/questionsLoader";
@@ -18,6 +18,7 @@ import FavoriteButton from "../components/FavoriteButton";
 import { isFavorite } from "@/lib/favorites";
 import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 import { useAIActivation } from "@/components/AIActivationProvider";
+import { useAppSession } from "@/contexts/SessionContext";
 
 function ExamModePageFallback() {
   console.log('[ExamMode] ExamModePageFallback rendering (Suspense fallback)');
@@ -49,6 +50,12 @@ function ExamModePageContent() {
   const pathname = usePathname();
   const { language, t } = useLanguage();
   const { isActivated, showActivationModal } = useAIActivation();
+  const { status: sessionStatus, loading: sessionLoading } = useAppSession();
+
+  const callbackUrl = useMemo(() => {
+    const search = searchParams?.toString();
+    return `${pathname}${search ? `?${search}` : ""}`;
+  }, [pathname, searchParams]);
 
   const licenseType = searchParams?.get("licenseType") || null;
   const stage = (searchParams?.get("stage") as "provisional" | "regular" | null) || null;
@@ -73,6 +80,12 @@ function ExamModePageContent() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const examStartedRef = useRef<boolean>(false);
 
+  useEffect(() => {
+    if (!sessionLoading && sessionStatus === "unauthenticated") {
+      router.replace(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+    }
+  }, [sessionLoading, sessionStatus, router, callbackUrl]);
+
   // 统一的清理计时器函数（提前定义，以便在 loadQuestions 中使用）
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -92,6 +105,10 @@ function ExamModePageContent() {
 
   // 加载题目
   useEffect(() => {
+    if (sessionStatus !== "authenticated") {
+      return;
+    }
+
     console.log('[ExamMode] ====== useEffect triggered ======', { 
       licenseType, 
       stage, 
@@ -325,7 +342,7 @@ function ExamModePageContent() {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
-  }, [licenseType, stage, questionCount, router, continueExam, clearTimer]);
+  }, [licenseType, stage, questionCount, router, continueExam, clearTimer, sessionStatus, searchParams, pathname]);
 
   const calculateScore = useCallback(() => {
     let correct = 0;
@@ -740,6 +757,14 @@ function ExamModePageContent() {
       }));
     }
   };
+
+  if (sessionLoading || sessionStatus === "loading") {
+    return <ExamModePageFallback />;
+  }
+
+  if (sessionStatus === "unauthenticated") {
+    return null;
+  }
 
   if (isLoading) {
     return (
