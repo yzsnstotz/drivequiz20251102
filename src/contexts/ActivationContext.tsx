@@ -35,7 +35,7 @@ const ActivationContext = createContext<ActivationContextValue | undefined>(
 );
 
 export function ActivationProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<ActivationState>("loading");
+  const [state, setState] = useState<ActivationState>("unknown");
   const [status, setStatus] = useState<ActivationStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
@@ -43,12 +43,14 @@ export function ActivationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (sessionStatus === "loading") {
+      setState("unknown");
+      setLoading(true);
       return;
     }
 
     if (sessionStatus === "unauthenticated") {
       setStatus(null);
-      setState("not_activated");
+      setState("unknown");
       setLoading(false);
       return;
     }
@@ -87,7 +89,7 @@ export function ActivationProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (sessionStatus !== "authenticated") {
       setStatus(null);
-      setState("not_activated");
+      setState("unknown");
       setLoading(false);
       return;
     }

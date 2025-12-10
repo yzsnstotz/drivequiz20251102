@@ -129,11 +129,8 @@ export default function AIActivationProvider({
   // ✅ 修复：初始化时检查激活状态（使用 ActivationContext 的状态）
   // ✅ 修复：禁止依赖 session 加载状态，只依赖 activationStatus
   useEffect(() => {
-    // 未登录：跳过激活逻辑
-    if (sessionStatus === "loading") {
-      return;
-    }
-    if (sessionStatus === "unauthenticated") {
+    // 未登录或加载中：完全跳过激活逻辑
+    if (sessionStatus !== "authenticated") {
       setIsActivated(false);
       lastActivatedStateRef.current = false;
       return;
