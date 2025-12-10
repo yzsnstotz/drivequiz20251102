@@ -17,6 +17,7 @@ function normalizeConsistency(raw: any): ExplanationConsistencyEntry[] {
 
 export const GET = withAdminAuth(async (req: Request) => {
   const url = new URL(req.url);
+  const format = url.searchParams.get("format");
   const fromParam = url.searchParams.get("from");
   const toParam = url.searchParams.get("to");
   const sceneParam = url.searchParams.get("scene");
@@ -54,6 +55,7 @@ export const GET = withAdminAuth(async (req: Request) => {
 
     let baseQuery = db
       .selectFrom("question_processing_task_items")
+      .leftJoin("questions", "questions.id", "question_processing_task_items.question_id")
       .select([
         "id",
         "task_id",
@@ -62,14 +64,17 @@ export const GET = withAdminAuth(async (req: Request) => {
         "target_lang",
         "finished_at",
         "error_detail",
+        "questions.content_hash as content_hash",
       ])
       .where("status", "in", allowedStatuses as any)
       .where("finished_at", ">=", from)
       .where("finished_at", "<=", to)
       .where(inconsistentCondition)
-      .orderBy("finished_at", "desc")
-      .limit(pageSize)
-      .offset(offset);
+      .orderBy("finished_at", "desc");
+
+    if (format !== "csv") {
+      baseQuery = baseQuery.limit(pageSize).offset(offset);
+    }
 
     if (sceneParam) {
       baseQuery = baseQuery.where("operation", "=", sceneParam);
@@ -89,7 +94,7 @@ export const GET = withAdminAuth(async (req: Request) => {
 
     const [rows, totalRow] = await Promise.all([
       baseQuery.execute(),
-      countQuery.executeTakeFirst(),
+      format === "csv" ? Promise.resolve(undefined) : countQuery.executeTakeFirst(),
     ]);
 
     const items: ExplanationConsistencyItem[] = rows.map((row) => {
@@ -118,11 +123,60 @@ export const GET = withAdminAuth(async (req: Request) => {
         targetLang: row.target_lang,
         finishedAt: row.finished_at ? row.finished_at.toISOString() : null,
         explanationConsistency: normalized,
+        contentHash: (row as any).content_hash ?? null,
+        errorDetail,
       };
     });
 
-    const total = Number(totalRow?.count || 0);
-    const hasMore = offset + items.length < total;
+    if (format === "csv") {
+      const header = [
+        "question_id",
+        "content_hash",
+        "locale",
+        "expected",
+        "inferred",
+        "source",
+        "auto_fixable",
+      ];
+      const escape = (val: any) => {
+        if (val === null || val === undefined) return "";
+        const s = String(val);
+        if (s.includes(",") || s.includes("\"") || s.includes("\n")) {
+          return `"${s.replace(/"/g, '""')}"`;
+        }
+        return s;
+      };
+
+      const lines: string[] = [header.join(",")];
+      items.forEach((item) => {
+        const source = item.errorDetail?.source ?? item.errorDetail?.explanationConsistency?.source;
+        const autoFixable = item.errorDetail?.autoFixable ?? "";
+        const list = item.explanationConsistency?.length ? item.explanationConsistency : [];
+        list.forEach((c) => {
+          if (c.status !== "inconsistent") return;
+          lines.push([
+            escape(item.questionId),
+            escape(item.contentHash ?? ""),
+            escape(c.locale ?? ""),
+            escape(c.expected ?? ""),
+            escape(c.inferred ?? ""),
+            escape(source ?? ""),
+            escape(autoFixable),
+          ].join(","));
+        });
+      });
+
+      const csv = lines.join("\n");
+      return new Response(csv, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="explanation_inconsistent_content_hash_${new Date().toISOString().replace(/[:.]/g, "-")}.csv"`,
+        },
+      });
+    }
+
+    const total = Number(totalRow?.count || items.length || 0);
+    const hasMore = format === "csv" ? false : offset + items.length < total;
 
     return success({
       items,

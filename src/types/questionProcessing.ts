@@ -11,8 +11,10 @@ export interface ExplanationConsistencyItem {
   id: number;
   taskId: string;
   questionId: number;
+  contentHash?: string | null;
   operation: string;
   targetLang: string | null;
   finishedAt: string | null;
   explanationConsistency: ExplanationConsistencyEntry[];
+  errorDetail?: any;
 }
