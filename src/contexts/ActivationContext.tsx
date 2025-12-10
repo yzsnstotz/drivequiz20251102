@@ -9,6 +9,7 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
+import { useAppSession } from "@/contexts/SessionContext";
 
 interface ActivationStatus {
   valid: boolean;
@@ -38,8 +39,20 @@ export function ActivationProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ActivationStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+  const { status: sessionStatus } = useAppSession();
 
   useEffect(() => {
+    if (sessionStatus === "loading") {
+      return;
+    }
+
+    if (sessionStatus === "unauthenticated") {
+      setStatus(null);
+      setState("not_activated");
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     const init = async () => {
       try {
@@ -65,11 +78,20 @@ export function ActivationProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     };
-    void init();
+    if (sessionStatus === "authenticated") {
+      void init();
+    }
     return () => controller.abort();
-  }, []);
+  }, [sessionStatus]);
 
   const refresh = useCallback(async () => {
+    if (sessionStatus !== "authenticated") {
+      setStatus(null);
+      setState("not_activated");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setState("loading");
     setError(null);
@@ -93,7 +115,7 @@ export function ActivationProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionStatus]);
 
   const value = useMemo(
     () => ({ state, status, loading, error, refresh }),

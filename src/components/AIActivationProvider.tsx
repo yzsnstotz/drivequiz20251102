@@ -42,7 +42,7 @@ interface AIActivationProviderProps {
 export default function AIActivationProvider({
   children,
 }: AIActivationProviderProps) {
-  const { data: session } = useAppSession();
+  const { data: session, status: sessionStatus } = useAppSession();
   const { status: activationStatus, loading: activationLoading, refresh } = useActivation();
   const pathname = usePathname();
   const router = useRouter();
@@ -70,6 +70,12 @@ export default function AIActivationProvider({
 
   // ✅ 修复：检查激活状态（使用 ActivationContext 的状态，不再直接请求 API）
   const checkActivationStatus = useCallback(async () => {
+    if (sessionStatus !== "authenticated") {
+      setIsActivated(false);
+      lastActivatedStateRef.current = false;
+      return;
+    }
+
     // 首先检查localStorage中的激活状态
     const localActivated = getInitialActivationState();
     
@@ -113,7 +119,7 @@ export default function AIActivationProvider({
       setIsActivated(finalState);
       lastActivatedStateRef.current = finalState;
     }
-  }, [session?.user?.email, activationStatus, getInitialActivationState]);
+  }, [session?.user?.email, sessionStatus, activationStatus, getInitialActivationState]);
 
   // 显示激活页面（统一使用路由跳转）
   const showActivationModal = useCallback(() => {
@@ -123,22 +129,28 @@ export default function AIActivationProvider({
   // ✅ 修复：初始化时检查激活状态（使用 ActivationContext 的状态）
   // ✅ 修复：禁止依赖 session 加载状态，只依赖 activationStatus
   useEffect(() => {
-    // 首先从localStorage读取初始状态
+    // 未登录：跳过激活逻辑
+    if (sessionStatus === "loading") {
+      return;
+    }
+    if (sessionStatus === "unauthenticated") {
+      setIsActivated(false);
+      lastActivatedStateRef.current = false;
+      return;
+    }
+
+    // 已登录：继续现有激活判断
     const localActivated = getInitialActivationState();
-    
-    // 优先使用localStorage状态，确保用户不会看到闪烁
     setIsActivated(localActivated);
     lastActivatedStateRef.current = localActivated;
-    
-    // ✅ 修复：不依赖 session 加载状态，只依赖 activationStatus
+
     if (!activationLoading && activationStatus) {
       checkActivationStatus();
     } else if (!localActivated) {
-      // 如果没有激活状态且localStorage也没有激活状态，设置为false
       setIsActivated(false);
       lastActivatedStateRef.current = false;
     }
-  }, [activationStatus, activationLoading, checkActivationStatus]);
+  }, [sessionStatus, activationStatus, activationLoading, checkActivationStatus, getInitialActivationState]);
 
   const contextValue: AIActivationContextType = {
     isActivated,
