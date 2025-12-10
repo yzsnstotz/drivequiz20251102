@@ -1,3 +1,7 @@
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+dotenv.config();
+
 import { db } from "../src/lib/db";
 import crypto from "crypto";
 import {
