@@ -15,6 +15,7 @@ import { isFavorite } from "@/lib/favorites";
 import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 import { useAIActivation } from "@/components/AIActivationProvider";
 import { useAppSession } from "@/contexts/SessionContext";
+import { useRequireActivation } from "@/hooks/useRequireActivation";
 
 function StudyModePageFallback() {
   const { t } = useLanguage();
@@ -41,6 +42,7 @@ function StudyModePageContent() {
   const { language, t } = useLanguage();
   const { isActivated, showActivationModal } = useAIActivation();
   const { status: sessionStatus, loading: sessionLoading } = useAppSession();
+  useRequireActivation();
 
   const licenseType = searchParams?.get("licenseType") || null;
   const stage = (searchParams?.get("stage") as "provisional" | "regular" | null) || null;

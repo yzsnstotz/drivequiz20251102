@@ -2,9 +2,9 @@
 
 import AIPage from "@/components/AIPage";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { useActivation } from "@/contexts/ActivationContext";
 import { useAppSession } from "@/contexts/SessionContext";
+import { useRequireActivation } from "@/hooks/useRequireActivation";
 
 /**
  * AI 助手页面路由
@@ -14,18 +14,10 @@ export default function AIPageRoute() {
   const router = useRouter();
   const { status, loading } = useActivation();
   const { status: sessionStatus, isAuthenticatedStrict } = useAppSession();
+  useRequireActivation();
 
   const isAuthenticated = isAuthenticatedStrict;
   const isActivated = isAuthenticated && !!status?.valid;
-  
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-    if (!loading && !isActivated) {
-      router.replace("/activation");
-    }
-  }, [isAuthenticated, loading, isActivated, router]);
   
   if (sessionStatus === "loading") {
     return <div>Loading AI Helper...</div>;

@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { isAuthRequiredPath } from "@/config/authRoutes";
+
+async function getSessionFromApi(request: NextRequest) {
+  try {
+    const url = new URL("/api/auth/session", request.nextUrl.origin);
+    const res = await fetch(url.toString(), {
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+      },
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const session = await getSessionFromApi(request);
 
   const isStaticAsset =
     pathname.startsWith("/_next/") ||
@@ -27,8 +44,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 在 Edge Runtime 中，仅获取一次登录态
-  const token = await getToken({ req: request });
-  const isAuthenticated = !!token;
+  const isAuthenticated = !!session?.user;
 
   const isAuthRequired = isAuthRequiredPath(pathname);
 
