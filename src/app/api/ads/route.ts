@@ -10,7 +10,6 @@ export const fetchCache = "force-no-store";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getUserInfo } from "@/app/api/_lib/withUserAuth";
-import type { AdContent, PaginationMeta } from "@/types/db";
 
 /**
  * 统一成功响应
@@ -36,6 +35,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const position = searchParams.get("position")?.trim();
+    const mode = (searchParams.get("mode") || "").toLowerCase();
+    const listMode = mode === "list" || mode === "all";
+    const limit = Math.max(1, Math.min(Number(searchParams.get("limit")) || 20, 50));
 
     if (!position) {
       return err("VALIDATION_FAILED", "position 参数是必需的", 400);
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
     // 查询该广告位下的有效广告内容
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const ads = await db
+    let adsQuery = db
       .selectFrom("ad_contents")
       .select([
         "id",
@@ -96,13 +98,47 @@ export async function GET(request: NextRequest) {
           eb("end_date", "is", null),
           eb("end_date", ">=", today),
         ])
-      )
-      .orderBy("priority", "desc")
-      .orderBy("weight", "desc")
-      .execute();
+      );
+
+    adsQuery = adsQuery.orderBy("priority", "desc").orderBy("weight", "desc").orderBy("created_at", "desc");
+
+    if (listMode) {
+      adsQuery = adsQuery.limit(limit);
+    }
+
+    const ads = await adsQuery.execute();
 
     if (ads.length === 0) {
-      const response = ok(null); // 没有可用广告，返回 null
+      const response = ok(listMode ? { items: [] } : null); // 没有可用广告，返回空
+      response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+      return response;
+    }
+
+    if (listMode) {
+      const items = ads.map((ad) => ({
+        id: ad.id,
+        title: {
+          default: ad.title,
+          ja: ad.title_ja,
+          zh: ad.title_zh,
+          en: ad.title_en,
+        },
+        description: {
+          default: ad.description,
+          ja: ad.description_ja,
+          zh: ad.description_zh,
+          en: ad.description_en,
+        },
+        image_url: ad.image_url,
+        video_url: ad.video_url,
+        link_url: ad.link_url,
+        impression_count: ad.impression_count,
+        click_count: ad.click_count,
+        priority: ad.priority,
+        weight: ad.weight,
+      }));
+
+      const response = ok({ items });
       response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
       return response;
     }

@@ -60,6 +60,7 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.merchants", href: "/admin/merchants", match: (p: string) => p.startsWith("/admin/merchants"), permission: "merchants", group: "merchant" },
   { key: "nav.merchantCategories", href: "/admin/merchant-categories", match: (p: string) => p.startsWith("/admin/merchant-categories"), permission: "merchants", group: "merchant" },
   { key: "nav.adSlots", href: "/admin/ad-slots", match: (p: string) => p.startsWith("/admin/ad-slots"), permission: "merchants", group: "merchant" },
+  { key: "nav.adContents", href: "/admin/ad-contents", match: (p: string) => p.startsWith("/admin/ad-contents"), permission: "merchants", group: "merchant" },
   { key: "nav.videos", href: "/admin/videos", match: (p: string) => p.startsWith("/admin/videos"), permission: "videos", group: "merchant" },
   { key: "nav.contactAndTerms", href: "/admin/contact-and-terms", match: (p: string) => p.startsWith("/admin/contact-and-terms"), permission: "contact_and_terms", group: "merchant" },
   // AI管理分组

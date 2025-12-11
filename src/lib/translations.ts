@@ -263,6 +263,18 @@ const translations: Record<string, TranslationValue> = {
     en: "Merchants",
     default: "商家",
   },
+  "nav.adSlots": {
+    ja: "広告欄",
+    zh: "广告栏",
+    en: "Ad Slots",
+    default: "广告栏",
+  },
+  "nav.adContents": {
+    ja: "広告コンテンツ",
+    zh: "广告内容",
+    en: "Ad Contents",
+    default: "广告内容",
+  },
   "nav.videos": {
     ja: "動画",
     zh: "视频",

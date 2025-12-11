@@ -35,41 +35,6 @@ import { useAIActivation } from "@/components/AIActivationProvider";
 import { useRouter } from "next/navigation";
 import { getMultilangContent } from "@/lib/multilangUtils";
 
-const welcomeData = [
-  {
-    id: 0,
-    title: "平台介绍",
-    description: "",
-    imageUrl:
-      "https://raw.githubusercontent.com/yzsnstotz/drivequiz-experiment/refs/heads/main/image/banner/intro.webp",
-    link: "https://zalem-app.gitbook.io/info/intro",
-  },
-  {
-    id: 1,
-    title: "“大乱斗”挑战赛火热开启中",
-    description: "",
-    imageUrl:
-      "https://raw.githubusercontent.com/yzsnstotz/drivequiz-experiment/refs/heads/main/image/banner/royalbattlecompetition.webp",
-    link: "https://zalem-app.gitbook.io/info/event/royalbattle",
-  },
-  {
-    id: 2,
-    title: "新！志愿者招募计划开启！",
-    description: "",
-    imageUrl:
-      "https://raw.githubusercontent.com/yzsnstotz/drivequiz-experiment/refs/heads/main/image/banner/volunteerreruitmentevent.webp",
-    link: "https://zalem-app.gitbook.io/info/event/volunteer-recruit",
-  },
-  {
-    id: 3,
-    title: "新！商家入驻计划开启！",
-    description: "",
-    imageUrl:
-      "https://raw.githubusercontent.com/yzsnstotz/drivequiz-experiment/refs/heads/main/image/banner/merchantrecruitevent.webp",
-    link: "https://zalem-app.gitbook.io/info/event/merchant-recruit",
-  },
-];
-
 type AdSlotConfig = {
   slotKey: string;
   title: any; // JSONB: MultilangContent
@@ -86,11 +51,25 @@ export default function HomePage() {
   const [currentWelcomeIndex, setCurrentWelcomeIndex] = useState(0);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
   const welcomeScrollRef = useRef<HTMLDivElement>(null);
+  const [welcomeData, setWelcomeData] = useState<Array<{ id: number; title: string; description: string; imageUrl: string; link: string }>>([]);
   const [adSlots, setAdSlots] = useState<AdSlotConfig[]>([]);
   const [showSplash, setShowSplash] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [splashDuration, setSplashDuration] = useState(4);
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+
+  const pickText = (value: any) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    return (
+      value[language] ||
+      value.default ||
+      value.zh ||
+      value.en ||
+      value.ja ||
+      ""
+    );
+  };
 
   useEffect(() => {
     // 加载用户驾考偏好
@@ -227,6 +206,33 @@ export default function HomePage() {
     };
     loadAdSlots();
   }, []);
+
+  useEffect(() => {
+    const loadWelcomeData = async () => {
+      try {
+        const res = await fetch("/api/ads?position=home_banner&mode=list&limit=20", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.ok && data.data?.items) {
+            const items = data.data.items.map((item: any, idx: number) => ({
+              id: item.id || idx,
+              title: pickText(item.title),
+              description: pickText(item.description),
+              imageUrl: item.image_url || item.imageUrl || "",
+              link: item.link_url || item.linkUrl || "",
+            })).filter((item: any) => item.imageUrl && item.link);
+            setWelcomeData(items);
+            return;
+          }
+        }
+        setWelcomeData([]);
+      } catch (error) {
+        console.error("[HomePage] Load home_banner ads failed:", error);
+        setWelcomeData([]);
+      }
+    };
+    loadWelcomeData();
+  }, [language]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
@@ -465,6 +471,9 @@ export default function HomePage() {
               className="flex overflow-x-auto space-x-4 pb-4 scrollbar-hide"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
+              {welcomeData.length === 0 && (
+                <div className="text-gray-500 text-sm px-2 py-3">暂无活动</div>
+              )}
               {welcomeData.map((item) => (
                 <div
                   key={item.id}

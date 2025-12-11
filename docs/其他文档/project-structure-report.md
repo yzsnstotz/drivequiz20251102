@@ -158,6 +158,11 @@ New Front End/
 
 > ⚠️ **注意**: 当前 `DATABASE_URL` 和 `SUPABASE_URL` 可能指向不同数据库实例，需要确认统一。
 
+### 3.2.1 广告相关表（更新）
+- `ad_slots`：新增/确保 `home_banner` 位置（首页顶部 Banner）。
+- `ad_contents`：预置 4 条首页 Banner 广告（多语言标题、图片、跳转链接），字段仍为多语言列（title_zh/en/ja 等）+ 优先级/权重/生效期。
+- 迁移文件：`src/migrations/20251211_add_home_banner_slot.sql`。
+
 ### 3.2 数据库表结构
 
 #### 3.2.1 AI 相关表
