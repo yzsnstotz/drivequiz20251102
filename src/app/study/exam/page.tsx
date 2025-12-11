@@ -19,7 +19,6 @@ import { isFavorite } from "@/lib/favorites";
 import StudyErrorBoundary from "@/components/StudyErrorBoundary";
 import { useAIActivation } from "@/components/AIActivationProvider";
 import { useAppSession } from "@/contexts/SessionContext";
-import { useRequireActivation } from "@/hooks/useRequireActivation";
 
 function ExamModePageFallback() {
   console.log('[ExamMode] ExamModePageFallback rendering (Suspense fallback)');
@@ -52,7 +51,6 @@ function ExamModePageContent() {
   const { language, t } = useLanguage();
   const { isActivated, showActivationModal } = useAIActivation();
   const { status: sessionStatus, loading: sessionLoading } = useAppSession();
-  useRequireActivation();
 
   const callbackUrl = useMemo(() => {
     const search = searchParams?.toString();

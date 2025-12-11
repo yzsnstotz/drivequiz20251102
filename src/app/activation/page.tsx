@@ -220,6 +220,32 @@ export default function ActivationPage() {
             </button>
           </form>
 
+          {/* 学生免费入口 */}
+          <section className="mt-6 rounded-2xl border border-gray-200 dark:border-ios-dark-border p-4 bg-white dark:bg-ios-dark-bg-tertiary">
+            <h3 className="text-lg font-semibold mb-2 dark:text-ios-dark-text">
+              {t('activation.studentApply')}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-ios-dark-text-secondary mb-4">
+              {t('activation.studentHint')}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => router.push("/student/ai-apply")}
+                className="inline-flex items-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white shadow-ios-sm dark:shadow-ios-dark-sm active:shadow-ios dark:active:shadow-ios-dark"
+              >
+                {t('activation.studentApply')}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/student/ai-status")}
+                className="inline-flex items-center rounded-xl px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-ios-dark-border dark:text-ios-dark-text"
+              >
+                {t('activation.studentStatus')}
+              </button>
+            </div>
+          </section>
+
           {/* 联系信息区域 */}
           {(businessInfo || purchaseInfo) && (
             <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">
