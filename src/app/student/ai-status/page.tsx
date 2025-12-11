@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/lib/i18n";
 
 type StatusResponse = {
   id: string | null;
@@ -17,11 +18,21 @@ type StatusResponse = {
 
 export default function StudentStatusPage() {
   const router = useRouter();
+  const { t } = useLanguage();
+  const tr = useCallback((key: string, params?: Record<string, string | number>) => {
+    let text = t(key);
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        text = text.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
+      });
+    }
+    return text;
+  }, [t]);
   const [data, setData] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -30,29 +41,29 @@ export default function StudentStatusPage() {
       if (json.ok) {
         setData(json.data);
       } else {
-        setError(json.message || "加载失败");
+        setError(json.message || tr("student.status.loadFailed"));
       }
     } catch (e: any) {
-      setError(e?.message || "加载失败");
+      setError(e?.message || tr("student.status.loadFailed"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [tr]);
 
   useEffect(() => {
     fetchStatus();
-  }, []);
+  }, [fetchStatus]);
 
   const renderBody = () => {
     if (!data || data.status === "none") {
       return (
         <div className="space-y-2">
-          <p className="text-gray-700">尚未提交学生免费 AI 激活申请。</p>
+          <p className="text-gray-700">{tr("student.status.none")}</p>
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             onClick={() => router.push("/student/ai-apply")}
           >
-            去申请
+            {tr("student.status.applyNow")}
           </button>
         </div>
       );
@@ -61,11 +72,11 @@ export default function StudentStatusPage() {
     if (data.status === "pending") {
       return (
         <div className="space-y-2">
-          <p className="text-gray-700">申请已提交，正在审核中。</p>
-          <p className="text-sm text-gray-600">姓名：{data.fullName || "-"}</p>
-          <p className="text-sm text-gray-600">学校：{data.schoolName || "-"}</p>
+          <p className="text-gray-700">{tr("student.status.pending")}</p>
+          <p className="text-sm text-gray-600">{tr("student.status.fullName", { value: data.fullName || "-" })}</p>
+          <p className="text-sm text-gray-600">{tr("student.status.schoolName", { value: data.schoolName || "-" })}</p>
           <p className="text-sm text-gray-600">
-            学习周期：{data.studyPeriodFrom || "-"} ~ {data.studyPeriodTo || "-"}
+            {tr("student.status.studyPeriod", { from: data.studyPeriodFrom || "-", to: data.studyPeriodTo || "-" })}
           </p>
         </div>
       );
@@ -74,15 +85,17 @@ export default function StudentStatusPage() {
     if (data.status === "approved") {
       return (
         <div className="space-y-2">
-          <p className="text-green-700 font-semibold">已通过审核</p>
-          <p className="text-sm text-gray-600">姓名：{data.fullName || "-"}</p>
-          <p className="text-sm text-gray-600">学校：{data.schoolName || "-"}</p>
+          <p className="text-green-700 font-semibold">{tr("student.status.approved")}</p>
+          <p className="text-sm text-gray-600">{tr("student.status.fullName", { value: data.fullName || "-" })}</p>
+          <p className="text-sm text-gray-600">{tr("student.status.schoolName", { value: data.schoolName || "-" })}</p>
           <p className="text-sm text-gray-600">
-            学习周期：{data.studyPeriodFrom || "-"} ~ {data.studyPeriodTo || "-"}
+            {tr("student.status.studyPeriod", { from: data.studyPeriodFrom || "-", to: data.studyPeriodTo || "-" })}
           </p>
           <p className="text-sm text-gray-600">
-            权益有效期：{data.validFrom ? new Date(data.validFrom).toLocaleDateString() : "-"} ~{" "}
-            {data.validUntil ? new Date(data.validUntil).toLocaleDateString() : "-"}
+            {tr("student.status.validPeriod", {
+              from: data.validFrom ? new Date(data.validFrom).toLocaleDateString() : "-",
+              to: data.validUntil ? new Date(data.validUntil).toLocaleDateString() : "-",
+            })}
           </p>
         </div>
       );
@@ -91,13 +104,13 @@ export default function StudentStatusPage() {
     if (data.status === "rejected") {
       return (
         <div className="space-y-2">
-          <p className="text-red-700 font-semibold">未通过审核</p>
-          <p className="text-sm text-gray-600">原因：{data.reviewNote || "-"}</p>
+          <p className="text-red-700 font-semibold">{tr("student.status.rejected")}</p>
+          <p className="text-sm text-gray-600">{tr("student.status.reason", { value: data.reviewNote || "-" })}</p>
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             onClick={() => router.push("/student/ai-apply")}
           >
-            修改信息后重新提交
+            {tr("student.status.resubmit")}
           </button>
         </div>
       );
@@ -106,12 +119,12 @@ export default function StudentStatusPage() {
     if (data.status === "expired") {
       return (
         <div className="space-y-2">
-          <p className="text-yellow-700 font-semibold">权益已过期</p>
+          <p className="text-yellow-700 font-semibold">{tr("student.status.expired")}</p>
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             onClick={() => router.push("/student/ai-apply")}
           >
-            重新提交申请
+            {tr("student.status.reapply")}
           </button>
         </div>
       );
@@ -120,8 +133,8 @@ export default function StudentStatusPage() {
 
   return (
     <div className="container mx-auto max-w-3xl p-6">
-      <h1 className="text-2xl font-bold mb-4">学生免费 AI 激活 - 状态</h1>
-      {loading && <div className="text-gray-600 mb-4">加载中...</div>}
+      <h1 className="text-2xl font-bold mb-4">{tr("student.status.title")}</h1>
+      {loading && <div className="text-gray-600 mb-4">{tr("student.status.loading")}</div>}
       {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
       <div className="bg-white border rounded p-4 shadow-sm">{renderBody()}</div>
     </div>

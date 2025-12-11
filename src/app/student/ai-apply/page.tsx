@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/lib/i18n";
+import { MAX_STUDENT_DOC_SIZE } from "@/constants/studentDocs";
 
 type AdmissionDoc = { fileId: string; url?: string; name: string };
 
@@ -24,11 +26,23 @@ type StatusResponse = {
 
 export default function StudentApplyPage() {
   const router = useRouter();
+  const { t } = useLanguage();
+  const tr = useCallback((key: string, params?: Record<string, string | number>) => {
+    let text = t(key);
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        text = text.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
+      });
+    }
+    return text;
+  }, [t]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [nationality, setNationality] = useState("");
@@ -39,6 +53,7 @@ export default function StudentApplyPage() {
   const [studyFrom, setStudyFrom] = useState("");
   const [studyTo, setStudyTo] = useState("");
   const [admissionDocs, setAdmissionDocs] = useState<AdmissionDoc[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isReadOnly = status?.status === "approved";
 
@@ -65,10 +80,10 @@ export default function StudentApplyPage() {
         setStudyTo(data.studyPeriodTo || "");
         setAdmissionDocs(data.admissionDocs || []);
       } else {
-        setError(json.message || "加载失败");
+        setError(json.message || tr("student.apply.loadFailed"));
       }
     } catch (e: any) {
-      setError(e?.message || "加载失败");
+      setError(e?.message || tr("student.apply.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -79,12 +94,44 @@ export default function StudentApplyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const addDoc = () => {
-    setAdmissionDocs((prev) => [...prev, { fileId: "", name: "" }]);
+  const triggerSelectFile = () => {
+    fileInputRef.current?.click();
   };
 
-  const updateDoc = (idx: number, key: keyof AdmissionDoc, value: string) => {
-    setAdmissionDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, [key]: value } : d)));
+  const uploadStudentDoc = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/upload/student-doc", {
+      method: "POST",
+      body: formData,
+    });
+    const json = await res.json();
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.message || tr("student.apply.uploadFailed"));
+    }
+    return json.data as { fileId: string; url?: string; name: string };
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > MAX_STUDENT_DOC_SIZE) {
+          setUploadError(tr("student.apply.fileTooLarge", { size: "5MB" }));
+          continue;
+        }
+        const uploaded = await uploadStudentDoc(file);
+        setAdmissionDocs((prev) => [...prev, { fileId: uploaded.fileId, url: uploaded.url, name: uploaded.name }]);
+      }
+    } catch (e: any) {
+      setUploadError(e?.message || tr("student.apply.uploadFailed"));
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
   };
 
   const removeDoc = (idx: number) => {
@@ -93,9 +140,13 @@ export default function StudentApplyPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
     setSuccess(null);
+    if (!admissionDocs || admissionDocs.length === 0) {
+      setError(tr("student.apply.docRequired"));
+      return;
+    }
+    setSubmitting(true);
     try {
       const payload = {
         fullName,
@@ -115,14 +166,14 @@ export default function StudentApplyPage() {
       });
       const json = await res.json();
       if (!json.ok) {
-        setError(json.message || "提交失败");
+        setError(json.message || tr("student.apply.submitFailed"));
       } else {
-        setSuccess("申请已提交，正在审核");
+        setSuccess(tr("student.apply.submitSuccess"));
         await fetchStatus();
         router.push("/student/ai-status");
       }
     } catch (e: any) {
-      setError(e?.message || "提交失败");
+      setError(e?.message || tr("student.apply.submitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -130,95 +181,101 @@ export default function StudentApplyPage() {
 
   return (
     <div className="container mx-auto max-w-3xl p-6">
-      <h1 className="text-2xl font-bold mb-4">学生免费 AI 激活申请</h1>
-      <p className="text-gray-600 mb-6">提交在校学生信息以获取免费 AI 激活权益</p>
+      <h1 className="text-2xl font-bold mb-4">{tr("student.apply.title")}</h1>
+      <p className="text-gray-600 mb-6">{tr("student.apply.subtitle")}</p>
 
-      {loading && <div className="text-gray-600 mb-4">加载中...</div>}
+      {loading && <div className="text-gray-600 mb-4">{tr("student.apply.loading")}</div>}
       {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
       {success && <div className="bg-green-50 text-green-700 p-3 rounded mb-4">{success}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1">姓名</label>
+          <label className="block text-sm font-medium mb-1">{t("student.apply.fullName")}</label>
           <input className="w-full border rounded px-3 py-2" value={fullName} onChange={(e) => setFullName(e.target.value)} required disabled={isReadOnly || submitting} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">国籍</label>
+            <label className="block text-sm font-medium mb-1">{t("student.apply.nationality")}</label>
             <input className="w-full border rounded px-3 py-2" value={nationality} onChange={(e) => setNationality(e.target.value)} required disabled={isReadOnly || submitting} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">学校名称</label>
+            <label className="block text-sm font-medium mb-1">{t("student.apply.schoolName")}</label>
             <input className="w-full border rounded px-3 py-2" value={schoolName} onChange={(e) => setSchoolName(e.target.value)} required disabled={isReadOnly || submitting} />
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">邮箱</label>
+            <label className="block text-sm font-medium mb-1">{t("student.apply.email")}</label>
             <input className="w-full border rounded px-3 py-2" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isReadOnly || submitting} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">手机号码</label>
+            <label className="block text-sm font-medium mb-1">{t("student.apply.phoneNumber")}</label>
             <input className="w-full border rounded px-3 py-2" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required disabled={isReadOnly || submitting} />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">渠道方式（如何知道本服务）</label>
+          <label className="block text-sm font-medium mb-1">{t("student.apply.channelSource")}</label>
           <input className="w-full border rounded px-3 py-2" value={channelSource} onChange={(e) => setChannelSource(e.target.value)} required disabled={isReadOnly || submitting} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">学习周期开始</label>
+            <label className="block text-sm font-medium mb-1">{t("student.apply.studyFrom")}</label>
             <input className="w-full border rounded px-3 py-2" type="date" value={studyFrom} onChange={(e) => setStudyFrom(e.target.value)} disabled={isReadOnly || submitting} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">学习周期结束</label>
+            <label className="block text-sm font-medium mb-1">{t("student.apply.studyTo")}</label>
             <input className="w-full border rounded px-3 py-2" type="date" value={studyTo} onChange={(e) => setStudyTo(e.target.value)} disabled={isReadOnly || submitting} />
           </div>
         </div>
 
         <div className="border rounded p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="font-medium">入学/在校证明（至少1份）</span>
+            <span className="font-medium">{tr("student.apply.admissionDocs")}</span>
             {!isReadOnly && (
-              <button type="button" onClick={addDoc} className="text-blue-600 hover:text-blue-800 text-sm">
-                添加文件
-              </button>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={triggerSelectFile} className="text-blue-600 hover:text-blue-800 text-sm">
+                  {tr("student.apply.addFile")}
+                </button>
+                <span className="text-xs text-gray-500">{tr("student.apply.sizeLimit", { size: "5MB" })}</span>
+              </div>
             )}
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+            accept="image/*,application/pdf"
+            multiple
+          />
+          {uploadError && <div className="text-sm text-red-600 mb-2">{uploadError}</div>}
+          {uploading && <div className="text-sm text-gray-600 mb-2">{tr("student.apply.uploading")}</div>}
           <div className="space-y-3">
-            {admissionDocs.length === 0 && <div className="text-sm text-gray-500">暂无文件，至少添加一条</div>}
+            {admissionDocs.length === 0 && <div className="text-sm text-gray-500">{tr("student.apply.noFile")}</div>}
             {admissionDocs.map((doc, idx) => (
               <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
-                <input
-                  className="border rounded px-3 py-2"
-                  placeholder="文件 ID"
-                  value={doc.fileId}
-                  onChange={(e) => updateDoc(idx, "fileId", e.target.value)}
-                  disabled={isReadOnly || submitting}
-                  required
-                />
-                <input
-                  className="border rounded px-3 py-2"
-                  placeholder="文件名"
-                  value={doc.name}
-                  onChange={(e) => updateDoc(idx, "name", e.target.value)}
-                  disabled={isReadOnly || submitting}
-                  required
-                />
-                <div className="flex gap-2">
-                  <input
-                    className="border rounded px-3 py-2 flex-1"
-                    placeholder="文件链接（可选）"
-                    value={doc.url || ""}
-                    onChange={(e) => updateDoc(idx, "url", e.target.value)}
-                    disabled={isReadOnly || submitting}
-                  />
-                  {!isReadOnly && (
-                    <button type="button" className="text-red-600 hover:text-red-800 text-sm" onClick={() => removeDoc(idx)}>
-                      删除
-                    </button>
+                <div className="border rounded px-3 py-2 text-sm bg-gray-50 dark:bg-transparent">
+                  <div className="font-medium">{doc.name || tr("student.apply.fileNamePlaceholder")}</div>
+                  <div className="text-gray-600 break-all">{doc.fileId}</div>
+                </div>
+                <div className="border rounded px-3 py-2 text-sm bg-gray-50 dark:bg-transparent">
+                  {doc.url ? (
+                    <a className="text-blue-600 underline break-all" href={doc.url} target="_blank" rel="noreferrer">
+                      {doc.url}
+                    </a>
+                  ) : (
+                    <span className="text-gray-600">{tr("student.apply.fileUrlPlaceholder")}</span>
                   )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
+                    onClick={() => removeDoc(idx)}
+                    disabled={isReadOnly || submitting || uploading}
+                  >
+                    {tr("student.apply.delete")}
+                  </button>
                 </div>
               </div>
             ))}
@@ -231,14 +288,14 @@ export default function StudentApplyPage() {
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             disabled={isReadOnly || submitting}
           >
-            {submitting ? "提交中..." : "提交申请"}
+            {submitting ? t("student.apply.submitting") : t("student.apply.submit")}
           </button>
           <button
             type="button"
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
             onClick={() => router.push("/student/ai-status")}
           >
-            查看状态
+            {t("student.apply.viewStatus")}
           </button>
         </div>
       </form>
