@@ -9,7 +9,10 @@ import fs from "fs/promises";
 import { getUserInfo } from "@/app/api/_lib/withUserAuth";
 import { MAX_STUDENT_DOC_SIZE, STUDENT_DOC_STORAGE_PREFIX } from "@/constants/studentDocs";
 
-const STORAGE_DIR = path.join(process.cwd(), STUDENT_DOC_STORAGE_PREFIX);
+// Vercel Serverless 为只读文件系统，写入需落到 /tmp；支持自定义环境变量覆盖
+const STORAGE_DIR = process.env.STUDENT_DOC_STORAGE_DIR
+  ? path.resolve(process.env.STUDENT_DOC_STORAGE_DIR)
+  : path.join("/tmp", STUDENT_DOC_STORAGE_PREFIX);
 
 function ok<T>(data: T, status = 200) {
   return NextResponse.json({ ok: true, data }, { status });
@@ -29,6 +32,9 @@ export async function GET(req: NextRequest) {
     if (!fileId) return err("FILE_ID_REQUIRED", "fileId is required", 400);
 
     const filePath = path.join(STORAGE_DIR, fileId);
+    // 防止路径穿越
+    if (!filePath.startsWith(STORAGE_DIR)) return err("INVALID_PATH", "invalid file path", 400);
+
     const metaPath = `${filePath}.json`;
     const meta = await fs
       .readFile(metaPath, "utf8")
@@ -68,6 +74,7 @@ export async function POST(req: NextRequest) {
     const ext = path.extname(file.name) || "";
     const fileId = `${STUDENT_DOC_STORAGE_PREFIX}_${randomUUID()}${ext}`;
     const filePath = path.join(STORAGE_DIR, fileId);
+    if (!filePath.startsWith(STORAGE_DIR)) return err("INVALID_PATH", "invalid file path", 400);
     await fs.writeFile(filePath, buffer);
 
     const meta = {
@@ -83,6 +90,6 @@ export async function POST(req: NextRequest) {
     return ok({ fileId, name: file.name, size: file.size, url, contentType: file.type || "application/octet-stream" });
   } catch (e) {
     console.error("[POST /api/upload/student-doc] error", e);
-    return err("INTERNAL_ERROR", "上传失败", 500);
+    return err("INTERNAL_ERROR", "上传失败，请稍后重试", 500);
   }
 }
