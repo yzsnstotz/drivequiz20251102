@@ -204,6 +204,7 @@ export default function AdminStudentVerificationDetailPage() {
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Info label="用户ID" value={data.userId} />
             <Info label="姓名" value={data.fullName} />
             <Info label="邮箱" value={data.email} />
             <Info label="电话" value={data.phoneNumber} />

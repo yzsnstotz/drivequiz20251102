@@ -6,6 +6,7 @@ import apiClient from "@/lib/apiClient";
 
 type VerificationItem = {
   id: string;
+  userId?: string | null;
   fullName: string | null;
   email: string | null;
   status: "pending" | "approved" | "rejected" | "expired";
@@ -70,6 +71,7 @@ export default function AdminStudentVerificationsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">用户ID</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">申请人</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">邮箱</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">学校/来源</th>
@@ -90,6 +92,7 @@ export default function AdminStudentVerificationsPage() {
               )}
               {items.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-700">{item.userId || "-"}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{item.fullName || "-"}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{item.email || "-"}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
