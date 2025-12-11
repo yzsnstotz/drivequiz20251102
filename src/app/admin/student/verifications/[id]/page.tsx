@@ -51,6 +51,11 @@ export default function AdminStudentVerificationDetailPage() {
   const [data, setData] = useState<VerificationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [approveValidUntil, setApproveValidUntil] = useState<string>("");
+  const [approveValidFrom, setApproveValidFrom] = useState<string>("");
+  const [rejectNote, setRejectNote] = useState<string>("");
 
   useEffect(() => {
     if (!id) return;
@@ -101,6 +106,101 @@ export default function AdminStudentVerificationDetailPage() {
             <div className="text-lg font-semibold text-gray-900">{STATUS_LABEL[data.status] ?? data.status}</div>
             {data.validUntil && <div className="text-sm text-gray-600">有效期至：{data.validUntil.replace("T", " ").replace("Z", "")}</div>}
             {data.reviewNote && <div className="text-sm text-gray-700">审核备注：{data.reviewNote}</div>}
+            {data.status === "pending" && (
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div className="text-sm font-medium text-gray-900">审核通过</div>
+                  <label className="block text-xs text-gray-600">
+                    生效时间（可选）
+                    <input
+                      type="datetime-local"
+                      value={approveValidFrom}
+                      onChange={(e) => setApproveValidFrom(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                    />
+                  </label>
+                  <label className="block text-xs text-gray-600">
+                    失效时间（必填）
+                    <input
+                      type="datetime-local"
+                      value={approveValidUntil}
+                      onChange={(e) => setApproveValidUntil(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                    />
+                  </label>
+                  <button
+                    disabled={actionLoading}
+                    onClick={async () => {
+                      if (!approveValidUntil) {
+                        setActionMessage("请填写失效时间");
+                        return;
+                      }
+                      try {
+                        setActionLoading(true);
+                        setActionMessage(null);
+                        const body: any = { validUntil: new Date(approveValidUntil).toISOString() };
+                        if (approveValidFrom) body.validFrom = new Date(approveValidFrom).toISOString();
+                        const res = await apiClient.post(`/api/admin/student/verifications/${id}/approve`, body);
+                        if (!res.ok) throw new Error((res as any)?.message || "操作失败");
+                        setActionMessage("审核通过成功");
+                        // 重新拉取详情
+                        const detailRes = await apiClient.get(`/api/admin/student/verifications/${id}`);
+                        if (detailRes.ok) setData((detailRes as any).data as VerificationDetail);
+                      } catch (e: any) {
+                        setActionMessage(e?.message || "操作失败");
+                      } finally {
+                        setActionLoading(false);
+                      }
+                    }}
+                    className="inline-flex items-center rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                  >
+                    {actionLoading ? "处理中..." : "确认通过"}
+                  </button>
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div className="text-sm font-medium text-gray-900">审核驳回</div>
+                  <label className="block text-xs text-gray-600">
+                    驳回原因（必填）
+                    <textarea
+                      value={rejectNote}
+                      onChange={(e) => setRejectNote(e.target.value)}
+                      rows={3}
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                      placeholder="请输入驳回原因"
+                    />
+                  </label>
+                  <button
+                    disabled={actionLoading}
+                    onClick={async () => {
+                      if (!rejectNote.trim()) {
+                        setActionMessage("请填写驳回原因");
+                        return;
+                      }
+                      try {
+                        setActionLoading(true);
+                        setActionMessage(null);
+                        const res = await apiClient.post(`/api/admin/student/verifications/${id}/reject`, {
+                          reviewNote: rejectNote.trim(),
+                        });
+                        if (!res.ok) throw new Error((res as any)?.message || "操作失败");
+                        setActionMessage("已驳回");
+                        const detailRes = await apiClient.get(`/api/admin/student/verifications/${id}`);
+                        if (detailRes.ok) setData((detailRes as any).data as VerificationDetail);
+                      } catch (e: any) {
+                        setActionMessage(e?.message || "操作失败");
+                      } finally {
+                        setActionLoading(false);
+                      }
+                    }}
+                    className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {actionLoading ? "处理中..." : "确认驳回"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {actionMessage && <div className="text-sm text-blue-700 mt-2">{actionMessage}</div>}
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
