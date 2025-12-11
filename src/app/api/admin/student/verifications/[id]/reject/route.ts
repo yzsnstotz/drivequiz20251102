@@ -19,7 +19,7 @@ export const POST = withAdminAuth(async (req: NextRequest, { params }: { params:
 
     const reviewer = reviewerId || "admin";
 
-    const updated = await rejectStudentVerification(id, reviewer, String(reviewNote));
+    const updated = await rejectStudentVerification(id, reviewer, String(reviewNote).trim());
     if (!updated) return badRequest("record not pending or not found");
 
     return success({
@@ -29,6 +29,11 @@ export const POST = withAdminAuth(async (req: NextRequest, { params }: { params:
     });
   } catch (e) {
     console.error("[POST /api/admin/student/verifications/:id/reject] error:", e);
+    const message = e instanceof Error ? e.message : "Failed to reject verification";
+    // 若数据库缺少 review_note 字段或其他列导致报错，返回 400 以便前端感知
+    if (typeof message === "string" && /review_note|column|does not exist|relation|invalid/i.test(message)) {
+      return badRequest(`DB_ERROR: ${message}`);
+    }
     return internalError("Failed to reject verification");
   }
 });
