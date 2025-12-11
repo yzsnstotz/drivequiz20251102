@@ -46,6 +46,17 @@ const nextConfig = {
     // 或者设置为 true 来完全忽略 ESLint（不推荐）
     // ignoreDuringBuilds: true,
   },
+  /**
+   * 避免将体积巨大的缓存/无关文件打进 Serverless 函数（导致 250MB 超限）
+   */
+  outputFileTracingExcludes: {
+    "*": [
+      ".next/cache/**",
+      ".git/**",
+      "docs/**",
+      "scripts/**",
+    ],
+  },
 };
 
 module.exports = nextConfig;
