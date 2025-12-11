@@ -5,7 +5,7 @@ export const fetchCache = "force-no-store";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getUserInfo } from "@/app/api/_lib/withUserAuth";
-import { upsertPendingVerification, getLatestStudentVerification, deriveStatus, StudentVerificationRecord } from "@/lib/studentVerification";
+import { upsertPendingVerification, getLatestStudentVerification, deriveStatus, StudentVerificationRecord, AdmissionDoc } from "@/lib/studentVerification";
 
 function ok<T>(data: T, status = 200) {
   return NextResponse.json({ ok: true, data }, { status });
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
     if (studyPeriodFrom && !studyFromDate) return err("VALIDATION_FAILED", "学习周期开始时间格式不正确", 400);
     if (studyPeriodTo && !studyToDate) return err("VALIDATION_FAILED", "学习周期结束时间格式不正确", 400);
 
-    const docsForDb = normalizedDocs.data.map((d) => {
+    const docsForDb: AdmissionDoc[] = normalizedDocs.data.map((d) => {
       const base: Record<string, any> = {
         fileId: d.fileId,
         bucket: d.bucket,
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
       if (typeof d.size === "number") base.size = d.size;
       if (d.mimeType) base.mimeType = d.mimeType;
       if (d.contentType) base.contentType = d.contentType;
-      return base;
+      return base as AdmissionDoc;
     });
 
     const record = await upsertPendingVerification(user.userDbId, {

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { sql } from "kysely";
 export type StudentStatus = "none" | "pending" | "approved" | "rejected" | "expired";
 
 type Json =
@@ -8,6 +9,16 @@ type Json =
   | null
   | { [key: string]: Json }
   | Json[];
+
+export type AdmissionDoc = {
+  fileId: string;
+  bucket: string;
+  url: string;
+  name: string;
+  size?: number;
+  mimeType?: string;
+  contentType?: string;
+};
 
 export interface StudentVerificationRecord {
   id: string;
@@ -29,6 +40,23 @@ export interface StudentVerificationRecord {
   valid_until: Date | null;
   created_at: Date;
   updated_at: Date;
+}
+
+function buildAdmissionDocsJsonExpr(docs: AdmissionDoc[]) {
+  const cleaned = docs.map((doc) => {
+    const base: Record<string, any> = {
+      fileId: String(doc.fileId),
+      bucket: String(doc.bucket),
+      url: String(doc.url),
+      name: String(doc.name),
+    };
+    if (typeof doc.size === "number") base.size = doc.size;
+    if (typeof doc.mimeType === "string" && doc.mimeType.trim()) base.mimeType = doc.mimeType.trim();
+    if (typeof doc.contentType === "string" && doc.contentType.trim()) base.contentType = doc.contentType.trim();
+    return base;
+  });
+  const jsonText = JSON.stringify(cleaned);
+  return sql`to_jsonb(${jsonText}::jsonb)`;
 }
 
 export function deriveStatus(row: StudentVerificationRecord | null): StudentStatus {
@@ -130,9 +158,11 @@ export async function upsertPendingVerification(
     school_name: string;
     study_period_from: Date | null;
     study_period_to: Date | null;
-    admission_docs: Json;
+    admission_docs: AdmissionDoc[];
   }
 ): Promise<StudentVerificationRecord> {
+  const admissionDocsExpr = buildAdmissionDocsJsonExpr(payload.admission_docs);
+
   const latest = await getLatestStudentVerification(userId);
   const now = new Date();
   if (latest && latest.status === "pending") {
@@ -140,6 +170,7 @@ export async function upsertPendingVerification(
       .updateTable("student_verifications")
       .set({
         ...payload,
+        admission_docs: admissionDocsExpr as unknown as Json,
         status: "pending",
         reviewer_id: null,
         reviewed_at: null,
@@ -159,6 +190,7 @@ export async function upsertPendingVerification(
     .values({
       user_id: userId,
       ...payload,
+      admission_docs: admissionDocsExpr as unknown as Json,
       status: "pending",
     })
     .returningAll()
