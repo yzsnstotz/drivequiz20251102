@@ -41,12 +41,12 @@ export async function GET(request: NextRequest) {
     const dbUserId = userInfo?.userDbId || null;
     const rawUserId = userInfo?.userId || null;
 
-    if (!dbUserId && !rawUserId) {
+    const userIdForQuery = dbUserId ?? rawUserId ?? null;
+    if (!userIdForQuery) {
       return ok({ valid: false, reasonCode: "NO_USER" }, 200);
     }
 
     const now = new Date();
-    const userIdForQuery = (dbUserId || rawUserId) as string;
     const { entitlement, reasonCode } = await getUserEffectiveEntitlement(db, userIdForQuery, now);
 
     // 若有激活码权益，保持 activatedAt 输出兼容

@@ -86,16 +86,23 @@ export async function getLatestStudentVerification(userId: string): Promise<Stud
   return (row as StudentVerificationRecord | undefined) ?? null;
 }
 
-export async function approveStudentVerification(
-  verificationId: string,
-  reviewerId: string | null,
-  validFrom: Date,
-  validUntil: Date
-): Promise<StudentVerificationRecord | null> {
+export async function approveStudentVerification(params: {
+  id: string;
+  reviewerId: string | null;
+  validFrom?: Date | null;
+  validUntil: Date;
+}): Promise<StudentVerificationRecord | null> {
+  const now = new Date();
+  const validFrom = params.validFrom ?? now;
+  const validUntil = params.validUntil;
+
+  if (!(validUntil instanceof Date) || Number.isNaN(validUntil.getTime())) {
+    throw new Error("INVALID_VALID_UNTIL");
+  }
   const existing = await db
     .selectFrom("student_verifications")
     .selectAll()
-    .where("id", "=", verificationId)
+    .where("id", "=", params.id)
     .executeTakeFirst();
 
   if (!existing || existing.status !== "pending") {
@@ -106,13 +113,13 @@ export async function approveStudentVerification(
     .updateTable("student_verifications")
     .set({
       status: "approved",
-      reviewer_id: reviewerId,
+      reviewer_id: params.reviewerId,
       reviewed_at: new Date(),
       valid_from: validFrom,
       valid_until: validUntil,
-      updated_at: new Date(),
+      updated_at: now,
     })
-    .where("id", "=", verificationId)
+    .where("id", "=", params.id)
     .returningAll()
     .executeTakeFirst();
 
@@ -157,7 +164,7 @@ export async function getStudentBasedEntitlement(
 ): Promise<UserEntitlement | null> {
   const row = await dbOrTrx
     .selectFrom("student_verifications")
-    .selectAll()
+    .select(["id", "user_id", "status", "valid_from", "valid_until"])
     .where("user_id", "=", userId)
     .where("status", "=", "approved")
     .where((eb) =>
