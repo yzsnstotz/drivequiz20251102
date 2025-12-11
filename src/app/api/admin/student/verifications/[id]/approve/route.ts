@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { approveStudentVerification, deriveStatus } from "@/lib/studentVerification";
+import { resolveReviewerId } from "@/lib/adminReviewer";
 
 function normalizeReviewerId(input?: string | null): string | null {
   if (!input) return null;
@@ -31,12 +32,9 @@ export const POST = withAdminAuth(async (req: NextRequest, { params }: { params:
     }
 
     const adminInfo = await getAdminInfo(req);
-    const adminReviewer =
-      normalizeReviewerId(reviewerId) ||
-      normalizeReviewerId(adminInfo?.username) ||
-      null;
+    const adminReviewer = resolveReviewerId(reviewerId, adminInfo);
 
-    const updated = await approveStudentVerification(id, adminReviewer ?? "admin", vf, vu);
+    const updated = await approveStudentVerification(id, adminReviewer, vf, vu);
     if (!updated) {
       return badRequest("record not pending or not found");
     }

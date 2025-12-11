@@ -88,7 +88,7 @@ export async function getLatestStudentVerification(userId: string): Promise<Stud
 
 export async function approveStudentVerification(
   verificationId: string,
-  reviewerId: string,
+  reviewerId: string | null,
   validFrom: Date,
   validUntil: Date
 ): Promise<StudentVerificationRecord | null> {
@@ -121,7 +121,7 @@ export async function approveStudentVerification(
 
 export async function rejectStudentVerification(
   verificationId: string,
-  reviewerId: string,
+  reviewerId: string | null,
   reviewNote: string
 ): Promise<StudentVerificationRecord | null> {
   const existing = await db

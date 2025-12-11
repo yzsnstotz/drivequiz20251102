@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { rejectStudentVerification } from "@/lib/studentVerification";
+import { resolveReviewerId } from "@/lib/adminReviewer";
 
 function normalizeReviewerId(input?: string | null): string | null {
   if (!input) return null;
@@ -26,7 +27,7 @@ export const POST = withAdminAuth(async (req: NextRequest, { params }: { params:
     if (!reviewNote) return badRequest("reviewNote is required");
 
     const adminInfo = await getAdminInfo(req);
-    const reviewer = normalizeReviewerId(reviewerId) || normalizeReviewerId(adminInfo?.username) || "admin";
+    const reviewer = resolveReviewerId(reviewerId, adminInfo);
 
     const updated = await rejectStudentVerification(id, reviewer, String(reviewNote).trim());
     if (!updated) return badRequest("record not pending or not found");
