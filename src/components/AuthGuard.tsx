@@ -27,8 +27,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!requiresAuth) return;
     if (hasRefreshedOnceRef.current) return;
-    hasRefreshedOnceRef.current = true;
-    void fetchSession(true);
+    let cancelled = false;
+    const doRefresh = async () => {
+      try {
+        await fetchSession(true);
+      } finally {
+        if (!cancelled) {
+          hasRefreshedOnceRef.current = true;
+        }
+      }
+    };
+    void doRefresh();
+    return () => {
+      cancelled = true;
+    };
   }, [requiresAuth, fetchSession]);
 
   useEffect(() => {

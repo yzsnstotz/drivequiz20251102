@@ -14,6 +14,7 @@ const sessionFetchLock = { current: false };
 const sessionCache: { current: any } = { current: null };
 const sessionFetched = { current: false };
 const lastFetchedAt = { current: 0 };
+const sessionFetchPromise: { current: Promise<void> | null } = { current: null };
 
 const MAX_SESSION_AGE_MS = 60 * 1000; // 会话缓存最大有效期
 
@@ -51,7 +52,13 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
 
   const fetchSession = React.useCallback(
     async (force = false) => {
-      if (isRefreshing) return;
+      // 若已有刷新中的请求，等待其完成，避免直接返回导致标记提前完成
+      if (isRefreshing) {
+        if (sessionFetchPromise.current) {
+          await sessionFetchPromise.current;
+        }
+        return;
+      }
 
       const now = Date.now();
       if (
@@ -83,32 +90,38 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
       setIsRefreshing(true);
       setLoading(true);
 
-      try {
-        const res = await fetch("/api/auth/session", {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        });
+      const runner = (async () => {
+        try {
+          const res = await fetch("/api/auth/session", {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          });
 
-        const data = res.ok ? await res.json() : null;
-        sessionFetched.current = true;
-        sessionCache.current = data;
-        lastFetchedAt.current = Date.now();
+          const data = res.ok ? await res.json() : null;
+          sessionFetched.current = true;
+          sessionCache.current = data;
+          lastFetchedAt.current = Date.now();
 
-        setSession(data);
-        setStatus(data?.user ? "authenticated" : "unauthenticated");
-      } catch (err) {
-        console.error("[SessionProvider] fetch session error", err);
-        sessionFetched.current = true;
-        sessionCache.current = null;
-        lastFetchedAt.current = Date.now();
-        setSession(null);
-        setStatus("unauthenticated");
-      } finally {
-        setLoading(false);
-        setIsRefreshing(false);
-        sessionFetchLock.current = false;
-      }
+          setSession(data);
+          setStatus(data?.user ? "authenticated" : "unauthenticated");
+        } catch (err) {
+          console.error("[SessionProvider] fetch session error", err);
+          sessionFetched.current = true;
+          sessionCache.current = null;
+          lastFetchedAt.current = Date.now();
+          setSession(null);
+          setStatus("unauthenticated");
+        } finally {
+          setLoading(false);
+          setIsRefreshing(false);
+          sessionFetchLock.current = false;
+        }
+      })();
+
+      sessionFetchPromise.current = runner;
+      await runner;
+      sessionFetchPromise.current = null;
     },
     [isRefreshing]
   );
