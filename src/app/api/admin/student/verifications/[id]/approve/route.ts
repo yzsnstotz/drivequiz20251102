@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 import { NextRequest } from "next/server";
-import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
+import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { approveStudentVerification, deriveStatus } from "@/lib/studentVerification";
 
@@ -23,7 +23,11 @@ export const POST = withAdminAuth(async (req: NextRequest, { params }: { params:
       return badRequest("validUntil is invalid");
     }
 
-    const adminReviewer = reviewerId || "admin";
+    const adminInfo = await getAdminInfo(req);
+    const adminReviewer =
+      reviewerId ||
+      (adminInfo?.id ? String(adminInfo.id) : null) ||
+      null;
 
     const updated = await approveStudentVerification(id, adminReviewer, vf, vu);
     if (!updated) {

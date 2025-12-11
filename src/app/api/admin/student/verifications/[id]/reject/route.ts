@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 import { NextRequest } from "next/server";
-import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
+import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { rejectStudentVerification } from "@/lib/studentVerification";
 
@@ -17,7 +17,11 @@ export const POST = withAdminAuth(async (req: NextRequest, { params }: { params:
     if (!id) return badRequest("id is required");
     if (!reviewNote) return badRequest("reviewNote is required");
 
-    const reviewer = reviewerId || "admin";
+    const adminInfo = await getAdminInfo(req);
+    const reviewer =
+      reviewerId ||
+      (adminInfo?.id ? String(adminInfo.id) : null) ||
+      null;
 
     const updated = await rejectStudentVerification(id, reviewer, String(reviewNote).trim());
     if (!updated) return badRequest("record not pending or not found");
