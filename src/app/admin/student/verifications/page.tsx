@@ -13,6 +13,7 @@ type VerificationItem = {
   channelSource: string | null;
   createdAt: string | null;
   validUntil: string | null;
+  reviewNote?: string | null;
 };
 
 const STATUS_LABEL: Record<VerificationItem["status"], string> = {
@@ -73,6 +74,7 @@ export default function AdminStudentVerificationsPage() {
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">邮箱</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">学校/来源</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">状态</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">驳回原因</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">创建时间</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">有效期</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">操作</th>
@@ -97,6 +99,9 @@ export default function AdminStudentVerificationsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{STATUS_LABEL[item.status] ?? item.status}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">
+                    {item.status === "rejected" ? item.reviewNote || "-" : "-"}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{item.createdAt ? item.createdAt.replace("T", " ").replace("Z", "") : "-"}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{item.validUntil ? item.validUntil.replace("T", " ").replace("Z", "") : "-"}</td>
                   <td className="px-4 py-3 text-sm text-blue-600">

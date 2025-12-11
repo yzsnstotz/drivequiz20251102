@@ -1,5 +1,8 @@
 import { db } from "@/lib/db";
 import { sql } from "kysely";
+import type { Kysely } from "kysely";
+import type { Database } from "@/lib/db";
+import type { UserEntitlement } from "./entitlements";
 export type StudentStatus = "none" | "pending" | "approved" | "rejected" | "expired";
 
 type Json =
@@ -145,6 +148,37 @@ export async function rejectStudentVerification(
     .executeTakeFirst();
 
   return updated ?? null;
+}
+
+export async function getStudentBasedEntitlement(
+  dbOrTrx: Kysely<Database>,
+  userId: string,
+  now: Date
+): Promise<UserEntitlement | null> {
+  const row = await dbOrTrx
+    .selectFrom("student_verifications")
+    .selectAll()
+    .where("user_id", "=", userId)
+    .where("status", "=", "approved")
+    .where((eb) =>
+      eb.and([
+        eb.or([eb("valid_from", "<=", now), eb("valid_from", "is", null)]),
+        eb("valid_until", ">=", now),
+      ])
+    )
+    .orderBy("valid_until", "desc")
+    .orderBy("created_at", "desc")
+    .limit(1)
+    .executeTakeFirst();
+
+  if (!row) return null;
+
+  return {
+    source: "student",
+    plan: "STUDENT_FREE",
+    validFrom: row.valid_from ?? null,
+    validUntil: row.valid_until ?? null,
+  };
 }
 
 export async function upsertPendingVerification(

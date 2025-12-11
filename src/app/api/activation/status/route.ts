@@ -10,6 +10,7 @@ export const fetchCache = "force-no-store";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getUserInfo } from "@/app/api/_lib/withUserAuth";
+import { getUserEffectiveEntitlement } from "@/lib/entitlements";
 
 /**
  * 统一成功响应
@@ -44,105 +45,64 @@ export async function GET(request: NextRequest) {
       return ok({ valid: false, reasonCode: "NO_USER" }, 200);
     }
 
-    let user = await db
-      .selectFrom("users")
-      .select(["id", "email", "status", "activation_code_id"])
-      .where("id", "=", (dbUserId || rawUserId) as string)
-      .executeTakeFirst();
-
-    if (!user && rawUserId) {
-      user = await db
-        .selectFrom("users")
-        .select(["id", "email", "status", "activation_code_id"])
-        .where("userid", "=", rawUserId)
-        .executeTakeFirst();
-    }
-
-    if (!user) {
-      return ok({ valid: false, reasonCode: "NO_USER" }, 200);
-    }
-
-    if (user.activation_code_id == null) {
-      return ok({ valid: false, reasonCode: "NO_ACTIVATION_CODE" }, 200);
-    }
-
-    const activationCode = await db
-      .selectFrom("activation_codes")
-      .selectAll()
-      .where("id", "=", user.activation_code_id)
-      .executeTakeFirst();
-
-    if (!activationCode) {
-      return ok({ valid: false, reasonCode: "CODE_NOT_FOUND" }, 200);
-    }
-
     const now = new Date();
+    const userIdForQuery = (dbUserId || rawUserId) as string;
+    const { entitlement, reasonCode } = await getUserEffectiveEntitlement(db, userIdForQuery, now);
 
-    const status = String(activationCode.status || "").toLowerCase();
-    if (status === "disabled" || status === "suspended") {
-      return ok({ valid: false, reasonCode: "ACTIVATION_CODE_STATUS_INVALID", status }, 200);
-    }
-
-    const usageLimit = Number(activationCode.usage_limit ?? 0);
-    const usedCount = Number(activationCode.used_count ?? 0);
-    if (usageLimit > 0 && usedCount >= usageLimit) {
-      return ok({ valid: false, reasonCode: "ACTIVATION_CODE_USAGE_EXCEEDED" }, 200);
-    }
-
-    let expiresAt: Date | null = null;
-    if (
-      activationCode.activation_started_at &&
-      activationCode.validity_period &&
-      activationCode.validity_unit
-    ) {
-      const start = new Date(activationCode.activation_started_at as unknown as string);
-      if (!isNaN(start.getTime())) {
-        const period = Number(activationCode.validity_period);
-        const unit = activationCode.validity_unit;
-        const d = new Date(start);
-        switch (unit) {
-          case "day":
-            d.setDate(d.getDate() + period);
-            break;
-          case "month":
-            d.setMonth(d.getMonth() + period);
-            break;
-          case "year":
-            d.setFullYear(d.getFullYear() + period);
-            break;
+    // 若有激活码权益，保持 activatedAt 输出兼容
+    let activatedAt: string | null = null;
+    if (entitlement?.source === "code") {
+      const user = await db
+        .selectFrom("users")
+        .select(["email"])
+        .where("id", "=", userIdForQuery)
+        .executeTakeFirst();
+      if (!user && rawUserId) {
+        const userByUid = await db
+          .selectFrom("users")
+          .select(["email"])
+          .where("userid", "=", rawUserId)
+          .executeTakeFirst();
+        if (userByUid) {
+          const lastActivation = await db
+            .selectFrom("activations")
+            .selectAll()
+            .where("email", "=", userByUid.email)
+            .orderBy("activated_at", "desc")
+            .executeTakeFirst();
+          if (lastActivation?.activated_at) {
+            activatedAt = new Date(lastActivation.activated_at as unknown as string).toISOString();
+          }
         }
-        expiresAt = d;
-      }
-    } else if (activationCode.expires_at) {
-      const fixed = new Date(activationCode.expires_at as unknown as string);
-      if (!isNaN(fixed.getTime())) {
-        expiresAt = fixed;
+      } else if (user) {
+        const lastActivation = await db
+          .selectFrom("activations")
+          .selectAll()
+          .where("email", "=", user.email)
+          .orderBy("activated_at", "desc")
+          .executeTakeFirst();
+        if (lastActivation?.activated_at) {
+          activatedAt = new Date(lastActivation.activated_at as unknown as string).toISOString();
+        }
       }
     }
 
-    if (expiresAt && expiresAt <= now) {
-      await db
-        .updateTable("activation_codes")
-        .set({ status: "expired", updated_at: now })
-        .where("id", "=", activationCode.id)
-        .execute();
-
-      return ok({ valid: false, reasonCode: "ACTIVATION_CODE_EXPIRED", expiresAt: expiresAt.toISOString() }, 200);
+    if (!entitlement) {
+      return ok({ valid: false, reasonCode: reasonCode ?? "NO_ENTITLEMENT" }, 200);
     }
 
-    const lastActivation = await db
-      .selectFrom("activations")
-      .selectAll()
-      .where("email", "=", user.email)
-      .orderBy("activated_at", "desc")
-      .executeTakeFirst();
-
-    return ok({
-      valid: true,
-      reasonCode: null,
-      activatedAt: lastActivation?.activated_at ? new Date(lastActivation.activated_at as unknown as string).toISOString() : null,
-      expiresAt: expiresAt ? expiresAt.toISOString() : null,
-    }, 200);
+    return ok(
+      {
+        valid: true,
+        reasonCode: null,
+        source: entitlement.source,
+        plan: entitlement.plan,
+        activatedAt,
+        expiresAt: entitlement.validUntil ? entitlement.validUntil.toISOString() : null,
+        validFrom: entitlement.validFrom ? entitlement.validFrom.toISOString() : null,
+      },
+      200
+    );
   } catch (_e) {
     return err("INTERNAL_ERROR", "Internal Server Error", 500);
   }
