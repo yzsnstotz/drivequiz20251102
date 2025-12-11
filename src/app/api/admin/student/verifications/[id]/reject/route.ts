@@ -8,6 +8,14 @@ import { withAdminAuth, getAdminInfo } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError } from "@/app/api/_lib/errors";
 import { rejectStudentVerification } from "@/lib/studentVerification";
 
+function normalizeReviewerId(input?: string | null): string | null {
+  if (!input) return null;
+  const trimmed = String(input).trim();
+  // 仅当看起来是 UUID 时才返回，否则置空，避免 DB uuid 解析报错
+  const uuidLike = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  return uuidLike.test(trimmed) ? trimmed : null;
+}
+
 export const POST = withAdminAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
@@ -18,10 +26,7 @@ export const POST = withAdminAuth(async (req: NextRequest, { params }: { params:
     if (!reviewNote) return badRequest("reviewNote is required");
 
     const adminInfo = await getAdminInfo(req);
-    const reviewer =
-      reviewerId ||
-      (adminInfo?.id ? String(adminInfo.id) : null) ||
-      null;
+    const reviewer = normalizeReviewerId(reviewerId) || normalizeReviewerId(adminInfo?.username) || "admin";
 
     const updated = await rejectStudentVerification(id, reviewer, String(reviewNote).trim());
     if (!updated) return badRequest("record not pending or not found");
