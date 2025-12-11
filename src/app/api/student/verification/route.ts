@@ -49,6 +49,16 @@ function mapResponse(rec: StudentVerificationRecord | null) {
   };
 }
 
+function normalizeRequiredString(
+  value: any,
+  field: string
+): { ok: true; value: string } | { ok: false; message: string } {
+  if (value === undefined || value === null) return { ok: false, message: `${field} 不能为空` };
+  const str = String(value).trim();
+  if (!str) return { ok: false, message: `${field} 不能为空` };
+  return { ok: true, value: str };
+}
+
 type AdmissionDocInput = { fileId: string; url?: string; name: string; contentType?: string; size?: number };
 
 function normalizeAdmissionDocs(docs: any): { valid: boolean; data: AdmissionDocInput[]; message?: string } {
@@ -102,19 +112,22 @@ export async function POST(req: NextRequest) {
       admissionDocs,
     } = body || {};
 
-    if (
-      !fullName || typeof fullName !== "string" ||
-      !nationality || typeof nationality !== "string" ||
-      !email || typeof email !== "string" ||
-      !phoneNumber || typeof phoneNumber !== "string" ||
-      !channelSource || typeof channelSource !== "string" ||
-      !schoolName || typeof schoolName !== "string"
-    ) {
-      return err("VALIDATION_FAILED", "必填字段不能为空", 400);
-    }
-    if (!email.includes("@")) {
+    const fullNameNorm = normalizeRequiredString(fullName, "fullName");
+    if (!fullNameNorm.ok) return err("VALIDATION_FAILED", fullNameNorm.message!, 400);
+    const nationalityNorm = normalizeRequiredString(nationality, "nationality");
+    if (!nationalityNorm.ok) return err("VALIDATION_FAILED", nationalityNorm.message!, 400);
+    const emailNorm = normalizeRequiredString(email, "email");
+    if (!emailNorm.ok) return err("VALIDATION_FAILED", emailNorm.message!, 400);
+    const emailValue = emailNorm.value;
+    if (!emailValue.includes("@")) {
       return err("VALIDATION_FAILED", "email 格式不正确", 400);
     }
+    const phoneNorm = normalizeRequiredString(phoneNumber, "phoneNumber");
+    if (!phoneNorm.ok) return err("VALIDATION_FAILED", phoneNorm.message!, 400);
+    const channelNorm = normalizeRequiredString(channelSource, "channelSource");
+    if (!channelNorm.ok) return err("VALIDATION_FAILED", channelNorm.message!, 400);
+    const schoolNorm = normalizeRequiredString(schoolName, "schoolName");
+    if (!schoolNorm.ok) return err("VALIDATION_FAILED", schoolNorm.message!, 400);
     const normalizedDocs = normalizeAdmissionDocs(admissionDocs);
     if (!normalizedDocs.valid) {
       return err("VALIDATION_FAILED", normalizedDocs.message || "admissionDocs 无效", 400);
@@ -132,12 +145,12 @@ export async function POST(req: NextRequest) {
     if (studyPeriodTo && !studyToDate) return err("VALIDATION_FAILED", "学习周期结束时间格式不正确", 400);
 
     const record = await upsertPendingVerification(user.userDbId, {
-      full_name: String(fullName),
-      nationality: String(nationality),
-      email: String(email),
-      phone_number: String(phoneNumber),
-      channel_source: String(channelSource),
-      school_name: String(schoolName),
+      full_name: fullNameNorm.value,
+      nationality: nationalityNorm.value,
+      email: emailValue,
+      phone_number: phoneNorm.value,
+      channel_source: channelNorm.value,
+      school_name: schoolNorm.value,
       study_period_from: studyFromDate,
       study_period_to: studyToDate,
       admission_docs: normalizedDocs.data,
