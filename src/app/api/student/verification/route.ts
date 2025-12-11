@@ -59,7 +59,15 @@ function normalizeRequiredString(
   return { ok: true, value: str };
 }
 
-type AdmissionDocInput = { fileId: string; bucket: string; url: string; name: string; contentType?: string; size?: number };
+type AdmissionDocInput = {
+  fileId: string;
+  bucket: string;
+  url: string;
+  name: string;
+  contentType?: string;
+  mimeType?: string;
+  size?: number;
+};
 
 function normalizeAdmissionDocs(docs: any): { valid: boolean; data: AdmissionDocInput[]; message?: string } {
   if (!Array.isArray(docs) || docs.length === 0) {
@@ -73,11 +81,12 @@ function normalizeAdmissionDocs(docs: any): { valid: boolean; data: AdmissionDoc
     const url = typeof doc.url === "string" ? doc.url.trim() : "";
     const name = typeof doc.name === "string" ? doc.name.trim() : "";
     const contentType = typeof doc.contentType === "string" ? doc.contentType.trim() : undefined;
+    const mimeType = typeof doc.mimeType === "string" ? doc.mimeType.trim() : undefined;
     const size = typeof doc.size === "number" ? doc.size : undefined;
     if (!fileId || !bucket || !url || !name) {
       return { valid: false, data: [], message: "admissionDocs 需包含 fileId/bucket/url/name" };
     }
-    normalized.push({ fileId, bucket, url, name, contentType, size });
+    normalized.push({ fileId, bucket, url, name, contentType, mimeType, size });
   }
   return { valid: true, data: normalized };
 }
@@ -145,6 +154,8 @@ export async function POST(req: NextRequest) {
     if (studyPeriodFrom && !studyFromDate) return err("VALIDATION_FAILED", "学习周期开始时间格式不正确", 400);
     if (studyPeriodTo && !studyToDate) return err("VALIDATION_FAILED", "学习周期结束时间格式不正确", 400);
 
+    const docsForDb = JSON.parse(JSON.stringify(normalizedDocs.data)) as AdmissionDocInput[];
+
     const record = await upsertPendingVerification(user.userDbId, {
       full_name: fullNameNorm.value,
       nationality: nationalityNorm.value,
@@ -154,7 +165,7 @@ export async function POST(req: NextRequest) {
       school_name: schoolNorm.value,
       study_period_from: studyFromDate,
       study_period_to: studyToDate,
-      admission_docs: normalizedDocs.data,
+      admission_docs: docsForDb,
     });
 
     return ok({
