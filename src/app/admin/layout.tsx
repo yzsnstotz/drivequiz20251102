@@ -49,6 +49,7 @@ const ALL_NAV_ITEM_KEYS: NavItemKey[] = [
   { key: "nav.users", href: "/admin/users", match: (p: string) => p.startsWith("/admin/users"), permission: "users", group: "users" },
   { key: "nav.activationCodes", href: "/admin/activation-codes", match: (p: string) => p.startsWith("/admin/activation-codes"), permission: "activation_codes", group: "users" },
   { key: "nav.tasks", href: "/admin/tasks", match: (p: string) => p.startsWith("/admin/tasks"), permission: "tasks", group: "users" },
+  { key: "nav.studentVerifications", href: "/admin/student/verifications", match: (p: string) => p.startsWith("/admin/student/verifications"), permission: "users", group: "users" },
   // 题库管理分组
   { key: "nav.questions", href: "/admin/questions", match: (p: string) => p === "/admin/questions" || (p.startsWith("/admin/questions/") && !p.startsWith("/admin/question-processing") && !p.startsWith("/admin/polish-reviews")), permission: "questions", group: "questions" },
   { key: "nav.questionProcessing", href: "/admin/question-processing", match: (p: string) => p.startsWith("/admin/question-processing") && !p.startsWith("/admin/question-processing/error-dashboard") && !p.startsWith("/admin/question-processing/explanation-consistency"), permission: "questions", group: "questions" },
