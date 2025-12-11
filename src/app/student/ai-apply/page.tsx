@@ -3,9 +3,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/i18n";
-import { MAX_STUDENT_DOC_SIZE } from "@/constants/studentDocs";
+import { MAX_STUDENT_DOC_SIZE, STUDENT_DOC_BUCKET } from "@/constants/studentDocs";
 
-type AdmissionDoc = { fileId: string; url?: string; name: string };
+type AdmissionDoc = {
+  fileId: string;
+  bucket: string;
+  url: string;
+  name: string;
+  size?: number;
+  mimeType?: string;
+};
 
 type StatusResponse = {
   id: string | null;
@@ -57,6 +64,18 @@ export default function StudentApplyPage() {
 
   const isReadOnly = status?.status === "approved";
 
+  const normalizeDoc = (doc: any): AdmissionDoc | null => {
+    if (!doc) return null;
+    const fileId = typeof doc.fileId === "string" ? doc.fileId : "";
+    const bucket = typeof doc.bucket === "string" ? doc.bucket : STUDENT_DOC_BUCKET;
+    const url = typeof doc.url === "string" ? doc.url : "";
+    const name = typeof doc.name === "string" ? doc.name : "";
+    const size = typeof doc.size === "number" ? doc.size : undefined;
+    const mimeType = typeof doc.mimeType === "string" ? doc.mimeType : undefined;
+    if (!fileId || !bucket || !url || !name) return null;
+    return { fileId, bucket, url, name, size, mimeType };
+  };
+
   const fetchStatus = async () => {
     setLoading(true);
     setError(null);
@@ -78,7 +97,11 @@ export default function StudentApplyPage() {
         setSchoolName(data.schoolName || "");
         setStudyFrom(data.studyPeriodFrom || "");
         setStudyTo(data.studyPeriodTo || "");
-        setAdmissionDocs(data.admissionDocs || []);
+        const normalizedDocs =
+          (data.admissionDocs || [])
+            .map((d: any) => normalizeDoc(d))
+            .filter((d): d is AdmissionDoc => !!d);
+        setAdmissionDocs(normalizedDocs);
       } else {
         setError(json.message || tr("student.apply.loadFailed"));
       }
@@ -109,7 +132,7 @@ export default function StudentApplyPage() {
     if (!res.ok || !json?.ok) {
       throw new Error(json?.message || tr("student.apply.uploadFailed"));
     }
-    return json.data as { fileId: string; url?: string; name: string };
+    return json.data as AdmissionDoc;
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,7 +147,17 @@ export default function StudentApplyPage() {
           continue;
         }
         const uploaded = await uploadStudentDoc(file);
-        setAdmissionDocs((prev) => [...prev, { fileId: uploaded.fileId, url: uploaded.url, name: uploaded.name }]);
+        setAdmissionDocs((prev) => [
+          ...prev,
+          {
+            fileId: uploaded.fileId,
+            bucket: uploaded.bucket || STUDENT_DOC_BUCKET,
+            url: uploaded.url,
+            name: uploaded.name,
+            size: uploaded.size,
+            mimeType: uploaded.mimeType,
+          },
+        ]);
       }
     } catch (e: any) {
       setUploadError(e?.message || tr("student.apply.uploadFailed"));
@@ -142,7 +175,10 @@ export default function StudentApplyPage() {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (!admissionDocs || admissionDocs.length === 0) {
+    const submitDocs = admissionDocs
+      .map((d) => normalizeDoc(d))
+      .filter((d): d is AdmissionDoc => !!d);
+    if (!submitDocs.length) {
       setError(tr("student.apply.docRequired"));
       return;
     }
@@ -157,7 +193,7 @@ export default function StudentApplyPage() {
         schoolName,
         studyPeriodFrom: studyFrom || null,
         studyPeriodTo: studyTo || null,
-        admissionDocs,
+        admissionDocs: submitDocs,
       };
       const res = await fetch("/api/student/verification", {
         method: "POST",
