@@ -59,7 +59,7 @@ function normalizeRequiredString(
   return { ok: true, value: str };
 }
 
-type AdmissionDocInput = { fileId: string; url?: string; name: string; contentType?: string; size?: number };
+type AdmissionDocInput = { fileId: string; bucket: string; url: string; name: string; contentType?: string; size?: number };
 
 function normalizeAdmissionDocs(docs: any): { valid: boolean; data: AdmissionDocInput[]; message?: string } {
   if (!Array.isArray(docs) || docs.length === 0) {
@@ -69,14 +69,15 @@ function normalizeAdmissionDocs(docs: any): { valid: boolean; data: AdmissionDoc
   for (const doc of docs) {
     if (!doc || typeof doc !== "object") return { valid: false, data: [], message: "admissionDocs 中存在无效记录" };
     const fileId = typeof doc.fileId === "string" ? doc.fileId.trim() : "";
+    const bucket = typeof doc.bucket === "string" ? doc.bucket.trim() : "";
+    const url = typeof doc.url === "string" ? doc.url.trim() : "";
     const name = typeof doc.name === "string" ? doc.name.trim() : "";
-    const url = typeof doc.url === "string" ? doc.url.trim() : undefined;
     const contentType = typeof doc.contentType === "string" ? doc.contentType.trim() : undefined;
     const size = typeof doc.size === "number" ? doc.size : undefined;
-    if (!fileId || !name) {
-      return { valid: false, data: [], message: "admissionDocs 需包含 fileId 与 name" };
+    if (!fileId || !bucket || !url || !name) {
+      return { valid: false, data: [], message: "admissionDocs 需包含 fileId/bucket/url/name" };
     }
-    normalized.push({ fileId, name, url, contentType, size });
+    normalized.push({ fileId, bucket, url, name, contentType, size });
   }
   return { valid: true, data: normalized };
 }
