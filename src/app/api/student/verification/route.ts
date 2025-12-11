@@ -102,10 +102,17 @@ export async function POST(req: NextRequest) {
       admissionDocs,
     } = body || {};
 
-    if (!fullName || !nationality || !email || !phoneNumber || !channelSource || !schoolName) {
+    if (
+      !fullName || typeof fullName !== "string" ||
+      !nationality || typeof nationality !== "string" ||
+      !email || typeof email !== "string" ||
+      !phoneNumber || typeof phoneNumber !== "string" ||
+      !channelSource || typeof channelSource !== "string" ||
+      !schoolName || typeof schoolName !== "string"
+    ) {
       return err("VALIDATION_FAILED", "必填字段不能为空", 400);
     }
-    if (typeof email !== "string" || !email.includes("@")) {
+    if (!email.includes("@")) {
       return err("VALIDATION_FAILED", "email 格式不正确", 400);
     }
     const normalizedDocs = normalizeAdmissionDocs(admissionDocs);
@@ -144,6 +151,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error("[POST /api/student/verification] error:", e);
+    const message = e instanceof Error ? e.message : "服务器错误";
+    // 数据库类错误返回 400，其他返回 500
+    if (message && /invalid|violat|constraint|null value|syntax/i.test(message)) {
+      return err("DB_ERROR", message, 400);
+    }
     return err("INTERNAL_ERROR", "服务器错误", 500);
   }
 }
