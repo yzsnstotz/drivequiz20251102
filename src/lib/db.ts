@@ -406,6 +406,14 @@ interface UserTable {
 // ------------------------------------------------------------
 // 1️⃣2️⃣ student_verifications 表结构定义
 // ------------------------------------------------------------
+type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json }
+  | Json[];
+
 interface StudentVerificationTable {
   id: Generated<string>;
   user_id: string;
@@ -417,7 +425,7 @@ interface StudentVerificationTable {
   school_name: string;
   study_period_from: Date | null;
   study_period_to: Date | null;
-  admission_docs: any;
+  admission_docs: Json | null;
   status: "pending" | "approved" | "rejected" | "expired";
   review_note: string | null;
   reviewer_id: string | null;

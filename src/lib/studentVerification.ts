@@ -1,6 +1,13 @@
 import { db } from "@/lib/db";
-
 export type StudentStatus = "none" | "pending" | "approved" | "rejected" | "expired";
+
+type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json }
+  | Json[];
 
 export interface StudentVerificationRecord {
   id: string;
@@ -13,7 +20,7 @@ export interface StudentVerificationRecord {
   school_name: string;
   study_period_from: Date | null;
   study_period_to: Date | null;
-  admission_docs: any;
+  admission_docs: Json | null;
   status: StudentStatus | "pending" | "approved" | "rejected" | "expired";
   review_note: string | null;
   reviewer_id: string | null;
@@ -123,7 +130,7 @@ export async function upsertPendingVerification(
     school_name: string;
     study_period_from: Date | null;
     study_period_to: Date | null;
-    admission_docs: any;
+    admission_docs: Json;
   }
 ): Promise<StudentVerificationRecord> {
   const latest = await getLatestStudentVerification(userId);

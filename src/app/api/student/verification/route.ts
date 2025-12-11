@@ -154,15 +154,18 @@ export async function POST(req: NextRequest) {
     if (studyPeriodFrom && !studyFromDate) return err("VALIDATION_FAILED", "学习周期开始时间格式不正确", 400);
     if (studyPeriodTo && !studyToDate) return err("VALIDATION_FAILED", "学习周期结束时间格式不正确", 400);
 
-    const docsForDb = normalizedDocs.data.map((d) => ({
-      fileId: d.fileId,
-      bucket: d.bucket,
-      url: d.url,
-      name: d.name,
-      size: typeof d.size === "number" ? d.size : undefined,
-      mimeType: d.mimeType || undefined,
-      contentType: d.contentType || undefined,
-    }));
+    const docsForDb = normalizedDocs.data.map((d) => {
+      const base: Record<string, any> = {
+        fileId: d.fileId,
+        bucket: d.bucket,
+        url: d.url,
+        name: d.name,
+      };
+      if (typeof d.size === "number") base.size = d.size;
+      if (d.mimeType) base.mimeType = d.mimeType;
+      if (d.contentType) base.contentType = d.contentType;
+      return base;
+    });
 
     const record = await upsertPendingVerification(user.userDbId, {
       full_name: fullNameNorm.value,
