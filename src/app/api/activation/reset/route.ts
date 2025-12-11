@@ -48,6 +48,18 @@ export async function POST(req: NextRequest) {
         .where("id", "=", user.id)
         .execute();
 
+      // 同步失效当前用户的学生审核权益（若存在），避免仍被判定为学生激活
+      await trx
+        .updateTable("student_verifications")
+        .set({
+          status: "expired",
+          valid_until: now,
+          updated_at: now,
+        })
+        .where("user_id", "=", user.id)
+        .where("status", "in", ["approved", "pending"] as any)
+        .execute();
+
       if (oldActivationCodeId != null) {
         const codeRow = await trx
           .selectFrom("activation_codes")
