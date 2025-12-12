@@ -5,6 +5,7 @@ const nextConfig = {
   // 如果环境变量设置了 NEXT_PUBLIC_BASE_PATH，使用环境变量；否则使用空字符串（根路径）
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   images: {
+     domains: ["ai.zalem.app"],
     // 配置允许的外部图片域名
     // 注意：以 / 开头的本地路径不需要在此配置
     // 如果需要添加新的图片域名，请在此添加相应的 remotePatterns 配置
