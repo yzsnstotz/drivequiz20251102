@@ -1,0 +1,272 @@
+---
+alwaysApply: true
+---
+📘 Cursor Rules v1.0
+
+适用范围：
+DriveQuiz 项目（Web、API）
+
+目标： 让 Cursor 自动遵守架构规范、保持最小变更、避免误修改、并确保文档同步。
+
+1. 总体行为规则（Global Behaviour Rules）
+
+所有修改必须输出为 diff patch（git-style），禁止输出整个文件。
+
+必须采用 最小变更集（Minimal Patch），不得无关重构、不得自发格式化整文件。
+
+除非用户明确授权，否则禁止：
+
+修改 ai-core
+
+修改 ai-service
+
+修改 local-ai-service
+
+修改数据库结构（schema）
+
+修改业务框架或核心流程
+
+禁止自动读取过大上下文，只使用用户明确指出的文件或选区。
+
+禁止创建不必要的新文件。
+
+禁止引入新的第三方库。
+
+所有更改必须保持项目内统一的命名规范、代码风格与架构规范。
+
+2. 文件与架构边界（Architecture Boundary Rules）
+2.1 AI-Core（🧩 AI 核心服务规范 v2.0）
+
+严格禁止修改：
+
+ai-core 的核心职责
+
+数据流 / handler 链路
+
+Prompt builder
+
+Provider adapter
+
+scene runner
+
+cache manager
+
+pipeline 结构
+
+除非用户在任务中明确写：
+“允许修改 ai-core 内部逻辑”。
+
+否则：
+
+AI-Core 为禁止区域，不能进行任何改动。
+
+2.2 AI-Service（AI 服务研发规范 v1.0）
+
+禁止自动修改：
+
+Fastify handler 架构
+
+日志系统
+
+鉴权体系
+
+供应商适配层（provider adapters）
+
+除非用户明确授权。
+
+2.3 Local-AI-Service
+
+禁止修改：
+
+模型加载逻辑
+
+供应商协议
+
+Prompt 结构
+
+缓存逻辑
+
+2.4 Web 主服务（DriveQuiz）
+
+严格遵守文件角色定义（来自文件结构.md）。
+
+禁止：
+
+在路由中写业务逻辑
+
+在组件中写数据处理逻辑
+
+在 hooks 内写与业务无关的副作用
+
+2.5 JSON 清洗规则
+
+任何 JSON 清洗、语言过滤、国际化相关逻辑必须符合：
+
+JSON 清洗与语言过滤规范
+
+严格遵守字段白名单、错误类型规范
+
+不得新增 JSON 键名或删除关键字段
+
+3. 数据库规则（Database Rules）
+
+基于你上传的：
+
+数据库结构_AI_SERVICE.md
+
+数据库结构_DRIVEQUIZ.md
+
+Cursor 必须遵守：
+
+禁止修改 schema（字段新增、删除、改类型）。
+
+禁止修改外键、索引、默认值。
+
+所有查询必须使用当前 schema 的字段名，不得凭空猜测字段。
+
+如代码字段与数据库字段不一致，必须提示用户，而非擅自更改 schema。
+
+如需要新增字段，必须提醒用户进行 migrations，而非自动生成。
+
+4. 文档同步（Documentation Sync Rules）
+
+当代码改动涉及以下内容时，Cursor 必须同步更新文档：
+
+文件结构变化 → 更新 /Users/leo/Desktop/drivequiz研发规范/文件结构.md
+
+方法职责变化 → 更新 /Users/leo/Desktop/drivequiz研发规范/🧩 文件结构与方法说明 v1.0.md
+
+AI-Service 数据流变化 → 更新 /Users/leo/Desktop/drivequiz研发规范/数据库结构_AI_SERVICE.md
+
+DriveQuiz 数据层变化 → 更新 /Users/leo/Desktop/drivequiz研发规范/数据库结构_DRIVEQUIZ.md
+
+同步规则：
+
+文档更新也必须以 patch 形式输出
+
+只修改对应段落，不重写整份文档
+
+5. Cursor 操作模式规则（Mode Rules）
+5.1 Cmd+K（Command Mode）
+
+当用户未选中文本时：
+
+可修改多个文件
+
+必须依据用户明确指定的文件路径
+
+禁止推断未提及的文件
+
+禁止重构整个目录
+
+禁止创立新模块，除非用户要求
+
+5.2 Cmd+K（Edit Mode | 用户选中文本）
+
+当用户选中代码时：
+
+只能修改选区，不可越界
+
+必须生成 patch
+
+修改范围必须保持极小
+
+不可调整函数签名（除非用户要求）
+
+不可修改周边未被选中的代码
+
+5.3 /edit
+
+当用户使用「/edit」时：
+
+必须认为用户只希望局部修改
+
+不能动文件其他部分
+
+不得格式化整文件
+
+5.4 Debug 模式
+
+用户要求 Debug 时：
+
+不得修改代码
+
+只输出诊断、调用链、可能 root cause
+
+不可执行任何重构或重写逻辑
+
+5.5 Agent 模式
+
+只用于：
+
+新模块创建
+
+文件 scaffolding 生成
+
+禁止：
+
+修改 AI-Core
+
+修改 AI-Service
+
+修改数据库相关代码
+
+对现有复杂业务模块进行重构
+
+6. 冗余清理（Legacy Rules）
+
+遵守《修复指令头 v5.2》的 E1–E10：
+
+清理无效变量
+
+清理无用 imports
+
+清理重复逻辑
+
+禁止多版本共存
+
+不得留下 TODO 或未完成代码
+
+所有逻辑必须可执行、可测试
+
+所有错误处理必须保留核心上下文
+
+7. 安全性规则（Safety Rules）
+
+不得更改用户授权流程（登录、绑定等）
+
+不得改动支付、财务、积分逻辑（除非用户授权）
+
+不得禁用现有的风控、权限保护
+
+不得删除或绕过任何校验逻辑
+
+8. 输出格式 Rules（Output Format Rules）
+
+Cursor 必须：
+
+生成 diff patch
+
+不输出整文件或多余上下文
+
+明确标出修改块
+
+输出后必须包含简短变更摘要
+
+9. 执行报告（Execution Report Rules）
+
+每次修改必须包含：
+
+本次任务摘要
+
+修改文件列表
+
+Patch 内容说明
+
+冗余清理情况
+
+规范对齐情况（A1–E10）
+
+潜在影响
+
+如涉及文档同步 → 列出文档修改内容

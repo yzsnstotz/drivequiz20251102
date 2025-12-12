@@ -2,12 +2,12 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 dotenv.config();
 
-import { db } from "../src/lib/db";
+import { db } from "../../src/lib/db";
 import crypto from "crypto";
 import {
   checkExplanationConsistency,
   normalizeCorrectAnswer,
-} from "../src/app/api/admin/question-processing/_lib/explanationConsistency";
+} from "../../src/app/api/admin/question-processing/_lib/explanationConsistency";
 import { sql } from "kysely";
 
 type QuestionRow = {
