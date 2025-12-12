@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, Heart, Timer, Trophy, Bot } from 'lucide-react';
-import QuestionAIDialog from '@/components/QuestionAIDialog';
+import { ChevronLeft, Heart, Timer, Trophy } from 'lucide-react';
 import QuestionImage from '@/components/common/QuestionImage';
 import { isValidImageUrl } from '@/lib/imageUtils';
 import { loadAllQuestions, Question } from '@/lib/questionsLoader';
@@ -25,7 +24,6 @@ function RoyalBattlePage() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [gameOver, setGameOver] = useState(false);
-  const [showAIDialog, setShowAIDialog] = useState(false);
 
   // 计算当前题目的时间限制
   const calculateTimeLimit = (currentScore: number) => {
@@ -291,16 +289,10 @@ function RoyalBattlePage() {
           </div>
         </div>
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-gray-900 dark:text-gray-100 text-lg">{getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}</p>
-            <button
-              onClick={() => setShowAIDialog(true)}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
-              aria-label={t('royalbattle.openAI')}
-            >
-              <Bot className="h-4 w-4" />
-              <span>{t('royalbattle.aiAssistant')}</span>
-            </button>
+          <div className="mb-4">
+            <p className="text-gray-900 dark:text-gray-100 text-lg">
+              {getQuestionContent(currentQuestion.content as any, language as 'zh' | 'en' | 'ja') || ''}
+            </p>
           </div>
           {isValidImageUrl(currentQuestion.image) && (
             <div className="mb-4">
@@ -370,15 +362,6 @@ function RoyalBattlePage() {
           </div>
         )}
       </div>
-
-      {/* AI助手对话框 */}
-      {currentQuestion && (
-        <QuestionAIDialog
-          question={currentQuestion}
-          isOpen={showAIDialog}
-          onClose={() => setShowAIDialog(false)}
-        />
-      )}
     </div>
   );
 }
