@@ -14,6 +14,26 @@ import { getLatestUnifiedVersionContent } from "@/lib/questionDb";
 import fs from "fs/promises";
 import path from "path";
 
+function normalizeBooleanAnswer(raw: any) {
+  if (raw && typeof raw === "object" && raw.type === "boolean") {
+    return raw.value ? "true" : "false";
+  }
+  if (typeof raw === "boolean") {
+    return raw ? "true" : "false";
+  }
+  return raw;
+}
+
+function normalizeQuestions(arr: any[]) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((q: any) => ({
+    ...q,
+    correctAnswer: Array.isArray(q.correctAnswer)
+      ? q.correctAnswer.map((a: any) => normalizeBooleanAnswer(a))
+      : normalizeBooleanAnswer(q.correctAnswer),
+  }));
+}
+
 const QUESTIONS_DIR = path.join(process.cwd(), "src/data/questions/zh");
 const UNIFIED_FILE = path.join(QUESTIONS_DIR, "questions.json");
 
@@ -27,7 +47,7 @@ export async function GET() {
       if (latestVersionContent && latestVersionContent.questions) {
         const packageData = {
           version: latestVersionContent.version,
-          questions: latestVersionContent.questions,
+          questions: normalizeQuestions(latestVersionContent.questions),
           aiAnswers: latestVersionContent.aiAnswers || {},
         };
         console.log(`[GET /api/questions/package] 从数据库最新版本读取成功，版本: ${latestVersionContent.version}，题目数量: ${latestVersionContent.questions.length}`);
@@ -73,6 +93,4 @@ export async function GET() {
     return internalError(`Failed to read questions package: ${err.message || String(err)}`);
   }
 }
-
-
 
