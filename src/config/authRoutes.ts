@@ -6,6 +6,7 @@ export const AUTH_REQUIRED_PREFIXES = [
   "/activation",
   "/profile",
   "/admin",
+  "/student",
 ];
 
 export function isAuthRequiredPath(pathname: string | null | undefined): boolean {
