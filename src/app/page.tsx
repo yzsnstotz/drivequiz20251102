@@ -487,6 +487,7 @@ export default function HomePage() {
                       fill
                       sizes="(max-width: 768px) 100vw, 300px"
                       className="object-cover"
+                      unoptimized
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
                       <h3 className="text-white font-bold mb-1">
