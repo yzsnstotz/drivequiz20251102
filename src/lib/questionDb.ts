@@ -110,28 +110,32 @@ export async function getQuestionsFromDb(packageName: string): Promise<Question[
       .execute();
 
     // 转换为前端格式（保留 content_hash）
-    return questions.map((q) => {
-      // 处理content字段：如果是多语言对象，提取zh作为默认内容；如果是字符串，直接使用
+    return questions.map((q): Question => {
+      // 处理content字段：如果是多语言对象，直接用；如果是字符串，兼容旧格式
       let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
       if (typeof q.content === "string") {
-        // 兼容旧格式：单语言字符串
         content = q.content;
       } else {
-        // 新格式：多语言对象
-        content = q.content;
+        content = q.content as { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
       }
+
+      // 🔑 统一规范 correctAnswer，包含 truefalse / single / multiple 三种类型
+      const normalizedCorrectAnswer = normalizeCorrectAnswer(
+        q.correct_answer,
+        q.type
+      );
 
       return {
         id: q.id,
         type: q.type,
         content,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-        correctAnswer: q.correct_answer,
+        correctAnswer: normalizedCorrectAnswer as any,
         image: q.image || undefined,
         explanation: q.explanation || undefined,
         category: q.category || packageName,
         hash: q.content_hash, // 使用 content_hash 作为 hash
-        license_type_tag: Array.isArray(q.license_type_tag) ? q.license_type_tag : undefined,
+        // license_type_tag: Array.isArray(q.license_type_tag) ? q.license_type_tag : undefined,
         stage_tag: q.stage_tag || undefined,
         topic_tags: Array.isArray(q.topic_tags) ? q.topic_tags : undefined,
       };
@@ -424,7 +428,7 @@ export async function saveQuestionToDb(
 
       return existing.id;
     } else {
-      // 插入新题目（仅在 upsert 模式下）
+      // 插入新题目（仅在 upsert 仓库）
       const insertData: any = {
         content_hash: contentHash,
         type: cleanedQuestion.type,
@@ -1555,26 +1559,30 @@ export async function updateAllJsonPackages(): Promise<{
           content = q.content;
         }
 
-        // 修复image字段处理：使用null而不是undefined，确保JSON序列化时字段不会被省略
-        // 如果image为null、undefined或空字符串，统一使用null
-        // 注意：确保即使数据库中有有效的URL字符串，也要正确保留
+        // 处理 image 字段：统一为 string 或 null，避免 undefined
         let imageValue: string | null = null;
         if (q.image !== null && q.image !== undefined) {
-          if (typeof q.image === 'string' && q.image.trim() !== '') {
-            imageValue = q.image.trim(); // 保留有效的URL字符串
+          if (typeof q.image === "string" && q.image.trim() !== "") {
+            imageValue = q.image.trim();
           } else {
-            imageValue = null; // 空字符串或其他类型，使用null
+            imageValue = null;
           }
         } else {
-          imageValue = null; // null或undefined，使用null
+          imageValue = null;
         }
+
+        // 🔑 统一规范 correctAnswer，避免把 { type: 'boolean', value: true } 直接塞进包里
+        const normalizedCorrectAnswer = normalizeCorrectAnswer(
+          q.correct_answer,
+          q.type as "single" | "multiple" | "truefalse"
+        );
 
         questionsWithHash.push({
           id: q.id,
           type: q.type,
           content,
           options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : undefined),
-          correctAnswer: q.correct_answer,
+          correctAnswer: normalizedCorrectAnswer,
           image: imageValue, // 使用null而不是undefined，确保JSON序列化时字段被包含
           explanation: q.explanation || undefined,
           category,

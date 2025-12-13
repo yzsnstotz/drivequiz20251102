@@ -4,8 +4,13 @@ import "./globals.css";
 import BottomNavigation from "./BottomNavigation";
 
 export const metadata: Metadata = {
-  title: "ZALEM - 驾照考试学习平台",
-  description: "一个帮助您准备驾照考试的学习平台",
+  title: "自動車学校の学生限定 · AI学習アシスタント無料開放",
+  description: "日本の自動車学校に通う学生向けに、AI学習アシスタントを無料で提供しています。",
+  openGraph: {
+    title: "自動車学校の学生限定 · AI学習アシスタント無料開放",
+    description: "日本の自動車学校に通う学生向けに、AI学習アシスタントを無料で提供しています。",
+    locale: "ja_JP"
+  },
   // Next.js 13+ App Router 会自动识别 src/app/icon.png 并生成 favicon
   // 这里添加备用配置以确保兼容性
   icons: {
