@@ -283,7 +283,7 @@ async function collectAllQuestions(): Promise<(Question & { content_hash?: strin
         type: q.type,
         content,
         options,
-        correctAnswer: q.correct_answer as CorrectAnswer | null,
+        correctAnswer: normalizeCorrectAnswer(q.correct_answer, q.type),
         image: q.image || undefined,
         explanation,
         category,

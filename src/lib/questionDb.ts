@@ -28,10 +28,26 @@ const BATCH_UPDATE_THRESHOLD = 10;
  * 规范化正确答案格式（处理JSONB格式数据）
  * 确保答案格式统一，便于前端比较
  */
+function parseTrueFalseLike(input: any): boolean | null {
+  if (typeof input === "boolean") return input;
+  if (typeof input === "number") {
+    if (input === 1) return true;
+    if (input === 0) return false;
+    return null;
+  }
+  if (typeof input === "string") {
+    const str = input.toLowerCase().trim();
+    if (str === "true" || str === "1" || str === "是" || str === "o") return true;
+    if (str === "false" || str === "0" || str === "否" || str === "x") return false;
+    return null;
+  }
+  return null;
+}
+
 export function normalizeCorrectAnswer(
   correctAnswer: any,
   questionType: "single" | "multiple" | "truefalse"
-): string | string[] {
+): string | string[] | boolean {
   if (correctAnswer === null || correctAnswer === undefined) {
     // 如果答案为空，根据题目类型返回默认值
     if (questionType === "multiple") {
@@ -45,22 +61,20 @@ export function normalizeCorrectAnswer(
     // 新结构：对象 { type: 'boolean', value: true/false }
     if (correctAnswer && typeof correctAnswer === 'object' && !Array.isArray(correctAnswer)) {
       const v = (correctAnswer as any).value;
-      if (typeof v === 'boolean') return v ? 'true' : 'false';
+      if (typeof v === 'boolean') return v;
+      const parsedObj = parseTrueFalseLike(v);
+      if (parsedObj !== null) return parsedObj;
+      return false;
     }
-    // 如果是布尔值，转换为字符串
+    // 如果是布尔值
     if (typeof correctAnswer === "boolean") {
-      return correctAnswer ? "true" : "false";
+      return correctAnswer;
     }
-    // 如果是字符串，确保是 "true" 或 "false"
-    const answerStr = String(correctAnswer).toLowerCase().trim();
-    if (answerStr === "true" || answerStr === "1" || answerStr === "是" || answerStr === "o") {
-      return "true";
-    }
-    if (answerStr === "false" || answerStr === "0" || answerStr === "否" || answerStr === "x") {
-      return "false";
-    }
-    // 如果无法识别，返回原值（字符串形式）
-    return answerStr;
+    // 其他类型，尝试解析
+    const parsed = parseTrueFalseLike(correctAnswer);
+    if (parsed !== null) return parsed;
+    // 无法解析，安全默认返回 false
+    return false;
   }
 
   // 处理多选题

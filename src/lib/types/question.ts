@@ -22,4 +22,8 @@ export type CorrectAnswer =
   | CorrectAnswerBoolean
   | CorrectAnswerSingleChoice
   | CorrectAnswerMultiChoice
-  | CorrectAnswerText;
+  | CorrectAnswerText
+  // ✅ 业务态（归一化后）
+  | boolean
+  | string
+  | string[];

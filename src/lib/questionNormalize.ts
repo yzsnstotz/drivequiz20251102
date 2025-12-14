@@ -37,7 +37,7 @@ export interface BuildNormalizedQuestionParams {
 export interface NormalizedQuestion {
   type: QuestionType;
   options: string[];
-  correctAnswer: string | string[];
+  correctAnswer: string | string[] | boolean;
   content?: string;
   explanation?: string;
 }
