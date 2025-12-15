@@ -12,7 +12,7 @@ type Question = {
   type: QuestionType;
   content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   options?: string[];
-  correctAnswer: string | string[];
+  correctAnswer: string | string[] | boolean;
   image?: string;
   explanation?: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined }; // 支持单语言字符串或多语言对象
   category?: string;
@@ -63,6 +63,89 @@ const DEFAULT_FILTERS: Filters = {
 export default function QuestionsPage() {
   const router = useRouter();
   const search = useSearchParams();
+
+  const renderLicenseTags = (item: any): string[] => {
+
+    const raw =
+      item?.license_type_tag ??
+      item?.license_type_tags ??
+      item?.licenseTypeTag ??
+      item?.licenseTypeTags ??
+      item?.license_tag ??
+      item?.license_tags ??
+      item?.licenseType ??
+      item?.license_type ??
+      item?.license ??
+      item?.licenseTag ??
+      item?.licenseTags;
+
+    if (raw === null || raw === undefined) return [];
+
+    const toStrArr = (arr: any[]) =>
+      arr
+        .map((x) => String(x).trim())
+        .filter(Boolean);
+
+    // 直接数组
+    if (Array.isArray(raw)) return toStrArr(raw);
+
+    // 兼容 jsonb 包装：{ value: [...] } 或 { type, value }
+    if (typeof raw === "object") {
+      const v = (raw as any).value;
+      if (Array.isArray(v)) return toStrArr(v);
+      if (typeof v === "string") {
+        const s = v.trim();
+        if (!s) return [];
+        // JSON 字符串数组
+        if (s.startsWith("[") && s.endsWith("]")) {
+          try {
+            const parsed = JSON.parse(s);
+            if (Array.isArray(parsed)) return toStrArr(parsed);
+          } catch {}
+        }
+        // Postgres array: {a,b,c}
+        if (s.startsWith("{") && s.endsWith("}")) {
+          return s
+            .slice(1, -1)
+            .split(",")
+            .map((t) => t.trim().replace(/^"(.*)"$/, "$1"))
+            .filter(Boolean);
+        }
+        // 分隔串（逗号/分号/顿号/空格）
+        return s
+          .split(/[,;、\s]+/g)
+          .map((t) => t.trim())
+          .filter(Boolean);
+      }
+    }
+
+    // 字符串：可能是逗号串、JSON 数组字符串、Postgres array 字符串
+    if (typeof raw === "string") {
+      const s = raw.trim();
+      if (!s) return [];
+      if (s.startsWith("[") && s.endsWith("]")) {
+        try {
+          const parsed = JSON.parse(s);
+          if (Array.isArray(parsed)) return toStrArr(parsed);
+        } catch {}
+      }
+      if (s.startsWith("{") && s.endsWith("}")) {
+        return s
+          .slice(1, -1)
+          .split(",")
+          .map((t) => t.trim().replace(/^"(.*)"$/, "$1"))
+          .filter(Boolean);
+      }
+      return s
+        .split(/[,;、\s]+/g)
+        .map((t) => t.trim())
+        .filter(Boolean);
+    }
+
+    return [String(raw).trim()].filter(Boolean);
+
+  };
+  
 
   const [filters, setFilters] = useState<Filters>(() => {
     const q = (k: string, d = "") => (search?.get(k) ?? d);
@@ -140,6 +223,8 @@ export default function QuestionsPage() {
   }>>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [deletingVersion, setDeletingVersion] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState("");
+  const requestSeqRef = useRef(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{
     version: string;
     totalQuestions: number;
@@ -296,6 +381,82 @@ export default function QuestionsPage() {
     window.history.replaceState(null, "", href);
   }, [filters]);
 
+
+  const normalizeTrueFalseCorrectAnswer = (value: any): boolean | null => {
+
+    if (value === null || value === undefined) return null;
+
+    if (typeof value === "boolean") return value;
+
+    if (typeof value === "object" && value) {
+      const v = (value as any).value;
+      if (typeof v === "boolean") return v;
+      if (typeof v === "string") value = v;
+    }
+
+    if (typeof value === "string") {
+      const s = value.trim().toLowerCase();
+      if (["true", "1", "yes", "y", "正确", "对", "〇", "○"].includes(s)) return true;
+      if (["false", "0", "no", "n", "错误", "错", "×", "x"].includes(s)) return false;
+    }
+
+    return null;
+  };
+
+  type CorrectAnswerPayload = boolean | string | string[];
+
+  const parseCorrectAnswerFromForm = (
+    qType: "truefalse" | "single" | "multiple",
+    fd: FormData
+  ): CorrectAnswerPayload => {
+    if (qType === "truefalse") {
+      const raw = (fd.get("correctAnswer") ?? "").toString().trim();
+      const normalized = normalizeTrueFalseCorrectAnswer(raw);
+      // 默认值：避免传 null 导致后端 500
+      return normalized ?? false;
+    }
+
+    if (qType === "single") {
+      const raw = (fd.get("correctAnswer") ?? "A").toString().trim().toUpperCase();
+      return raw === "A" || raw === "B" || raw === "C" || raw === "D" ? raw : "A";
+    }
+
+    // multiple
+    const all = fd
+      .getAll("correctAnswer")
+      .map((v) => v.toString().trim().toUpperCase())
+      .filter((v) => v === "A" || v === "B" || v === "C" || v === "D");
+
+    return Array.from(new Set(all));
+  };
+
+  const renderCorrectAnswer = (value: any): string => {
+    if (value === null || value === undefined) return "—";
+
+    // boolean primitive（关键：false 不能被吞）
+    if (typeof value === "boolean") return value ? "true" : "false";
+
+    // string
+    if (typeof value === "string") {
+      return value.trim() !== "" ? value : "—";
+    }
+
+    // array
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.join(", ") : "—";
+    }
+
+    // jsonb object: { type: "boolean", value: true/false }
+    if (typeof value === "object") {
+      const v = (value as any).value;
+      if (typeof v === "boolean") return v ? "true" : "false";
+      if (typeof v === "string") return v || "—";
+      if (Array.isArray(v)) return v.join(", ");
+    }
+
+    return String(value);
+  };
+
   // 处理排序
   const handleSort = useCallback((field: Filters["sortBy"]) => {
     setFilters((prev) => ({
@@ -308,93 +469,100 @@ export default function QuestionsPage() {
 
   // 加载数据函数
   const loadData = useCallback(async (page: number, append: boolean = false) => {
-    try {
-      if (append) {
-        setLoadingMore(true);
-      } else {
-        setLoading(true);
-        setError(null);
-      }
+    const reqId = ++requestSeqRef.current;
 
-      const params: Record<string, any> = {
-        page,
-        limit: filters.limit,
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder,
-      };
-      if (filters.category) params.category = filters.category;
-      if (filters.search) params.search = filters.search;
-      if (filters.source) params.source = filters.source;
-      if (filters.locale) params.locale = filters.locale;
+   try {
+     if (append) {
+       setLoadingMore(true);
+     } else {
+       setLoading(true);
+       setError(null);
+     }
 
-      // 构建查询字符串
-      const queryString = new URLSearchParams(
-        Object.entries(params).reduce((acc, [k, v]) => {
-          if (v !== undefined && v !== null && v !== "") {
-            acc[k] = String(v);
-          }
-          return acc;
-        }, {} as Record<string, string>)
-      ).toString();
+     const params: Record<string, any> = {
+       page,
+       limit: filters.limit,
+       sortBy: filters.sortBy,
+       sortOrder: filters.sortOrder,
+     };
+     if (filters.category) params.category = filters.category;
+     if (filters.search) params.search = filters.search;
+     if (filters.source) params.source = filters.source;
+     if (filters.locale) params.locale = filters.locale;
 
-      const fullUrl = queryString ? `/api/admin/questions?${queryString}` : "/api/admin/questions";
-      
+     // 构建查询字符串
+     const queryString = new URLSearchParams(
+       Object.entries(params).reduce((acc, [k, v]) => {
+         if (v !== undefined && v !== null && v !== "") {
+           acc[k] = String(v);
+         }
+         return acc;
+       }, {} as Record<string, string>)
+     ).toString();
+
+     const fullUrl = queryString ? `/api/admin/questions?${queryString}` : "/api/admin/questions";
+     
       // 使用 apiFetch 获取完整响应（包括 pagination）
       const fullResponse = await apiFetch<ListResponse>(fullUrl, {
         method: "GET",
       });
 
-      const payload = fullResponse.data as unknown as any;
-      const newItems = (payload.items ?? payload) as Question[];
-      const newPagination = fullResponse.pagination || null;
+      if (reqId !== requestSeqRef.current) return;
 
-      if (append) {
-        // 追加模式：添加到现有列表（去重，避免重复的 ID）
-        setItems((prev) => {
-          const existingIds = new Set(prev.map((item) => item.id));
-          const uniqueNewItems = newItems.filter((item) => !existingIds.has(item.id));
-          return [...prev, ...uniqueNewItems];
-        });
-      } else {
-        // 重置模式：替换列表
-        setItems(newItems);
-      }
+     const payload = fullResponse.data as unknown as any;
+     const newItems = (payload.items ?? payload) as Question[];
+     const newPagination = fullResponse.pagination || null;
 
-      setPagination(newPagination);
-      
-      // 检查是否还有更多数据
-      if (newPagination) {
-        // 优先使用 API 返回的 hasNext 字段（最准确）
-        // 如果没有 hasNext，则使用 totalPages 计算
-        const pag = newPagination as ListResponse["pagination"];
-        if (pag && pag.hasNext !== undefined) {
-          setHasMore(pag.hasNext);
-        } else if (pag) {
-          const totalPages = pag.totalPages || pag.pages || 0;
-          const currentPage = pag.page || page;
-          const hasMoreData = currentPage < totalPages;
-          setHasMore(hasMoreData);
-        } else {
-          setHasMore(false);
-        }
-      } else {
-        setHasMore(false);
+     if (append) {
+       // 追加模式：添加到现有列表（去重，避免重复的 ID）
+       setItems((prev) => {
+         const existingIds = new Set(prev.map((item) => item.id));
+         const uniqueNewItems = newItems.filter((item) => !existingIds.has(item.id));
+         return [...prev, ...uniqueNewItems];
+       });
+     } else {
+       // 重置模式：替换列表
+       setItems(newItems);
+     }
+
+     setPagination(newPagination);
+     
+     // 检查是否还有更多数据
+     if (newPagination) {
+       // 优先使用 API 返回的 hasNext 字段（最准确）
+       // 如果没有 hasNext，则使用 totalPages 计算
+       const pag = newPagination as ListResponse["pagination"];
+       if (pag && pag.hasNext !== undefined) {
+         setHasMore(pag.hasNext);
+       } else if (pag) {
+         const totalPages = pag.totalPages || pag.pages || 0;
+         const currentPage = pag.page || page;
+         const hasMoreData = currentPage < totalPages;
+         setHasMore(hasMoreData);
+       } else {
+         setHasMore(false);
+       }
+     } else {
+       setHasMore(false);
+     }
+   } catch (e) {
+      if (reqId !== requestSeqRef.current) return;
+     if (e instanceof ApiError) {
+       if (e.status === 401) {
+         setError("未授权：请先登录管理口令");
+       } else {
+         setError(`${e.errorCode}: ${e.message}`);
+       }
+     } else {
+       setError(e instanceof Error ? e.message : "未知错误");
+     }
+   } finally {
+      if (reqId === requestSeqRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
       }
-    } catch (e) {
-      if (e instanceof ApiError) {
-        if (e.status === 401) {
-          setError("未授权：请先登录管理口令");
-        } else {
-          setError(`${e.errorCode}: ${e.message}`);
-        }
-      } else {
-        setError(e instanceof Error ? e.message : "未知错误");
-      }
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder, filters.locale]);
+   }
+ }, [filters.category, filters.search, filters.source, filters.limit, filters.sortBy, filters.sortOrder, filters.locale]);
 
   // 初始加载或筛选条件改变时重置
   useEffect(() => {
@@ -462,18 +630,38 @@ export default function QuestionsPage() {
     };
   }, [hasMore, loadingMore, loading, loadMore]);
 
-  const onSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // 搜索时重置到第一页并清空列表
+  const onSearchSubmit = useCallback((e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) e.preventDefault();
+  
+    const keyword = searchDraft.trim();
+  
+    // 只更新 filters，让后面的 useEffect([filters.xxx]) 统一触发 loadData
+    // 避免 form 默认提交导致整页刷新，也避免 setFilters 未生效就手动 loadData 导致读到旧 filters
     setItems([]);
     setHasMore(true);
-    // 触发重新加载（通过filters变化触发useEffect）
-  };
+    setPagination(null);
+  
+    setFilters((f) => ({
+      ...f,
+      search: keyword,
+      page: 1,
+    }));
+  }, [searchDraft]);
+  
 
-  const onReset = () => {
-    setFilters({ ...DEFAULT_FILTERS });
-    loadVersions(); // 重置时重新加载版本号列表
-  };
+  const onReset = useCallback(() => {
+    setSearchDraft("");
+    setItems([]);
+    setHasMore(true);
+    setPagination(null);
+  
+    // 同样只更新 filters，让统一的 useEffect 去触发 loadData
+    setFilters({
+      ...DEFAULT_FILTERS,
+      page: 1,
+    });
+  }, []);
+  
 
   // 移除分页功能，改用无限滚动
 
@@ -494,11 +682,31 @@ export default function QuestionsPage() {
     }
   };
 
-  const handleEdit = (question: Question) => {
-    setEditingQuestion(question);
-    setShowEditForm(true);
-    setShowCreateForm(false);
+  const handleEdit = async (question: Question) => {
+    setFormError(null);
+  
+    try {
+      const params = new URLSearchParams();
+      if (filters.source) params.set("source", filters.source);
+      if (filters.locale) params.set("locale", filters.locale);
+  
+      const res = await apiFetch<Question>(
+        `/api/admin/questions/${question.id}?${params.toString()}`,
+        { method: "GET" }
+      );
+  
+      setEditingQuestion(res.data);
+    } catch (e) {
+      // 兜底：接口失败仍允许编辑，但提示风险
+      console.error("load question detail failed:", e);
+      setEditingQuestion(question);
+      setFormError("未能加载题目真实数据，当前内容可能不完整");
+    } finally {
+      setShowEditForm(true);
+      setShowCreateForm(false);
+    }
   };
+  
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -525,16 +733,9 @@ export default function QuestionsPage() {
       if (optD) options.push(optD);
     }
 
-    // 解析正确答案
-    let correctAnswer: string | string[];
-    if (type === "truefalse") {
-      correctAnswer = formData.get("correctAnswer")?.toString() === "true" ? "true" : "false";
-    } else if (type === "single") {
-      correctAnswer = formData.get("correctAnswer")?.toString()?.toUpperCase() || "A";
-    } else {
-      const answers = formData.getAll("correctAnswer") as string[];
-      correctAnswer = answers.map((a) => a.toUpperCase());
-    }
+    // 解析正确答案（统一解析器，避免 true/false 错配与后端类型错误）
+    const correctAnswer = parseCorrectAnswerFromForm(type, formData);
+    
 
     try {
       await apiPost<Question>("/api/admin/questions", {
@@ -591,16 +792,8 @@ export default function QuestionsPage() {
       if (optD) options.push(optD);
     }
 
-    // 解析正确答案
-    let correctAnswer: string | string[];
-    if (type === "truefalse") {
-      correctAnswer = formData.get("correctAnswer")?.toString() === "true" ? "true" : "false";
-    } else if (type === "single") {
-      correctAnswer = formData.get("correctAnswer")?.toString()?.toUpperCase() || "A";
-    } else {
-      const answers = formData.getAll("correctAnswer") as string[];
-      correctAnswer = answers.map((a) => a.toUpperCase());
-    }
+    // 解析正确答案（统一解析器，确保 truefalse 一定是 boolean）
+    const correctAnswer = parseCorrectAnswerFromForm(type, formData);
 
     try {
       await apiPut<Question>(`/api/admin/questions/${editingQuestion.id}`, {
@@ -1498,8 +1691,14 @@ export default function QuestionsPage() {
           <label className="block text-xs font-medium text-gray-700 mb-1">搜索内容</label>
           <input
             type="text"
-            value={filters.search}
-            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                setFilters((f) => ({ ...f, search: searchDraft.trim(), page: 1 }));
+              }
+            }}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
             placeholder="搜索题目ID、内容、选项、解析..."
           />
@@ -1665,12 +1864,9 @@ export default function QuestionsPage() {
                       )}
                     </td>
                     <td className="py-2 px-3 text-xs whitespace-nowrap">
-                      {Array.isArray(item.correctAnswer)
-                        ? item.correctAnswer.join(", ")
-                        : typeof item.correctAnswer === 'object' && item.correctAnswer !== null
-                        ? JSON.stringify(item.correctAnswer)
-                        : String(item.correctAnswer || '—')}
+                      {renderCorrectAnswer(item.correctAnswer)}
                     </td>
+
                     <td className="py-2 px-3 text-xs overflow-hidden" style={{ wordBreak: "break-word", whiteSpace: "normal" }}>
                       {item.explanation ? (
                         <div title={
@@ -1691,17 +1887,24 @@ export default function QuestionsPage() {
                       )}
                     </td>
                     <td className="py-2 px-3 text-xs">
-                      {item.license_type_tag && item.license_type_tag.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {item.license_type_tag.map((tag, i) => (
-                            <span key={i} className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 text-[10px]">—</span>
-                      )}
+                    {(() => {
+                      const tags = renderLicenseTags(item);
+                            return tags.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {tags.map((tag: string, i: number) => (
+                                  <span
+                                    key={i}
+                                    className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-[10px]">—</span>
+                            );
+                          })()}
+
                     </td>
                     <td className="py-2 px-3 text-xs">
                       {item.stage_tag ? (
@@ -2098,13 +2301,9 @@ export default function QuestionsPage() {
                 )}
                 <div>
                   <div className="text-xs text-gray-500 mb-1">正确答案</div>
-                  <div className="text-xs">
-                    {Array.isArray(item.correctAnswer)
-                      ? item.correctAnswer.join(", ")
-                      : typeof item.correctAnswer === 'object' && item.correctAnswer !== null
-                      ? JSON.stringify(item.correctAnswer)
-                      : String(item.correctAnswer || '—')}
-                  </div>
+                    <div className="text-xs">
+                      {renderCorrectAnswer(item.correctAnswer)}
+                    </div>
                 </div>
                 {item.explanation && (
                   <div>
@@ -2448,6 +2647,58 @@ function QuestionForm({
 
   const correctAnswer = question?.correctAnswer;
 
+  // === 新增 normalize helpers ===
+  const normalizeTrueFalseValue = (v: unknown): "true" | "false" => {
+    if (typeof v === "boolean") return v ? "true" : "false";
+    if (typeof v === "string") {
+      const s = v.trim().toLowerCase();
+      if (s === "true" || s === "1" || s === "yes") return "true";
+      if (s === "false" || s === "0" || s === "no") return "false";
+    }
+    return "true";
+  };
+
+  const normalizeSingleValue = (v: unknown): "A" | "B" | "C" | "D" => {
+    const s = typeof v === "string" ? v.trim().toUpperCase() : "";
+    if (s === "A" || s === "B" || s === "C" || s === "D") return s;
+    return "A";
+  };
+
+  const normalizeMultipleValues = (v: unknown): string[] => {
+    if (Array.isArray(v)) return v.map((x) => String(x).trim().toUpperCase()).filter(Boolean);
+
+    if (typeof v === "string") {
+      const s = v.trim().toUpperCase();
+      if (!s) return [];
+      // 兼容 "A,B" / "A, B" / "A B" / "AB"
+      if (s.includes(",") || s.includes(" ")) {
+        return s
+          .split(/[, ]+/)
+          .map((x) => x.trim())
+          .filter(Boolean);
+      }
+      // "AB" 视为 ["A","B"]
+      if (s.length > 1) return s.split("").filter(Boolean);
+      return [s];
+    }
+
+    return [];
+  };
+
+  // === true/false correctAnswer 归一化为 boolean ===
+  const normalizeTrueFalseCorrectAnswer = (v: unknown): boolean | null => {
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") {
+      const s = v.trim().toLowerCase();
+      if (s === "true" || s === "1" || s === "yes") return true;
+      if (s === "false" || s === "0" || s === "no") return false;
+    }
+    return null;
+  };
+  const tf = normalizeTrueFalseCorrectAnswer(question?.correctAnswer);
+
+  // === End helpers ===
+
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <div>
@@ -2552,9 +2803,7 @@ function QuestionForm({
           <select
             name="correctAnswer"
             required
-            defaultValue={
-              typeof correctAnswer === "string" ? correctAnswer : "true"
-            }
+            defaultValue={(tf ?? false) ? "true" : "false"}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           >
             <option value="true">正确</option>
@@ -2564,9 +2813,7 @@ function QuestionForm({
           <select
             name="correctAnswer"
             required
-            defaultValue={
-              typeof correctAnswer === "string" ? correctAnswer.toUpperCase() : "A"
-            }
+            defaultValue={normalizeSingleValue(correctAnswer)}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           >
             <option value="A">A</option>
@@ -2575,52 +2822,49 @@ function QuestionForm({
             <option value="D">D</option>
           </select>
         ) : (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                name="correctAnswer"
-                value="A"
-                defaultChecked={
-                  Array.isArray(correctAnswer) ? correctAnswer.includes("A") : false
-                }
-              />
-              <span className="text-sm">A</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                name="correctAnswer"
-                value="B"
-                defaultChecked={
-                  Array.isArray(correctAnswer) ? correctAnswer.includes("B") : false
-                }
-              />
-              <span className="text-sm">B</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                name="correctAnswer"
-                value="C"
-                defaultChecked={
-                  Array.isArray(correctAnswer) ? correctAnswer.includes("C") : false
-                }
-              />
-              <span className="text-sm">C</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                name="correctAnswer"
-                value="D"
-                defaultChecked={
-                  Array.isArray(correctAnswer) ? correctAnswer.includes("D") : false
-                }
-              />
-              <span className="text-sm">D</span>
-            </label>
-          </div>
+          (() => {
+            const selected = normalizeMultipleValues(correctAnswer);
+            return (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="correctAnswer"
+                    value="A"
+                    defaultChecked={selected.includes("A")}
+                  />
+                  <span className="text-sm">A</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="correctAnswer"
+                    value="B"
+                    defaultChecked={selected.includes("B")}
+                  />
+                  <span className="text-sm">B</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="correctAnswer"
+                    value="C"
+                    defaultChecked={selected.includes("C")}
+                  />
+                  <span className="text-sm">C</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="correctAnswer"
+                    value="D"
+                    defaultChecked={selected.includes("D")}
+                  />
+                  <span className="text-sm">D</span>
+                </label>
+              </div>
+            );
+          })()
         )}
       </div>
 

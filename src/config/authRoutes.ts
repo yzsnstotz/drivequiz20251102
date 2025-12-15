@@ -5,7 +5,6 @@ export const AUTH_REQUIRED_PREFIXES = [
   "/ai",
   "/activation",
   "/profile",
-  "/admin",
   "/student",
 ];
 
