@@ -4,7 +4,8 @@ export const runtime = "nodejs"; // 强制使用 Node.js runtime，避免 Edge r
 
 // ============================================================
 // 文件路径: src/app/api/admin/questions/[id]/route.ts
-// 功能: 题目详情、更新、删除
+// 功能: 题目详情、更新、删除（仅数据库）
+// 说明: 已移除一切 JSON 包/文件系统读写逻辑；编辑/删除仅针对数据库题目
 // ============================================================
 
 import { NextRequest } from "next/server";
@@ -12,105 +13,89 @@ import { withAdminAuth } from "@/app/api/_lib/withAdminAuth";
 import { success, badRequest, internalError, notFound } from "@/app/api/_lib/errors";
 import { logUpdate, logDelete } from "@/app/api/_lib/operationLog";
 import { calculateQuestionHash } from "@/lib/questionHash";
-import {
-  getQuestionsFromDb,
-  saveQuestionToDb,
-  normalizeCorrectAnswer,
-  updateAIAnswerToDb,
-} from "@/lib/questionDb";
+import { saveQuestionToDb, updateAIAnswerToDb } from "@/lib/questionDb";
 import { db } from "@/lib/db";
-import fs from "fs/promises";
-import path from "path";
-import type { Question, QuestionFile } from "../route";
+import type { Question } from "../route";
 import type { CorrectAnswer } from "@/lib/types/question";
-import { getContentText, getContentPreview } from "@/lib/questionContentUtils";
+import { getContentPreview } from "@/lib/questionContentUtils";
 
-// 题目数据目录
-const QUESTIONS_DIR = path.join(process.cwd(), "src/data/questions/zh");
+// ============================================================
+// helpers: normalize i18n content/explanation for DB update
+// - Allow string (legacy) or object { zh, ja, en, ... }
+// - Trim strings
+// - Return undefined when input is undefined (means "no change")
+// - Return null when explicitly set to empty (means "invalid")
+// ============================================================
+function normalizeI18nTextInput(input: any): string | Record<string, string> | null | undefined {
+  // undefined => caller didn't send this field => do not change
+  if (input === undefined) return undefined;
 
-// 加载指定卷类的题目文件
-async function loadQuestionFile(category: string): Promise<QuestionFile | null> {
-  try {
-    const filePath = path.join(QUESTIONS_DIR, `${category}.json`);
-    const content = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(content) as QuestionFile;
-  } catch (error) {
-    console.error(`[loadQuestionFile] Error loading ${category}:`, error);
-    return null;
+  // null => treat as empty (invalid for required fields like content)
+  if (input === null) return null;
+
+  // string legacy
+  if (typeof input === "string") {
+    const s = input.trim();
+    return s.length > 0 ? s : null;
   }
-}
 
-// 保存题目文件
-async function saveQuestionFile(category: string, data: QuestionFile): Promise<void> {
-  const filePath = path.join(QUESTIONS_DIR, `${category}.json`);
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
-}
-
-// 获取所有卷类列表
-async function getAllCategories(): Promise<string[]> {
-  try {
-    const files = await fs.readdir(QUESTIONS_DIR);
-    return files
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => f.replace(".json", ""));
-  } catch (error) {
-    console.error("[getAllCategories] Error:", error);
-    return [];
+  // object i18n
+  if (typeof input === "object") {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (typeof v === "string") {
+        const s = v.trim();
+        if (s) out[k] = s;
+      }
+    }
+    return Object.keys(out).length > 0 ? out : null;
   }
+
+  return null;
 }
 
-// 查找题目所属的卷类文件
-// 只从数据库读取，如果数据库没有则返回null
-async function findQuestionCategory(questionId: number): Promise<{
-  category: string;
-  question: Question;
-} | null> {
+
+// ============================================================
+// DB: 仅从数据库读取题目
+// ============================================================
+async function findDbQuestionById(
+  questionId: number
+): Promise<{ question: Question } | null> {
   try {
-    // 只从数据库读取
     const dbQuestion = await db
       .selectFrom("questions")
       .selectAll()
       .where("id", "=", questionId)
       .executeTakeFirst();
-    
-    if (dbQuestion) {
-      // ⚠️ 兼容旧逻辑：category 是卷类，不是标签
-      // 注意：license_types 和 category 是不同的概念，不应该互相转换
-      const category = dbQuestion.category || "免许-1";
-      
-      // 转换为前端格式
-      // 处理content字段：保持原格式（可能是字符串或多语言对象）
-      let content: string | { zh: string; en?: string; ja?: string; [key: string]: string | undefined };
-      if (typeof dbQuestion.content === "string") {
-        content = dbQuestion.content;
-      } else {
-        content = dbQuestion.content;
-      }
 
-      const question: Question = {
-        id: dbQuestion.id,
-        type: dbQuestion.type,
-        content,
-        options: Array.isArray(dbQuestion.options) ? dbQuestion.options : undefined,
-        correctAnswer: dbQuestion.correct_answer as CorrectAnswer | null,
-        image: dbQuestion.image || undefined,
-        explanation: dbQuestion.explanation || undefined,
-        category: dbQuestion.category || category,
-      };
-      
-      return { category, question };
-    }
+    if (!dbQuestion) return null;
+
+    // 保持原格式（可能是字符串或多语言对象）
+    const content =
+      typeof dbQuestion.content === "string" ? dbQuestion.content : dbQuestion.content;
+
+    const question: Question = {
+      id: dbQuestion.id,
+      type: dbQuestion.type,
+      content,
+      options: Array.isArray(dbQuestion.options) ? dbQuestion.options : undefined,
+      correctAnswer: dbQuestion.correct_answer as CorrectAnswer | null,
+      image: dbQuestion.image || undefined,
+      explanation: dbQuestion.explanation || undefined,
+      category: dbQuestion.category || "UNKNOWN",
+      hash: (dbQuestion as any).content_hash,
+    };
+
+    return { question };
   } catch (error) {
-    console.error("[findQuestionCategory] Error reading from database:", error);
+    console.error("[findDbQuestionById] Error:", error);
+    return null;
   }
-  
-  // 数据库没有，返回null
-  return null;
 }
 
 // ============================================================
 // GET /api/admin/questions/:id
-// 查询单个题目详情
+// 查询单个题目详情（仅数据库）
 // ============================================================
 export const GET = withAdminAuth(
   async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
@@ -119,13 +104,10 @@ export const GET = withAdminAuth(
       const id = Number(idParam);
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
-      const result = await findQuestionCategory(id);
-      if (!result) return notFound("Question not found");
+      const result = await findDbQuestionById(id);
+      if (!result) return notFound("Question not found in database");
 
-      return success({
-        ...result.question,
-        category: result.category,
-      });
+      return success(result.question);
     } catch (err: any) {
       console.error("[GET /api/admin/questions/:id] Error:", err);
       if (err.ok === false) return err;
@@ -136,7 +118,7 @@ export const GET = withAdminAuth(
 
 // ============================================================
 // PUT /api/admin/questions/:id
-// 更新题目
+// 更新题目（仅数据库）
 // ============================================================
 export const PUT = withAdminAuth(
   async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
@@ -148,176 +130,149 @@ export const PUT = withAdminAuth(
       const body = await req.json();
       const { type, content, options, correctAnswer, image, explanation, category, aiAnswer } = body;
 
-      // 查找题目
-      const result = await findQuestionCategory(id);
-      if (!result) return notFound("Question not found");
+      const contentNormalized = normalizeI18nTextInput(content);
+      const explanationNormalized = normalizeI18nTextInput(explanation);
+      // 仅查数据库
+      const found = await findDbQuestionById(id);
+      if (!found) return notFound("Question not found in database");
 
-      const { category: oldCategory, question: oldQuestion } = result;
-      const targetCategory = category || oldCategory;
+      const oldQuestion = found.question;
+
+      // === 新增 correctAnswer 规范化逻辑 ===
+      let normalizedCorrectAnswer: CorrectAnswer | undefined = undefined;
+
+      if (correctAnswer !== undefined) {
+        const finalType = type ?? oldQuestion.type;
+
+        if (finalType === "truefalse") {
+          normalizedCorrectAnswer = {
+            type: "boolean",
+            value: correctAnswer === true || correctAnswer === "true",
+          };
+        } else if (finalType === "single") {
+          normalizedCorrectAnswer = {
+            type: "single_choice",
+            value: String(correctAnswer),
+          };
+        } else if (finalType === "multiple") {
+          normalizedCorrectAnswer = {
+            type: "multiple_choice",
+            value: Array.isArray(correctAnswer) ? correctAnswer : [],
+          };
+        }
+      }
 
       // 校验
       if (type && !["single", "multiple", "truefalse"].includes(type)) {
         return badRequest("Invalid question type");
       }
-
-      if (content && (typeof content !== "string" || content.trim().length === 0)) {
+      // content: required (but allows i18n object). For update:
+      // - if content is undefined => no change
+      // - if provided but normalizes to null => invalid
+      if (content !== undefined && contentNormalized === null) {
         return badRequest("Question content cannot be empty");
       }
 
-      // 构建更新后的题目
+      // explanation: optional. If provided but normalizes to null, we treat as empty string/object removal not allowed here.
+      // Keep it permissive: allow clearing by sending empty string/object? -> if you want to allow clearing, remove this check.
+      // For now, we keep "null means do not write" behavior in updatedQuestion below.
+
+
+      // 构建更新后的题目（仅 DB）
       const updatedQuestion: Question = {
         ...oldQuestion,
-        ...(type ? { type } : {}),
-        ...(content ? { content: content.trim() } : {}),
-        ...(correctAnswer !== undefined ? { correctAnswer } : {}),
+        ...(type !== undefined ? { type } : {}),
+        ...(contentNormalized !== undefined && contentNormalized !== null
+          ? { content: contentNormalized as any }
+          : {}),
+        ...(normalizedCorrectAnswer !== undefined
+          ? { correctAnswer: normalizedCorrectAnswer }
+          : {}),
         ...(options !== undefined ? { options } : {}),
-        ...(image !== undefined ? (image ? { image: image.trim() } : {}) : {}),
-        ...(explanation !== undefined ? (explanation ? { explanation: explanation.trim() } : {}) : {}),
-        category: targetCategory,
+        ...(explanationNormalized !== undefined
+          ? explanationNormalized === null
+            ? {}
+            : { explanation: explanationNormalized as any }
+          : {}),
+
+        ...(category !== undefined ? { category } : {}),
       };
 
-      // 1. 更新数据库（作为数据源）
-      try {
-        await saveQuestionToDb(updatedQuestion);
-      } catch (dbError) {
-        console.error("[PUT /api/admin/questions/:id] Error updating database:", dbError);
-        // 即使数据库更新失败，也继续同步到JSON包（保持兼容性）
-      }
+      // 更新数据库（主数据源）
+            // 更新数据库（主数据源）
+            try {
+              console.log("[PUT /api/admin/questions/:id] contentNormalized type =", typeof contentNormalized);
+              console.log(
+                "[PUT /api/admin/questions/:id] updatedQuestion.content type =",
+                typeof (updatedQuestion as any).content
+              );
+      
+              await saveQuestionToDb(updatedQuestion);
+      
+              console.log("[PUT /api/admin/questions/:id] saveQuestionToDb OK", { id });
+            } catch (dbErr: any) {
+              console.error("[PUT /api/admin/questions/:id] saveQuestionToDb FAILED:", dbErr);
+      
+              // 把真实错误“透出”给前端，便于你立刻定位（临时诊断用）
+              return internalError(
+                `Failed to update question (DB write failed): ${dbErr?.message || String(dbErr)}`
+              );
+            }
+      
 
-      // 1.5. 更新AI回答（如果提供了 aiAnswer）
+      // 更新 AI 回答（可选，不影响主流程）
       if (aiAnswer !== undefined) {
         try {
-          // 计算题目的 hash
           const questionHash = calculateQuestionHash(updatedQuestion);
-          
-          // 更新或插入 AI 回答（包括空内容，允许清空）
           await updateAIAnswerToDb(
             questionHash,
             aiAnswer ? aiAnswer.trim() : "",
-            "zh", // 默认使用中文
-            "manual", // 标记为手动编辑
+            "zh",
+            "manual",
             undefined,
-            undefined // createdBy 留空，因为是管理员手动编辑
+            undefined
           );
-          console.log(`[PUT /api/admin/questions/:id] 成功更新AI回答`, {
-            questionId: id,
-            questionHash: questionHash.substring(0, 16) + "...",
-            answerLength: aiAnswer ? aiAnswer.trim().length : 0,
-            isEmpty: !aiAnswer || aiAnswer.trim().length === 0,
-          });
         } catch (aiAnswerError) {
           console.error("[PUT /api/admin/questions/:id] Error updating AI answer:", aiAnswerError);
-          // AI回答更新失败不影响主流程
         }
       }
 
-      // 2. 同步到JSON包
-      // 如果卷类改变,需要从旧文件删除,添加到新文件
-      if (targetCategory !== oldCategory) {
-        // 从旧文件删除
-        const oldFile = await loadQuestionFile(oldCategory);
-        if (oldFile) {
-          oldFile.questions = oldFile.questions.filter((q) => q.id !== id);
-          await saveQuestionFile(oldCategory, oldFile);
-        }
-
-        // 添加到新文件
-        let newFile = await loadQuestionFile(targetCategory);
-        if (!newFile) {
-          newFile = { questions: [] };
-        }
-
-        newFile.questions.push(updatedQuestion);
-        await saveQuestionFile(targetCategory, newFile);
-
-        // 记录操作日志
-        try {
-          await logUpdate(
-            req,
-            "question",
-            id,
-            {
-              category: oldCategory,
-              type: oldQuestion.type,
-              content: getContentPreview(oldQuestion.content, 50),
-            },
-            {
-              category: targetCategory,
-              type: updatedQuestion.type,
-              content: getContentPreview(updatedQuestion.content, 50),
-            },
-            `卷类变更: ${oldCategory} → ${targetCategory}`
-          );
-        } catch (logErr) {
-          console.error("[PUT /api/admin/questions/:id] Log error:", logErr);
-        }
-
-        return success({ ...updatedQuestion, category: targetCategory });
-      } else {
-        // 在同一文件中更新
-        const updatedQuestion: Question = {
-          ...oldQuestion,
-          ...(type ? { type } : {}),
-          ...(content ? { content: content.trim() } : {}),
-          ...(correctAnswer !== undefined ? { correctAnswer } : {}),
-          ...(options !== undefined ? { options } : {}),
-          ...(image !== undefined ? (image ? { image: image.trim() } : {}) : {}),
-          ...(explanation !== undefined ? (explanation ? { explanation: explanation.trim() } : {}) : {}),
-          category: targetCategory,
-        };
-
-        // 1. 更新数据库（作为数据源）
-        try {
-          await saveQuestionToDb(updatedQuestion);
-        } catch (dbError) {
-          console.error("[PUT /api/admin/questions/:id] Error updating database:", dbError);
-          // 即使数据库更新失败，也继续同步到JSON包（保持兼容性）
-        }
-
-        // 2. 同步到JSON包
-        const file = await loadQuestionFile(targetCategory);
-        if (!file) return internalError("Question file not found");
-
-        const questionIndex = file.questions.findIndex((q) => q.id === id);
-        if (questionIndex === -1) return notFound("Question not found");
-
-        file.questions[questionIndex] = updatedQuestion;
-        await saveQuestionFile(targetCategory, file);
-
-        // 记录操作日志
-        try {
-          await logUpdate(
-            req,
-            "question",
-            id,
-            {
-              category: targetCategory,
-              type: oldQuestion.type,
-              content: getContentPreview(oldQuestion.content, 50),
-            },
-            {
-              category: targetCategory,
-              type: updatedQuestion.type,
-              content: getContentPreview(updatedQuestion.content, 50),
-            }
-          );
-        } catch (logErr) {
-          console.error("[PUT /api/admin/questions/:id] Log error:", logErr);
-        }
-
-        return success({ ...updatedQuestion, category: targetCategory });
+      // 记录操作日志（仅记录，不影响主流程）
+      try {
+        await logUpdate(
+          req,
+          "question",
+          id,
+          {
+            category: oldQuestion.category,
+            type: oldQuestion.type,
+            content: getContentPreview(oldQuestion.content, 50),
+          },
+          {
+            category: updatedQuestion.category,
+            type: updatedQuestion.type,
+            content: getContentPreview(updatedQuestion.content, 50),
+          }
+        );
+      } catch (logErr) {
+        console.error("[PUT /api/admin/questions/:id] Log error:", logErr);
       }
+
+      return success(updatedQuestion);
     } catch (err: any) {
       console.error("[PUT /api/admin/questions/:id] Error:", err);
       if (err.ok === false) return err;
-      return internalError("Failed to update question");
+
+      // 临时诊断：把真实错误透出，避免继续黑盒
+      return internalError(`Failed to update question: ${err?.message || String(err)}`);
     }
+
   }
 );
 
 // ============================================================
 // DELETE /api/admin/questions/:id
-// 删除题目
+// 删除题目（仅数据库）
 // ============================================================
 export const DELETE = withAdminAuth(
   async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
@@ -326,33 +281,18 @@ export const DELETE = withAdminAuth(
       const id = Number(idParam);
       if (isNaN(id)) return badRequest("Invalid ID parameter");
 
-      const result = await findQuestionCategory(id);
-      if (!result) return notFound("Question not found");
+      const found = await findDbQuestionById(id);
+      if (!found) return notFound("Question not found in database");
 
-      const { category, question } = result;
+      const question = found.question;
 
-      // 1. 从数据库删除（作为数据源）
-      try {
-        await db
-          .deleteFrom("questions")
-          .where("id", "=", id)
-          .execute();
-      } catch (dbError) {
-        console.error("[DELETE /api/admin/questions/:id] Error deleting from database:", dbError);
-        // 即使数据库删除失败，也继续从JSON包删除（保持兼容性）
-      }
-
-      // 2. 从JSON包删除
-      const file = await loadQuestionFile(category);
-      if (!file) return internalError("Question file not found");
-
-      file.questions = file.questions.filter((q) => q.id !== id);
-      await saveQuestionFile(category, file);
+      // 仅删除数据库
+      await db.deleteFrom("questions").where("id", "=", id).execute();
 
       // 记录操作日志
       try {
         await logDelete(req, "question", id, {
-          category,
+          category: question.category,
           type: question.type,
           content: getContentPreview(question.content, 50),
         });

@@ -67,17 +67,54 @@ export default function QuestionsPage() {
   const renderLicenseTags = (item: any): string[] => {
 
     const raw =
-      item?.license_type_tag ??
-      item?.license_type_tags ??
-      item?.licenseTypeTag ??
-      item?.licenseTypeTags ??
-      item?.license_tag ??
-      item?.license_tags ??
-      item?.licenseType ??
-      item?.license_type ??
-      item?.license ??
-      item?.licenseTag ??
-      item?.licenseTags;
+    item?.license_type_tag ??
+    item?.license_type_tags ??
+    item?.licenseTypeTag ??
+    item?.licenseTypeTags ??
+    item?.license_tag ??
+    item?.license_tags ??
+    item?.licenseType ??
+    item?.license_type ??
+    item?.license ??
+    item?.licenseTag ??
+    item?.licenseTags ??
+
+    // 兼容嵌套结构（常见于 DB 源返回：metadata/meta/attrs/extra/tags 等）
+    item?.metadata?.license_type_tag ??
+    item?.metadata?.license_type_tags ??
+    item?.metadata?.licenseTypeTag ??
+    item?.metadata?.licenseTypeTags ??
+    item?.metadata?.license_tag ??
+    item?.metadata?.license_tags ??
+
+    item?.meta?.license_type_tag ??
+    item?.meta?.license_type_tags ??
+    item?.meta?.licenseTypeTag ??
+    item?.meta?.licenseTypeTags ??
+    item?.meta?.license_tag ??
+    item?.meta?.license_tags ??
+
+    item?.attrs?.license_type_tag ??
+    item?.attrs?.license_type_tags ??
+    item?.attrs?.licenseTypeTag ??
+    item?.attrs?.licenseTypeTags ??
+    item?.attrs?.license_tag ??
+    item?.attrs?.license_tags ??
+
+    item?.extra?.license_type_tag ??
+    item?.extra?.license_type_tags ??
+    item?.extra?.licenseTypeTag ??
+    item?.extra?.licenseTypeTags ??
+    item?.extra?.license_tag ??
+    item?.extra?.license_tags ??
+
+    // 再兜底一层：有的后端会放到 tags 里
+    item?.tags?.license_type_tag ??
+    item?.tags?.license_type_tags ??
+    item?.tags?.licenseTypeTag ??
+    item?.tags?.licenseTypeTags ??
+    item?.tags?.license_tag ??
+    item?.tags?.license_tags;
 
     if (raw === null || raw === undefined) return [];
 
@@ -235,6 +272,32 @@ export default function QuestionsPage() {
     data?: any;
   } | null>(null);
   const [languageOptions] = useState<string[]>(["zh", "en", "ja"]);
+  type I18nText = { [key: string]: string | undefined };
+
+const coerceI18nText = (v: any): I18nText => {
+  if (!v) return {};
+  if (typeof v === "string") return { zh: v }; // 兼容旧数据：把 string 当 zh
+  if (typeof v === "object") return { ...(v as any) };
+  return {};
+};
+
+const readI18nFromForm = (fd: FormData, base: string, locales: string[]) => {
+  const out: I18nText = {};
+  for (const loc of locales) {
+    const key = `${base}_${loc}`;
+    const raw = fd.get(key);
+    const s = raw === null || raw === undefined ? "" : raw.toString();
+    const trimmed = s.trim();
+    // 关键：空字符串不写入，避免覆盖成空导致“删除其他语言”
+    if (trimmed !== "") out[loc] = trimmed;
+  }
+  return out;
+};
+
+const mergeI18n = (existing: any, patch: I18nText): I18nText => {
+  return { ...coerceI18nText(existing), ...patch };
+};
+
   const [filesystemFiles, setFilesystemFiles] = useState<Array<{
     filename: string;
     category: string;
@@ -402,6 +465,17 @@ export default function QuestionsPage() {
 
     return null;
   };
+
+
+  // 给表单用：把 correctAnswer 统一转成 radio/select 可用的字符串
+  // 返回值只允许："true" | "false" | ""（空表示未知/未设置）
+  const getTrueFalseFormValue = (value: any): "true" | "false" | "" => {
+    const normalized = normalizeTrueFalseCorrectAnswer(value);
+    if (normalized === true) return "true";
+    if (normalized === false) return "false";
+    return "";
+  };
+
 
   type CorrectAnswerPayload = boolean | string | string[];
 
@@ -684,17 +758,16 @@ export default function QuestionsPage() {
 
   const handleEdit = async (question: Question) => {
     setFormError(null);
-  
+
     try {
       const params = new URLSearchParams();
       if (filters.source) params.set("source", filters.source);
-      if (filters.locale) params.set("locale", filters.locale);
-  
+
       const res = await apiFetch<Question>(
         `/api/admin/questions/${question.id}?${params.toString()}`,
         { method: "GET" }
       );
-  
+
       setEditingQuestion(res.data);
     } catch (e) {
       // 兜底：接口失败仍允许编辑，但提示风险
@@ -715,10 +788,18 @@ export default function QuestionsPage() {
 
     const formData = new FormData(e.currentTarget);
     const type = formData.get("type")?.toString() as QuestionType;
-    const content = formData.get("content")?.toString() || "";
     const category = formData.get("category")?.toString() || "免许-1";
     const image = formData.get("image")?.toString() || "";
-    const explanation = formData.get("explanation")?.toString() || "";
+
+    const locales = languageOptions; // ["zh","en","ja"]
+    const contentPatch = readI18nFromForm(formData, "content", locales);
+    const explanationPatch = readI18nFromForm(formData, "explanation", locales);
+
+    // Create：允许只填一个语言。若一个都没填，兜底空字符串避免后端报错
+    const contentPayload =
+      Object.keys(contentPatch).length > 0 ? contentPatch : (formData.get("content")?.toString() || "");
+    const explanationPayload =
+      Object.keys(explanationPatch).length > 0 ? explanationPatch : (formData.get("explanation")?.toString() || "");
 
     // 解析选项
     const options: string[] = [];
@@ -735,16 +816,15 @@ export default function QuestionsPage() {
 
     // 解析正确答案（统一解析器，避免 true/false 错配与后端类型错误）
     const correctAnswer = parseCorrectAnswerFromForm(type, formData);
-    
 
     try {
       await apiPost<Question>("/api/admin/questions", {
         type,
-        content,
+        content: contentPayload,
         options: options.length > 0 ? options : undefined,
         correctAnswer,
         image: image || undefined,
-        explanation: explanation || undefined,
+        explanation: explanationPayload,
         category,
       });
 
@@ -773,11 +853,32 @@ export default function QuestionsPage() {
 
     const formData = new FormData(e.currentTarget);
     const type = formData.get("type")?.toString() as QuestionType;
-    const content = formData.get("content")?.toString() || "";
     const category = formData.get("category")?.toString() || editingQuestion.category || "免许-1";
     const image = formData.get("image")?.toString() || "";
-    const explanation = formData.get("explanation")?.toString() || "";
     const aiAnswer = formData.get("aiAnswer")?.toString() || "";
+
+    // ✅ 读取多语言输入（只取非空字段），并与现有内容 merge，避免覆盖成空
+    const locales = languageOptions; // ["zh","en","ja"]
+    const contentPatch = readI18nFromForm(formData, "content", locales);
+    const explanationPatch = readI18nFromForm(formData, "explanation", locales);
+
+    const mergedContent = mergeI18n(editingQuestion.content, contentPatch);
+    const mergedExplanation = mergeI18n(editingQuestion.explanation, explanationPatch);
+
+    // ✅ 最终 payload：优先 object；若 object 仍为空（极端情况），兜底用当前 locale 的旧值或空串
+    const contentPayload: any =
+      Object.keys(mergedContent).length > 0
+        ? mergedContent
+        : (typeof editingQuestion.content === "string"
+            ? editingQuestion.content
+            : (editingQuestion.content?.[filters.locale || "zh"] || ""));
+
+    const explanationPayload: any =
+      Object.keys(mergedExplanation).length > 0
+        ? mergedExplanation
+        : (typeof editingQuestion.explanation === "string"
+            ? editingQuestion.explanation
+            : (editingQuestion.explanation?.[filters.locale || "zh"] || ""));
 
     // 解析选项
     const options: string[] = [];
@@ -798,11 +899,11 @@ export default function QuestionsPage() {
     try {
       await apiPut<Question>(`/api/admin/questions/${editingQuestion.id}`, {
         type,
-        content,
+        content: contentPayload,
         options: options.length > 0 ? options : undefined,
         correctAnswer,
         image: image || undefined,
-        explanation: explanation || undefined,
+        explanation: explanationPayload || undefined,
         category,
         aiAnswer: aiAnswer || undefined,
       });
@@ -1525,7 +1626,6 @@ export default function QuestionsPage() {
         <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
           <h3 className="text-sm font-medium mb-3">创建新题目</h3>
           <QuestionForm
-            onSubmit={handleCreate}
             onCancel={() => {
               setShowCreateForm(false);
               setFormError(null);
@@ -1543,7 +1643,6 @@ export default function QuestionsPage() {
           <h3 className="text-sm font-medium mb-3">编辑题目 #{editingQuestion.id}</h3>
           <QuestionForm
             question={editingQuestion}
-            onSubmit={handleUpdate}
             onCancel={() => {
               setShowEditForm(false);
               setEditingQuestion(null);
@@ -2623,14 +2722,13 @@ export default function QuestionsPage() {
 // 题目表单组件
 function QuestionForm({
   question,
-  onSubmit,
   onCancel,
   submitting,
   error,
   categories,
 }: {
   question?: Question;
-  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onSubmit?: never; // 不再外部传入
   onCancel: () => void;
   submitting: boolean;
   error: string | null;
@@ -2640,22 +2738,67 @@ function QuestionForm({
   const [showOptions, setShowOptions] = useState(
     question?.type === "single" || question?.type === "multiple" || !question
   );
+  const [internalError, setInternalError] = useState<string | null>(null);
+
+  // 新增：三语枚举
+  const locales = ["zh", "ja", "en"];
+  const getI18nVal = (v: any, loc: string) => {
+    if (!v) return "";
+    if (typeof v === "string") return loc === "zh" ? v : "";
+    if (typeof v === "object") return (v as any)[loc] || "";
+    return "";
+  };
+  // END: 新增
+
+  useEffect(() => {
+    if (!question) return;
+    setType(question.type);
+  }, [question?.id, question?.type]);
 
   useEffect(() => {
     setShowOptions(type === "single" || type === "multiple");
   }, [type]);
 
+  const formKey = question ? `question-${question.id}` : "question-new";
   const correctAnswer = question?.correctAnswer;
 
-  // === 新增 normalize helpers ===
+  // === normalize helpers 保持 ===
   const normalizeTrueFalseValue = (v: unknown): "true" | "false" => {
     if (typeof v === "boolean") return v ? "true" : "false";
+    if (typeof v === "object" && v !== null) {
+      const anyV = v as any;
+      if ("value" in anyV) {
+        const vv = anyV.value;
+        if (typeof vv === "boolean") return vv ? "true" : "false";
+        if (typeof vv === "number") return vv === 1 ? "true" : "false";
+        if (typeof vv === "string") {
+          const s = vv.trim().toLowerCase();
+          if (s === "true" || s === "1" || s === "yes") return "true";
+          if (s === "false" || s === "0" || s === "no") return "false";
+          if (s === "对" || s === "正确" || s === "true（正确）") return "true";
+          if (s === "错" || s === "错误" || s === "false（错误）") return "false";
+        }
+      }
+      if ("correctAnswer" in anyV) {
+        return normalizeTrueFalseValue(anyV.correctAnswer);
+      }
+    }
+    if (typeof v === "number") return v === 1 ? "true" : "false";
     if (typeof v === "string") {
       const s = v.trim().toLowerCase();
       if (s === "true" || s === "1" || s === "yes") return "true";
       if (s === "false" || s === "0" || s === "no") return "false";
+      if (s === "对" || s === "正确") return "true";
+      if (s === "错" || s === "错误") return "false";
+      if (s === "正しい" || s === "true（正しい）") return "true";
+      if (s === "間違い" || s === "false（間違い）") return "false";
     }
-    return "true";
+    return "false";
+  };
+
+  // helper 专门用于 true/false 编辑表单的 value
+  const getTrueFalseFormValue = (v: unknown): "true" | "false" => {
+    return normalizeTrueFalseValue(v);
   };
 
   const normalizeSingleValue = (v: unknown): "A" | "B" | "C" | "D" => {
@@ -2666,41 +2809,160 @@ function QuestionForm({
 
   const normalizeMultipleValues = (v: unknown): string[] => {
     if (Array.isArray(v)) return v.map((x) => String(x).trim().toUpperCase()).filter(Boolean);
-
     if (typeof v === "string") {
       const s = v.trim().toUpperCase();
       if (!s) return [];
-      // 兼容 "A,B" / "A, B" / "A B" / "AB"
       if (s.includes(",") || s.includes(" ")) {
         return s
           .split(/[, ]+/)
           .map((x) => x.trim())
           .filter(Boolean);
       }
-      // "AB" 视为 ["A","B"]
       if (s.length > 1) return s.split("").filter(Boolean);
       return [s];
     }
-
     return [];
   };
 
-  // === true/false correctAnswer 归一化为 boolean ===
-  const normalizeTrueFalseCorrectAnswer = (v: unknown): boolean | null => {
-    if (typeof v === "boolean") return v;
-    if (typeof v === "string") {
-      const s = v.trim().toLowerCase();
-      if (s === "true" || s === "1" || s === "yes") return true;
-      if (s === "false" || s === "0" || s === "no") return false;
+  // 将 i18n 内容从 FormData 中读出
+  function readI18nFromForm(fd: FormData, base: string) {
+    const result: Record<string, string> = {};
+    for (let loc of locales) {
+      const v = (fd.get(`${base}_${loc}`) || "").toString().trim();
+      if (v) result[loc] = v;
     }
-    return null;
-  };
-  const tf = normalizeTrueFalseCorrectAnswer(question?.correctAnswer);
+    // 只返回非空对象，后端兼容字符串/对象；为空时返回 undefined（避免误删）
+    return Object.keys(result).length > 0 ? result : undefined;
+  }
 
-  // === End helpers ===
+  // === 新的 onSubmit，直接在组件内（加强错误反馈） ===
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setInternalError(null); // 清空上一次的错误
+
+    try {
+      const fd = new FormData(e.currentTarget);
+      const formType = String(fd.get("type") || "single") as QuestionType;
+
+// 读取 i18n 字段：允许“留空不修改”，但必须保证最终提交的 content 非空
+const contentFromForm = readI18nFromForm(fd, "content");
+
+const hasNonEmptyContent = (v: any) => {
+  if (!v) return false;
+  if (typeof v === "string") return v.trim().length > 0;
+  if (typeof v === "object") {
+    return Object.values(v).some((x) => typeof x === "string" && x.trim().length > 0);
+  }
+  return false;
+};
+
+// ✅ 最终 content：优先使用本次表单输入，否则回退到原题 content（仅编辑场景）
+let content: any = contentFromForm;
+if (!hasNonEmptyContent(content)) {
+  if (question?.id) {
+    content = question?.content as any;
+  }
+}
+
+// ✅ 仍为空：无论创建还是编辑，都直接前端拦截（避免 400）
+if (!hasNonEmptyContent(content)) {
+  setInternalError("题目内容不能为空：请至少填写一个语言内容（建议填写 zh）");
+  return;
+}
+
+let explanation = readI18nFromForm(fd, "explanation") as any;
+
+
+      // 创建：至少需要 content.zh（你也可以改成允许 ja/en，但 zh 建议必填）
+      if (!question?.id) {
+        if (!content || typeof content !== "object" || !String(content.zh || "").trim()) {
+          throw new Error("题目内容（zh）必填");
+        }
+      } else {
+        // 编辑：留空不修改 => 回填原始值，避免后端把字段覆盖成空/undefined 导致报错或误删
+        if (!explanation) explanation = question?.explanation as any;
+      }
+
+      const category = String(fd.get("category") || "").trim();
+      const image = String(fd.get("image") || "").trim() || null;
+      const aiAnswer = String(fd.get("aiAnswer") || "").trim() || null;
+
+      const optionA = String(fd.get("optionA") || "").trim();
+      const optionB = String(fd.get("optionB") || "").trim();
+      const optionC = String(fd.get("optionC") || "").trim();
+      const optionD = String(fd.get("optionD") || "").trim();
+
+      const options =
+        formType === "single" || formType === "multiple"
+          ? [optionA, optionB, optionC, optionD].filter((x) => x.length > 0)
+          : undefined;
+
+      // correctAnswer：统一提交为结构化对象，避免后端类型不匹配与 true/false 显示/提交混乱
+      let correctAnswer: any;
+
+      if (formType === "truefalse") {
+        const v = String(fd.get("correctAnswer") || "false").trim().toLowerCase();
+        correctAnswer = { type: "boolean", value: v === "true" };
+      } else if (formType === "single") {
+        const v = String(fd.get("correctAnswer") || "A").trim().toUpperCase();
+        correctAnswer = { type: "single_choice", value: v };
+      } else {
+        const raw = fd.getAll("correctAnswer");
+        const values = raw.map((x) => String(x).trim().toUpperCase()).filter(Boolean);
+        correctAnswer = { type: "multiple_choice", value: values };
+      }
+
+      // 构造 payload：字段名与后端一致
+      const payload: any = {
+        type: formType,
+        category,
+        content: content,
+        correctAnswer,
+        image,
+        explanation,
+        aiAnswer,
+      };
+      if (options) payload.options = options;
+
+      if (question?.id) {
+        console.log("[QuestionForm] submit payload.content =", content);
+        await apiPut(`/api/admin/questions/${question.id}`, payload);
+        alert("题目已更新");
+      } else {
+        await apiPost(`/api/admin/questions`, payload);
+        alert("题目已创建");
+      }
+      onCancel();
+    } catch (err: any) {
+      let msg = "保存失败（未知错误）";
+      if (err instanceof Error) {
+        msg = err.message || msg;
+        if (err.name === "ApiError" && (err as any).status) {
+          const apiErr = err as any;
+          if (apiErr.body && typeof apiErr.body === "object") {
+            if (apiErr.body.message) {
+              msg += `: ${apiErr.body.message}`;
+            } else if (apiErr.body.detail) {
+              msg += `: ${apiErr.body.detail}`;
+            }
+          }
+          msg += ` [status=${apiErr.status}]`;
+          console.error("[admin][QuestionForm] submit failed (ApiError):", apiErr, apiErr.body);
+        } else {
+          console.error("[admin][QuestionForm] submit failed:", err);
+        }
+      } else {
+        msg = typeof err === "string" ? err : msg;
+        console.error("[admin][QuestionForm] submit failed:", err);
+      }
+      setInternalError(msg);
+    }
+  };
+
+  const showError = internalError || error;
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3">
+    <form key={formKey} onSubmit={handleSubmit} className="space-y-3">
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">
           卷类 * 
@@ -2740,18 +3002,22 @@ function QuestionForm({
         </select>
       </div>
 
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">题目内容 *</label>
-        <textarea
-          name="content"
-          required
-          rows={3}
-          defaultValue={typeof question?.content === 'string' 
-            ? question.content 
-            : (question?.content?.zh || "")}
-          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-          placeholder="请输入题目内容..."
-        />
+      {/* 内容：三语同时编辑 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {locales.map((loc) => (
+          <div key={loc}>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              题目内容 ({loc})
+            </label>
+            <textarea
+              name={`content_${loc}`}
+              required={!question && loc === "zh"}
+              defaultValue={question ? getI18nVal(question.content, loc) : ""}
+              className="w-full rounded-md border border-gray-300 px-2 py-2 text-sm min-h-[90px]"
+              placeholder={`请输入 ${loc} 内容（留空则不修改该语言）`}
+            />
+          </div>
+        ))}
       </div>
 
       {showOptions && (
@@ -2803,7 +3069,7 @@ function QuestionForm({
           <select
             name="correctAnswer"
             required
-            defaultValue={(tf ?? false) ? "true" : "false"}
+            defaultValue={getTrueFalseFormValue(question?.correctAnswer)}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
           >
             <option value="true">正确</option>
@@ -2879,23 +3145,21 @@ function QuestionForm({
         />
       </div>
 
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">解析</label>
-        <textarea
-          name="explanation"
-          rows={2}
-          defaultValue={
-            question?.explanation
-              ? typeof question.explanation === 'string'
-                ? question.explanation
-                : (typeof question.explanation === 'object' && question.explanation !== null
-                    ? (question.explanation.zh || question.explanation.en || question.explanation.ja || '')
-                    : '')
-              : ""
-          }
-          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-          placeholder="请输入题目解析..."
-        />
+      {/* 解析：三语同时编辑 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+        {locales.map((loc) => (
+          <div key={loc}>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              解析 ({loc})
+            </label>
+            <textarea
+              name={`explanation_${loc}`}
+              defaultValue={question ? getI18nVal(question.explanation, loc) : ""}
+              className="w-full rounded-md border border-gray-300 px-2 py-2 text-sm min-h-[90px]"
+              placeholder={`请输入 ${loc} 解析（留空则不修改该语言）`}
+            />
+          </div>
+        ))}
       </div>
 
       <div>
@@ -2912,7 +3176,7 @@ function QuestionForm({
         />
       </div>
 
-      {error && <div className="text-xs text-red-600">{error}</div>}
+      {showError && <div className="text-xs text-red-600">{showError}</div>}
 
       <div className="flex items-center gap-2">
         <button

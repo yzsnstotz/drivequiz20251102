@@ -332,9 +332,24 @@ export async function saveQuestionToDb(
         type: cleanedQuestion.type,
         content: contentMultilang as any,
         options: cleanedOptions,
-        correct_answer: (cleanedQuestion.type === 'truefalse' && cleanedCorrectAnswer != null)
-          ? { type: 'boolean', value: String(cleanedCorrectAnswer).toLowerCase() === 'true' }
-          : cleanedCorrectAnswer,
+        correct_answer:
+  cleanedCorrectAnswer == null
+    ? null
+    : cleanedQuestion.type === "truefalse"
+      ? (typeof cleanedCorrectAnswer === "object" &&
+          !Array.isArray(cleanedCorrectAnswer) &&
+          "type" in (cleanedCorrectAnswer as any) &&
+          "value" in (cleanedCorrectAnswer as any)
+          ? cleanedCorrectAnswer
+          : {
+              type: "boolean",
+              value:
+                cleanedCorrectAnswer === true ||
+                (typeof cleanedCorrectAnswer === "string" &&
+                  cleanedCorrectAnswer.trim().toLowerCase() === "true"),
+            })
+      : cleanedCorrectAnswer,
+
         image: cleanedQuestion.image || null,
         explanation: explanationMultilang as any,
         category: cleanedQuestion.category || null,
@@ -448,9 +463,23 @@ export async function saveQuestionToDb(
         type: cleanedQuestion.type,
         content: contentMultilang as any,
         options: cleanedOptions,
-        correct_answer: (cleanedQuestion.type === 'truefalse' && cleanedCorrectAnswer != null)
-          ? { type: 'boolean', value: String(cleanedCorrectAnswer).toLowerCase() === 'true' }
-          : cleanedCorrectAnswer,
+        correct_answer:
+        cleanedCorrectAnswer == null
+          ? null
+          : cleanedQuestion.type === "truefalse"
+            ? (typeof cleanedCorrectAnswer === "object" &&
+                !Array.isArray(cleanedCorrectAnswer) &&
+                "type" in (cleanedCorrectAnswer as any) &&
+                "value" in (cleanedCorrectAnswer as any)
+                ? cleanedCorrectAnswer
+                : {
+                    type: "boolean",
+                    value:
+                      cleanedCorrectAnswer === true ||
+                      (typeof cleanedCorrectAnswer === "string" &&
+                        cleanedCorrectAnswer.trim().toLowerCase() === "true"),
+                  })
+            : cleanedCorrectAnswer,
         image: cleanedQuestion.image || null,
         explanation: explanationMultilang as any,
         category: cleanedQuestion.category || null,
