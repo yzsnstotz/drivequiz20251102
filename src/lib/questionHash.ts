@@ -74,14 +74,26 @@ export function calculateQuestionHash(question: Question): string {
           return v === null ? "" : `boolean:${v ? "true" : "false"}`;
         }
         case "single": {
-          return question.correctAnswer.type === "single_choice"
-            ? `single:${question.correctAnswer.value}`
-            : "";
+          if (typeof question.correctAnswer === "object" && question.correctAnswer !== null && "type" in question.correctAnswer) {
+            return question.correctAnswer.type === "single_choice"
+              ? `single:${question.correctAnswer.value}`
+              : "";
+          } else if (typeof question.correctAnswer === "string") {
+            // 兼容旧格式：直接的字符串答案
+            return `single:${question.correctAnswer}`;
+          }
+          return "";
         }
         case "multiple": {
-          return question.correctAnswer.type === "multiple_choice"
-            ? `multiple:${[...question.correctAnswer.value].sort().join("|")}`
-            : "";
+          if (typeof question.correctAnswer === "object" && question.correctAnswer !== null && "type" in question.correctAnswer) {
+            return question.correctAnswer.type === "multiple_choice"
+              ? `multiple:${[...question.correctAnswer.value].sort().join("|")}`
+              : "";
+          } else if (Array.isArray(question.correctAnswer)) {
+            // 兼容旧格式：直接的字符串数组答案
+            return `multiple:${[...question.correctAnswer].sort().join("|")}`;
+          }
+          return "";
         }
         default:
           return "";
