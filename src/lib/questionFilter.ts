@@ -27,19 +27,27 @@ export function filterQuestions(
       stage_tag?: "provisional" | "regular" | "full" | "both" | null;
     };
 
-    // 检查 license_type_tag
-    let matchesLicenseType = false;
-    if (q.license_type_tag && Array.isArray(q.license_type_tag) && q.license_type_tag.length > 0) {
-      // 检查是否包含选中的驾照类型
-      matchesLicenseType = q.license_type_tag.includes(filter.licenseTypeTag);
-      // 如果题目包含 common_all，则所有驾照类型都符合
-      if (!matchesLicenseType && q.license_type_tag.includes("common_all")) {
-        matchesLicenseType = true;
-      }
-    } else {
-      // 如果没有 license_type_tag 或为空数组，默认匹配所有（作为通用题目）
-      matchesLicenseType = true;
-    }
+// ===== license_type_tag 匹配（大小写兼容 + COMMON_ALL 支持） =====
+
+// 统一将筛选条件规范为大写
+const targetLicense = filter.licenseTypeTag
+  ? filter.licenseTypeTag.toString().trim().toUpperCase()
+  : "";
+
+// 统一将题目标签规范为大写
+const questionLicenses = Array.isArray(q.license_type_tag)
+  ? q.license_type_tag.map((t) => t.toString().trim().toUpperCase())
+  : [];
+
+// 匹配规则：
+// 1. 未指定 licenseTypeTag → 全部通过
+// 2. 题目包含 COMMON_ALL → 全部通过
+// 3. 精确匹配 licenseTypeTag
+const matchesLicenseType =
+  !targetLicense ||
+  questionLicenses.includes("COMMON_ALL") ||
+  questionLicenses.includes(targetLicense);
+
 
     // 检查 stage_tag
     let matchesStage = false;
